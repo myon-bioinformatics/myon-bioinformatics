@@ -7,6 +7,12 @@
 [![Reddit User Karma](https://img.shields.io/reddit/user-karma/combined/myon_reddit?style=social)](https://www.reddit.com/user/myon_reddit/)
 [![Twitter Follow](https://img.shields.io/twitter/follow/myonitbusiness?style=social)](https://twitter.com/myonitbusiness)
 
+# Carrer
+```mermaid
+ flowchart LR
+	 現在 --こめんとだっよう--> 未来
+```
+
 **SNS landing page: http://lit.link/myon123**
 
 # Repositories
