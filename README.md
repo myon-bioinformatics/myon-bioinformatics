@@ -12,7 +12,7 @@
 # Carrer
 ```mermaid
  flowchart LR
-	 現在 --こめんとだっよう--> 未来
+	 現在 ==こめんとだっよう==> 未来
 ```
 
 # Repositories
