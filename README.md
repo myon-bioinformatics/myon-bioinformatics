@@ -9,10 +9,11 @@
 
 **SNS landing page: http://lit.link/myon123**
 
-# Carrer
+# Carrer Flow
 ```mermaid
  flowchart LR
-	 現在 ==こめんとだっよう==> 未来
+ NOW:Security,Backend...
+	 Stdt --Bioinformatics --> Pythoner --Work as PG/SE -->NOW
 ```
 
 # Repositories
