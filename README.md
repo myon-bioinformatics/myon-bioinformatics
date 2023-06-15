@@ -39,7 +39,6 @@ _**SNS landing page: http://lit.link/myon123**_
 
 <img src="https://skillicons.dev/icons?i=python,golang,ruby,typescript,js,html,github,vscode,docker,dart,androidstudio,aws" /> <br /><br />
 
-  ※Another skill and tools
-  VMWare, Security(Scapy, Ghidra,wireshark) and so on.
+  ※Others: VMWare, Security(Scapy, Ghidra,wireshark) and so on.
 
 
