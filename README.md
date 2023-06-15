@@ -7,7 +7,7 @@
 [![Reddit User Karma](https://img.shields.io/reddit/user-karma/combined/myon_reddit?style=social)](https://www.reddit.com/user/myon_reddit/)
 [![Twitter Follow](https://img.shields.io/twitter/follow/myonitbusiness?style=social)](https://twitter.com/myonitbusiness)
 
-**SNS landing page: http://lit.link/myon123**
+_**SNS landing page: http://lit.link/myon123**_
 
 # Carrer Flow
 ```mermaid
