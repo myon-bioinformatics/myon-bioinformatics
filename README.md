@@ -37,7 +37,7 @@ _**SNS landing page: http://lit.link/myon123**_
 
 # Skill
 
-<img src="https://skillicons.dev/icons?i=python,golang,ruby,typescript,js,html,github,vscode,docker,dart,androidstudio,aws" /> <br /><br />
+<img src="https://skillicons.dev/icons?i=python,golang,ruby,typescript,js,html,github,vscode,docker,dart,androidstudio,aws" />
 
   **※Others: VMWare, Security(Scapy, Ghidra,wireshark) and so on.**
 
