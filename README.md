@@ -35,7 +35,7 @@ _**SNS landing page: http://lit.link/myon123**_
 [![Top Langs](https://github-readme-stats.vercel.app/api/top-langs/?username=myon-bioinformatics&name&layout=compact&theme=vue-dark)](https://github.com/myon-bioinformatics/github-readme-stats)
 
 
-# My Skill (Programming Languages, Frameworks and Tools)
+# Skill
 
 <img src="https://skillicons.dev/icons?i=python,golang,ruby,typescript,js,html,github,vscode,docker,dart,androidstudio,aws" /> <br /><br />
 
