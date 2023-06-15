@@ -28,6 +28,7 @@ _**SNS landing page: http://lit.link/myon123**_
 - [search_seq_including_spaces](https://github.com/myon-bioinformatics/search_seq_including_spaces)
 - [scapy_GUI_for_Beginners](https://github.com/myon-bioinformatics/scapy_GUI_for_Beginners)
 - [myon-bioinformatics.github.io](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io)
+- [HelpYouBuildServer](https://github.com/myon-bioinformatics/HelpYouBuildServer)
 
 # Top Langs
 
