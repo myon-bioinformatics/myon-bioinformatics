@@ -19,7 +19,6 @@ _**SNS landing page: http://lit.link/myon123**_
 
 # Repositories
 - [python3nmap_GUI_for_Beginners](https://github.com/myon-bioinformatics/python3nmap_GUI_for_Beginners)
-- [myon-bioinformatics.github.io](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io)
 - [niconicoSearchAPI_Template](https://github.com/myon-bioinformatics/niconicoSearchAPI_Template)
 - [GitHub_api_Template](https://github.com/myon-bioinformatics/GitHub_api_Template)
 - [Qiita_API_Template](https://github.com/myon-bioinformatics/Qiita_API_Template)
