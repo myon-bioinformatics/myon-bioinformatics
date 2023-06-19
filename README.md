@@ -41,4 +41,7 @@ _**SNS landing page: http://lit.link/myon123**_
 
 > **※Others: VMWare, Security(Scapy, Ghidra,wireshark) and so on.**
 
+# If you would like to know me in detail...
+_**About me in detail: https://github.com/myon-bioinformatics/myon-bioinformatics.github.io**_
+
 
