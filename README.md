@@ -31,6 +31,7 @@
 - [scapy_GUI_for_Beginners](https://github.com/myon-bioinformatics/scapy_GUI_for_Beginners)
 - [myon-bioinformatics.github.io](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io)
 - [HelpYouBuildServer](https://github.com/myon-bioinformatics/HelpYouBuildServer)
+- [AttentionToJapaneseBeginners](https://github.com/myon-bioinformatics/AttentionToJapaneseBeginners)
 
 # Top Langs
 
