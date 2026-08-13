@@ -115,3 +115,27 @@ flowchart LR
 😏 **詳細はこちら** → <a href="https://myon-bioinformatics.github.io/">myon-bioinformatics.github.io</a>
 
 ---
+
+
+## Claude から PR を作る
+
+### 経路1: Claude Code on the web（リポジトリ設定不要）
+
+1. スマホのブラウザで https://claude.ai/code を開く
+2. GitHub 接続を求められたら Claude GitHub App をインストールし、本リポジトリを許可
+3. Claude アプリの「Code」タブ → New Session → 本リポジトリとブランチを選択
+4. やってほしいことを書いて送信。完了後 diff を確認して「Create a PR」
+
+Pro プランに含まれる。クラウド VM の追加課金は無い（使用量は Claude 全体の枠を共有）。
+
+### 経路2: `@claude` メンション（本リポジトリのワークフロー）
+
+issue や PR のコメントに `@claude` を含めて指示すると
+`.github/workflows/claude.yml` が起動する。
+
+事前に必要な設定:
+
+- Claude GitHub App のインストール
+- Secret `CLAUDE_CODE_OAUTH_TOKEN` の登録（`claude setup-token` で生成）
+
+`ANTHROPIC_API_KEY` は使わないこと。従量課金になる。

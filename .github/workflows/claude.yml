@@ -1,0 +1,70 @@
+# @claude メンションで Claude を動かす。
+#
+# issue や PR のコメントに「@claude ○○して」と書くと、このワークフローが起動し、
+# Claude がブランチを作ってコミットし、PR を出すところまで行う。
+#
+# 【事前準備：これが無いと動かない】
+#   1. リポジトリに Claude GitHub App をインストール
+#      https://github.com/apps/claude
+#   2. Secret に CLAUDE_CODE_OAUTH_TOKEN を登録
+#      Settings -> Secrets and variables -> Actions -> New repository secret
+#
+#      トークンはターミナルで以下を実行して生成する（1回だけ必要）:
+#        npm install -g @anthropic-ai/claude-code
+#        claude setup-token
+#
+# 【課金についての重要な注意】
+#   ANTHROPIC_API_KEY は使わないこと。あれは Anthropic API の従量課金になる。
+#   CLAUDE_CODE_OAUTH_TOKEN なら Pro サブスクリプションの使用量枠で動く。
+#   なお GitHub Actions の実行時間は GitHub 側の課金対象
+#   （public リポジトリは無制限無料、private はプランの無料枠を消費）。
+
+name: Claude
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, assigned]
+
+# 同じ issue / PR で多重起動させない
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    # @claude を含むイベントだけに絞る。これが無いと全コメントで課金対象のジョブが回る。
+    if: |
+      (github.event_name == 'issue_comment' &&
+        contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' &&
+        contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' &&
+        contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' &&
+        (contains(github.event.issue.body, '@claude') ||
+         contains(github.event.issue.title, '@claude')))
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: write        # ブランチ作成・コミット
+      pull-requests: write   # PR 作成・コメント
+      issues: write          # issue コメント
+      id-token: write        # OIDC
+      actions: read          # CI 結果の読み取り
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
