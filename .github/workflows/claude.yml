@@ -27,7 +27,7 @@ on:
   workflow_dispatch:
     inputs:
       prompt:
-        description: Claude への指示（例: Issue を作成して）
+        description: "Claude への指示（例: Issue を作成して）"
         required: true
         type: string
   issue_comment:
