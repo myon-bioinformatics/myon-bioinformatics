@@ -23,7 +23,7 @@
 ## 👋 Summary / 自己紹介
 - バイオインフォからエンジニアへ。**セキュリティ/ネットワーク**と**バックエンド**が主戦場。  
 - GUIツールやテンプレ系の **「すぐ使える」リポジトリ**を多数公開中。  
-- 好き：Python、Go、TypeScript、Docker、Wireshark/Scapy、Ghidra、Flutter(Dart)
+- 好き：Python、Go、TypeScript、Docker、Wireshark / Scapy、Ghidra、Flutter(Dart)
 
 > _“I build practical tools and templates you can run today.”_
 
@@ -43,7 +43,7 @@ flowchart LR
 
 <img src="https://skillicons.dev/icons?i=python,go,typescript,js,html,css,github,git,vscode,docker,linux,dart,flutter,androidstudio,aws" />
 
-> **Others:** VMware / Security (Scapy, Ghidra, Wireshark) / CLI＆GUIツール作成
+> **Others:** VMware / Security (Scapy, Ghidra, Wireshark) / CUI&GUIツール作成
 
 ---
 
@@ -97,7 +97,7 @@ flowchart LR
 
 ## 🧑‍💻 What I’m Working On
 
-* セキュリティ検証用GUI／CUIツールの整備
+* セキュリティ検証用GUI/CUIツールの整備
 * 使い回せるAPIテンプレ群（GitHub / Qiita / LINE Notifyなど）
 * 画像・音声のバッチ変換GUIツール（FFmpegラッパー）
 
