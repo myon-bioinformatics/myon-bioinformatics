@@ -8,7 +8,7 @@
   <!-- Badges -->
   <a href="https://github.com/myon-bioinformatics"><img alt="GitHub followers" src="https://img.shields.io/github/followers/myon-bioinformatics?style=social"></a>
   <a href="https://twitter.com/myonitbusiness"><img alt="Twitter Follow" src="https://img.shields.io/twitter/follow/myonitbusiness?style=social"></a>
-  <img alt="Repo license" src="https://img.shields.io/github/license/myon-bioinformatics/python3nmap_GUI_for_Beginners">
+  <img alt="Repo license" src="https://img.shields.io/github/license/myon-bioinformatics/myon-bioinformatics">
   <img alt="Last commit" src="https://img.shields.io/github/last-commit/myon-bioinformatics/myon-bioinformatics">
 </p>
 
@@ -35,7 +35,7 @@ flowchart LR
   Stdt[Student: Bioinformatics] -->|Python習得| Pythoner[Pythoner]
   Pythoner -->|PG/SEとして実務| Pro[Engineer]
   Pro --> NOW[Now: Security / Backend / Data]
-````
+```
 
 ---
 
