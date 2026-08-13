@@ -1,7 +1,9 @@
-# @claude メンションで Claude を動かす。
+# @claude メンションまたは手動実行で Claude を動かす。
 #
 # issue や PR のコメントに「@claude ○○して」と書くと、このワークフローが起動し、
 # Claude がブランチを作ってコミットし、PR を出すところまで行う。
+#
+# Actions タブからの手動実行では、指示欄に「Issue を作成して」などと書いて Claude を起動できる。
 #
 # 【事前準備：これが無いと動かない】
 #   1. リポジトリに Claude GitHub App をインストール
@@ -22,6 +24,12 @@
 name: Claude
 
 on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: Claude への指示（例: Issue を作成して）
+        required: true
+        type: string
   issue_comment:
     types: [created]
   pull_request_review_comment:
@@ -31,15 +39,16 @@ on:
   issues:
     types: [opened, assigned]
 
-# 同じ issue / PR で多重起動させない
+# 同じ issue / PR で多重起動させない。手動実行は run ごとに独立させる。
 concurrency:
-  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   claude:
-    # @claude を含むイベントだけに絞る。これが無いと全コメントで課金対象のジョブが回る。
+    # @claude を含むイベント、または Actions タブからの明示的な手動実行だけに絞る。
     if: |
+      github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issue_comment' &&
         contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' &&
@@ -56,7 +65,7 @@ jobs:
     permissions:
       contents: write        # ブランチ作成・コミット
       pull-requests: write   # PR 作成・コメント
-      issues: write          # issue コメント
+      issues: write          # issue 作成・コメント
       id-token: write        # OIDC
       actions: read          # CI 結果の読み取り
 
@@ -65,6 +74,15 @@ jobs:
         with:
           fetch-depth: 1
 
+      # issue / PR のコメント起動は、従来どおりイベント本文をClaudeへ渡す。
       - uses: anthropics/claude-code-action@v1
+        if: github.event_name != 'workflow_dispatch'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+      # 手動実行では、Actions画面の入力欄に書いた指示をClaudeへ渡す。
+      - uses: anthropics/claude-code-action@v1
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: ${{ inputs.prompt }}

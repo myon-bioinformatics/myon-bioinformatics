@@ -139,3 +139,12 @@ issue や PR のコメントに `@claude` を含めて指示すると
 - Secret `CLAUDE_CODE_OAUTH_TOKEN` の登録（`claude setup-token` で生成）
 
 `ANTHROPIC_API_KEY` は使わないこと。従量課金になる。
+
+
+### 経路3: Actions から手動実行（Issue作成など）
+
+1. リポジトリの **Actions** → **Claude** を開く
+2. **Run workflow** を押す
+3. 指示欄に、たとえば `GitHub Issueを1件作成して。タイトルは「README確認」、本文には確認観点を3つ書いて。` と入力して実行
+
+既存Issueを起点にしない作業をClaudeへ依頼できる。実行結果はActionsのジョブログで確認する。
