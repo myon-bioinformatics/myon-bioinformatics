@@ -8,6 +8,7 @@
 - Run the smallest relevant existing checks and report the result in the pull request.
 - Prefer canonical shared data from `myon-bioinformatics/myon-bioinformatics.github.io` instead of copying profile, repository, project, or service endpoint facts into local files.
 - Prefer reusable workflows from `myon-bioinformatics/myon-bioinformatics/.github/workflows/` when they cover the repository's need.
+- A repository-local rule may override a shared rule only when the difference is intentional; document the reason next to the local override.
 
 ## Review-only requests
 
