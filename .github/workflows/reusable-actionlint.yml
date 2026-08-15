@@ -1,0 +1,23 @@
+name: Reusable actionlint
+
+on:
+  workflow_call:
+    inputs:
+      paths:
+        description: "Space-separated workflow files or globs passed to actionlint"
+        required: false
+        type: string
+        default: ".github/workflows/*.yml .github/workflows/*.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate workflow syntax
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color ${{ inputs.paths }}
