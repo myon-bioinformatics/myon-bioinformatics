@@ -1,6 +1,8 @@
 import { readFile, writeFile } from 'node:fs/promises';
 
-const CANONICAL_RAW_BASE = 'https://raw.githubusercontent.com/myon-bioinformatics/myon-bioinformatics.github.io/main';
+const CANONICAL_OWNER = 'myon-bioinformatics';
+const CANONICAL_REPO = `${CANONICAL_OWNER}.github.io`;
+const CANONICAL_RAW_BASE = `https://raw.githubusercontent.com/${CANONICAL_OWNER}/${CANONICAL_REPO}/main`;
 const README_PATH = new URL('../README.md', import.meta.url);
 
 const BLOCKS = {
@@ -29,13 +31,18 @@ const [profile, projects, repoPayload, registry] = await Promise.all([
 
 const owner = registry.owner;
 const services = registry.services ?? {};
-const githubUrl = services.account?.github?.url;
-const portfolioUrl = services.portfolio?.pages?.url;
+const githubUrlRaw = services.account?.github?.url;
+const portfolioUrlRaw = services.portfolio?.pages?.url;
 const repos = new Map(repoPayload.repos.map((repo) => [repo.name, repo]));
 
-if (!owner || !githubUrl || !portfolioUrl) {
+if (!owner || !githubUrlRaw || !portfolioUrlRaw) {
   throw new Error('services.json must provide owner, account.github.url, and portfolio.pages.url');
 }
+
+const githubUrl = githubUrlRaw.replace(/\/+$/, '');
+const portfolioUrl = `${portfolioUrlRaw.replace(/\/+$/, '')}/`;
+const canonicalRepo = `${owner}.github.io`;
+const canonicalRepoUrl = `${githubUrl}/${canonicalRepo}`;
 
 const replaceBlock = (readme, [start, end], body) => {
   const startIndex = readme.indexOf(start);
@@ -73,7 +80,7 @@ const contactLine = [
   links.linktree && `[Linktree](${links.linktree})`,
 ].filter(Boolean).join(' • ');
 
-const profileBlock = `> **Canonical source:** [profile.json](${githubUrl}/myon-bioinformatics.github.io/blob/main/profile.json)\n> This section is generated automatically. Edit the canonical JSON instead of this README block.\n\n## 👋 Summary / 自己紹介\n\n${profile.about.replace(/\n/g, '  \n')}\n\n> _“${profile.motto}”_\n\n## 🧭 Career Flow\n\n${career}\n\n## 🧰 Skills\n\n${skills}\n\n## 🧑‍💻 What I’m Working On\n\n${focus}\n\n## 📫 Contact\n\n${contactLine}`;
+const profileBlock = `> **Canonical source:** [profile.json](${canonicalRepoUrl}/blob/main/profile.json)\n> This section is generated automatically. Edit the canonical JSON instead of this README block.\n\n## 👋 Summary / 自己紹介\n\n${profile.about.replace(/\n/g, '  \n')}\n\n> _“${profile.motto}”_\n\n## 🧭 Career Flow\n\n${career}\n\n## 🧰 Skills\n\n${skills}\n\n## 🧑‍💻 What I’m Working On\n\n${focus}\n\n## 📫 Contact\n\n${contactLine}`;
 
 const featured = projects.map((project) => {
   const repo = repos.get(project.name);
@@ -95,7 +102,7 @@ const moreRepos = repoPayload.repos
   .map((repo) => `* [${repo.name}](${repo.url})`)
   .join('\n');
 
-const projectsBlock = `## 📦 Featured Repositories\n\n> **Selection source:** [projects.json](${githubUrl}/myon-bioinformatics.github.io/blob/main/projects.json) · **Repository facts:** [api/repos.json](${portfolioUrl}api/repos.json)\n\n${featuredRows.join('\n')}\n\n<details>\n<summary>🔎 More repos</summary>\n\n${moreRepos}\n\n</details>`;
+const projectsBlock = `## 📦 Featured Repositories\n\n> **Selection source:** [projects.json](${canonicalRepoUrl}/blob/main/projects.json) · **Repository facts:** [api/repos.json](${portfolioUrl}api/repos.json)\n\n${featuredRows.join('\n')}\n\n<details>\n<summary>🔎 More repos</summary>\n\n${moreRepos}\n\n</details>`;
 
 const footerBlock = `## ℹ️ More about me\n\n😏 **詳細はこちら** → <a href="${portfolioUrl}">${new URL(portfolioUrl).host}</a>`;
 
