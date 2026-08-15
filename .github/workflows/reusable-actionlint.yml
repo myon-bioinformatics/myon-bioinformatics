@@ -4,10 +4,10 @@ on:
   workflow_call:
     inputs:
       paths:
-        description: "Space-separated workflow files or globs passed to actionlint"
+        description: "Optional newline- or space-separated workflow paths. If omitted on pull_request/push, changed workflow files are detected automatically."
         required: false
         type: string
-        default: ".github/workflows/*.yml .github/workflows/*.yaml"
+        default: ""
 
 permissions:
   contents: read
@@ -15,9 +15,50 @@ permissions:
 jobs:
   actionlint:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Validate workflow syntax
-        uses: docker://rhysd/actionlint:1.7.12
         with:
-          args: -color ${{ inputs.paths }}
+          fetch-depth: 0
+
+      - name: Select workflow files
+        id: files
+        shell: bash
+        env:
+          EXPLICIT_PATHS: ${{ inputs.paths }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          : > /tmp/actionlint-files
+
+          if [[ -n "$EXPLICIT_PATHS" ]]; then
+            printf '%s\n' "$EXPLICIT_PATHS" | tr ' ' '\n' | sed '/^$/d' > /tmp/actionlint-files
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            git diff --name-only "$PR_BASE_SHA" "$PR_HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml' > /tmp/actionlint-files
+          elif [[ "$EVENT_NAME" == "push" ]]; then
+            git diff --name-only "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml' > /tmp/actionlint-files
+          else
+            echo "No automatic diff strategy for event '$EVENT_NAME'; pass inputs.paths to lint explicit files."
+            exit 0
+          fi
+
+          sed -i '/^$/d' /tmp/actionlint-files
+          echo "count=$(wc -l < /tmp/actionlint-files | tr -d ' ')" >> "$GITHUB_OUTPUT"
+          echo "Selected workflow files:"
+          cat /tmp/actionlint-files
+
+      - name: Validate changed workflow syntax
+        if: steps.files.outputs.count != '0'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t files < /tmp/actionlint-files
+          docker run --rm \
+            -v "$PWD:/repo" \
+            --workdir /repo \
+            rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 \
+            -color "${files[@]}"
