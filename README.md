@@ -5,7 +5,6 @@
 </p>
 
 <p align="center">
-  <!-- Badges -->
   <a href="https://github.com/myon-bioinformatics"><img alt="GitHub followers" src="https://img.shields.io/github/followers/myon-bioinformatics?style=social"></a>
   <a href="https://twitter.com/myonitbusiness"><img alt="Twitter Follow" src="https://img.shields.io/twitter/follow/myonitbusiness?style=social"></a>
   <img alt="Repo license" src="https://img.shields.io/github/license/myon-bioinformatics/myon-bioinformatics">
@@ -20,36 +19,59 @@
 
 ---
 
+<!-- PROFILE:START -->
+> **Canonical source:** [profile.json](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/main/profile.json)
+> This section is generated automatically. Edit the canonical JSON instead of this README block.
+
 ## 👋 Summary / 自己紹介
-- バイオインフォからエンジニアへ。**セキュリティ/ネットワーク**と**バックエンド**が主戦場。  
-- GUIツールやテンプレ系の **「すぐ使える」リポジトリ**を多数公開中。  
-- 好き：Python、Go、TypeScript、Docker、Wireshark/Scapy、Ghidra、Flutter(Dart)
+
+Bioinformatics → Security / Backend engineer.  
+I design and build practical GUI/CLI tools in Python, plus backend services in Go and TypeScript. My background spans genomic data pipelines, network security tooling, and developer productivity utilities.
 
 > _“I build practical tools and templates you can run today.”_
 
----
-
 ## 🧭 Career Flow
-```mermaid
-flowchart LR
-  Stdt[Student: Bioinformatics] -->|Python習得| Pythoner[Pythoner]
-  Pythoner -->|PG/SEとして実務| Pro[Engineer]
-  Pro --> NOW[Now: Security / Backend / Data]
-```
 
----
+- **2020 — Started Bioinformatics**: Began working with genomic data pipelines and sequence analysis tools.
+- **2021 — Python GUI Tooling**: Built beginner-friendly GUI wrappers for network security tools (Nmap, Scapy).
+- **2022 — Security / Backend Focus**: Shifted focus toward security tooling and backend service development.
+- **2023– — Multi-language Engineering**: Expanding into Go and TypeScript for backend APIs and developer tooling.
 
 ## 🧰 Skills
 
-<img src="https://skillicons.dev/icons?i=python,go,typescript,js,html,css,github,git,vscode,docker,linux,dart,flutter,androidstudio,aws" />
+### Languages
+- Python (90%)
+- Go (65%)
+- TypeScript (60%)
+- Bash (70%)
 
-> **Others:** VMware / Security (Scapy, Ghidra, Wireshark) / CLI＆GUIツール作成
+### Domain
+- Bioinformatics (85%)
+- Network Security (75%)
+- Backend / API (65%)
+- GUI / Desktop (80%)
+
+### Tools & Infra
+- Linux / CLI (85%)
+- Docker (60%)
+- Git / GitHub (80%)
+- Wireshark / Scapy / Ghidra (70%)
+- Flutter / Dart (60%)
+
+## 🧑‍💻 What I’m Working On
+
+- Security-oriented GUI / CUI tooling
+- Reusable API templates and backend integration patterns
+- Image / audio batch conversion and developer utilities
+
+## 📫 Contact
+
+[Portfolio](https://myon-bioinformatics.github.io/) • [GitHub](https://github.com/myon-bioinformatics) • [Twitter](https://twitter.com/myonitbusiness) • [lit.link](https://lit.link/myon123) • [Linktree](https://linktr.ee/myon123)
+<!-- PROFILE:END -->
 
 ---
 
 ## 📦 Featured Repositories
-
-<!-- “pin” cards: change repo names if you want -->
 
 <p align="left">
   <a href="https://github.com/myon-bioinformatics/python3nmap_GUI_for_Beginners">
@@ -71,15 +93,15 @@ flowchart LR
 <details>
 <summary>🔎 More repos</summary>
 
-* [GitHub\_api\_Template](https://github.com/myon-bioinformatics/GitHub_api_Template)
-* [Qiita\_API\_Template](https://github.com/myon-bioinformatics/Qiita_API_Template)
-* [LINENotifyAPI\_Template](https://github.com/myon-bioinformatics/LINENotifyAPI_Template)
-* [convert\_img\_fmt\_to\_webp-CUI-](https://github.com/myon-bioinformatics/convert_img_fmt_to_webp-CUI-)
-* [search\_seq\_including\_spaces](https://github.com/myon-bioinformatics/search_seq_including_spaces)
+* [GitHub_api_Template](https://github.com/myon-bioinformatics/GitHub_api_Template)
+* [Qiita_API_Template](https://github.com/myon-bioinformatics/Qiita_API_Template)
+* [LINENotifyAPI_Template](https://github.com/myon-bioinformatics/LINENotifyAPI_Template)
+* [convert_img_fmt_to_webp-CUI-](https://github.com/myon-bioinformatics/convert_img_fmt_to_webp-CUI-)
+* [search_seq_including_spaces](https://github.com/myon-bioinformatics/search_seq_including_spaces)
 * [myon-bioinformatics.github.io](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io)
 * [HelpYouBuildServer](https://github.com/myon-bioinformatics/HelpYouBuildServer)
 * [AttentionToJapaneseBeginners](https://github.com/myon-bioinformatics/AttentionToJapaneseBeginners)
-* [flutter\_navigation\_basic](https://github.com/myon-bioinformatics/flutter_navigation_basic)
+* [flutter_navigation_basic](https://github.com/myon-bioinformatics/flutter_navigation_basic)
 
 </details>
 
@@ -95,27 +117,11 @@ flowchart LR
 
 ---
 
-## 🧑‍💻 What I’m Working On
-
-* セキュリティ検証用GUI／CUIツールの整備
-* 使い回せるAPIテンプレ群（GitHub / Qiita / LINE Notifyなど）
-* 画像・音声のバッチ変換GUIツール（FFmpegラッパー）
-
----
-
-## 📫 Contact
-
-* DM: <a href="https://twitter.com/myonitbusiness">@myonitbusiness</a>
-* Links: <a href="https://lit.link/myon123">lit.link</a> / <a href="https://linktr.ee/myon123">Linktree</a>
-
----
-
 ## ℹ️ More about me
 
 😏 **詳細はこちら** → <a href="https://myon-bioinformatics.github.io/">myon-bioinformatics.github.io</a>
 
 ---
-
 
 ## Claude から PR を作る
 
@@ -139,7 +145,6 @@ issue や PR のコメントに `@claude` を含めて指示すると
 - Secret `CLAUDE_CODE_OAUTH_TOKEN` の登録（`claude setup-token` で生成）
 
 `ANTHROPIC_API_KEY` は使わないこと。従量課金になる。
-
 
 ### 経路3: Actions から手動実行（Issue作成など）
 
