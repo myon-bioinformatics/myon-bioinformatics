@@ -85,24 +85,20 @@ const profileBlock = `> **Canonical source:** [profile.json](${canonicalRepoUrl}
 const featured = projects.map((project) => {
   const repo = repos.get(project.name);
   if (!repo) throw new Error(`projects.json references unknown repository: ${project.name}`);
-  return repo;
-});
 
-const pin = (repo) => `  <a href="${repo.url}">\n    <img src="https://github-readme-stats.vercel.app/api/pin/?username=${owner}&repo=${encodeURIComponent(repo.name)}&theme=vue-dark" />\n  </a>`;
+  const topics = (project.topics ?? []).map((topic) => `\`${topic}\``).join(' ');
+  const description = project.desc || repo.description || 'No description.';
+  return `### [${project.name}](${repo.url})\n\n${description}${topics ? `\n\n${topics}` : ''}`;
+}).join('\n\n');
 
-const featuredRows = [];
-for (let i = 0; i < featured.length; i += 2) {
-  featuredRows.push(`<p align="left">\n${featured.slice(i, i + 2).map(pin).join('\n')}\n</p>`);
-}
-
-const featuredNames = new Set(featured.map((repo) => repo.name));
+const featuredNames = new Set(projects.map((project) => project.name));
 const moreRepos = repoPayload.repos
   .filter((repo) => repo.name !== owner && !featuredNames.has(repo.name))
   .sort((a, b) => a.name.localeCompare(b.name))
   .map((repo) => `* [${repo.name}](${repo.url})`)
   .join('\n');
 
-const projectsBlock = `## 📦 Featured Repositories\n\n> **Selection source:** [projects.json](${canonicalRepoUrl}/blob/main/projects.json) · **Repository facts:** [api/repos.json](${portfolioUrl}api/repos.json)\n\n${featuredRows.join('\n')}\n\n<details>\n<summary>🔎 More repos</summary>\n\n${moreRepos}\n\n</details>`;
+const projectsBlock = `## 📦 Featured Repositories\n\n> **Selection source:** [projects.json](${canonicalRepoUrl}/blob/main/projects.json) · **Repository facts:** [api/repos.json](${portfolioUrl}api/repos.json)\n\n${featured}\n\n<details>\n<summary>🔎 More repos</summary>\n\n${moreRepos}\n\n</details>`;
 
 const footerBlock = `## ℹ️ More about me\n\n😏 **詳細はこちら** → <a href="${portfolioUrl}">${new URL(portfolioUrl).host}</a>`;
 
