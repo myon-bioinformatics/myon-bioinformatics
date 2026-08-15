@@ -1,20 +1,22 @@
 <!-- Centered headline -->
 <h1 align="center">🐍 myon-bioinformatics 🎸</h1>
+<!-- HEADER:START -->
 <p align="center">
   Security × Backend × Data • Python / Go / TypeScript
-</p>
-
-<p align="center">
-  <a href="https://github.com/myon-bioinformatics"><img alt="GitHub followers" src="https://img.shields.io/github/followers/myon-bioinformatics?style=social"></a>
-  <a href="https://twitter.com/myonitbusiness"><img alt="Twitter Follow" src="https://img.shields.io/twitter/follow/myonitbusiness?style=social"></a>
-  <img alt="Repo license" src="https://img.shields.io/github/license/myon-bioinformatics/myon-bioinformatics">
-  <img alt="Last commit" src="https://img.shields.io/github/last-commit/myon-bioinformatics/myon-bioinformatics">
 </p>
 
 <p align="center">
   <a href="https://lit.link/myon123">lit.link</a> •
   <a href="https://linktr.ee/myon123">Linktree</a> •
   <a href="https://myon-bioinformatics.github.io/">Portfolio (GitHub Pages)</a>
+</p>
+<!-- HEADER:END -->
+
+<p align="center">
+  <a href="https://github.com/myon-bioinformatics"><img alt="GitHub followers" src="https://img.shields.io/github/followers/myon-bioinformatics?style=social"></a>
+  <a href="https://twitter.com/myonitbusiness"><img alt="Twitter Follow" src="https://img.shields.io/twitter/follow/myonitbusiness?style=social"></a>
+  <img alt="Repo license" src="https://img.shields.io/github/license/myon-bioinformatics/myon-bioinformatics">
+  <img alt="Last commit" src="https://img.shields.io/github/last-commit/myon-bioinformatics/myon-bioinformatics">
 </p>
 
 ---
@@ -71,7 +73,10 @@ I design and build practical GUI/CLI tools in Python, plus backend services in G
 
 ---
 
+<!-- PROJECTS:START -->
 ## 📦 Featured Repositories
+
+> **Selection source:** [projects.json](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/main/projects.json) · **Repository facts:** [api/repos.json](https://myon-bioinformatics.github.io/api/repos.json)
 
 <p align="left">
   <a href="https://github.com/myon-bioinformatics/python3nmap_GUI_for_Beginners">
@@ -93,17 +98,28 @@ I design and build practical GUI/CLI tools in Python, plus backend services in G
 <details>
 <summary>🔎 More repos</summary>
 
-* [GitHub_api_Template](https://github.com/myon-bioinformatics/GitHub_api_Template)
-* [Qiita_API_Template](https://github.com/myon-bioinformatics/Qiita_API_Template)
-* [LINENotifyAPI_Template](https://github.com/myon-bioinformatics/LINENotifyAPI_Template)
-* [convert_img_fmt_to_webp-CUI-](https://github.com/myon-bioinformatics/convert_img_fmt_to_webp-CUI-)
-* [search_seq_including_spaces](https://github.com/myon-bioinformatics/search_seq_including_spaces)
-* [myon-bioinformatics.github.io](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io)
-* [HelpYouBuildServer](https://github.com/myon-bioinformatics/HelpYouBuildServer)
 * [AttentionToJapaneseBeginners](https://github.com/myon-bioinformatics/AttentionToJapaneseBeginners)
+* [audio_any2any_gui](https://github.com/myon-bioinformatics/audio_any2any_gui)
+* [convert_img_fmt_to_webp-CUI-](https://github.com/myon-bioinformatics/convert_img_fmt_to_webp-CUI-)
+* [cumlative_usage](https://github.com/myon-bioinformatics/cumlative_usage)
 * [flutter_navigation_basic](https://github.com/myon-bioinformatics/flutter_navigation_basic)
+* [GitHub_api_Template](https://github.com/myon-bioinformatics/GitHub_api_Template)
+* [HelpYouBuildServer](https://github.com/myon-bioinformatics/HelpYouBuildServer)
+* [image_ext_converter_gui](https://github.com/myon-bioinformatics/image_ext_converter_gui)
+* [Ironmate](https://github.com/myon-bioinformatics/Ironmate)
+* [LINENotifyAPI_Template](https://github.com/myon-bioinformatics/LINENotifyAPI_Template)
+* [mock_server_JS](https://github.com/myon-bioinformatics/mock_server_JS)
+* [myon-bioinformatics.github.io](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io)
+* [nvd_nist_known_vulns](https://github.com/myon-bioinformatics/nvd_nist_known_vulns)
+* [oci-cost-analysis](https://github.com/myon-bioinformatics/oci-cost-analysis)
+* [Qiita_API_Template](https://github.com/myon-bioinformatics/Qiita_API_Template)
+* [search_seq_including_spaces](https://github.com/myon-bioinformatics/search_seq_including_spaces)
+* [video2audio_gui](https://github.com/myon-bioinformatics/video2audio_gui)
+* [video_to_image_gui](https://github.com/myon-bioinformatics/video_to_image_gui)
+* [vlm_ocr_jp_gui](https://github.com/myon-bioinformatics/vlm_ocr_jp_gui)
 
 </details>
+<!-- PROJECTS:END -->
 
 ---
 
@@ -117,8 +133,10 @@ I design and build practical GUI/CLI tools in Python, plus backend services in G
 
 ---
 
+<!-- FOOTER:START -->
 ## ℹ️ More about me
 
 😏 **詳細はこちら** → <a href="https://myon-bioinformatics.github.io/">myon-bioinformatics.github.io</a>
+<!-- FOOTER:END -->
 
 ---
