@@ -52,7 +52,17 @@ jobs:
             exit 0
           fi
 
-          sed -i '/^$/d' /tmp/actionlint-files
+          selected=$(mktemp)
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            if [[ -f "$file" ]]; then
+              printf '%s\n' "$file" >> "$selected"
+            else
+              echo "Skipping deleted or missing workflow: $file"
+            fi
+          done < /tmp/actionlint-files
+          mv "$selected" /tmp/actionlint-files
+
           echo "count=$(wc -l < /tmp/actionlint-files | tr -d ' ')" >> "$GITHUB_OUTPUT"
           echo "Selected workflow files:"
           cat /tmp/actionlint-files
