@@ -14,6 +14,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: readme-stats-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   update-stats:
     runs-on: ubuntu-latest
@@ -44,13 +48,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- assets/readme/; then
+
+          # Stage first so the initial, previously-untracked SVG files are included
+          # in the change check as well as later updates to tracked assets.
+          git add -A -- assets/readme/
+          if git diff --cached --quiet -- assets/readme/; then
             echo "README stats cards are already current."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add assets/readme/github-stats.svg assets/readme/top-langs.svg
           git commit -m "Refresh README stats cards"
           git push
