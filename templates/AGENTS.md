@@ -7,6 +7,7 @@
 - Read the relevant documentation, source, and existing workflows before changing anything.
 - Keep changes scoped to the request. Do not refactor unrelated code or upgrade dependencies without an explicit request.
 - Preserve existing CI, deployment, and GitHub Pages configuration unless the task specifically requires a change.
+- Repository-local rules may override a shared rule only when the difference is intentional; document the reason next to the local override.
 
 ## Workflow changes
 
