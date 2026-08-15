@@ -40,7 +40,12 @@ jobs:
           elif [[ "$EVENT_NAME" == "pull_request" ]]; then
             git diff --name-only "$PR_BASE_SHA" "$PR_HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml' > /tmp/actionlint-files
           elif [[ "$EVENT_NAME" == "push" ]]; then
-            git diff --name-only "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml' > /tmp/actionlint-files
+            if [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+              echo "New ref push has no diff base; use the pushed commit to select workflow files."
+              git show --pretty='' --name-only "$PUSH_HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml' > /tmp/actionlint-files
+            else
+              git diff --name-only "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml' > /tmp/actionlint-files
+            fi
           else
             echo "No automatic diff strategy for event '$EVENT_NAME'; pass inputs.paths to lint explicit files."
             exit 0
