@@ -4,10 +4,9 @@ on:
   workflow_call:
     inputs:
       artifact_path:
-        description: "Directory to upload to GitHub Pages"
-        required: false
+        description: "Explicit directory to upload to GitHub Pages"
+        required: true
         type: string
-        default: "."
 
 permissions:
   contents: read
@@ -20,10 +19,12 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
