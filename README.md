@@ -1,5 +1,7 @@
-<!-- Centered headline -->
+<!-- PRESENTATION:START title -->
 <h1 align="center">🐍 myon-bioinformatics 🎸</h1>
+<!-- PRESENTATION:END title -->
+
 <!-- HEADER:START -->
 <p align="center">
   Security × Backend × Data • Python / Go / TypeScript
@@ -12,12 +14,16 @@
 </p>
 <!-- HEADER:END -->
 
+<!-- PRESENTATION:START badges -->
 <p align="center">
   <a href="https://github.com/myon-bioinformatics"><img alt="GitHub followers" src="https://img.shields.io/github/followers/myon-bioinformatics?style=social"></a>
   <a href="https://twitter.com/myonitbusiness"><img alt="Twitter Follow" src="https://img.shields.io/twitter/follow/myonitbusiness?style=social"></a>
+</p>
+<p align="center">
   <img alt="Repo license" src="https://img.shields.io/github/license/myon-bioinformatics/myon-bioinformatics">
   <img alt="Last commit" src="https://img.shields.io/github/last-commit/myon-bioinformatics/myon-bioinformatics">
 </p>
+<!-- PRESENTATION:END badges -->
 
 ---
 
@@ -78,22 +84,29 @@ I design and build practical GUI/CLI tools in Python, plus backend services in G
 
 > **Selection source:** [projects.json](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/main/projects.json) · **Repository facts:** [api/repos.json](https://myon-bioinformatics.github.io/api/repos.json)
 
-<p align="left">
-  <a href="https://github.com/myon-bioinformatics/python3nmap_GUI_for_Beginners">
-    <img src="https://github-readme-stats.vercel.app/api/pin/?username=myon-bioinformatics&repo=python3nmap_GUI_for_Beginners&theme=vue-dark" />
-  </a>
-  <a href="https://github.com/myon-bioinformatics/scapy_GUI_for_Beginners">
-    <img src="https://github-readme-stats.vercel.app/api/pin/?username=myon-bioinformatics&repo=scapy_GUI_for_Beginners&theme=vue-dark" />
-  </a>
-</p>
-<p align="left">
-  <a href="https://github.com/myon-bioinformatics/convert_img_fmt_to_webp-GUI-">
-    <img src="https://github-readme-stats.vercel.app/api/pin/?username=myon-bioinformatics&repo=convert_img_fmt_to_webp-GUI-&theme=vue-dark" />
-  </a>
-  <a href="https://github.com/myon-bioinformatics/niconicoSearchAPI_Template">
-    <img src="https://github-readme-stats.vercel.app/api/pin/?username=myon-bioinformatics&repo=niconicoSearchAPI_Template&theme=vue-dark" />
-  </a>
-</p>
+### [python3nmap_GUI_for_Beginners](https://github.com/myon-bioinformatics/python3nmap_GUI_for_Beginners)
+
+Beginner-friendly Nmap GUI wrapper (Python + PySimpleGUI).
+
+`python` `security` `gui` `nmap`
+
+### [scapy_GUI_for_Beginners](https://github.com/myon-bioinformatics/scapy_GUI_for_Beginners)
+
+Packet crafting/inspection via GUI for newcomers.
+
+`python` `scapy` `networking` `gui`
+
+### [convert_img_fmt_to_webp-GUI-](https://github.com/myon-bioinformatics/convert_img_fmt_to_webp-GUI-)
+
+Batch image conversion to WebP with a friendly UI (FFmpeg wrapper).
+
+`python` `ffmpeg` `image` `gui`
+
+### [niconicoSearchAPI_Template](https://github.com/myon-bioinformatics/niconicoSearchAPI_Template)
+
+Template to kickstart API-based search clients.
+
+`template` `api` `starter`
 
 <details>
 <summary>🔎 More repos</summary>
@@ -123,13 +136,20 @@ I design and build practical GUI/CLI tools in Python, plus backend services in G
 
 ---
 
+<!-- PRESENTATION:START stats -->
 ## 📊 Stats
 
-<p align="left">
+<p align="center">
   <a href="https://github.com/myon-bioinformatics">
-    <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=myon-bioinformatics&layout=compact&theme=vue-dark" />
+    <img width="420" alt="GitHub stats" src="./assets/readme/github-stats.svg" />
   </a>
 </p>
+<p align="center">
+  <a href="https://github.com/myon-bioinformatics?tab=repositories">
+    <img width="420" alt="Top languages" src="./assets/readme/top-langs.svg" />
+  </a>
+</p>
+<!-- PRESENTATION:END stats -->
 
 ---
 

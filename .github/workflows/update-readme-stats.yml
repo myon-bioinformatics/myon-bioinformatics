@@ -1,0 +1,63 @@
+name: Update README stats
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 0 * * *'
+  push:
+    branches:
+      - main
+    paths:
+      - 'README.md'
+      - '.github/workflows/update-readme-stats.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: readme-stats-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  update-stats:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate GitHub stats card
+        uses: stats-organization/github-readme-stats-action@e856fc8de9d7729b463c468911e232cfbdc3d55e
+        with:
+          card: stats
+          options: username=${{ github.repository_owner }}&show_icons=true&theme=transparent&hide_border=true
+          path: assets/readme/github-stats.svg
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_error: true
+
+      - name: Generate top languages card
+        uses: stats-organization/github-readme-stats-action@e856fc8de9d7729b463c468911e232cfbdc3d55e
+        with:
+          card: top-langs
+          options: username=${{ github.repository_owner }}&layout=compact&langs_count=8&theme=transparent&hide_border=true
+          path: assets/readme/top-langs.svg
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fail_on_error: true
+
+      - name: Commit refreshed cards
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Stage first so the initial, previously-untracked SVG files are included
+          # in the change check as well as later updates to tracked assets.
+          git add -A -- assets/readme/
+          if git diff --cached --quiet -- assets/readme/; then
+            echo "README stats cards are already current."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Refresh README stats cards"
+          git push
