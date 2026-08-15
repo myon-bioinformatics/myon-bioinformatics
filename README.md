@@ -114,8 +114,8 @@ I design and build practical GUI/CLI tools in Python, plus backend services in G
 * [oci-cost-analysis](https://github.com/myon-bioinformatics/oci-cost-analysis)
 * [Qiita_API_Template](https://github.com/myon-bioinformatics/Qiita_API_Template)
 * [search_seq_including_spaces](https://github.com/myon-bioinformatics/search_seq_including_spaces)
-* [video2audio_gui](https://github.com/myon-bioinformatics/video2audio_gui)
 * [video_to_image_gui](https://github.com/myon-bioinformatics/video_to_image_gui)
+* [video2audio_gui](https://github.com/myon-bioinformatics/video2audio_gui)
 * [vlm_ocr_jp_gui](https://github.com/myon-bioinformatics/vlm_ocr_jp_gui)
 
 </details>
