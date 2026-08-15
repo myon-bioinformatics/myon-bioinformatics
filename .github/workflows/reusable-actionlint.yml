@@ -41,8 +41,9 @@ jobs:
             git diff --name-only "$PR_BASE_SHA" "$PR_HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml' > /tmp/actionlint-files
           elif [[ "$EVENT_NAME" == "push" ]]; then
             if [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
-              echo "New ref push has no diff base; use the pushed commit to select workflow files."
-              git show --pretty='' --name-only "$PUSH_HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml' > /tmp/actionlint-files
+              echo "New ref push has no diff base; inspect the pushed commit, including merge parents, for workflow changes."
+              git diff-tree --root -m --no-commit-id --name-only -r "$PUSH_HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml' \
+                | sort -u > /tmp/actionlint-files
             else
               git diff --name-only "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml' > /tmp/actionlint-files
             fi
