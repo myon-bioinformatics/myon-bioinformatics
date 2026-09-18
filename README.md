@@ -121,6 +121,8 @@ Template to kickstart API-based search clients.
 * [image_ext_converter_gui](https://github.com/myon-bioinformatics/image_ext_converter_gui)
 * [Ironmate](https://github.com/myon-bioinformatics/Ironmate)
 * [LINENotifyAPI_Template](https://github.com/myon-bioinformatics/LINENotifyAPI_Template)
+* [markdown](https://github.com/myon-bioinformatics/markdown)
+* [mcp-toolcall-lab](https://github.com/myon-bioinformatics/mcp-toolcall-lab)
 * [mock_server_JS](https://github.com/myon-bioinformatics/mock_server_JS)
 * [myon-bioinformatics.github.io](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io)
 * [nvd_nist_known_vulns](https://github.com/myon-bioinformatics/nvd_nist_known_vulns)
