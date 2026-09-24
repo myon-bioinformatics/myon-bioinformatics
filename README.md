@@ -133,6 +133,7 @@ Template to kickstart API-based search clients.
 * [video_to_image_gui](https://github.com/myon-bioinformatics/video_to_image_gui)
 * [video2audio_gui](https://github.com/myon-bioinformatics/video2audio_gui)
 * [vlm_ocr_jp_gui](https://github.com/myon-bioinformatics/vlm_ocr_jp_gui)
+* [web-ui](https://github.com/myon-bioinformatics/web-ui)
 
 </details>
 <!-- PROJECTS:END -->
