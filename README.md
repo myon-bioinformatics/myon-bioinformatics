@@ -114,6 +114,7 @@ Template to kickstart API-based search clients.
 * [ascii_artist](https://github.com/myon-bioinformatics/ascii_artist)
 * [AttentionToJapaneseBeginners](https://github.com/myon-bioinformatics/AttentionToJapaneseBeginners)
 * [audio_any2any_gui](https://github.com/myon-bioinformatics/audio_any2any_gui)
+* [browser-test-kit](https://github.com/myon-bioinformatics/browser-test-kit)
 * [convert_img_fmt_to_webp-CUI-](https://github.com/myon-bioinformatics/convert_img_fmt_to_webp-CUI-)
 * [cumlative_usage](https://github.com/myon-bioinformatics/cumlative_usage)
 * [flutter_navigation_basic](https://github.com/myon-bioinformatics/flutter_navigation_basic)
