@@ -1,0 +1,121 @@
+name: Reusable change detection
+
+on:
+  workflow_call:
+    inputs:
+      force_heavy_paths:
+        description: "Optional newline- or space-separated exact paths/prefixes that must never count as docs-only."
+        required: false
+        type: string
+        default: ""
+    outputs:
+      docs_only:
+        description: "true only when every changed file is documentation-only."
+        value: ${{ jobs.changes.outputs.docs_only }}
+      non_docs_changed:
+        description: "true when at least one changed file is not documentation-only."
+        value: ${{ jobs.changes.outputs.non_docs_changed }}
+      workflow_changed:
+        description: "true when .github/workflows/** changed."
+        value: ${{ jobs.changes.outputs.workflow_changed }}
+      changed_count:
+        description: "Number of changed files observed."
+        value: ${{ jobs.changes.outputs.changed_count }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+      non_docs_changed: ${{ steps.classify.outputs.non_docs_changed }}
+      workflow_changed: ${{ steps.classify.outputs.workflow_changed }}
+      changed_count: ${{ steps.classify.outputs.changed_count }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: classify
+        name: Classify changed paths
+        shell: bash
+        env:
+          FORCE_HEAVY_PATHS: ${{ inputs.force_heavy_paths }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # Fail open: if the event has no reliable diff base, keep heavy jobs enabled.
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            BASE="$PR_BASE_SHA"
+            HEAD="$PR_HEAD_SHA"
+          elif [[ "$EVENT_NAME" == "push" && ! "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+            BASE="$PUSH_BEFORE_SHA"
+            HEAD="$PUSH_HEAD_SHA"
+          else
+            {
+              echo "docs_only=false"
+              echo "non_docs_changed=true"
+              echo "workflow_changed=false"
+              echo "changed_count=0"
+            } >> "$GITHUB_OUTPUT"
+            echo "No reliable diff base for event '$EVENT_NAME'; heavy jobs remain enabled."
+            exit 0
+          fi
+
+          mapfile -t files < <(git diff --name-only "$BASE" "$HEAD")
+          mapfile -t forced < <(printf '%s\n' "$FORCE_HEAVY_PATHS" | tr ' ' '\n' | sed '/^$/d')
+
+          docs_only=true
+          non_docs_changed=false
+          workflow_changed=false
+
+          for f in "${files[@]}"; do
+            [[ "$f" == .github/workflows/* ]] && workflow_changed=true
+
+            forced_heavy=false
+            for p in "${forced[@]}"; do
+              if [[ "$f" == "$p" || "$f" == "$p"/* ]]; then
+                forced_heavy=true
+                break
+              fi
+            done
+
+            if [[ "$forced_heavy" == true ]]; then
+              docs_only=false
+              non_docs_changed=true
+              continue
+            fi
+
+            case "$f" in
+              docs/*|*.md|*.mdx|*.rst)
+                ;;
+              *)
+                docs_only=false
+                non_docs_changed=true
+                ;;
+            esac
+          done
+
+          # Empty diffs should not suppress heavy CI.
+          if (( ${#files[@]} == 0 )); then
+            docs_only=false
+            non_docs_changed=true
+          fi
+
+          {
+            echo "docs_only=$docs_only"
+            echo "non_docs_changed=$non_docs_changed"
+            echo "workflow_changed=$workflow_changed"
+            echo "changed_count=${#files[@]}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Changed files (${#files[@]}):"
+          printf '%s\n' "${files[@]}"
+          echo "outputs: docs_only=$docs_only non_docs_changed=$non_docs_changed workflow_changed=$workflow_changed"
