@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Generate GitHub stats card
-        uses: stats-organization/github-readme-stats-action@e856fc8de9d7729b463c468911e232cfbdc3d55e
+        uses: stats-organization/github-readme-stats-action@2c498845f71017821efaad14293ebc736156ef21
         with:
           card: stats
           options: username=${{ github.repository_owner }}&show_icons=true&theme=transparent&hide_border=true
@@ -36,7 +36,7 @@ jobs:
           fail_on_error: true
 
       - name: Generate top languages card
-        uses: stats-organization/github-readme-stats-action@e856fc8de9d7729b463c468911e232cfbdc3d55e
+        uses: stats-organization/github-readme-stats-action@2c498845f71017821efaad14293ebc736156ef21
         with:
           card: top-langs
           options: username=${{ github.repository_owner }}&layout=compact&langs_count=8&theme=transparent&hide_border=true
