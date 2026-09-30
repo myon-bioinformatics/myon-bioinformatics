@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 from urllib.parse import quote
 
 __version__ = "0.1.0"
@@ -136,6 +137,14 @@ def _yaml(repo, path, sha, timeout):
         raise WorkflowError("invalid_content") from exc
 
 
+def _resolve_ref(repo, ref, timeout):
+    obj = _api(repo, "commits/" + quote(ref, safe=""), timeout=timeout)
+    sha = obj.get("sha") if isinstance(obj, dict) else None
+    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise WorkflowError("invalid_commit")
+    return sha
+
+
 def inspect_workflow(repo, workflow, ref=None, *, timeout=30):
     if not isinstance(repo, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) or any(p in (".", "..") for p in repo.split("/")):
         raise ValueError("repo must be owner/name on github.com")
@@ -155,14 +164,8 @@ def inspect_workflow(repo, workflow, ref=None, *, timeout=30):
     path = wf["path"]
     if not path.startswith(".github/workflows/") or ".." in path.split("/") or not path.endswith((".yml", ".yaml")):
         raise WorkflowError("unsupported_workflow_path")
-    def resolve(value):
-        obj = _api(repo, "commits/" + quote(value, safe=""), timeout=timeout)
-        sha = obj.get("sha") if isinstance(obj, dict) else None
-        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
-            raise WorkflowError("invalid_commit")
-        return sha
-    default_sha = resolve(default)
-    target_sha = default_sha if ref == default else resolve(ref)
+    default_sha = _resolve_ref(repo, default, timeout)
+    target_sha = default_sha if ref == default else _resolve_ref(repo, ref, timeout)
     default_trigger = _dispatch_trigger(_yaml(repo, path, default_sha, timeout))
     target_trigger = default_trigger if target_sha == default_sha else _dispatch_trigger(_yaml(repo, path, target_sha, timeout))
     reasons = []
@@ -206,6 +209,11 @@ def execute_workflow(repo, workflow, ref=None, *, apply=False, inputs=None, time
         receipt["status"] = "dispatched"
         if data is None:  # Older endpoint behavior: do not infer a run from newest.
             receipt["status"] = "dispatched_run_unresolved"
+            receipt["target_sha_role"] = "pre_dispatch_observation"
+            try:
+                receipt["ref_sha_after"] = _resolve_ref(repo, receipt["ref"], timeout)
+            except WorkflowError as exc:
+                receipt["ref_sha_after_error"] = exc.code
             return receipt
         run_id = data.get("workflow_run_id") if isinstance(data, dict) else None
         if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
@@ -234,21 +242,30 @@ def main(argv=None):
     parser.add_argument("workflow")
     parser.add_argument("--ref")
     parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--inputs", type=json.loads, help="JSON object, forwarded without recording values")
+    parser.add_argument("--inputs", help="JSON object, forwarded without recording values")
     parser.add_argument("--timeout", type=float, default=30)
     parser.add_argument("--receipt", type=Path, help="append a JSONL receipt")
     args = parser.parse_args(argv)
     try:
+        inputs = json.loads(args.inputs) if args.inputs is not None else None
+        if inputs is not None and not isinstance(inputs, dict):
+            raise ValueError("inputs must be a JSON object")
+        if inputs is not None:
+            json.dumps(inputs, allow_nan=False)
         receipt = execute_workflow(args.repo, args.workflow, args.ref, apply=args.apply,
-                                   inputs=args.inputs, timeout=args.timeout)
+                                   inputs=inputs, timeout=args.timeout)
     except (WorkflowError, ValueError) as exc:
         receipt = {"status": "preflight_failed", "error": exc.code if isinstance(exc, WorkflowError) else "invalid_argument"}
     output = json.dumps(receipt, ensure_ascii=False)
-    if args.receipt:
-        args.receipt.parent.mkdir(parents=True, exist_ok=True)
-        with args.receipt.open("a", encoding="utf-8") as stream:
-            stream.write(output + "\n")
     print(output)
+    if args.receipt:
+        try:
+            args.receipt.parent.mkdir(parents=True, exist_ok=True)
+            with args.receipt.open("a", encoding="utf-8") as stream:
+                stream.write(output + "\n")
+        except OSError:
+            print("receipt_write_failed", file=sys.stderr)
+            return 1
     return 0 if receipt["status"] in ("planned", "dispatched") else 1
 
 
