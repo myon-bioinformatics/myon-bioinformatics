@@ -57,11 +57,13 @@ def _run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None):
         raise TypeError("input_bytes must be bytes")
     command = ["git", "-C", str(_root(root)), "--no-pager", *args]
     try:
-        proc = subprocess.run(command,
-                              stdin=subprocess.DEVNULL if input_bytes is None else subprocess.PIPE,
-                              input=input_bytes,
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              check=False, shell=False)
+        kwargs = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE,
+                  "check": False, "shell": False}
+        if input_bytes is None:
+            kwargs["stdin"] = subprocess.DEVNULL
+        else:
+            kwargs["input"] = input_bytes
+        proc = subprocess.run(command, **kwargs)
     except FileNotFoundError as error:
         raise GitInspectionError("git executable not found") from error
     except OSError as error:
@@ -180,29 +182,17 @@ def blame(root=".", path=None, *, revision="HEAD", start=None, end=None,
 
 
 def grep(root=".", pattern=None, *, max_bytes=1_000_000):
-    """Search tracked content with a fixed, bounded Git grep invocation."""
-    if not isinstance(pattern, str) or not pattern or "\x00" in pattern:
+    """Return NUL-safe tracked filenames containing a fixed literal pattern.
+
+    Content/line output is intentionally omitted: Git's grep record separator
+    does not make arbitrary newline-containing filenames and matched line text
+    simultaneously unambiguous. Callers can inspect an explicit path separately.
+    """
+    if not isinstance(pattern, str) or not pattern or "\\x00" in pattern:
         raise ValueError("pattern must be a non-empty string without NUL")
     raw, truncated, code = _run(
-        root, ["grep", "-n", "-I", "-F", "-e", pattern, "--"],
+        root, ["grep", "-z", "-l", "-I", "-F", "-e", pattern, "--"],
         max_bytes=max_bytes, ok=(0, 1),
     )
-    return {"matches": _decode(raw).splitlines() if code == 0 else [],
-            "truncated": truncated}
-
-
-def check_ignore(root=".", paths=()):
-    """Explain ignore state for explicit paths; unmatched paths remain explicit."""
-    if isinstance(paths, (str, os.PathLike)):
-        raise TypeError("paths must be a sequence")
-    paths = tuple(_path(p) for p in paths)
-    if not paths:
-        return {"records": []}
-    raw, _, _ = _run(root, ["check-ignore", "-z", "-v", "--stdin"],
-                      ok=(0, 1))
-    # check-ignore --stdin requires stdin data, while _run deliberately fixes
-    # stdin to DEVNULL. Keep the public operation unavailable until a dedicated
-    # bounded stdin path is implemented rather than weakening the runner.
-    if raw:
-        raise AssertionError("unexpected check-ignore output")
-    return {"records": [{"path": p, "status": "not_measured"} for p in paths]}
+    paths = [] if code == 1 else [_decode(p) for p in raw.split(b"\\0") if p]
+    return {"paths": paths, "truncated": truncated}
