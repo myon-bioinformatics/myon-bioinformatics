@@ -17,9 +17,28 @@ commit. Do not use a floating branch or invent a commit pin before merging.
       actions: read
     uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@FULL_COMMIT_SHA
     with:
+      expected-reports: '["junit-py3.12/pytest-3.12.xml", "junit-py3.14/pytest-3.14.xml"]'
       artifact-pattern: "junit-*"
       output-artifact: "failure-identity"
 ```
+
+`expected-reports` is required: a JSON array of exact paths after artifact
+extraction, including the artifact directory and XML basename. Keep this list in
+sync with the producer matrix. Only valid, non-truncated reports satisfy a slot;
+zero-byte or malformed XML cannot. A valid zero-test JUnit suite is accepted.
+Missing expected paths and unexpected XML both fail collection, so an extra
+report cannot replace a missing matrix leg. Duplicate/empty/unsafe expectations
+are rejected. The summary names missing configured paths; unexpected paths remain
+hashed. The import step runs even after download failure to preserve incomplete
+evidence where the pinned importer is available. This is a required-input change:
+repin callers and supply the expected set together.
+
+For a single expected artifact, download uses its exact name and an explicit
+artifact subdirectory: download-artifact v8 otherwise flattens a one-artifact
+match. Multi-artifact collection preserves separate directories. If only one
+artifact survives a multi-artifact expectation, its flattened paths cannot
+satisfy the expected set and collection remains incomplete; no artifact identity
+is guessed from filenames.
 
 The collector verifies a fixed xprobe Git blob before executing the importer.
 It never checks out or executes the caller's code. Raw reports stay separate;
