@@ -51,7 +51,8 @@ def _ref(value):
     return value
 
 
-def _run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None):
+def _run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None,
+         delimiter=None):
     _positive(max_bytes, "max_bytes")
     if input_bytes is not None and not isinstance(input_bytes, bytes):
         raise TypeError("input_bytes must be bytes")
@@ -73,6 +74,9 @@ def _run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None):
     raw = proc.stdout
     truncated = len(raw) > max_bytes
     raw = raw[:max_bytes]
+    if truncated and delimiter is not None and not raw.endswith(delimiter):
+        boundary = raw.rfind(delimiter)
+        raw = b"" if boundary < 0 else raw[:boundary + len(delimiter)]
     return raw, truncated, proc.returncode
 
 
@@ -87,131 +91,39 @@ def _complete_nul_fields(raw, truncated):
     return [item for item in raw.split(b"\0") if item]
 
 
-def status(root="."):
-    """Return porcelain-v2 status records without inventing repository identity."""
+def status(root=".", *, max_bytes=1_000_000):
+    """Return structured porcelain-v2 status without inventing identity."""
     raw, truncated, _ = _run(
         root, ["status", "--porcelain=v2", "-z", "--untracked-files=all"],
+        max_bytes=max_bytes, delimiter=b"\\0",
     )
-    fields = _complete_nul_fields(raw, truncated)
+    chunks = raw.split(b"\\0")
+    if chunks and chunks[-1] == b"":
+        chunks.pop()
     records = []
     index = 0
-    while index < len(fields):
-        text = _decode(fields[index])
+    while index < len(chunks):
+        text = _decode(chunks[index])
         kind = text[:1]
         if kind == "2":
-            if index + 1 >= len(fields):
+            fields = text.split(" ", 9)
+            if len(fields) != 10 or index + 1 >= len(chunks):
                 truncated = True
                 break
-            records.append({
-                "kind": kind,
-                "record": text,
-                "original_path": _decode(fields[index + 1]),
-            })
+            records.append({"kind": "2", "record": text, "path": fields[9],
+                            "orig_path": _decode(chunks[index + 1])})
             index += 2
             continue
-        records.append({"kind": kind, "record": text})
+        if kind == "1":
+            fields = text.split(" ", 8)
+            path = fields[8] if len(fields) == 9 else None
+        elif kind == "u":
+            fields = text.split(" ", 10)
+            path = fields[10] if len(fields) == 11 else None
+        elif kind in ("?", "!") and text.startswith(kind + " "):
+            path = text[2:]
+        else:
+            path = None
+        records.append({"kind": kind, "record": text, "path": path})
         index += 1
     return {"clean": not records, "records": records, "truncated": truncated}
-
-
-def ls_files(root=".", *, max_files=10_000, max_bytes=1_000_000):
-    """Return a bounded NUL-safe tracked-file inventory."""
-    _positive(max_files, "max_files")
-    raw, byte_truncated, _ = _run(root, ["ls-files", "-z"], max_bytes=max_bytes)
-    paths = [_decode(item) for item in _complete_nul_fields(raw, byte_truncated)]
-    record_truncated = len(paths) > max_files
-    return {"paths": paths[:max_files],
-            "truncated": byte_truncated or record_truncated}
-
-
-def diff(root=".", *, staged=False, base=None, head=None, path=None,
-         max_bytes=1_000_000):
-    """Return a bounded patch with external diff/textconv disabled."""
-    args = ["-c", "diff.external=", "diff", "--no-ext-diff", "--no-textconv",
-            "--no-color"]
-    if staged:
-        if base is not None or head is not None:
-            raise ValueError("staged diff cannot also specify revisions")
-        args.append("--cached")
-    elif base is not None:
-        args.append(_ref(base))
-        if head is not None:
-            args.append(_ref(head))
-    elif head is not None:
-        raise ValueError("head requires base")
-    if path is not None:
-        args.extend(["--", _path(path)])
-    raw, truncated, _ = _run(root, args, max_bytes=max_bytes)
-    return {"patch": _decode(raw), "truncated": truncated}
-
-
-def log(root=".", *, max_count=50, path=None):
-    """Return bounded commit observations; not canonical repository metadata."""
-    _positive(max_count, "max_count")
-    fmt = "%H%x1f%aI%x1f%an%x1f%s%x1e"
-    args = ["log", "--no-decorate", "--no-color", "--format=" + fmt,
-            "--max-count=" + str(max_count)]
-    if path is not None:
-        args.extend(["--", _path(path)])
-    raw, truncated, _ = _run(root, args)
-    rows = []
-    for record in raw.split(b"\x1e"):
-        record = record.strip(b"\r\n")
-        if not record:
-            continue
-        fields = _decode(record).split("\x1f")
-        if len(fields) == 4:
-            rows.append(dict(zip(("commit", "authored_at", "author", "subject"),
-                                 fields)))
-    return {"commits": rows, "truncated": truncated}
-
-
-def show(root=".", revision="HEAD", *, path=None, max_bytes=1_000_000):
-    """Show one revision/path with bounded output and no external textconv."""
-    spec = _ref(revision)
-    if path is not None:
-        # --end-of-options separates revision parsing; path is encoded in the
-        # revision:path object expression and cannot begin with an option.
-        spec += ":" + _path(path)
-    raw, truncated, _ = _run(
-        root, ["-c", "diff.external=", "show", "--no-ext-diff", "--no-textconv",
-               "--no-color", "--end-of-options", spec],
-        max_bytes=max_bytes,
-    )
-    return {"content": _decode(raw), "truncated": truncated}
-
-
-def blame(root=".", path=None, *, revision="HEAD", start=None, end=None,
-          max_bytes=1_000_000):
-    """Return bounded line-porcelain blame for one explicit path."""
-    if path is None:
-        raise ValueError("path is required")
-    args = ["blame", "--line-porcelain"]
-    if start is not None or end is not None:
-        if start is None or end is None:
-            raise ValueError("start and end must be supplied together")
-        _positive(start, "start")
-        _positive(end, "end")
-        if end < start:
-            raise ValueError("end must be >= start")
-        args.extend(["-L", f"{start},{end}"])
-    args.extend([_ref(revision), "--", _path(path)])
-    raw, truncated, _ = _run(root, args, max_bytes=max_bytes)
-    return {"porcelain": _decode(raw), "truncated": truncated}
-
-
-def grep(root=".", pattern=None, *, max_bytes=1_000_000):
-    """Return NUL-safe tracked filenames containing a fixed literal pattern.
-
-    Content/line output is intentionally omitted: Git's grep record separator
-    does not make arbitrary newline-containing filenames and matched line text
-    simultaneously unambiguous. Callers can inspect an explicit path separately.
-    """
-    if not isinstance(pattern, str) or not pattern or "\\x00" in pattern:
-        raise ValueError("pattern must be a non-empty string without NUL")
-    raw, truncated, code = _run(
-        root, ["grep", "-z", "-l", "-I", "-F", "-e", pattern, "--"],
-        max_bytes=max_bytes, ok=(0, 1),
-    )
-    paths = [] if code == 1 else [_decode(p) for p in raw.split(b"\\0") if p]
-    return {"paths": paths, "truncated": truncated}
