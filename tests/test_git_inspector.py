@@ -69,7 +69,8 @@ def test_log_show_blame_and_grep(repo):
     blamed = gi.blame(repo, "a.txt", start=1, end=1)
     assert "\tone" in blamed["porcelain"]
     matches = gi.grep(repo, "hello")
-    assert any("space 日本語.txt:1:hello" in row for row in matches["matches"])
+    assert matches["matches"] == [
+        {"path": "space 日本語.txt", "line": 1, "text": "hello"}]
     assert gi.grep(repo, "absent")["matches"] == []
 
 
@@ -88,8 +89,12 @@ def test_revision_validation(repo, revision):
 
 
 def test_errors_are_not_clean(repo, tmp_path, monkeypatch):
+    nonrepo = tmp_path / "not-a-repo"
+    nonrepo.mkdir()
     with pytest.raises(gi.GitInspectionError):
-        gi.status(tmp_path / "not-a-repo")
+        gi.status(nonrepo)
+    with pytest.raises(ValueError):
+        gi.status(tmp_path / "missing")
     monkeypatch.setenv("PATH", "")
     with pytest.raises(gi.GitInspectionError):
         gi.status(repo)
@@ -115,6 +120,19 @@ def test_no_mutation_or_network_argv_reachable(monkeypatch, repo):
         assert not forbidden.intersection(argv)
 
 
-def test_check_ignore_is_explicitly_not_measured(repo):
-    assert gi.check_ignore(repo, ["build/out"]) == {
-        "records": [{"path": "build/out", "status": "not_measured"}]}
+def test_check_ignore_is_nul_safe_and_distinguishes_not_ignored(repo):
+    (repo / ".gitignore").write_text("build/\n*.secret\n", encoding="utf-8")
+    result = gi.check_ignore(repo, ["build/out", "space 日本語.txt", "x.secret"])
+    assert [row["path"] for row in result["records"]] == [
+        "build/out", "space 日本語.txt", "x.secret"]
+    assert [row["status"] for row in result["records"]] == [
+        "ignored", "not_ignored", "ignored"]
+    assert result["records"][0]["pattern"] == "build/"
+    assert not result["truncated"]
+
+
+def test_check_ignore_bounds(repo):
+    with pytest.raises(ValueError):
+        gi.check_ignore(repo, ["a", "b"], max_paths=1)
+    with pytest.raises(ValueError):
+        gi.check_ignore(repo, ["long-name"], max_bytes=2)
