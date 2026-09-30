@@ -1,0 +1,32 @@
+name: Test shared JUnit collector
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/*junit*"
+      - "tests/test_junit_collection.py"
+      - "tests/junit-requirements.txt"
+  push:
+    paths:
+      - ".github/workflows/*junit*"
+      - "tests/test_junit_collection.py"
+      - "tests/junit-requirements.txt"
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: myon-bioinformatics/xprobe
+          ref: 7e7015b2df69ad446b968f6fa49711b5b1dbdd3f
+          path: shared-xprobe
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r tests/junit-requirements.txt
+      - run: python -m pytest -q tests/test_junit_collection.py
+        env:
+          XPROBE_SOURCE: shared-xprobe/xprobe.py
