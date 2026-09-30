@@ -55,10 +55,22 @@ def _run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None):
     _positive(max_bytes, "max_bytes")
     if input_bytes is not None and not isinstance(input_bytes, bytes):
         raise TypeError("input_bytes must be bytes")
-    command = ["git", "-C", str(_root(root)), "--no-pager", *args]
+    command = ["git", "-C", str(_root(root)), "--no-pager",
+               "--no-optional-locks", "-c", "core.fsmonitor=false", *args]
+    env = os.environ.copy()
+    # Do not let inherited Git process-routing/config overrides redirect a
+    # supposedly local inspection to another worktree/index/object database or
+    # inject an external diff helper. Ordinary locale/identity variables are
+    # harmless observations and remain untouched.
+    for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+                 "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+                 "GIT_EXTERNAL_DIFF", "GIT_DIFF_OPTS",
+                 "GIT_CONFIG", "GIT_CONFIG_COUNT"):
+        env.pop(name, None)
+    env["GIT_OPTIONAL_LOCKS"] = "0"
     try:
         kwargs = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE,
-                  "check": False, "shell": False}
+                  "check": False, "shell": False, "env": env}
         if input_bytes is None:
             kwargs["stdin"] = subprocess.DEVNULL
         else:
@@ -94,8 +106,7 @@ def _complete_fields(raw, delimiter, truncated):
 def status(root=".", *, max_bytes=1_000_000):
     """Return structured porcelain-v2 status without inventing identity."""
     raw, truncated, _ = _run(
-        root, ["--no-optional-locks", "-c", "core.fsmonitor=false", "status",
-               "--porcelain=v2", "-z", "--untracked-files=all"],
+        root, ["status", "--porcelain=v2", "-z", "--untracked-files=all"],
         max_bytes=max_bytes,
     )
     fields = _complete_fields(raw, b"\0", truncated)
@@ -107,8 +118,9 @@ def status(root=".", *, max_bytes=1_000_000):
         if kind == "2":
             parts = text.split(" ", 9)
             if len(parts) != 10 or index + 1 >= len(fields):
-                truncated = True
-                break
+                if truncated:
+                    break
+                raise GitInspectionError("malformed porcelain-v2 type-2 record")
             records.append({"kind": "2", "record": text, "path": parts[9],
                             "orig_path": _decode(fields[index + 1])})
             index += 2
@@ -183,8 +195,8 @@ def show(root=".", revision="HEAD", *, path=None, max_bytes=1_000_000):
     """Show one revision/path with bounded output and no external textconv."""
     spec = _ref(revision)
     if path is not None:
-        # --end-of-options separates revision parsing; path is encoded in the
-        # revision:path object expression and cannot begin with an option.
+        # The path is encoded in the revision:path object expression.
+        # --end-of-options protects revision parsing from option-like specs.
         spec += ":" + _path(path)
     raw, truncated, _ = _run(
         root, ["-c", "diff.external=", "show", "--no-ext-diff", "--no-textconv",
