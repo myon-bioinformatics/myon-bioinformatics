@@ -36,6 +36,22 @@ jobs:
           persist-credentials: false
           sparse-checkout: xprobe.py
           sparse-checkout-cone-mode: false
+      - name: Inventory run artifacts
+        id: artifact-inventory
+        uses: actions/github-script@v8
+        with:
+          result-encoding: json
+          script: |
+            const response = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+              per_page: 100,
+            });
+            return {
+              total_count: response.data.total_count,
+              names: response.data.artifacts.map((artifact) => artifact.name),
+            };
       - name: Download raw reports
         uses: actions/download-artifact@v8
         with:
@@ -46,9 +62,12 @@ jobs:
         env:
           PYTHONPATH: shared-xprobe
           SOURCE_REPOSITORY: ${{ github.repository }}
+          ARTIFACT_PATTERN: ${{ inputs.artifact-pattern }}
           EXPECTED_ARTIFACTS: ${{ inputs.expected-artifacts }}
+          FOUND_ARTIFACTS_JSON: ${{ steps.artifact-inventory.outputs.result }}
         run: |
           python - <<'PY'
+          import fnmatch
           import hashlib
           import json
           import os
@@ -74,19 +93,39 @@ jobs:
               if name.strip()
           ]
           expected = set(expected_list)
-          reports_root = Path("reports")
-          found = {
-              path.name
-              for path in reports_root.iterdir()
-              if path.is_dir()
-          } if reports_root.is_dir() else set()
+          pattern = os.environ.get("ARTIFACT_PATTERN", "")
+          try:
+              inventory = json.loads(os.environ.get("FOUND_ARTIFACTS_JSON", "{}"))
+              inventory_names = inventory["names"]
+              inventory_total = inventory["total_count"]
+              if (not isinstance(inventory_names, list)
+                      or any(not isinstance(name, str) or not name for name in inventory_names)
+                      or type(inventory_total) is not int or inventory_total < len(inventory_names)):
+                  raise ValueError("invalid artifact inventory")
+          except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+              inventory_names = []
+              inventory_total = 0
+              summary.update(complete=False, error="invalid_artifact_inventory")
 
-          if not expected_list:
+          found_list = [
+              name for name in inventory_names
+              if fnmatch.fnmatchcase(name, pattern)
+          ]
+          found = set(found_list)
+          reports_root = Path("reports")
+
+          if "error" in summary:
+              pass
+          elif inventory_total > 100:
+              summary.update(complete=False, error="artifact_inventory_limit")
+          elif not expected_list:
               summary.update(complete=False, error="expected_artifacts_required")
           elif len(expected_list) != len(expected):
               summary.update(complete=False, error="duplicate_expected_artifact")
           elif len(expected) > 100:
               summary.update(complete=False, error="expected_artifact_limit")
+          elif len(found_list) != len(found):
+              summary.update(complete=False, error="duplicate_found_artifact")
           else:
               missing = expected - found
               unexpected = found - expected
@@ -101,8 +140,11 @@ jobs:
 
               selected = []
               for artifact in sorted(expected & found):
-                  artifact_root = reports_root / artifact
-                  xml_paths = list(artifact_root.rglob("*.xml"))
+                  named_root = reports_root / artifact
+                  artifact_root = named_root if named_root.is_dir() else (
+                      reports_root if len(found) == 1 else named_root
+                  )
+                  xml_paths = list(artifact_root.rglob("*.xml")) if artifact_root.is_dir() else []
                   if len(xml_paths) != 1:
                       summary["complete"] = False
                       summary["reports"].append({
