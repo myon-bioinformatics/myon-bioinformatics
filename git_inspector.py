@@ -51,11 +51,15 @@ def _ref(value):
     return value
 
 
-def _run(root, args, *, max_bytes=1_000_000, ok=(0,)):
+def _run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None):
     _positive(max_bytes, "max_bytes")
+    if input_bytes is not None and not isinstance(input_bytes, bytes):
+        raise TypeError("input_bytes must be bytes")
     command = ["git", "-C", str(_root(root)), "--no-pager", *args]
     try:
-        proc = subprocess.run(command, stdin=subprocess.DEVNULL,
+        proc = subprocess.run(command,
+                              stdin=subprocess.DEVNULL if input_bytes is None else subprocess.PIPE,
+                              input=input_bytes,
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                               check=False, shell=False)
     except FileNotFoundError as error:
