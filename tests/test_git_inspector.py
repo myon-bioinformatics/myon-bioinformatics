@@ -34,7 +34,11 @@ def test_status_clean_modified_staged_untracked_and_rename(repo):
     git(repo, "add", "--", "a.txt")
     git(repo, "mv", "space 日本語.txt", "renamed 日本語.txt")
     staged = gi.status(repo)
-    assert any(r["kind"] == "2" for r in staged["records"])
+    renames = [r for r in staged["records"] if r["kind"] == "2"]
+    assert len(renames) == 1
+    assert renames[0]["original_path"] == "space 日本語.txt"
+    assert "renamed 日本語.txt" in renames[0]["record"]
+    assert not any(r["record"] == "space 日本語.txt" for r in staged["records"])
 
 
 def test_ls_files_is_nul_safe_and_bounded(repo):
@@ -135,3 +139,34 @@ def test_check_ignore_bounds(repo):
         gi.check_ignore(repo, ["a", "b"], max_paths=1)
     with pytest.raises(ValueError):
         gi.check_ignore(repo, ["long-name"], max_bytes=2)
+
+
+def test_structured_nul_outputs_drop_partial_tail(monkeypatch, repo):
+    original_run = gi._run
+
+    def truncated_status(root, args, **kwargs):
+        if args and args[0] == "status":
+            # One complete record followed by a type-2 record whose original
+            # path is cut before its terminating NUL.
+            raw = (
+                b"? complete.txt\0"
+                b"2 R. N... 100644 100644 100644 "
+                + b"0" * 40 + b" " + b"1" * 40
+                + b" R100 renamed.txt\0old-na"
+            )
+            return raw, True, 0
+        return original_run(root, args, **kwargs)
+
+    monkeypatch.setattr(gi, "_run", truncated_status)
+    result = gi.status(repo)
+    assert result["truncated"] is True
+    assert result["records"] == [{"kind": "?", "record": "? complete.txt"}]
+
+
+def test_nul_inventory_does_not_publish_partial_path(monkeypatch, repo):
+    def truncated_ls(root, args, **kwargs):
+        return b"a.txt\0partial-na", True, 0
+
+    monkeypatch.setattr(gi, "_run", truncated_ls)
+    result = gi.ls_files(repo)
+    assert result == {"paths": ["a.txt"], "truncated": True}
