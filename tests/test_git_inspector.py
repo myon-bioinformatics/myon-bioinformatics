@@ -68,6 +68,16 @@ def test_ls_files_can_include_untracked_but_not_ignored(repo):
     assert "ignored.log" not in observed["paths"]
 
 
+def test_ls_files_combined_truncation_uses_git_output_prefix(repo):
+    (repo / "0new.txt").write_text("new\n", encoding="utf-8")
+    full = gi.ls_files(repo, include_untracked=True)
+    limited = gi.ls_files(repo, include_untracked=True, max_files=1)
+    # Git may emit --others before --cached. The contract is a bounded prefix
+    # of Git's combined output, not a promise that tracked paths come first.
+    assert limited == {"paths": full["paths"][:1], "truncated": True}
+    assert "a.txt" in full["paths"]
+
+
 def test_ls_files_include_untracked_requires_bool(repo):
     with pytest.raises(TypeError):
         gi.ls_files(repo, include_untracked=1)
