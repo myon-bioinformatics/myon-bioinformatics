@@ -4,6 +4,7 @@ import subprocess
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 import gh_workflow as gw
 
@@ -222,3 +223,58 @@ def test_actual_cli_missing_gh_writes_receipt(tmp_path):
     assert proc.returncode == 1
     assert json.loads(proc.stdout)["error"] == "gh_not_found"
     assert json.loads(receipt.read_text())["error"] == "gh_not_found"
+
+
+def yaml_dispatch_trigger(text):
+    # BaseLoader reads all scalar keys as strings and never constructs Python
+    # objects. Unlike PyYAML's YAML 1.1 SafeLoader, it does not turn `on` into
+    # True. GitHub workflow event names must remain literal strings.
+    document = yaml.load(text, Loader=yaml.BaseLoader)
+    events = document.get("on") if isinstance(document, dict) else None
+    if isinstance(events, (dict, list)):
+        return "workflow_dispatch" in events
+    return events == "workflow_dispatch"
+
+
+@pytest.mark.parametrize("text", [
+    YAML,
+    "on: workflow_dispatch\n",
+    "on: push\n",
+    "on: [push, workflow_dispatch]\n",
+    "on: ['push', \"workflow_dispatch\"] # manual\n",
+    "on: [push, pull_request]\n",
+    '"on":\r\n  "workflow_dispatch": # manual\r\n',
+    "'on':\n  'workflow_dispatch':\n    inputs:\n      run_playwright:\n        type: boolean\n        default: false\n",
+    "on:\n  push:\n    paths:\n      - workflow_dispatch\njobs:\n  workflow_dispatch:\n",
+    "on:\n  pull_request:\n  schedule:\n    - cron: '0 0 * * *'\n",
+    "# workflow_dispatch:\non: push\n",
+    "name: workflow_dispatch\non: push\n",
+])
+def test_supported_trigger_matches_pyyaml(text):
+    assert gw._dispatch_trigger(text) is yaml_dispatch_trigger(text)
+
+
+@pytest.mark.parametrize("text,oracle", [
+    ("on: {workflow_dispatch: {}}\n", True),
+    ("on:\n  workflow_dispatch: {}\n", True),
+    ("on:\n  - push\n  - workflow_dispatch\n", True),
+    ("events: &events [workflow_dispatch]\non: *events\n", True),
+    ("on: workflow_dispatch\njobs:\n  test:\n    steps:\n      - run: |\n          echo hello\n", True),
+    ("name: |\n  on: workflow_dispatch\non: push\n", False),
+    ("---\non: workflow_dispatch\n", True),
+])
+def test_valid_yaml_outside_subset_is_fail_closed(text, oracle):
+    assert yaml_dispatch_trigger(text) is oracle
+    assert gw._dispatch_trigger(text) is None
+
+
+def test_pyyaml_on_key_is_not_boolean():
+    assert yaml_dispatch_trigger("on: workflow_dispatch\n") is True
+    assert yaml_dispatch_trigger("on: push\n") is False
+
+
+def test_pyyaml_oracle_does_not_construct_python_objects():
+    text = "name: !!python/object/apply:os.system ['not-a-command']\non: push\n"
+    document = yaml.load(text, Loader=yaml.BaseLoader)
+    assert document["name"] == ["not-a-command"]
+    assert yaml_dispatch_trigger(text) is False
