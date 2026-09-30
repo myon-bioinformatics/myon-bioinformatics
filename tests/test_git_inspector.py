@@ -235,15 +235,38 @@ def test_check_ignore_handles_negation_and_truncated_unseen_paths(repo):
     )["status"] == "not_measured"
 
 
-def test_status_disables_optional_locks_and_fsmonitor(monkeypatch, repo):
-    seen = {}
-    real = gi._run
+def test_all_commands_disable_optional_locks_fsmonitor_and_routing_env(monkeypatch, repo):
+    seen = []
+    real = subprocess.run
 
-    def recording(root, args, **kwargs):
-        seen["args"] = tuple(args)
-        return real(root, args, **kwargs)
+    def recording(argv, **kwargs):
+        seen.append((tuple(argv), dict(kwargs["env"])))
+        return real(argv, **kwargs)
 
-    monkeypatch.setattr(gi, "_run", recording)
+    monkeypatch.setenv("GIT_DIR", "/sentinel/not-this-repo")
+    monkeypatch.setenv("GIT_INDEX_FILE", "/sentinel/index")
+    monkeypatch.setenv("GIT_EXTERNAL_DIFF", "/sentinel/diff")
+    monkeypatch.setattr(gi.subprocess, "run", recording)
     gi.status(repo)
-    assert "--no-optional-locks" in seen["args"]
-    assert ("-c", "core.fsmonitor=false") == seen["args"][1:3]
+    gi.ls_files(repo)
+    gi.diff(repo)
+    gi.log(repo, max_count=1)
+    gi.show(repo)
+    gi.blame(repo, "a.txt")
+    gi.grep(repo, "one")
+    for argv, env in seen:
+        assert "--no-optional-locks" in argv
+        assert "core.fsmonitor=false" in argv
+        assert env["GIT_OPTIONAL_LOCKS"] == "0"
+        assert "GIT_DIR" not in env
+        assert "GIT_INDEX_FILE" not in env
+        assert "GIT_EXTERNAL_DIFF" not in env
+
+
+def test_malformed_complete_type2_is_error(monkeypatch, repo):
+    def malformed(root, args, **kwargs):
+        return b"2 malformed\\0old.txt\\0", False, 0
+
+    monkeypatch.setattr(gi, "_run", malformed)
+    with pytest.raises(gi.GitInspectionError):
+        gi.status(repo)
