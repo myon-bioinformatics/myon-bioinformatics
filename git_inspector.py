@@ -80,18 +80,37 @@ def _decode(raw):
     return raw.decode("utf-8", "surrogateescape")
 
 
+def _complete_nul_fields(raw, truncated):
+    """Return only complete NUL-delimited fields from bounded structured output."""
+    if truncated and not raw.endswith(b"\0"):
+        raw = raw.rsplit(b"\0", 1)[0] + (b"\0" if b"\0" in raw else b"")
+    return [item for item in raw.split(b"\0") if item]
+
+
 def status(root="."):
     """Return porcelain-v2 status records without inventing repository identity."""
     raw, truncated, _ = _run(
         root, ["status", "--porcelain=v2", "-z", "--untracked-files=all"],
     )
+    fields = _complete_nul_fields(raw, truncated)
     records = []
-    for item in raw.split(b"\0"):
-        if not item:
-            continue
-        text = _decode(item)
+    index = 0
+    while index < len(fields):
+        text = _decode(fields[index])
         kind = text[:1]
+        if kind == "2":
+            if index + 1 >= len(fields):
+                truncated = True
+                break
+            records.append({
+                "kind": kind,
+                "record": text,
+                "original_path": _decode(fields[index + 1]),
+            })
+            index += 2
+            continue
         records.append({"kind": kind, "record": text})
+        index += 1
     return {"clean": not records, "records": records, "truncated": truncated}
 
 
@@ -99,7 +118,7 @@ def ls_files(root=".", *, max_files=10_000, max_bytes=1_000_000):
     """Return a bounded NUL-safe tracked-file inventory."""
     _positive(max_files, "max_files")
     raw, byte_truncated, _ = _run(root, ["ls-files", "-z"], max_bytes=max_bytes)
-    paths = [_decode(item) for item in raw.split(b"\0") if item]
+    paths = [_decode(item) for item in _complete_nul_fields(raw, byte_truncated)]
     record_truncated = len(paths) > max_files
     return {"paths": paths[:max_files],
             "truncated": byte_truncated or record_truncated}
