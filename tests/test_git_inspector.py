@@ -1,3 +1,4 @@
+import io
 import os
 import subprocess
 from pathlib import Path
@@ -109,11 +110,11 @@ def test_errors_are_not_clean(repo, tmp_path, monkeypatch):
 
 def test_no_mutation_or_network_argv_reachable(monkeypatch, repo):
     seen = []
-    real = subprocess.run
+    real = gi._spawn
     def recording(argv, **kwargs):
         seen.append(tuple(argv))
         return real(argv, **kwargs)
-    monkeypatch.setattr(gi.subprocess, "run", recording)
+    monkeypatch.setattr(gi, "_spawn", recording)
     gi.status(repo)
     gi.ls_files(repo)
     gi.diff(repo)
@@ -237,7 +238,7 @@ def test_check_ignore_handles_negation_and_truncated_unseen_paths(repo):
 
 def test_all_commands_disable_optional_locks_fsmonitor_and_routing_env(monkeypatch, repo):
     seen = []
-    real = subprocess.run
+    real = gi._spawn
 
     def recording(argv, **kwargs):
         seen.append((tuple(argv), dict(kwargs["env"])))
@@ -249,7 +250,7 @@ def test_all_commands_disable_optional_locks_fsmonitor_and_routing_env(monkeypat
     monkeypatch.setenv("GIT_CONFIG_PARAMETERS", "'alias.status=!false'")
     monkeypatch.setenv("GIT_COMMON_DIR", "/sentinel/common")
     monkeypatch.setenv("GIT_SHALLOW_FILE", "/sentinel/shallow")
-    monkeypatch.setattr(gi.subprocess, "run", recording)
+    monkeypatch.setattr(gi, "_spawn", recording)
     gi.status(repo)
     gi.ls_files(repo)
     gi.diff(repo)
@@ -299,3 +300,43 @@ def test_check_ignore_preserves_duplicate_input_positions(repo):
         "a.tmp", "a.tmp", "plain.txt"]
     assert [row["status"] for row in result["records"]] == [
         "ignored", "ignored", "not_ignored"]
+
+
+def test_run_drains_large_stdout_and_stderr_with_bounded_retention(monkeypatch, repo):
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = io.BytesIO(b"x" * 1_000_000)
+            self.stderr = io.BytesIO(b"e" * 1_000_000)
+            self.stdin = None
+            self.waited = False
+
+        def wait(self):
+            self.waited = True
+            return 0
+
+    process = FakeProcess()
+    monkeypatch.setattr(gi, "_spawn", lambda *args, **kwargs: process)
+    raw, truncated, code = gi._run(repo, ["status"], max_bytes=32)
+    assert raw == b"x" * 32
+    assert truncated is True
+    assert code == 0
+    assert process.waited is True
+
+
+def test_run_drains_stderr_before_reporting_failure(monkeypatch, repo):
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = io.BytesIO(b"")
+            self.stderr = io.BytesIO(b"failure" * 100_000)
+            self.stdin = None
+            self.waited = False
+
+        def wait(self):
+            self.waited = True
+            return 7
+
+    process = FakeProcess()
+    monkeypatch.setattr(gi, "_spawn", lambda *args, **kwargs: process)
+    with pytest.raises(gi.GitInspectionError, match="status 7"):
+        gi._run(repo, ["status"], max_bytes=16)
+    assert process.waited is True
