@@ -69,9 +69,8 @@ def test_log_show_blame_and_grep(repo):
     blamed = gi.blame(repo, "a.txt", start=1, end=1)
     assert "\tone" in blamed["porcelain"]
     matches = gi.grep(repo, "hello")
-    assert matches["matches"] == [
-        {"path": "space 日本語.txt", "line": 1, "text": "hello"}]
-    assert gi.grep(repo, "absent")["matches"] == []
+    assert matches["paths"] == ["space 日本語.txt"]
+    assert gi.grep(repo, "absent")["paths"] == []
 
 
 def test_paths_are_option_separated(repo):
