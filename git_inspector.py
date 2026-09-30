@@ -155,7 +155,7 @@ def diff(root=".", *, staged=False, base=None, head=None, path=None,
     return {"patch": _decode(raw), "truncated": truncated}
 
 
-def log(root=".", *, max_count=50, path=None):
+def log(root=".", *, max_count=50, path=None, max_bytes=1_000_000):
     """Return bounded commit observations; not canonical repository metadata."""
     _positive(max_count, "max_count")
     fmt = "%H%x1f%aI%x1f%an%x1f%s%x1e"
@@ -163,7 +163,7 @@ def log(root=".", *, max_count=50, path=None):
             "--max-count=" + str(max_count)]
     if path is not None:
         args.extend(["--", _path(path)])
-    raw, truncated, _ = _run(root, args)
+    raw, truncated, _ = _run(root, args, max_bytes=max_bytes)
     rows = []
     for record in _complete_fields(raw, b"\x1e", truncated):
         record = record.strip(b"\r\n")
