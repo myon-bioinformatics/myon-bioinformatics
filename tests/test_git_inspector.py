@@ -181,19 +181,19 @@ def test_nul_inventory_does_not_publish_partial_path(monkeypatch, repo):
 def test_log_and_grep_do_not_publish_partial_records(repo):
     log_result = gi.log(repo, max_count=1)
     assert log_result["commits"]
-    cut_log = gi._run(repo, ["log", "--format=%H%x1e", "--max-count=1"],
-                      max_bytes=5)[0]
-    assert len(cut_log) == 5  # raw runner is byte-bounded; parser owns framing.
+    assert gi.log(repo, max_count=1, max_bytes=5) == {
+        "commits": [], "truncated": True}
     assert gi.grep(repo, "hello", max_bytes=3) == {
         "paths": [], "truncated": True}
 
 
 def test_status_conflict_is_one_logical_record(repo):
     # Build a real content conflict without using inspector mutation paths.
+    base = git(repo, "branch", "--show-current").strip()
     git(repo, "checkout", "-qb", "other")
     (repo / "a.txt").write_text("other\n", encoding="utf-8")
     git(repo, "commit", "-am", "other")
-    git(repo, "checkout", "-q", "master")
+    git(repo, "checkout", "-q", base)
     (repo / "a.txt").write_text("main\n", encoding="utf-8")
     git(repo, "commit", "-am", "main")
     proc = subprocess.run(["git", "-C", str(repo), "merge", "other"],
