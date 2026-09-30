@@ -246,6 +246,9 @@ def test_all_commands_disable_optional_locks_fsmonitor_and_routing_env(monkeypat
     monkeypatch.setenv("GIT_DIR", "/sentinel/not-this-repo")
     monkeypatch.setenv("GIT_INDEX_FILE", "/sentinel/index")
     monkeypatch.setenv("GIT_EXTERNAL_DIFF", "/sentinel/diff")
+    monkeypatch.setenv("GIT_CONFIG_PARAMETERS", "'alias.status=!false'")
+    monkeypatch.setenv("GIT_COMMON_DIR", "/sentinel/common")
+    monkeypatch.setenv("GIT_SHALLOW_FILE", "/sentinel/shallow")
     monkeypatch.setattr(gi.subprocess, "run", recording)
     gi.status(repo)
     gi.ls_files(repo)
@@ -261,6 +264,12 @@ def test_all_commands_disable_optional_locks_fsmonitor_and_routing_env(monkeypat
         assert "GIT_DIR" not in env
         assert "GIT_INDEX_FILE" not in env
         assert "GIT_EXTERNAL_DIFF" not in env
+        assert "GIT_CONFIG_PARAMETERS" not in env
+        assert "GIT_COMMON_DIR" not in env
+        assert "GIT_SHALLOW_FILE" not in env
+        assert env["GIT_CONFIG_GLOBAL"] == os.devnull
+        assert env["GIT_CONFIG_SYSTEM"] == os.devnull
+        assert env["GIT_CONFIG_NOSYSTEM"] == "1"
 
 
 def test_malformed_complete_type2_is_error(monkeypatch, repo):
@@ -270,3 +279,23 @@ def test_malformed_complete_type2_is_error(monkeypatch, repo):
     monkeypatch.setattr(gi, "_run", malformed)
     with pytest.raises(gi.GitInspectionError):
         gi.status(repo)
+
+
+def test_text_observations_are_json_safe_when_utf8_is_cut(monkeypatch, repo):
+    def cut(root, args, **kwargs):
+        return b"prefix-\xe3\x81", True, 0
+
+    monkeypatch.setattr(gi, "_run", cut)
+    result = gi.diff(repo, max_bytes=8)
+    assert result["truncated"] is True
+    assert "\ufffd" in result["patch"]
+    result["patch"].encode("utf-8")
+
+
+def test_check_ignore_preserves_duplicate_input_positions(repo):
+    (repo / ".gitignore").write_text("*.tmp\n", encoding="utf-8")
+    result = gi.check_ignore(repo, ["a.tmp", "a.tmp", "plain.txt"])
+    assert [row["path"] for row in result["records"]] == [
+        "a.tmp", "a.tmp", "plain.txt"]
+    assert [row["status"] for row in result["records"]] == [
+        "ignored", "ignored", "not_ignored"]
