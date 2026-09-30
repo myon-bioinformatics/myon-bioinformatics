@@ -52,6 +52,37 @@ def test_ls_files_is_nul_safe_and_bounded(repo):
     assert gi.ls_files(repo, max_files=1)["truncated"]
 
 
+def test_ls_files_can_include_untracked_but_not_ignored(repo):
+    (repo / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    (repo / "new 日本語.txt").write_text("new\n", encoding="utf-8")
+    (repo / "ignored.log").write_text("ignored\n", encoding="utf-8")
+
+    tracked = gi.ls_files(repo)
+    assert "new 日本語.txt" not in tracked["paths"]
+    assert "ignored.log" not in tracked["paths"]
+
+    observed = gi.ls_files(repo, include_untracked=True)
+    assert "a.txt" in observed["paths"]
+    assert "space 日本語.txt" in observed["paths"]
+    assert "new 日本語.txt" in observed["paths"]
+    assert "ignored.log" not in observed["paths"]
+
+
+def test_ls_files_combined_truncation_uses_git_output_prefix(repo):
+    (repo / "0new.txt").write_text("new\n", encoding="utf-8")
+    full = gi.ls_files(repo, include_untracked=True)
+    limited = gi.ls_files(repo, include_untracked=True, max_files=1)
+    # Git may emit --others before --cached. The contract is a bounded prefix
+    # of Git's combined output, not a promise that tracked paths come first.
+    assert limited == {"paths": full["paths"][:1], "truncated": True}
+    assert "a.txt" in full["paths"]
+
+
+def test_ls_files_include_untracked_requires_bool(repo):
+    with pytest.raises(TypeError):
+        gi.ls_files(repo, include_untracked=1)
+
+
 def test_diff_worktree_staged_revision_path_and_truncation(repo):
     first = git(repo, "rev-parse", "HEAD").strip()
     (repo / "a.txt").write_text("changed\ntwo\n", encoding="utf-8")
