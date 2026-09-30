@@ -87,7 +87,7 @@ def _decode(raw):
 def _complete_nul_fields(raw, truncated):
     """Return only complete NUL-delimited fields from bounded structured output."""
     if truncated and not raw.endswith(b"\0"):
-        raw = raw.rsplit(b"\0", 1)[0] + (b"\0" if b"\0" in raw else b"")
+        raw = raw.rsplit(b"\0", 1)[0] + b"\0" if b"\0" in raw else b""
     return [item for item in raw.split(b"\0") if item]
 
 
