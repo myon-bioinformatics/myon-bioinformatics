@@ -32,7 +32,7 @@ def run_collection(tmp_path, reports, expected_artifacts=None):
         PYTHONPATH=str(importer),
         SOURCE_REPOSITORY='owner/repo',
         ARTIFACT_PATTERN='*',
-        EXPECTED_ARTIFACTS='\\n'.join(expected_artifacts),
+        EXPECTED_ARTIFACTS='\n'.join(expected_artifacts),
         FOUND_ARTIFACTS_JSON=json.dumps({
             'total_count': len(artifact_names),
             'names': artifact_names,
