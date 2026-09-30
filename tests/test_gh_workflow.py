@@ -155,6 +155,9 @@ def test_legacy_empty_response_does_not_guess_latest_run(fake_gh, monkeypatch):
     monkeypatch.setattr(gw.subprocess, "run", run)
     result = gw.execute_workflow("o/r", "codeql.yml", apply=True)
     assert result["status"] == "dispatched_run_unresolved" and result["run_id"] is None
+    assert result["target_sha_role"] == "pre_dispatch_observation"
+    assert result["ref_sha_after"] == SHA
+    assert "executed_sha" not in result
     assert not any("/actions/runs/" in a[-1] for a, _ in fake_gh)
 
 
@@ -194,6 +197,39 @@ def test_cli_jsonl_and_failure_exit(fake_gh, tmp_path, capsys):
     rows = [json.loads(line) for line in path.read_text().splitlines()]
     assert [r["status"] for r in rows] == ["planned", "preflight_failed"]
     assert len(capsys.readouterr().out.splitlines()) == 2
+
+
+@pytest.mark.parametrize("raw", ["{private-value", '"private-value"',
+                                  '{"flag": NaN}', '{"flag": 1e400}'])
+def test_malformed_inputs_are_sanitized_before_network(fake_gh, capsys, raw):
+    code = gw.main(["o/r", "ci.yml", "--inputs", raw])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert json.loads(captured.out) == {"status": "preflight_failed", "error": "invalid_argument"}
+    assert "private-value" not in captured.out + captured.err
+    assert not fake_gh
+
+
+def test_receipt_write_failure_keeps_successful_dispatch_on_stdout(fake_gh, monkeypatch, tmp_path, capsys):
+    from pathlib import Path
+
+    path = tmp_path / "receipts.jsonl"
+    original_open = Path.open
+
+    def fail_receipt_open(self, *args, **kwargs):
+        if self == path:
+            raise OSError("private disk detail")
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fail_receipt_open)
+    code = gw.main(["o/r", "ci.yml", "--ref", "feature", "--apply", "--receipt", str(path)])
+    captured = capsys.readouterr()
+    receipt = json.loads(captured.out)
+    assert code == 1
+    assert receipt["status"] == "dispatched" and receipt["run_id"] == 99
+    assert any("POST" in argv for argv, _ in fake_gh)
+    assert captured.err.strip() == "receipt_write_failed"
+    assert "private disk detail" not in captured.err
 
 
 @pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf"), True])
