@@ -7,6 +7,10 @@ on:
         description: "Raw JUnit artifacts from this workflow run"
         type: string
         default: "junit-*"
+      expected-artifacts:
+        description: "Newline-separated exact artifact names expected from this caller"
+        type: string
+        required: true
       output-artifact:
         type: string
         default: "failure-identity"
@@ -42,10 +46,10 @@ jobs:
         env:
           PYTHONPATH: shared-xprobe
           SOURCE_REPOSITORY: ${{ github.repository }}
+          EXPECTED_ARTIFACTS: ${{ inputs.expected-artifacts }}
         run: |
           python - <<'PY'
           import hashlib
-          import itertools
           import json
           import os
           from pathlib import Path
@@ -62,43 +66,92 @@ jobs:
           output.mkdir(exist_ok=True)
           summary = {"reports": [], "complete": True, "commit_sha": None}
           cases = []
-          count = 0
           total_bytes = 0
-          for path in itertools.islice(Path("reports").rglob("*.xml"), 101):
-              count += 1
-              if count > 100:
+
+          expected_list = [
+              name.strip()
+              for name in os.environ.get("EXPECTED_ARTIFACTS", "").splitlines()
+              if name.strip()
+          ]
+          expected = set(expected_list)
+          reports_root = Path("reports")
+          found = {
+              path.name
+              for path in reports_root.iterdir()
+              if path.is_dir()
+          } if reports_root.is_dir() else set()
+
+          if not expected_list:
+              summary.update(complete=False, error="expected_artifacts_required")
+          elif len(expected_list) != len(expected):
+              summary.update(complete=False, error="duplicate_expected_artifact")
+          elif len(expected) > 100:
+              summary.update(complete=False, error="expected_artifact_limit")
+          else:
+              missing = expected - found
+              unexpected = found - expected
+              summary.update(
+                  expected_artifacts=len(expected),
+                  found_artifacts=len(found),
+                  missing_artifacts=sorted(missing),
+                  unexpected_artifact_count=len(unexpected),
+              )
+              if missing or unexpected:
                   summary["complete"] = False
-                  summary["limit"] = "report_count"
-                  break
-              # Hash paths rather than publishing arbitrary artifact/file names.
-              report_id = "junit-" + hashlib.sha256(str(path.relative_to("reports")).encode()).hexdigest()
-              item = {"report_id": report_id, "measured": False}
-              try:
-                  if path.is_symlink() or not path.is_file():
-                      raise ValueError("non_regular")
-                  with path.open("rb") as stream:
-                      raw = stream.read(1_000_001)
-                  total_bytes += len(raw)
-                  if total_bytes > 20_000_000 or len(raw) > 1_000_000:
-                      raise ValueError("byte_limit")
-                  report = xprobe.cases_from_junit(
-                      raw.decode("utf-8"), repository=os.environ["SOURCE_REPOSITORY"],
-                      commit_sha=None, report_id=report_id,
-                  )
-                  item.update(measured=True, truncated=report["truncated"], failures=len(report["cases"]))
-                  cases.extend(report["cases"])
-                  if report["truncated"]:
+
+              selected = []
+              for artifact in sorted(expected & found):
+                  artifact_root = reports_root / artifact
+                  xml_paths = list(artifact_root.rglob("*.xml"))
+                  if len(xml_paths) != 1:
                       summary["complete"] = False
-              except (OSError, ValueError, UnicodeError) as error:
-                  item["error"] = type(error).__name__
-                  summary["complete"] = False
-              summary["reports"].append(item)
-              if total_bytes > 20_000_000:
-                  break
-          if not count:
-              summary.update(complete=False, error="no_reports")
-          (output / "failure-identity.jsonl").write_text(xprobe.corpus_to_json(cases, jsonl=True), encoding="utf-8")
-          (output / "collection.json").write_text(json.dumps(summary, sort_keys=True, indent=2), encoding="utf-8")
+                      summary["reports"].append({
+                          "artifact": artifact,
+                          "measured": False,
+                          "error": "report_cardinality",
+                          "report_count": len(xml_paths),
+                      })
+                      continue
+                  selected.append((artifact, xml_paths[0]))
+
+              for artifact, path in selected:
+                  report_id = "junit-" + hashlib.sha256(
+                      str(path.relative_to(reports_root)).encode()
+                  ).hexdigest()
+                  item = {"artifact": artifact, "report_id": report_id, "measured": False}
+                  try:
+                      if path.is_symlink() or not path.is_file():
+                          raise ValueError("non_regular")
+                      with path.open("rb") as stream:
+                          raw = stream.read(1_000_001)
+                      total_bytes += len(raw)
+                      if total_bytes > 20_000_000 or len(raw) > 1_000_000:
+                          raise ValueError("byte_limit")
+                      report = xprobe.cases_from_junit(
+                          raw.decode("utf-8"), repository=os.environ["SOURCE_REPOSITORY"],
+                          commit_sha=None, report_id=report_id,
+                      )
+                      item.update(
+                          measured=True,
+                          truncated=report["truncated"],
+                          failures=len(report["cases"]),
+                      )
+                      cases.extend(report["cases"])
+                      if report["truncated"]:
+                          summary["complete"] = False
+                  except (OSError, ValueError, UnicodeError) as error:
+                      item["error"] = type(error).__name__
+                      summary["complete"] = False
+                  summary["reports"].append(item)
+                  if total_bytes > 20_000_000:
+                      break
+
+          (output / "failure-identity.jsonl").write_text(
+              xprobe.corpus_to_json(cases, jsonl=True), encoding="utf-8"
+          )
+          (output / "collection.json").write_text(
+              json.dumps(summary, sort_keys=True, indent=2), encoding="utf-8"
+          )
           sys.exit(0 if summary["complete"] else 1)
           PY
       - name: Preserve collection evidence
