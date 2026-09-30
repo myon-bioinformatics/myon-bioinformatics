@@ -202,10 +202,7 @@ def status(root=".", *, max_bytes=1_000_000):
         index += 1
     return {"clean": not records and not truncated, "records": records, "truncated": truncated}
 
-def ls_files(root=".", *, max_files=10_000, max_bytes=1_000_000):
-    """Return a bounded NUL-safe tracked-file inventory."""
-    _positive(max_files, "max_files")
-    raw, byte_truncated, _ = _run(root, ["ls-files", "-z"], max_bytes=max_bytes)
+def ls_files(root=".", *, include_untracked=False, max_files=10_000,\n             max_bytes=1_000_000):\n    """Return a bounded NUL-safe file inventory.\n\n    The default is tracked-only. include_untracked=True additionally observes\n    untracked-but-not-ignored files without weakening existing consumers.\n    """\n    if not isinstance(include_untracked, bool):\n        raise TypeError("include_untracked must be bool")\n    _positive(max_files, "max_files")\n    args = ["ls-files", "-z"]\n    if include_untracked:\n        args.extend(["--cached", "--others", "--exclude-standard"])\n    raw, byte_truncated, _ = _run(root, args, max_bytes=max_bytes)
     paths = [_decode(item) for item in _complete_fields(raw, b"\0", byte_truncated)]
     record_truncated = len(paths) > max_files
     return {"paths": paths[:max_files],
