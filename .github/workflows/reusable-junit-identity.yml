@@ -3,6 +3,10 @@ name: Reusable JUnit failure identity
 on:
   workflow_call:
     inputs:
+      expected-reports:
+        description: "JSON array of exact artifact-name/report.xml paths (1–100)"
+        type: string
+        required: true
       artifact-pattern:
         description: "Raw JUnit artifacts from this workflow run"
         type: string
@@ -39,9 +43,11 @@ jobs:
           path: reports
           merge-multiple: false
       - name: Import bounded reports
+        if: always()
         env:
           PYTHONPATH: shared-xprobe
           SOURCE_REPOSITORY: ${{ github.repository }}
+          EXPECTED_REPORTS: ${{ inputs.expected-reports }}
         run: |
           python - <<'PY'
           import hashlib
@@ -49,6 +55,7 @@ jobs:
           import json
           import os
           from pathlib import Path
+          import re
           import sys
 
           # Verify bytes before importing code. Caller checkout is never executed.
@@ -61,6 +68,22 @@ jobs:
           output = Path("identity")
           output.mkdir(exist_ok=True)
           summary = {"reports": [], "complete": True, "commit_sha": None}
+          expected = []
+          try:
+              expected = json.loads(os.environ.get("EXPECTED_REPORTS", ""))
+              if not isinstance(expected, list) or not 1 <= len(expected) <= 100:
+                  raise ValueError("expected report list required")
+              if any(not isinstance(name, str) or len(name) > 240 or
+                     not re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+\.xml", name) or
+                     any(part in (".", "..") for part in name.split("/")) for name in expected):
+                  raise ValueError("invalid expected report path")
+              if len(set(expected)) != len(expected):
+                  raise ValueError("duplicate expected report path")
+          except (ValueError, TypeError):
+              expected = []
+              summary.update(complete=False, error="invalid_expected_reports")
+          valid = set()
+          unexpected = []
           cases = []
           count = 0
           total_bytes = 0
@@ -71,7 +94,11 @@ jobs:
                   summary["limit"] = "report_count"
                   break
               # Hash paths rather than publishing arbitrary artifact/file names.
-              report_id = "junit-" + hashlib.sha256(str(path.relative_to("reports")).encode()).hexdigest()
+              relative = path.relative_to("reports").as_posix()
+              report_id = "junit-" + hashlib.sha256(relative.encode()).hexdigest()
+              if relative not in expected:
+                  unexpected.append(report_id)
+                  summary["complete"] = False
               item = {"report_id": report_id, "measured": False}
               try:
                   if path.is_symlink() or not path.is_file():
@@ -89,6 +116,8 @@ jobs:
                   cases.extend(report["cases"])
                   if report["truncated"]:
                       summary["complete"] = False
+                  elif relative in expected:
+                      valid.add(relative)
               except (OSError, ValueError, UnicodeError) as error:
                   item["error"] = type(error).__name__
                   summary["complete"] = False
@@ -97,6 +126,10 @@ jobs:
                   break
           if not count:
               summary.update(complete=False, error="no_reports")
+          summary["missing_reports"] = sorted(set(expected) - valid)
+          summary["unexpected_reports"] = unexpected
+          if summary["missing_reports"]:
+              summary["complete"] = False
           (output / "failure-identity.jsonl").write_text(xprobe.corpus_to_json(cases, jsonl=True), encoding="utf-8")
           (output / "collection.json").write_text(json.dumps(summary, sort_keys=True, indent=2), encoding="utf-8")
           sys.exit(0 if summary["complete"] else 1)
