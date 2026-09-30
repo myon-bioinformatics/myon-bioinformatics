@@ -57,11 +57,13 @@ def _run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None):
         raise TypeError("input_bytes must be bytes")
     command = ["git", "-C", str(_root(root)), "--no-pager", *args]
     try:
-        proc = subprocess.run(command,
-                              stdin=subprocess.DEVNULL if input_bytes is None else subprocess.PIPE,
-                              input=input_bytes,
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              check=False, shell=False)
+        kwargs = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE,
+                  "check": False, "shell": False}
+        if input_bytes is None:
+            kwargs["stdin"] = subprocess.DEVNULL
+        else:
+            kwargs["input"] = input_bytes
+        proc = subprocess.run(command, **kwargs)
     except FileNotFoundError as error:
         raise GitInspectionError("git executable not found") from error
     except OSError as error:
