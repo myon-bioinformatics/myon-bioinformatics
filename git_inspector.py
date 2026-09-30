@@ -94,7 +94,8 @@ def _complete_fields(raw, delimiter, truncated):
 def status(root=".", *, max_bytes=1_000_000):
     """Return structured porcelain-v2 status without inventing identity."""
     raw, truncated, _ = _run(
-        root, ["status", "--porcelain=v2", "-z", "--untracked-files=all"],
+        root, ["--no-optional-locks", "-c", "core.fsmonitor=false", "status",
+               "--porcelain=v2", "-z", "--untracked-files=all"],
         max_bytes=max_bytes,
     )
     fields = _complete_fields(raw, b"\0", truncated)
@@ -124,7 +125,7 @@ def status(root=".", *, max_bytes=1_000_000):
             path = None
         records.append({"kind": kind, "record": text, "path": path})
         index += 1
-    return {"clean": not records, "records": records, "truncated": truncated}
+    return {"clean": not records and not truncated, "records": records, "truncated": truncated}
 
 def ls_files(root=".", *, max_files=10_000, max_bytes=1_000_000):
     """Return a bounded NUL-safe tracked-file inventory."""
@@ -246,14 +247,23 @@ def check_ignore(root=".", paths=(), *, max_paths=1000, max_bytes=1_000_000):
         max_bytes=max_bytes, ok=(0, 1), input_bytes=payload,
     )
     fields = _complete_fields(raw, b"\0", truncated)
+    if not truncated and len(fields) % 4:
+        raise GitInspectionError("malformed check-ignore output")
     records = []
     for index in range(0, len(fields) - 3, 4):
         source, line, pattern, path = fields[index:index + 4]
-        records.append({"path": _decode(path), "source": _decode(source),
-                        "line": int(line or b"0"), "pattern": _decode(pattern),
-                        "status": "ignored"})
-    ignored = {row["path"] for row in records}
-    records.extend({"path": path, "status": "not_ignored"}
-                   for path in paths if path not in ignored)
+        pattern_text = _decode(pattern)
+        records.append({
+            "path": _decode(path),
+            "source": _decode(source),
+            "line": int(line or b"0"),
+            "pattern": pattern_text,
+            "status": "not_ignored" if pattern_text.startswith("!") else "ignored",
+        })
+    measured = {row["path"] for row in records}
+    records.extend({
+        "path": path,
+        "status": "not_measured" if truncated else "not_ignored",
+    } for path in paths if path not in measured)
     records.sort(key=lambda row: paths.index(row["path"]))
     return {"records": records, "truncated": truncated}
