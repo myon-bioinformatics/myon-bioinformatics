@@ -26,11 +26,17 @@ def run_collection(tmp_path, reports, expected_artifacts=None):
     code = '\n'.join(line[10:] for line in code.splitlines())
     if expected_artifacts is None:
         expected_artifacts = sorted({Path(name).parts[0] for name in reports})
+    artifact_names = sorted({Path(name).parts[0] for name in reports})
     env = dict(
         os.environ,
         PYTHONPATH=str(importer),
         SOURCE_REPOSITORY='owner/repo',
-        EXPECTED_ARTIFACTS='\n'.join(expected_artifacts),
+        ARTIFACT_PATTERN='*',
+        EXPECTED_ARTIFACTS='\\n'.join(expected_artifacts),
+        FOUND_ARTIFACTS_JSON=json.dumps({
+            'total_count': len(artifact_names),
+            'names': artifact_names,
+        }),
     )
     result = subprocess.run(
         [sys.executable, '-c', code],
