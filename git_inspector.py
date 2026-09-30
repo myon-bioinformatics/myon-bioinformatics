@@ -6,6 +6,11 @@ rebases, pushes, or mutates refs/worktree state.
 
 Repository/head identity and provenance belong to the canonical repository
 metadata producer. Revisions returned here are transient observations only.
+
+The inspected checkout is trusted configuration input. This module suppresses
+ambient process-level Git routing/config overrides and known optional helpers,
+but it is not a sandbox for an attacker-controlled .git/config/.gitattributes.
+Use a separate sandbox before exposing arbitrary untrusted repositories via MCP.
 """
 
 from __future__ import annotations
@@ -63,11 +68,19 @@ def _run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None):
     # inject an external diff helper. Ordinary locale/identity variables are
     # harmless observations and remain untouched.
     for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+                 "GIT_COMMON_DIR", "GIT_NAMESPACE", "GIT_PREFIX",
                  "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+                 "GIT_GRAFT_FILE", "GIT_SHALLOW_FILE",
+                 "GIT_REPLACE_REF_BASE", "GIT_NO_REPLACE_OBJECTS",
                  "GIT_EXTERNAL_DIFF", "GIT_DIFF_OPTS",
-                 "GIT_CONFIG", "GIT_CONFIG_COUNT"):
+                 "GIT_CONFIG", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS",
+                 "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM",
+                 "GIT_CONFIG_NOSYSTEM"):
         env.pop(name, None)
     env["GIT_OPTIONAL_LOCKS"] = "0"
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_SYSTEM"] = os.devnull
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
     try:
         kwargs = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE,
                   "check": False, "shell": False, "env": env}
@@ -89,7 +102,9 @@ def _run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None):
 
 
 def _decode(raw):
-    return raw.decode("utf-8", "surrogateescape")
+    # Results are JSON-compatible observations. Invalid or byte-truncated UTF-8
+    # is made explicit as U+FFFD instead of leaking lone surrogate code points.
+    return raw.decode("utf-8", "replace")
 
 
 def _complete_fields(raw, delimiter, truncated):
@@ -164,8 +179,9 @@ def diff(root=".", *, staged=False, base=None, head=None, path=None,
             args.append(_ref(head))
     elif head is not None:
         raise ValueError("head requires base")
+    args.append("--")
     if path is not None:
-        args.extend(["--", _path(path)])
+        args.append(_path(path))
     raw, truncated, _ = _run(root, args, max_bytes=max_bytes)
     return {"patch": _decode(raw), "truncated": truncated}
 
@@ -255,7 +271,7 @@ def check_ignore(root=".", paths=(), *, max_paths=1000, max_bytes=1_000_000):
     if len(payload) > max_bytes:
         raise ValueError("path input exceeds byte limit")
     raw, truncated, _ = _run(
-        root, ["check-ignore", "-z", "-v", "--stdin"],
+        root, ["check-ignore", "-z", "-v", "--no-index", "--stdin"],
         max_bytes=max_bytes, ok=(0, 1), input_bytes=payload,
     )
     fields = _complete_fields(raw, b"\0", truncated)
