@@ -1,0 +1,40 @@
+name: Test GitHub workflow wrapper
+on:
+  pull_request:
+    paths:
+      - "gh_workflow.py"
+      - "tests/test_gh_workflow.py"
+      - "tests/workflow-requirements.txt"
+      - ".github/workflows/workflow-wrapper-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "gh_workflow.py"
+      - "tests/test_gh_workflow.py"
+      - "tests/workflow-requirements.txt"
+      - ".github/workflows/workflow-wrapper-tests.yml"
+permissions:
+  contents: read
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -r tests/workflow-requirements.txt
+      - run: python -m py_compile gh_workflow.py
+      - run: python -m pytest -q tests/test_gh_workflow.py --junitxml=reports/workflow-wrapper.xml
+      - name: Preserve JUnit report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: workflow-wrapper-junit-py${{ matrix.python }}
+          path: reports/workflow-wrapper.xml
+          if-no-files-found: warn
+          retention-days: 14
