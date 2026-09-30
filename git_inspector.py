@@ -288,10 +288,12 @@ def check_ignore(root=".", paths=(), *, max_paths=1000, max_bytes=1_000_000):
             "pattern": pattern_text,
             "status": "not_ignored" if pattern_text.startswith("!") else "ignored",
         })
-    measured = {row["path"] for row in records}
-    records.extend({
-        "path": path,
-        "status": "not_measured" if truncated else "not_ignored",
-    } for path in paths if path not in measured)
-    records.sort(key=lambda row: paths.index(row["path"]))
-    return {"records": records, "truncated": truncated}
+    by_path = {row["path"]: row for row in records}
+    ordered = []
+    for path in paths:
+        row = by_path.get(path)
+        ordered.append(dict(row) if row is not None else {
+            "path": path,
+            "status": "not_measured" if truncated else "not_ignored",
+        })
+    return {"records": ordered, "truncated": truncated}
