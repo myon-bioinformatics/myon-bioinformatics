@@ -203,3 +203,47 @@ def test_status_conflict_is_one_logical_record(repo):
     conflicts = [row for row in result["records"] if row["kind"] == "u"]
     assert len(conflicts) == 1
     assert conflicts[0]["path"] == "a.txt"
+
+
+def test_truncated_dirty_status_is_never_reported_clean(repo):
+    (repo / "a.txt").write_text("dirty\n", encoding="utf-8")
+    result = gi.status(repo, max_bytes=1)
+    assert result["truncated"] is True
+    assert result["clean"] is False
+
+
+def test_check_ignore_handles_negation_and_truncated_unseen_paths(repo):
+    (repo / ".gitignore").write_text("*.log\n!keep.log\n", encoding="utf-8")
+    negated = gi.check_ignore(repo, ["drop.log", "keep.log"])
+    assert [row["status"] for row in negated["records"]] == [
+        "ignored", "not_ignored"
+    ]
+    keep = negated["records"][1]
+    assert keep["pattern"] == "!keep.log"
+
+    truncated = gi.check_ignore(
+        repo, ["drop.log", "keep.log", "unseen.txt"], max_bytes=8
+    )
+    assert truncated["truncated"] is True
+    assert all(
+        row["status"] != "not_ignored"
+        for row in truncated["records"]
+        if row["path"] == "unseen.txt"
+    )
+    assert next(
+        row for row in truncated["records"] if row["path"] == "unseen.txt"
+    )["status"] == "not_measured"
+
+
+def test_status_disables_optional_locks_and_fsmonitor(monkeypatch, repo):
+    seen = {}
+    real = gi._run
+
+    def recording(root, args, **kwargs):
+        seen["args"] = tuple(args)
+        return real(root, args, **kwargs)
+
+    monkeypatch.setattr(gi, "_run", recording)
+    gi.status(repo)
+    assert "--no-optional-locks" in seen["args"]
+    assert ("-c", "core.fsmonitor=false") == seen["args"][1:3]
