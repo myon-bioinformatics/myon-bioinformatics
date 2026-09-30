@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import threading
 from pathlib import Path
 
 __version__ = "0.1.0"
@@ -56,6 +57,29 @@ def _ref(value):
     return value
 
 
+def _spawn(command, **kwargs):
+    return subprocess.Popen(command, **kwargs)
+
+
+def _drain_bounded(stream, max_bytes, result):
+    """Drain one child pipe fully while retaining at most max_bytes bytes."""
+    kept = bytearray()
+    truncated = False
+    try:
+        while True:
+            chunk = stream.read(64 * 1024)
+            if not chunk:
+                break
+            room = max_bytes - len(kept)
+            if room > 0:
+                kept.extend(chunk[:room])
+            if len(chunk) > max(room, 0):
+                truncated = True
+    finally:
+        stream.close()
+    result.append((bytes(kept), truncated))
+
+
 def _run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None):
     _positive(max_bytes, "max_bytes")
     if input_bytes is not None and not isinstance(input_bytes, bytes):
@@ -82,24 +106,48 @@ def _run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None):
     env["GIT_CONFIG_SYSTEM"] = os.devnull
     env["GIT_CONFIG_NOSYSTEM"] = "1"
     try:
-        kwargs = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE,
-                  "check": False, "shell": False, "env": env}
-        if input_bytes is None:
-            kwargs["stdin"] = subprocess.DEVNULL
-        else:
-            kwargs["input"] = input_bytes
-        proc = subprocess.run(command, **kwargs)
+        proc = _spawn(
+            command,
+            stdin=subprocess.PIPE if input_bytes is not None else subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            shell=False,
+            env=env,
+        )
     except FileNotFoundError as error:
         raise GitInspectionError("git executable not found") from error
     except OSError as error:
         raise GitInspectionError(type(error).__name__) from error
-    if proc.returncode not in ok:
-        raise GitInspectionError("git exited with status " + str(proc.returncode))
-    raw = proc.stdout
-    truncated = len(raw) > max_bytes
-    raw = raw[:max_bytes]
-    return raw, truncated, proc.returncode
 
+    stdout_result = []
+    stderr_result = []
+    stdout_thread = threading.Thread(
+        target=_drain_bounded, args=(proc.stdout, max_bytes, stdout_result),
+        daemon=True,
+    )
+    stderr_thread = threading.Thread(
+        target=_drain_bounded, args=(proc.stderr, max_bytes, stderr_result),
+        daemon=True,
+    )
+    stdout_thread.start()
+    stderr_thread.start()
+    if input_bytes is not None:
+        try:
+            proc.stdin.write(input_bytes)
+            proc.stdin.close()
+        except BrokenPipeError:
+            pass
+    returncode = proc.wait()
+    stdout_thread.join()
+    stderr_thread.join()
+
+    raw, truncated = stdout_result[0]
+    # stderr is deliberately drained and bounded even though the public
+    # contract does not expose command stderr.
+    _stderr, _stderr_truncated = stderr_result[0]
+    if returncode not in ok:
+        raise GitInspectionError("git exited with status " + str(returncode))
+    return raw, truncated, returncode
 
 def _decode(raw):
     # Results are JSON-compatible observations. Invalid or byte-truncated UTF-8
