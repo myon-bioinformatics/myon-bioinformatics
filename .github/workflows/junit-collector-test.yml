@@ -44,4 +44,5 @@ jobs:
     if: always()
     uses: ./.github/workflows/reusable-junit-identity.yml
     with:
+      expected-artifacts: junit-collector-tests
       output-artifact: collector-test-identity
