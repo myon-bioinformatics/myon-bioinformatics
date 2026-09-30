@@ -254,7 +254,7 @@ def main(argv=None):
             json.dumps(inputs, allow_nan=False)
         receipt = execute_workflow(args.repo, args.workflow, args.ref, apply=args.apply,
                                    inputs=inputs, timeout=args.timeout)
-    except (WorkflowError, ValueError) as exc:
+    except (WorkflowError, ValueError, RecursionError) as exc:
         receipt = {"status": "preflight_failed", "error": exc.code if isinstance(exc, WorkflowError) else "invalid_argument"}
     output = json.dumps(receipt, ensure_ascii=False)
     print(output)
