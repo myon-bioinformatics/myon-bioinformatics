@@ -24,7 +24,7 @@ def run_collection(tmp_path, reports, expected=None):
         path = tmp_path / 'reports' / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    text = WORKFLOW.read_text()
+    text = WORKFLOW.read_text().split('      - name: Import bounded reports', 1)[1]
     code = text.split("          python - <<'PY'\n", 1)[1].split('\n          PY', 1)[0]
     code = '\n'.join(line[10:] for line in code.splitlines())
     env = dict(os.environ, PYTHONPATH=str(importer), SOURCE_REPOSITORY='owner/repo', EXPECTED_REPORTS=json.dumps(expected))
@@ -109,3 +109,15 @@ def test_invalid_expectation_fails_closed(tmp_path, expected):
 def test_invalid_or_truncated_report_does_not_fill_slot(tmp_path, xml):
     result, summary, _ = run_collection(tmp_path, {'job/a.xml': xml}, ['job/a.xml'])
     assert result.returncode == 1 and summary['missing_reports'] == ['job/a.xml']
+
+
+@pytest.mark.parametrize('expected,name', [(['one/a.xml'], 'one'), (['one/a.xml', 'one/b.xml'], 'one'), (['one/a.xml', 'two/a.xml'], '')])
+def test_artifact_layout_uses_exact_name_only_for_one_artifact(tmp_path, expected, name):
+    text = WORKFLOW.read_text().split('      - name: Select single-artifact layout', 1)[1]
+    code = text.split("          python - <<'PY'\n", 1)[1].split('\n          PY', 1)[0]
+    code = '\n'.join(line[10:] for line in code.splitlines())
+    output = tmp_path / 'output'
+    env = dict(os.environ, EXPECTED_REPORTS=json.dumps(expected), GITHUB_OUTPUT=str(output))
+    result = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True)
+    assert result.returncode == 0
+    assert output.read_text() == 'single_artifact=' + name + '\n'

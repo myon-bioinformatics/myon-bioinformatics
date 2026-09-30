@@ -33,6 +33,13 @@ hashed. The import step runs even after download failure to preserve incomplete
 evidence where the pinned importer is available. This is a required-input change:
 repin callers and supply the expected set together.
 
+For a single expected artifact, download uses its exact name and an explicit
+artifact subdirectory: download-artifact v8 otherwise flattens a one-artifact
+match. Multi-artifact collection preserves separate directories. If only one
+artifact survives a multi-artifact expectation, its flattened paths cannot
+satisfy the expected set and collection remains incomplete; no artifact identity
+is guessed from filenames.
+
 The collector verifies a fixed xprobe Git blob before executing the importer.
 It never checks out or executes the caller's code. Raw reports stay separate;
 only compact failure identities and collection completeness are uploaded here.
