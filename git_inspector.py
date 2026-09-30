@@ -207,7 +207,10 @@ def ls_files(root=".", *, include_untracked=False, max_files=10_000,
     """Return a bounded NUL-safe file inventory.
 
     The default is tracked-only. include_untracked=True additionally observes
-    untracked-but-not-ignored files without weakening existing consumers.
+    untracked-but-not-ignored entries without weakening existing consumers.
+    Combined mode preserves Git's output order; a truncated prefix is not
+    guaranteed to contain any tracked path. Nested untracked repositories may
+    appear as directory entries, and tracked paths may be absent in the worktree.
     """
     if not isinstance(include_untracked, bool):
         raise TypeError("include_untracked must be bool")
