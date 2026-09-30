@@ -149,7 +149,7 @@ def test_structured_nul_outputs_drop_partial_tail(monkeypatch, repo):
     original_run = gi._run
 
     def truncated_status(root, args, **kwargs):
-        if args and args[0] == "status":
+        if "status" in args:
             # One complete record followed by a type-2 record whose original
             # path is cut before its terminating NUL.
             raw = (
@@ -222,7 +222,7 @@ def test_check_ignore_handles_negation_and_truncated_unseen_paths(repo):
     assert keep["pattern"] == "!keep.log"
 
     truncated = gi.check_ignore(
-        repo, ["drop.log", "keep.log", "unseen.txt"], max_bytes=8
+        repo, ["drop.log", "keep.log", "unseen.txt"], max_bytes=30
     )
     assert truncated["truncated"] is True
     assert all(
