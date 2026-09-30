@@ -1,0 +1,110 @@
+name: Reusable JUnit failure identity
+
+on:
+  workflow_call:
+    inputs:
+      artifact-pattern:
+        description: "Raw JUnit artifacts from this workflow run"
+        type: string
+        default: "junit-*"
+      output-artifact:
+        type: string
+        default: "failure-identity"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Checkout pinned importer only
+        uses: actions/checkout@v7
+        with:
+          repository: myon-bioinformatics/xprobe
+          ref: 7e7015b2df69ad446b968f6fa49711b5b1dbdd3f
+          path: shared-xprobe
+          persist-credentials: false
+          sparse-checkout: xprobe.py
+          sparse-checkout-cone-mode: false
+      - name: Download raw reports
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ inputs.artifact-pattern }}
+          path: reports
+          merge-multiple: false
+      - name: Import bounded reports
+        env:
+          PYTHONPATH: shared-xprobe
+          SOURCE_REPOSITORY: ${{ github.repository }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import itertools
+          import json
+          import os
+          from pathlib import Path
+          import sys
+
+          # Verify bytes before importing code. Caller checkout is never executed.
+          data = Path("shared-xprobe/xprobe.py").read_bytes()
+          blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
+          if blob != "dbc5b7d55005d6288c072a7612584d6170c216f4":
+              raise SystemExit("Importer verification failed")
+          import xprobe
+
+          output = Path("identity")
+          output.mkdir(exist_ok=True)
+          summary = {"reports": [], "complete": True, "commit_sha": None}
+          cases = []
+          count = 0
+          total_bytes = 0
+          for path in itertools.islice(Path("reports").rglob("*.xml"), 101):
+              count += 1
+              if count > 100:
+                  summary["complete"] = False
+                  summary["limit"] = "report_count"
+                  break
+              # Hash paths rather than publishing arbitrary artifact/file names.
+              report_id = "junit-" + hashlib.sha256(str(path.relative_to("reports")).encode()).hexdigest()
+              item = {"report_id": report_id, "measured": False}
+              try:
+                  if path.is_symlink() or not path.is_file():
+                      raise ValueError("non_regular")
+                  with path.open("rb") as stream:
+                      raw = stream.read(1_000_001)
+                  total_bytes += len(raw)
+                  if total_bytes > 20_000_000 or len(raw) > 1_000_000:
+                      raise ValueError("byte_limit")
+                  report = xprobe.cases_from_junit(
+                      raw.decode("utf-8"), repository=os.environ["SOURCE_REPOSITORY"],
+                      commit_sha=None, report_id=report_id,
+                  )
+                  item.update(measured=True, truncated=report["truncated"], failures=len(report["cases"]))
+                  cases.extend(report["cases"])
+                  if report["truncated"]:
+                      summary["complete"] = False
+              except (OSError, ValueError, UnicodeError) as error:
+                  item["error"] = type(error).__name__
+                  summary["complete"] = False
+              summary["reports"].append(item)
+              if total_bytes > 20_000_000:
+                  break
+          if not count:
+              summary.update(complete=False, error="no_reports")
+          (output / "failure-identity.jsonl").write_text(xprobe.corpus_to_json(cases, jsonl=True), encoding="utf-8")
+          (output / "collection.json").write_text(json.dumps(summary, sort_keys=True, indent=2), encoding="utf-8")
+          sys.exit(0 if summary["complete"] else 1)
+          PY
+      - name: Preserve collection evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.output-artifact }}
+          path: identity/
+          if-no-files-found: error
