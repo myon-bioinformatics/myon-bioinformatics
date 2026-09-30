@@ -14,14 +14,16 @@ def git(root, *args, input=None):
 
 @pytest.fixture
 def repo(tmp_path):
-    git(tmp_path, "init", "-q")
-    git(tmp_path, "config", "user.name", "Fixture User")
-    git(tmp_path, "config", "user.email", "fixture@example.invalid")
-    (tmp_path / "a.txt").write_text("one\ntwo\n", encoding="utf-8")
-    (tmp_path / "space 日本語.txt").write_text("hello\n", encoding="utf-8")
-    git(tmp_path, "add", "--", "a.txt", "space 日本語.txt")
-    git(tmp_path, "commit", "-qm", "initial")
-    return tmp_path
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init", "-q")
+    git(root, "config", "user.name", "Fixture User")
+    git(root, "config", "user.email", "fixture@example.invalid")
+    (root / "a.txt").write_text("one\ntwo\n", encoding="utf-8")
+    (root / "space 日本語.txt").write_text("hello\n", encoding="utf-8")
+    git(root, "add", "--", "a.txt", "space 日本語.txt")
+    git(root, "commit", "-qm", "initial")
+    return root
 
 
 def test_status_clean_modified_staged_untracked_and_rename(repo):
@@ -36,7 +38,8 @@ def test_status_clean_modified_staged_untracked_and_rename(repo):
     staged = gi.status(repo)
     renames = [r for r in staged["records"] if r["kind"] == "2"]
     assert len(renames) == 1
-    assert renames[0]["original_path"] == "space 日本語.txt"
+    assert renames[0]["path"] == "renamed 日本語.txt"
+    assert renames[0]["orig_path"] == "space 日本語.txt"
     assert "renamed 日本語.txt" in renames[0]["record"]
     assert not any(r["record"] == "space 日本語.txt" for r in staged["records"])
 
@@ -94,6 +97,7 @@ def test_revision_validation(repo, revision):
 def test_errors_are_not_clean(repo, tmp_path, monkeypatch):
     nonrepo = tmp_path / "not-a-repo"
     nonrepo.mkdir()
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
     with pytest.raises(gi.GitInspectionError):
         gi.status(nonrepo)
     with pytest.raises(ValueError):
@@ -160,7 +164,8 @@ def test_structured_nul_outputs_drop_partial_tail(monkeypatch, repo):
     monkeypatch.setattr(gi, "_run", truncated_status)
     result = gi.status(repo)
     assert result["truncated"] is True
-    assert result["records"] == [{"kind": "?", "record": "? complete.txt"}]
+    assert result["records"] == [
+        {"kind": "?", "record": "? complete.txt", "path": "complete.txt"}]
 
 
 def test_nul_inventory_does_not_publish_partial_path(monkeypatch, repo):
@@ -170,3 +175,31 @@ def test_nul_inventory_does_not_publish_partial_path(monkeypatch, repo):
     monkeypatch.setattr(gi, "_run", truncated_ls)
     result = gi.ls_files(repo)
     assert result == {"paths": ["a.txt"], "truncated": True}
+
+
+
+def test_log_and_grep_do_not_publish_partial_records(repo):
+    log_result = gi.log(repo, max_count=1)
+    assert log_result["commits"]
+    cut_log = gi._run(repo, ["log", "--format=%H%x1e", "--max-count=1"],
+                      max_bytes=5)[0]
+    assert len(cut_log) == 5  # raw runner is byte-bounded; parser owns framing.
+    assert gi.grep(repo, "hello", max_bytes=3) == {
+        "paths": [], "truncated": True}
+
+
+def test_status_conflict_is_one_logical_record(repo):
+    # Build a real content conflict without using inspector mutation paths.
+    git(repo, "checkout", "-qb", "other")
+    (repo / "a.txt").write_text("other\n", encoding="utf-8")
+    git(repo, "commit", "-am", "other")
+    git(repo, "checkout", "-q", "master")
+    (repo / "a.txt").write_text("main\n", encoding="utf-8")
+    git(repo, "commit", "-am", "main")
+    proc = subprocess.run(["git", "-C", str(repo), "merge", "other"],
+                          capture_output=True, text=True)
+    assert proc.returncode != 0
+    result = gi.status(repo)
+    conflicts = [row for row in result["records"] if row["kind"] == "u"]
+    assert len(conflicts) == 1
+    assert conflicts[0]["path"] == "a.txt"
