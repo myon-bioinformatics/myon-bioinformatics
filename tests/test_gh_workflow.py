@@ -210,6 +210,16 @@ def test_malformed_inputs_are_sanitized_before_network(fake_gh, capsys, raw):
     assert not fake_gh
 
 
+def test_deeply_nested_input_is_sanitized_before_network(fake_gh, capsys):
+    raw = "[" * 100_000 + "0" + "]" * 100_000
+    code = gw.main(["o/r", "ci.yml", "--inputs", raw])
+    captured = capsys.readouterr()
+    assert code == 1
+    assert json.loads(captured.out) == {"status": "preflight_failed", "error": "invalid_argument"}
+    assert captured.err == ""
+    assert not fake_gh
+
+
 def test_receipt_write_failure_keeps_successful_dispatch_on_stdout(fake_gh, monkeypatch, tmp_path, capsys):
     from pathlib import Path
 
