@@ -36,5 +36,5 @@ jobs:
         with:
           name: workflow-wrapper-junit-py${{ matrix.python }}
           path: reports/workflow-wrapper.xml
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
