@@ -49,16 +49,22 @@ Each invocation prints one JSON object. `--receipt` also appends it to JSONL
 (sequential writers; concurrent append locking is not provided). Receipts contain
 workflow state, observed commits, reasons, completed enable operation and dispatch
 run ID/URL. Current API responses provide the exact run ID. Older empty responses
-yield `dispatched_run_unresolved`; no newest-run heuristic is used. Run observation
-is a single GET and does not wait for CI to finish. `conclusion: null` means the
-run has no measured conclusion yet; dispatch acceptance is not CI green.
+yield `dispatched_run_unresolved`; no newest-run heuristic is used. In that
+status, `target_sha` is only the pre-dispatch observation and is not an executed
+SHA. The receipt includes a separate `ref_sha_after` observation where possible;
+that also does not establish which SHA executed. `executed_sha` is recorded only
+from the exact returned run ID. Run observation is a single GET and does not
+wait for CI to finish. `conclusion: null` means the run has no measured
+conclusion yet; dispatch acceptance is not CI green.
 
 Read-only `planned` and verified `dispatched` return exit code 0. Blocked,
 unresolved, uncertain or failed results return 1. Invalid CLI syntax returns 2.
 `--timeout` defaults to 30 seconds per `gh` call. No operation automatically
 retries, enables another workflow or broadens token permissions. After a mutation
 timeout/5xx, inspect Actions before retrying: the request may have succeeded.
-After an observation failure the exact run ID/URL remains in the receipt.
+After an observation failure the exact run ID/URL remains in the stdout receipt.
+If writing the optional JSONL receipt fails, stdout still contains the receipt,
+stderr reports only `receipt_write_failed`, and the command exits non-zero.
 Authentication errors, 403 (permission/rate-limit), 404 (missing/inaccessible)
 and 422 (rejected dispatch) are classified without storing raw stderr.
 The authenticated account needs read access for preflight and Actions write
