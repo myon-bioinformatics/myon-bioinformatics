@@ -150,6 +150,7 @@ def test_no_mutation_or_network_argv_reachable(monkeypatch, repo):
     gi.ls_files(repo)
     gi.diff(repo)
     gi.log(repo, max_count=1)
+    gi.log_numstat(repo, max_count=1)
     gi.show(repo)
     gi.blame(repo, "a.txt")
     gi.grep(repo, "one")
@@ -157,6 +158,125 @@ def test_no_mutation_or_network_argv_reachable(monkeypatch, repo):
                  "clean", "merge", "rebase", "fetch", "pull", "push"}
     for argv in seen:
         assert not forbidden.intersection(argv)
+
+
+def test_log_numstat_unicode_controls_rename_binary_and_empty_commit(repo):
+    names = ["tab\t日本語.txt", "line\nname.txt", " space.txt"]
+    for name in names:
+        (repo / name).write_text("one\ntwo\n", encoding="utf-8")
+    (repo / "binary.bin").write_bytes(b"\0binary")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", "special names")
+    git(repo, "mv", "space 日本語.txt", "renamed\n日本語.txt")
+    git(repo, "commit", "-qm", "rename")
+    git(repo, "commit", "--allow-empty", "-qm", "empty")
+    result = gi.log_numstat(repo)
+    assert not result["truncated"] and len(result["commits"]) == 4
+    assert result["commits"][0]["files"] == []
+    assert result["commits"][1]["files"] == [{
+        "path": "renamed\n日本語.txt", "orig_path": "space 日本語.txt", "added": 0, "deleted": 0,
+    }]
+    rows = {r["path"]: r for r in result["commits"][2]["files"]}
+    for name in names:
+        assert rows[name]["added"] == 2 and rows[name]["deleted"] == 0
+    assert rows["binary.bin"]["added"] is None and rows["binary.bin"]["deleted"] is None
+    assert gi.log_numstat(repo, max_count=2) == {
+        "commits": result["commits"][:2], "truncated": True,
+    }
+    assert gi.log_numstat(repo, since="2030-01-01") == {"commits": [], "truncated": False}
+
+
+def test_log_numstat_preserves_mid_history_empty_and_no_ff_merge_commits(monkeypatch, repo):
+    base_branch = git(repo, "branch", "--show-current").strip()
+
+    (repo / "a.txt").write_text("before empty\n", encoding="utf-8")
+    git(repo, "add", "--", "a.txt")
+    git(repo, "commit", "-qm", "before empty")
+    before_sha = git(repo, "rev-parse", "HEAD").strip()
+
+    git(repo, "commit", "--allow-empty", "-qm", "middle empty")
+    empty_sha = git(repo, "rev-parse", "HEAD").strip()
+
+    git(repo, "checkout", "-qb", "numstat-feature")
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    git(repo, "add", "--", "feature.txt")
+    git(repo, "commit", "-qm", "feature change")
+    feature_sha = git(repo, "rev-parse", "HEAD").strip()
+
+    git(repo, "checkout", "-q", base_branch)
+    (repo / "main.txt").write_text("main\n", encoding="utf-8")
+    git(repo, "add", "--", "main.txt")
+    git(repo, "commit", "-qm", "main change")
+    main_sha = git(repo, "rev-parse", "HEAD").strip()
+
+    git(repo, "merge", "--no-ff", "-qm", "merge feature", "numstat-feature")
+    merge_sha = git(repo, "rev-parse", "HEAD").strip()
+
+    (repo / "after.txt").write_text("after\n", encoding="utf-8")
+    git(repo, "add", "--", "after.txt")
+    git(repo, "commit", "-qm", "after merge")
+    after_sha = git(repo, "rev-parse", "HEAD").strip()
+
+    result = gi.log_numstat(repo)
+    assert not result["truncated"]
+    observed = [commit["commit"] for commit in result["commits"]]
+    expected = git(repo, "rev-list", "HEAD").splitlines()
+    assert observed == expected
+
+    by_sha = {commit["commit"]: commit for commit in result["commits"]}
+    assert by_sha[empty_sha]["files"] == []
+    assert by_sha[merge_sha]["files"] == []
+    for sha in (before_sha, feature_sha, main_sha, after_sha):
+        assert by_sha[sha]["files"]
+
+    cut_points = {
+        expected.index(empty_sha),
+        expected.index(empty_sha) + 1,
+        expected.index(merge_sha) + 1,
+        len(expected),
+    }
+    for max_count in sorted(cut_points):
+        bounded = gi.log_numstat(repo, max_count=max_count)
+        assert [commit["commit"] for commit in bounded["commits"]] == expected[:max_count]
+        assert bounded["truncated"] is (max_count < len(expected))
+
+    args = ["log", "--no-ext-diff", "--no-textconv", "--no-color",
+            "-z", "--numstat", "--format=%x00%H%x00%cs",
+            "--max-count=10001", "--"]
+    raw, _, _ = gi._run(repo, args)
+    for limit in range(1, len(raw)):
+        monkeypatch.setattr(gi, "_run", lambda *a, **k: (raw[:limit], True, 0))
+        truncated = gi.log_numstat(repo)
+        assert truncated["truncated"]
+        assert truncated["commits"] == result["commits"][:len(truncated["commits"])]
+
+
+def test_log_numstat_byte_bound_publishes_only_complete_commits(monkeypatch, repo):
+    # Exhaustively cut an actual Git stream at every byte boundary, including
+    # UTF-8 bytes, header delimiters and rename source/destination fields.
+    git(repo, "mv", "space 日本語.txt", "renamed\n日本語.txt")
+    git(repo, "commit", "-qm", "rename")
+    raw, _, _ = gi._run(repo, ["log", "-z", "--numstat", "--format=%x00%H%x00%cs"])
+    full = gi.log_numstat(repo)["commits"]
+    for limit in range(1, len(raw)):
+        monkeypatch.setattr(gi, "_run", lambda *a, **k: (raw[:limit], True, 0))
+        result = gi.log_numstat(repo)
+        assert result["truncated"]
+        assert result["commits"] == full[:len(result["commits"])]
+
+
+@pytest.mark.parametrize("since,exception", [(1, TypeError), ("", ValueError), ("x\0y", ValueError)])
+def test_log_numstat_rejects_invalid_since(repo, since, exception):
+    with pytest.raises(exception):
+        gi.log_numstat(repo, since=since)
+
+
+def test_log_numstat_fixed_argv_suppresses_helpers_and_protects_since(monkeypatch, repo):
+    seen = []
+    monkeypatch.setattr(gi, "_run", lambda root, args, **kwargs: (seen.append(args) or b"", False, 0))
+    gi.log_numstat(repo, since="--all")
+    assert seen[0][-2:] == ["--since=--all", "--"]
+    assert "--no-ext-diff" in seen[0] and "--no-textconv" in seen[0]
 
 
 def test_check_ignore_is_nul_safe_and_distinguishes_not_ignored(repo):

@@ -21,7 +21,7 @@ import threading
 from pathlib import Path
 
 __version__ = "0.1.0"
-__all__ = ["status", "ls_files", "diff", "log", "show", "blame",
+__all__ = ["status", "ls_files", "diff", "log", "log_numstat", "show", "blame",
            "grep", "check_ignore"]
 
 
@@ -266,6 +266,85 @@ def log(root=".", *, max_count=50, path=None, max_bytes=1_000_000):
             rows.append(dict(zip(("commit", "authored_at", "author", "subject"),
                                  fields)))
     return {"commits": rows, "truncated": truncated}
+
+
+def log_numstat(root=".", *, since=None, max_count=10_000,
+                max_bytes=1_000_000):
+    """Return bounded per-commit file churn using NUL-safe numstat output.
+
+    Dates are committer dates (Git %cs), matching repo_overview's existing
+    display. Binary counts are None. Renames retain both paths. Git's usual
+    history/merge/rename semantics are preserved. A byte-truncated final commit
+    is omitted in full; truncated never masquerades as complete history.
+    """
+    _positive(max_count, "max_count")
+    if since is not None:
+        if not isinstance(since, str):
+            raise TypeError("since must be a string or None")
+        if not since or "\x00" in since:
+            raise ValueError("since must be non-empty without NUL")
+    args = ["log", "--no-ext-diff", "--no-textconv", "--no-color",
+            "-z", "--numstat", "--format=%x00%H%x00%cs",
+            "--max-count=" + str(max_count + 1)]
+    if since is not None:
+        args.append("--since=" + since)
+    args.append("--")
+    raw, byte_truncated, _ = _run(root, args, max_bytes=max_bytes)
+    fields = _complete_fields(raw, b"\0", byte_truncated)
+    commits = []
+    current = None
+    index = 0
+    while index < len(fields):
+        field = fields[index]
+        if field == b"":
+            if current is not None:
+                commits.append(current)
+                current = None
+            if index + 2 >= len(fields):
+                if byte_truncated:
+                    break
+                raise GitInspectionError("incomplete numstat commit header")
+            sha, date = fields[index + 1:index + 3]
+            if (len(sha) not in (40, 64) or any(c not in b"0123456789abcdef" for c in sha)
+                    or len(date) != 10 or date[4:5] != b"-" or date[7:8] != b"-"
+                    or not date.replace(b"-", b"").isdigit()):
+                raise GitInspectionError("malformed numstat commit header")
+            current = {"commit": _decode(sha), "date": _decode(date), "files": []}
+            index += 3
+            continue
+        if current is None:
+            raise GitInspectionError("numstat record without commit")
+        # Git separates the header from stats with a newline. Split only the
+        # two count separators; tabs/newlines inside the filename are data.
+        parts = field.lstrip(b"\n").split(b"\t", 2)
+        if len(parts) != 3:
+            raise GitInspectionError("malformed numstat file record")
+        added, deleted, path = parts
+        if (added == b"-") != (deleted == b"-") or any(
+                count != b"-" and not count.isdigit() for count in (added, deleted)):
+            raise GitInspectionError("malformed numstat counts")
+        orig_path = None
+        if not path:
+            if index + 2 >= len(fields):
+                if byte_truncated:
+                    current = None
+                    break
+                raise GitInspectionError("incomplete numstat rename")
+            orig_path, path = fields[index + 1:index + 3]
+            if not orig_path or not path:
+                raise GitInspectionError("empty numstat rename path")
+            index += 2
+        current["files"].append({
+            "path": _decode(path),
+            "orig_path": _decode(orig_path) if orig_path is not None else None,
+            "added": None if added == b"-" else int(added),
+            "deleted": None if deleted == b"-" else int(deleted),
+        })
+        index += 1
+    if current is not None and not byte_truncated:
+        commits.append(current)
+    return {"commits": commits[:max_count],
+            "truncated": byte_truncated or len(commits) > max_count}
 
 
 def show(root=".", revision="HEAD", *, path=None, max_bytes=1_000_000):
