@@ -186,7 +186,7 @@ def test_log_numstat_unicode_controls_rename_binary_and_empty_commit(repo):
     assert gi.log_numstat(repo, since="2030-01-01") == {"commits": [], "truncated": False}
 
 
-def test_log_numstat_preserves_mid_history_empty_and_no_ff_merge_commits(repo):
+def test_log_numstat_preserves_mid_history_empty_and_no_ff_merge_commits(monkeypatch, repo):
     base_branch = git(repo, "branch", "--show-current").strip()
 
     (repo / "a.txt").write_text("before empty\n", encoding="utf-8")
@@ -219,11 +219,36 @@ def test_log_numstat_preserves_mid_history_empty_and_no_ff_merge_commits(repo):
 
     result = gi.log_numstat(repo)
     assert not result["truncated"]
+    observed = [commit["commit"] for commit in result["commits"]]
+    expected = git(repo, "rev-list", "HEAD").splitlines()
+    assert observed == expected
+
     by_sha = {commit["commit"]: commit for commit in result["commits"]}
     assert by_sha[empty_sha]["files"] == []
     assert by_sha[merge_sha]["files"] == []
     for sha in (before_sha, feature_sha, main_sha, after_sha):
         assert by_sha[sha]["files"]
+
+    cut_points = {
+        expected.index(empty_sha),
+        expected.index(empty_sha) + 1,
+        expected.index(merge_sha) + 1,
+        len(expected),
+    }
+    for max_count in sorted(cut_points):
+        bounded = gi.log_numstat(repo, max_count=max_count)
+        assert [commit["commit"] for commit in bounded["commits"]] == expected[:max_count]
+        assert bounded["truncated"] is (max_count < len(expected))
+
+    args = ["log", "--no-ext-diff", "--no-textconv", "--no-color",
+            "-z", "--numstat", "--format=%x00%H%x00%cs",
+            "--max-count=10001", "--"]
+    raw, _, _ = gi._run(repo, args)
+    for limit in range(1, len(raw)):
+        monkeypatch.setattr(gi, "_run", lambda *a, **k: (raw[:limit], True, 0))
+        truncated = gi.log_numstat(repo)
+        assert truncated["truncated"]
+        assert truncated["commits"] == result["commits"][:len(truncated["commits"])]
 
 
 def test_log_numstat_byte_bound_publishes_only_complete_commits(monkeypatch, repo):
