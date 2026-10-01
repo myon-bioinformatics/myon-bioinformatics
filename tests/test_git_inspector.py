@@ -186,6 +186,46 @@ def test_log_numstat_unicode_controls_rename_binary_and_empty_commit(repo):
     assert gi.log_numstat(repo, since="2030-01-01") == {"commits": [], "truncated": False}
 
 
+def test_log_numstat_preserves_mid_history_empty_and_no_ff_merge_commits(repo):
+    base_branch = git(repo, "branch", "--show-current").strip()
+
+    (repo / "a.txt").write_text("before empty\n", encoding="utf-8")
+    git(repo, "add", "--", "a.txt")
+    git(repo, "commit", "-qm", "before empty")
+    before_sha = git(repo, "rev-parse", "HEAD").strip()
+
+    git(repo, "commit", "--allow-empty", "-qm", "middle empty")
+    empty_sha = git(repo, "rev-parse", "HEAD").strip()
+
+    git(repo, "checkout", "-qb", "numstat-feature")
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    git(repo, "add", "--", "feature.txt")
+    git(repo, "commit", "-qm", "feature change")
+    feature_sha = git(repo, "rev-parse", "HEAD").strip()
+
+    git(repo, "checkout", "-q", base_branch)
+    (repo / "main.txt").write_text("main\n", encoding="utf-8")
+    git(repo, "add", "--", "main.txt")
+    git(repo, "commit", "-qm", "main change")
+    main_sha = git(repo, "rev-parse", "HEAD").strip()
+
+    git(repo, "merge", "--no-ff", "-qm", "merge feature", "numstat-feature")
+    merge_sha = git(repo, "rev-parse", "HEAD").strip()
+
+    (repo / "after.txt").write_text("after\n", encoding="utf-8")
+    git(repo, "add", "--", "after.txt")
+    git(repo, "commit", "-qm", "after merge")
+    after_sha = git(repo, "rev-parse", "HEAD").strip()
+
+    result = gi.log_numstat(repo)
+    assert not result["truncated"]
+    by_sha = {commit["commit"]: commit for commit in result["commits"]}
+    assert by_sha[empty_sha]["files"] == []
+    assert by_sha[merge_sha]["files"] == []
+    for sha in (before_sha, feature_sha, main_sha, after_sha):
+        assert by_sha[sha]["files"]
+
+
 def test_log_numstat_byte_bound_publishes_only_complete_commits(monkeypatch, repo):
     # Exhaustively cut an actual Git stream at every byte boundary, including
     # UTF-8 bytes, header delimiters and rename source/destination fields.
