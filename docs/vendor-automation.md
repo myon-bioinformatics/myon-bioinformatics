@@ -3,7 +3,7 @@
 `vendor_sync.py` is a single-file, stdlib-only tool. Consumers keep an explicit
 `vendor-lock/1` allowlist; there is no automatic directory discovery or dependency
 resolver. Include LICENSE files alongside code. A commit is always a full SHA.
-`ref` is used only when proposing an update, never by ordinary placement/checks.
+`ref` is used only by `update`, never by locked `materialize`/`check`.
 
 Each file has `repository` (owner/repo), `ref`, `commit`, `source`, `destination`,
 `blob_sha` (Git blob SHA-1), and `sha256`. Paths are relative POSIX paths. One
@@ -107,7 +107,7 @@ guessing field aliases or overwriting legacy provenance behind their back.
 | browser-test-kit | scripts/git_inspector; migration #36 and bridge #37 open | Wait for source-pin changes to settle |
 | web-ui | tool/vendor grouped metadata provenance + LICENSE | Preserve grouped-source contract |
 | xprobe | No vendored downstream module in current main | Upstream source, no redundant consumer lock |
-| myon-bioinformatics | Shared inspector/workflow source, no vendor directory | Own updater and reusable workflow |
+| myon-bioinformatics | Shared inspector/workflow source, no vendor directory | Own public placement/update tool |
 
 The older JUnit report's missing `artifact-pattern` concern is already addressed
 in yourself's merged #7 (`test-report-*`). A commit looking old does not by itself
