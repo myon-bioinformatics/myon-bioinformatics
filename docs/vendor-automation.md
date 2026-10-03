@@ -46,27 +46,45 @@ on missing or mismatching files. `materialize` reuses verified local copies or
 fetches raw bytes at the locked commit, verifies both hashes, then places them.
 It never resolves `ref`. `update` resolves the explicit upstream refs and checks
 GitHub file metadata against downloaded Git blob hashes, records SHA-256, then
-places the candidate files and updates the lock. Both write modes validate the
+places the candidate files and updates the lock. It first checks every current
+file against the old lock, rejecting missing files or local edits before any
+network call. Use `materialize` explicitly if restoring missing/incorrect locked
+copies is intended; updates never silently repair local edits. Both write modes validate the
 whole download batch before writing; replacements are atomic per file, not a
 filesystem transaction. Run updates in a disposable clean checkout. Network,
 missing-file and verification failures are nonzero (CLI exit 2).
 
+Existing file permissions are retained; new files default to 0644. Manifest
+collisions and duplicate destinations are checked case-insensitively.
 The updater never imports candidate code, invokes Git, or installs runtime
 dependencies. Upstream selection is not a compatibility guarantee: ordinary
 consumer CI evaluates the update PR. Files over 8 MiB are rejected; the scope is
 small public shared Python modules and their licenses, not models or packages.
+Only **public upstream repositories** are supported: raw downloads are anonymous;
+`GH_TOKEN` authenticates metadata calls only and does not enable private-source
+placement. Slash-containing refs are encoded as a `sha` query parameter on the
+lightweight commit-list endpoint (`per_page=1`), which omits commit patches;
+an empty result is an explicit error.
 
 ## Scheduled updates without copying the updater into every consumer
 
 `.github/workflows/reusable-vendor-update.yml` accepts a lock and an immutable
-`tool-commit`. Consumers call the workflow at the same full commit and schedule
+`tool-commit`. Consumers must call the workflow at the **same full commit** as
+`tool-commit`; the workflow validates the input's full-SHA format but cannot
+enforce equality with the caller's `uses` ref. Review/update the pair together.
+Consumers schedule
 it (for example weekly), plus expose `workflow_dispatch`. The caller should use
 `permissions: contents: read` and pass `secrets.update-token` explicitly. The
 workflow checks out the consumer's default branch and the pinned tool separately,
 prepares the candidate, commits only reported changed paths, and creates a PR.
 It only runs for schedule/dispatch, never PR events. It neither force-pushes nor
-merges. A content-derived branch prevents duplicate proposals for the same lock;
-a closed/rejected proposal is not reopened automatically. Tool updates themselves
+merges. The branch digest includes the current base SHA and the entire staged
+Git tree, distinguishing candidates with different placed bytes and allowing
+updates after base changes/reverts. Before reusing an existing remote branch,
+its fetched tree must equal the verified local candidate tree; a mismatch fails
+before any PR API call. Deduplication checks open PRs only. A previously closed
+candidate may be proposed again; branch/PR history is never force-rewritten.
+Tool updates themselves
 remain a separate infrastructure pin change rather than self-updating executable
 bootstrap code.
 

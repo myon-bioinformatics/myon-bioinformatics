@@ -8,10 +8,14 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import stat
 import sys
 import tempfile
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+
+__version__ = "0.1.0"
+__all__ = ["git_blob", "validate", "synchronize", "main"]
 
 SCHEMA = "vendor-lock/1"
 MAX_BYTES = 8 * 1024 * 1024
@@ -105,11 +109,13 @@ def _raw(item, get):
 
 def _atomic(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
+    mode = stat.S_IMODE(path.stat().st_mode) & 0o777 if path.exists() else 0o644
     name = None
     try:
         with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
             name = stream.name
             stream.write(data)
+        os.chmod(name, mode)
         os.replace(name, path)
     finally:
         if name and os.path.exists(name):
@@ -127,10 +133,15 @@ def synchronize(manifest, root, mode, *, get=_get):
     manifest = _target(root, manifest)
     lock = validate(json.loads(manifest.read_text(encoding="utf-8")))
     for item in lock["files"]:
-        if _target(root, item["destination"]) == manifest:
+        target = _target(root, item["destination"])
+        if target.relative_to(root).as_posix().casefold() == manifest.relative_to(root).as_posix().casefold():
             raise ValueError("file destination collides with manifest")
     if mode not in ("check", "materialize", "update"):
         raise ValueError("unknown mode")
+    # Updates must start from the recorded bytes, never silently replace edits.
+    if mode == "update":
+        for item in lock["files"]:
+            _verify(item, _target(root, item["destination"]).read_bytes())
     candidate = copy.deepcopy(lock)
     pending = []
     commits = {}
@@ -142,10 +153,13 @@ def synchronize(manifest, root, mode, *, get=_get):
         if mode == "update":
             key = item["repository"], item["ref"]
             if key not in commits:
-                url = "https://api.github.com/repos/{}/commits/{}".format(
+                url = "https://api.github.com/repos/{}/commits?sha={}&per_page=1".format(
                     key[0], quote(key[1], safe="")
                 )
-                commits[key] = json.loads(get(url))["sha"]
+                listed = json.loads(get(url))
+                if not isinstance(listed, list) or not listed:
+                    raise ValueError("upstream ref has no commits")
+                commits[key] = listed[0]["sha"]
                 _hex(commits[key], 40)
             item["commit"] = commits[key]
             url = "https://api.github.com/repos/{}/contents/{}?ref={}".format(

@@ -51,7 +51,7 @@ jobs:
           MANIFEST: ${{ inputs.manifest }}
           GH_TOKEN: ${{ secrets.update-token }}
         run: python .vendor-sync-tools/vendor_sync.py update --manifest "$MANIFEST" > .vendor-update-result.json
-      - name: Commit only candidate files
+      - name: Stage only candidate files
         id: candidate
         env:
           MANIFEST: ${{ inputs.manifest }}
@@ -72,7 +72,9 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
               output.write('changed=' + ('true' if changed else 'false') + '\n')
               if changed:
-                  digest = hashlib.sha256(Path(os.environ['MANIFEST']).read_bytes()).hexdigest()[:20]
+                  base = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip()
+                  tree = subprocess.check_output(['git', 'write-tree']).strip()
+                  digest = hashlib.sha256(base + b'\0' + tree).hexdigest()[:20]
                   output.write('branch=automation/vendor-' + digest + '\n')
           PY
       - name: Open one PR for this candidate
@@ -91,8 +93,16 @@ jobs:
           existing="$(git ls-remote --heads origin "$BRANCH")"
           if [ -z "$existing" ]; then
             git push origin "$BRANCH"
+          else
+            git fetch --no-tags origin "refs/heads/$BRANCH"
+            local_tree="$(git rev-parse 'HEAD^{tree}')"
+            remote_tree="$(git rev-parse 'FETCH_HEAD^{tree}')"
+            if [ "$local_tree" != "$remote_tree" ]; then
+              echo 'Existing remote branch does not match the verified candidate tree' >&2
+              exit 1
+            fi
           fi
-          previous="$(gh pr list --state all --head "$BRANCH" --json number --jq 'length')"
+          previous="$(gh pr list --state open --head "$BRANCH" --json number --jq 'length')"
           if [ "$previous" = 0 ]; then
             cat > .vendor-update-body.md <<'BODY'
           Refresh the explicit upstream file allowlist and its immutable pins.

@@ -60,8 +60,8 @@ def test_bad_digest_leaves_all_files_and_lock_unchanged(tmp_path, field):
 def upstream(data, calls):
     def get(url):
         calls.append(url)
-        if "/commits/" in url:
-            return json.dumps({"sha": NEW}).encode()
+        if "/commits?" in url:
+            return json.dumps([{"sha": NEW}]).encode()
         if "/contents/" in url:
             return json.dumps({"type": "file", "sha": sync.git_blob(data)}).encode()
         assert "/" + NEW + "/" in url
@@ -71,6 +71,7 @@ def upstream(data, calls):
 
 def test_update_refreshes_pin_and_bytes_without_executing_them(tmp_path):
     path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
     payload = b"raise RuntimeError('never import candidate')\n"
     calls = []
     result = sync.synchronize(path.name, tmp_path, "update", get=upstream(payload, calls))
@@ -94,15 +95,17 @@ def test_update_no_churn_for_unrelated_upstream_commit(tmp_path):
 
 def test_group_resolves_one_commit_and_includes_license(tmp_path):
     path, _ = lock(tmp_path, [entry(), entry(source="LICENSE", destination="vendor/LICENSE")])
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
     calls = []
     sync.synchronize(path.name, tmp_path, "update", get=upstream(b"new\n", calls))
-    assert sum("/commits/" in url for url in calls) == 1
+    assert sum("/commits?" in url for url in calls) == 1
     assert {i["commit"] for i in json.loads(path.read_text(encoding="utf-8"))["files"]} == {NEW}
     assert (tmp_path / "vendor/LICENSE").read_bytes() == b"new\n"
 
 
 def test_upstream_blob_mismatch_does_not_write(tmp_path):
     path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
     before = path.read_bytes()
     get = upstream(b"good\n", [])
     def corrupt(url):
@@ -110,7 +113,7 @@ def test_upstream_blob_mismatch_does_not_write(tmp_path):
     with pytest.raises(ValueError, match="digest mismatch"):
         sync.synchronize(path.name, tmp_path, "update", get=corrupt)
     assert path.read_bytes() == before
-    assert not (tmp_path / "vendor").exists()
+    assert (tmp_path / "vendor/adapter.py").read_bytes() == b"old\n"
 
 
 @pytest.mark.parametrize("destination", ["/outside", "../outside", "vendor/../outside", "C:/outside", "a\\b", ".git/config"])
@@ -150,3 +153,46 @@ def test_cli_help_has_no_side_effects_and_missing_file_is_red(tmp_path):
     result = subprocess.run([sys.executable, str(script), "check"], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 2
     assert result.stderr.startswith("vendor-sync:")
+
+
+def test_update_rejects_local_edits_before_network(tmp_path):
+    path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    file = tmp_path / "vendor/adapter.py"
+    file.write_bytes(b"local edit\n")
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match="digest mismatch"):
+        sync.synchronize(path.name, tmp_path, "update", get=lambda url: pytest.fail("network"))
+    assert file.read_bytes() == b"local edit\n"
+    assert path.read_bytes() == before
+
+
+def test_atomic_preserves_executable_mode_and_defaults_readable(tmp_path):
+    existing = tmp_path / "existing.py"
+    existing.write_bytes(b"old")
+    existing.chmod(0o755)
+    sync._atomic(existing, b"new")
+    assert existing.stat().st_mode & 0o777 == 0o755
+    fresh = tmp_path / "fresh.py"
+    sync._atomic(fresh, b"new")
+    assert fresh.stat().st_mode & 0o777 == 0o644
+
+
+def test_casefold_manifest_collision(tmp_path):
+    path, _ = lock(tmp_path, [entry(destination="VENDOR.LOCK.JSON")])
+    with pytest.raises(ValueError, match="collides"):
+        sync.synchronize(path.name, tmp_path, "materialize")
+
+
+def test_slash_ref_query_and_empty_commit_list(tmp_path):
+    item = entry()
+    item["ref"] = "feature/adapter"
+    path, _ = lock(tmp_path, [item])
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    calls = []
+    sync.synchronize(path.name, tmp_path, "update", get=upstream(b"old\n", calls))
+    assert calls[0] == "https://api.github.com/repos/myon-bioinformatics/xprobe/commits?sha=feature%2Fadapter&per_page=1"
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match="no commits"):
+        sync.synchronize(path.name, tmp_path, "update", get=lambda url: b"[]")
+    assert path.read_bytes() == before
