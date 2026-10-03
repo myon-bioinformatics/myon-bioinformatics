@@ -14,7 +14,7 @@ import tempfile
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = ["git_blob", "validate", "synchronize", "main"]
 
 SCHEMA = "vendor-lock/1"
@@ -90,9 +90,6 @@ def _get(url):
     headers = {"User-Agent": "vendor-sync/1"}
     if url.startswith("https://api.github.com/"):
         headers["Accept"] = "application/vnd.github+json"
-        token = os.environ.get("GH_TOKEN")
-        if token:
-            headers["Authorization"] = "Bearer " + token
     with urlopen(Request(url, headers=headers), timeout=30) as response:
         data = response.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:

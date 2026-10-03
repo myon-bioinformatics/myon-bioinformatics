@@ -1,4 +1,4 @@
-# Shared vendor placement and update proposals
+# Shared public vendor placement and CI updates
 
 `vendor_sync.py` is a single-file, stdlib-only tool. Consumers keep an explicit
 `vendor-lock/1` allowlist; there is no automatic directory discovery or dependency
@@ -57,44 +57,28 @@ missing-file and verification failures are nonzero (CLI exit 2).
 Existing file permissions are retained; new files default to 0644. Manifest
 collisions and duplicate destinations are checked case-insensitively.
 The updater never imports candidate code, invokes Git, or installs runtime
-dependencies. Upstream selection is not a compatibility guarantee: ordinary
-consumer CI evaluates the update PR. Files over 8 MiB are rejected; the scope is
+dependencies. Upstream selection is not a compatibility guarantee: consumer CI evaluates the candidate in its disposable checkout. Files over 8 MiB are rejected; the scope is
 small public shared Python modules and their licenses, not models or packages.
-Only **public upstream repositories** are supported: raw downloads are anonymous;
-`GH_TOKEN` authenticates metadata calls only and does not enable private-source
-placement. Slash-containing refs are encoded as a `sha` query parameter on the
+Only **public upstream repositories** are supported. Raw downloads and metadata
+calls are anonymous; no environment token is read or sent. Anonymous API rate
+limits apply to explicit updates; a failed download fails the command. Slash-containing refs are encoded as a `sha` query parameter on the
 lightweight commit-list endpoint (`per_page=1`), which omits commit patches;
 an empty result is an explicit error.
 
-## Scheduled updates without copying the updater into every consumer
+## CI-only updates
 
-`.github/workflows/reusable-vendor-update.yml` accepts a lock and an immutable
-`tool-commit`. Consumers must call the workflow at the **same full commit** as
-`tool-commit`; the workflow validates the input's full-SHA format but cannot
-enforce equality with the caller's `uses` ref. Review/update the pair together.
-Consumers schedule
-it (for example weekly), plus expose `workflow_dispatch`. The caller should use
-`permissions: contents: read` and pass `secrets.update-token` explicitly. The
-workflow checks out the consumer's default branch and the pinned tool separately,
-prepares the candidate, commits only reported changed paths, and creates a PR.
-It only runs for schedule/dispatch, never PR events. It neither force-pushes nor
-merges. The branch digest includes the current base SHA and the entire staged
-Git tree, distinguishing candidates with different placed bytes and allowing
-updates after base changes/reverts. Before reusing an existing remote branch,
-its fetched tree must equal the verified local candidate tree; a mismatch fails
-before any PR API call. Deduplication checks open PRs only. A previously closed
-candidate may be proposed again; branch/PR history is never force-rewritten.
-Tool updates themselves
-remain a separate infrastructure pin change rather than self-updating executable
-bootstrap code.
+Normal consumer CI uses `check` and `materialize` at the recorded full commits.
+A boolean `workflow_dispatch` input can opt into `update` after restoring the
+locked files, followed by `check` and the existing consumer tests. Push/PR events
+and dispatches with that input false keep the locked versions. Run candidate
+modules only through the consumer's existing tests after verification.
 
-Provide a GitHub App installation token or fine-grained PAT with consumer
-contents/PR write permissions. The default `GITHUB_TOKEN` does not provide the
-same automatic downstream CI triggering: see [GitHub's token event guidance](https://docs.github.com/en/actions/concepts/security/github_token).
-Do not silently fall back to it and assume the candidate was tested. This PR
-provides the reusable mechanism; it does not configure secrets or activate a
-consumer schedule. Existing PR checks and branch protection remain authoritative.
-Automatic merge is not enabled by this rollout.
+Updates modify source/license/lock files only in the disposable CI checkout.
+They do not persist to main, create branches, push, open PRs or auto-merge. The
+former reusable PR-proposal workflow and dedicated token/enable-flag contract
+are removed. No additional token or repository secret is required. CI checkout
+permissions remain read-only, and vendor tool checkouts disable persisted Git
+credentials. Shared-tool pin changes remain explicit infrastructure changes.
 
 ## Current-main audit, 2026-10-03
 
@@ -105,7 +89,7 @@ guessing field aliases or overwriting legacy provenance behind their back.
 
 | Repository | Existing copies / current overlap | Rollout order |
 | --- | --- | --- |
-| yourself | vendor/xprobe_pytest + LICENSE; JUnit #7 merged; thin-main #5 separate | First small placement/schedule pilot |
+| yourself | vendor/xprobe_pytest + LICENSE; JUnit #7 merged; thin-main #5 separate | First small placement/CI update pilot |
 | nvd_nist_known_vulns | Same adapter provenance shape as yourself | Reuse tested pilot |
 | convert_img_fmt_to_webp-CUI- | Adapter under scripts; different provenance fields | Adapt paths and provenance checks |
 | ascii_artist | Five shared metadata/resolver/inspector modules; JUnit #27 merged | Group related source files |
@@ -124,7 +108,6 @@ child `-c os.devnull`/rootdir concern and CLI/import/README issues remain separa
 checks; this automation PR does not claim they are all resolved.
 
 For each consumer: adopt a complete lock preserving current bytes first, migrate
-provenance checks, verify offline local tests, then wire CI placement and schedule
-to a reviewed shared-tool commit. Test update proposals and consumer CI before
-considering any explicit automatic-merge policy. Current deployment/Pages and
+provenance checks, verify offline local tests, then wire CI placement and opt-in updates
+to a reviewed shared-tool commit. Verify locked and candidate test runs. Current deployment/Pages and
 runtime dependency policies are unchanged.
