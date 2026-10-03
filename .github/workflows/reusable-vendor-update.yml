@@ -1,0 +1,103 @@
+name: Propose pinned vendor updates
+
+on:
+  workflow_call:
+    inputs:
+      tool-commit:
+        description: Full commit SHA of this workflow and vendor_sync.py
+        required: true
+        type: string
+      manifest:
+        description: Consumer lock path
+        default: vendor.lock.json
+        type: string
+    secrets:
+      update-token:
+        description: GitHub App installation token or PAT with contents and PR write
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vendor-update-${{ github.repository }}-${{ inputs.manifest }}
+  cancel-in-progress: false
+
+jobs:
+  propose:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate immutable tool pin
+        env:
+          TOOL_COMMIT: ${{ inputs.tool-commit }}
+        run: '[[ "$TOOL_COMMIT" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          token: ${{ secrets.update-token }}
+      - uses: actions/checkout@v7
+        with:
+          repository: myon-bioinformatics/myon-bioinformatics
+          ref: ${{ inputs.tool-commit }}
+          path: .vendor-sync-tools
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Prepare verified candidate
+        env:
+          MANIFEST: ${{ inputs.manifest }}
+          GH_TOKEN: ${{ secrets.update-token }}
+        run: python .vendor-sync-tools/vendor_sync.py update --manifest "$MANIFEST" > .vendor-update-result.json
+      - name: Commit only candidate files
+        id: candidate
+        env:
+          MANIFEST: ${{ inputs.manifest }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          paths = json.loads(Path('.vendor-update-result.json').read_text(encoding='utf-8'))['changed_paths']
+          if paths:
+              subprocess.run(['git', 'add', '--', *paths], check=True)
+          changed = subprocess.run(['git', 'diff', '--cached', '--quiet']).returncode
+          if changed not in (0, 1):
+              raise SystemExit(changed)
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('changed=' + ('true' if changed else 'false') + '\n')
+              if changed:
+                  digest = hashlib.sha256(Path(os.environ['MANIFEST']).read_bytes()).hexdigest()[:20]
+                  output.write('branch=automation/vendor-' + digest + '\n')
+          PY
+      - name: Open one PR for this candidate
+        if: steps.candidate.outputs.changed == 'true'
+        env:
+          BRANCH: ${{ steps.candidate.outputs.branch }}
+          GH_TOKEN: ${{ secrets.update-token }}
+          GH_REPO: ${{ github.repository }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b "$BRANCH"
+          git commit -m 'chore: refresh pinned vendor files'
+          existing="$(git ls-remote --heads origin "$BRANCH")"
+          if [ -z "$existing" ]; then
+            git push origin "$BRANCH"
+          fi
+          previous="$(gh pr list --state all --head "$BRANCH" --json number --jq 'length')"
+          if [ "$previous" = 0 ]; then
+            cat > .vendor-update-body.md <<'BODY'
+          Refresh the explicit upstream file allowlist and its immutable pins.
+
+          The updater verified Git blob hashes before placement and recorded SHA-256 digests. It did not import or run upstream candidate modules. The ordinary pull-request checks must validate compatibility; this workflow does not merge or publish.
+          BODY
+            gh pr create --base "$BASE" --head "$BRANCH" --title 'chore: refresh pinned vendor files' --body-file .vendor-update-body.md
+          fi
