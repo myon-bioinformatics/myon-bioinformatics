@@ -127,7 +127,10 @@ def test_symlink_and_manifest_collision(tmp_path):
     path, _ = lock(tmp_path)
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    (tmp_path / "vendor").symlink_to(elsewhere, target_is_directory=True)
+    try:
+        (tmp_path / "vendor").symlink_to(elsewhere, target_is_directory=True)
+    except OSError:
+        pytest.skip("runner cannot create filesystem symlinks")
     with pytest.raises(ValueError, match="symlink"):
         sync.synchronize(path.name, tmp_path, "materialize")
     (tmp_path / "vendor").unlink()
@@ -172,10 +175,12 @@ def test_atomic_preserves_executable_mode_and_defaults_readable(tmp_path):
     existing.write_bytes(b"old")
     existing.chmod(0o755)
     sync._atomic(existing, b"new")
-    assert existing.stat().st_mode & 0o777 == 0o755
+    if sys.platform != "win32":
+        assert existing.stat().st_mode & 0o777 == 0o755
     fresh = tmp_path / "fresh.py"
     sync._atomic(fresh, b"new")
-    assert fresh.stat().st_mode & 0o777 == 0o644
+    if sys.platform != "win32":
+        assert fresh.stat().st_mode & 0o777 == 0o644
 
 
 def test_casefold_manifest_collision(tmp_path):
@@ -262,3 +267,107 @@ def test_rate_limit_git_failure_is_nonzero_without_fallback_to_old_bytes(tmp_pat
     assert 'public Git fetch/read failed' in capsys.readouterr().err
     assert path.read_bytes() == before
     assert (tmp_path / 'vendor/adapter.py').read_bytes() == b'old\n'
+
+
+@pytest.mark.parametrize('stage', ['metadata', 'raw'])
+def test_fallback_commit_mismatch_does_not_write(tmp_path, monkeypatch, stage):
+    from urllib.error import HTTPError
+    path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, 'materialize', get=lambda url: b'old\n')
+    before = path.read_bytes()
+    def get(url):
+        if '/commits?' in url:
+            return json.dumps([{'sha': NEW}]).encode()
+        if stage == 'raw' and '/contents/' in url:
+            return json.dumps({'type': 'file', 'sha': sync.git_blob(b'new\n')}).encode()
+        raise HTTPError(url, 429, 'limited', {}, None)
+    monkeypatch.setattr(sync, '_public_git_snapshot', lambda *args: (OLD, {'scripts/adapter.py': (sync.git_blob(b'new\n'), b'new\n')}))
+    with pytest.raises(ValueError, match='does not match resolved SHA'):
+        sync.synchronize(path.name, tmp_path, 'update', get=get)
+    assert path.read_bytes() == before
+    assert (tmp_path / 'vendor/adapter.py').read_bytes() == b'old\n'
+
+
+@pytest.mark.parametrize('code', [404, 500])
+def test_non_rate_limit_http_error_is_red_without_git(tmp_path, monkeypatch, capsys, code):
+    from urllib.error import HTTPError
+    path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, 'materialize', get=lambda url: b'old\n')
+    before = path.read_bytes()
+    def fail(request, timeout):
+        raise HTTPError(request.full_url, code, 'unavailable', {}, None)
+    monkeypatch.setattr(sync, 'urlopen', fail)
+    monkeypatch.setattr(sync, '_public_git_snapshot', lambda *args: pytest.fail('unexpected Git fallback'))
+    assert sync.main(['update', '--root', str(tmp_path)]) == 2
+    assert 'HTTP Error' in capsys.readouterr().err
+    assert path.read_bytes() == before
+
+
+def test_metadata_git_failure_is_red_and_retains_baseline(tmp_path, monkeypatch, capsys):
+    from urllib.error import HTTPError
+    path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, 'materialize', get=lambda url: b'old\n')
+    before = path.read_bytes()
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self, size): return json.dumps([{'sha': NEW}]).encode()
+    def get(request, timeout):
+        if '/commits?' in request.full_url: return Response()
+        raise HTTPError(request.full_url, 403, 'limited', {}, None)
+    def fail(*args): raise ValueError('public Git fetch/read failed')
+    monkeypatch.setattr(sync, 'urlopen', get)
+    monkeypatch.setattr(sync, '_public_git_snapshot', fail)
+    assert sync.main(['update', '--root', str(tmp_path)]) == 2
+    assert 'public Git fetch/read failed' in capsys.readouterr().err
+    assert path.read_bytes() == before
+    assert (tmp_path / 'vendor/adapter.py').read_bytes() == b'old\n'
+
+
+@pytest.mark.parametrize('kind', ['missing', 'symlink', 'submodule', 'large', 'credentials'])
+def test_public_git_snapshot_boundaries(tmp_path, monkeypatch, kind):
+    import os
+    repo = tmp_path / 'origin'
+    repo.mkdir()
+    def git(*args):
+        return subprocess.check_output(['git', '-C', str(repo), *args]).decode().strip()
+    git('init', '-b', 'main')
+    git('config', 'user.name', 'Fixture')
+    git('config', 'user.email', 'fixture@example.invalid')
+    (repo / 'module.py').write_bytes(b'new source\n')
+    (repo / 'LICENSE').write_bytes(b'license\n')
+    git('add', '.')
+    git('commit', '-m', 'source')
+    if kind in ('symlink', 'submodule'):
+        obj = git('hash-object', 'LICENSE') if kind == 'symlink' else git('rev-parse', 'HEAD')
+        git('update-index', '--cacheinfo', ('120000' if kind == 'symlink' else '160000') + ',' + obj + ',LICENSE')
+        git('commit', '-m', 'nonregular')
+    if kind == 'missing':
+        git('rm', 'LICENSE'); git('commit', '-m', 'missing')
+    before = git('show-ref')
+    calls = []
+    actual = subprocess.run
+    def observe(argv, **kwargs):
+        calls.append((argv, kwargs['env']))
+        return actual(argv, **kwargs)
+    monkeypatch.setattr(sync.subprocess, 'run', observe)
+    monkeypatch.setenv('GIT_DIR', str(tmp_path / 'do-not-touch'))
+    monkeypatch.setenv('GIT_CONFIG_PARAMETERS', "'credential.helper=evil'")
+    monkeypatch.setenv('GIT_CONFIG_COUNT', '1')
+    monkeypatch.setenv('GIT_CONFIG_KEY_0', 'http.extraHeader')
+    monkeypatch.setenv('GIT_CONFIG_VALUE_0', 'Authorization: forbidden')
+    if kind == 'large': monkeypatch.setattr(sync, 'MAX_BYTES', 3)
+    if kind == 'credentials':
+        sha, files = sync._public_git_snapshot('owner/repo', 'refs/heads/main', ['module.py', 'LICENSE'], remote=repo.as_uri())
+        assert files['LICENSE'][1] == b'license\n'
+    else:
+        with pytest.raises(ValueError, match='byte limit' if kind == 'large' else 'regular file'):
+            sync._public_git_snapshot('owner/repo', 'refs/heads/main', ['module.py', 'LICENSE'], remote=repo.as_uri())
+    assert calls
+    for argv, env in calls:
+        assert 'credential.helper=' in argv and 'http.extraHeader=' in argv and 'core.askPass=' in argv
+        assert env['GIT_TERMINAL_PROMPT'] == '0' and env['GIT_CONFIG_NOSYSTEM'] == '1'
+        assert env['GIT_CONFIG_GLOBAL'] == os.devnull
+        assert not any(k in env for k in ('GIT_DIR', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0'))
+        assert not Path(argv[argv.index('-C') + 1]).exists()
+    assert not (tmp_path / 'do-not-touch').exists()

@@ -115,7 +115,7 @@ def _public_git_snapshot(repository, ref, sources, *, remote=None):
             return result.stdout
 
         git("init", "--bare")
-        git("fetch", "--no-tags", "--depth=1", "--filter=blob:none", "--", 
+        git("fetch", "--no-tags", "--depth=1", "--filter=blob:none", "--",
             remote or "https://github.com/" + repository + ".git", ref)
         commit = git("rev-parse", "FETCH_HEAD^{commit}").decode().strip()
         _hex(commit, 40)
