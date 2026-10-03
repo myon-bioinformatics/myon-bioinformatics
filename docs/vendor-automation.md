@@ -67,11 +67,13 @@ an empty result is an explicit error.
 
 ## CI-only updates
 
-Normal consumer CI uses `check` and `materialize` at the recorded full commits.
-A boolean `workflow_dispatch` input can opt into `update` after restoring the
-locked files, followed by `check` and the existing consumer tests. Push/PR events
-and dispatches with that input false keep the locked versions. Run candidate
-modules only through the consumer's existing tests after verification.
+Consumer CI first uses `check` and `materialize` at the recorded full commits,
+then runs `update`, `check` and the existing tests automatically. No human
+manual-dispatch step is required. An ALM agent can use the same CLI sequence in
+its checkout. A dispatch input `vendor-mode` may select `locked` for an explicit
+baseline run; ordinary push/PR events and default dispatches use `update`.
+Resolve each allowlisted upstream ref once per command and record the resulting
+full SHA/blob/SHA-256 before testing. The executable updater itself stays pinned.
 
 Updates modify source/license/lock files only in the disposable CI checkout.
 They do not persist to main, create branches, push, open PRs or auto-merge. The
@@ -108,6 +110,6 @@ child `-c os.devnull`/rootdir concern and CLI/import/README issues remain separa
 checks; this automation PR does not claim they are all resolved.
 
 For each consumer: adopt a complete lock preserving current bytes first, migrate
-provenance checks, verify offline local tests, then wire CI placement and opt-in updates
+provenance checks, verify offline local tests, then wire CI placement and automatic updates
 to a reviewed shared-tool commit. Verify locked and candidate test runs. Current deployment/Pages and
 runtime dependency policies are unchanged.
