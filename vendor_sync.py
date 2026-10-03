@@ -231,7 +231,22 @@ def synchronize(manifest, root, mode, *, get=_get):
         else:
             data = target.read_bytes() if target.is_file() else None
             if data is None or git_blob(data) != item["blob_sha"] or hashlib.sha256(data).hexdigest() != item["sha256"]:
-                data = _raw(item, get)
+                key = item["repository"], item["commit"]
+                if key not in snapshots:
+                    try:
+                        data = _raw(item, get)
+                    except HTTPError as error:
+                        if not _limited(error):
+                            raise
+                        sources = [i["source"] for i in candidate["files"]
+                                   if (i["repository"], i["commit"]) == key]
+                        resolved, snapshots[key] = _public_git_snapshot(key[0], key[1], sources)
+                        if resolved != key[1]:
+                            raise ValueError("public Git commit does not match locked SHA")
+                if key in snapshots:
+                    blob, data = snapshots[key][item["source"]]
+                    if blob != item["blob_sha"]:
+                        raise ValueError("public Git blob does not match locked blob")
         _verify(item, data)
         pending.append((target, data))
     # Unchanged upstream bytes do not churn pins on unrelated upstream commits.

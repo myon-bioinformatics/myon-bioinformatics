@@ -44,6 +44,90 @@ def test_materialize_and_offline_check(tmp_path):
     assert not sync.synchronize(path.name, tmp_path, "materialize", get=no_network)["changed_paths"]
 
 
+@pytest.mark.parametrize("status", [403, 429])
+@pytest.mark.parametrize("mixed_commits", [False, True])
+def test_locked_materialize_rate_limit_uses_exact_public_git_commits(tmp_path, monkeypatch, status, mixed_commits):
+    from urllib.error import HTTPError
+    repo = tmp_path / "upstream"
+    repo.mkdir()
+    def git(*args):
+        return subprocess.check_output(["git", "-C", str(repo), *args]).decode().strip()
+    git("init", "-b", "main")
+    git("config", "user.name", "Fixture")
+    git("config", "user.email", "fixture@example.invalid")
+    (repo / "module.py").write_bytes(b"locked source\n")
+    (repo / "LICENSE").write_bytes(b"license\n")
+    git("add", "."); git("commit", "-m", "locked")
+    first = git("rev-parse", "HEAD")
+    # main moves: materialize must still retrieve the historical source.
+    (repo / "module.py").write_bytes(b"new source, not requested\n")
+    git("commit", "-am", "new main")
+    second = git("rev-parse", "HEAD")
+    entries = [entry(b"locked source\n", "module.py", "vendor/module.py"),
+               entry(b"license\n", "LICENSE", "vendor/LICENSE")]
+    entries[0]["commit"] = first
+    entries[1]["commit"] = second if mixed_commits else first
+    path, _ = lock(tmp_path, entries)
+    before = path.read_bytes()
+    actual = sync._public_git_snapshot
+    calls = []
+    def snapshot(repository, commit, sources):
+        calls.append(commit)
+        return actual(repository, commit, sources, remote=repo.as_uri())
+    monkeypatch.setattr(sync, "_public_git_snapshot", snapshot)
+    urls = []
+    def limited(url):
+        urls.append(url)
+        raise HTTPError(url, status, "limited", {}, None)
+    sync.synchronize(path.name, tmp_path, "materialize", get=limited)
+    assert calls == ([first, second] if mixed_commits else [first])
+    assert len(urls) == len(calls)
+    assert all(url.startswith("https://raw.githubusercontent.com/") for url in urls)
+    assert (tmp_path / "vendor/module.py").read_bytes() == b"locked source\n"
+    assert (tmp_path / "vendor/LICENSE").read_bytes() == b"license\n"
+    assert path.read_bytes() == before
+    sync.synchronize(path.name, tmp_path, "check")
+
+
+@pytest.mark.parametrize("status", [404, 500])
+def test_locked_materialize_other_http_errors_do_not_fallback(tmp_path, monkeypatch, status):
+    from urllib.error import HTTPError
+    path, _ = lock(tmp_path)
+    before = path.read_bytes()
+    monkeypatch.setattr(sync, "_public_git_snapshot", lambda *args: pytest.fail("unexpected fallback"))
+    def fail(url):
+        raise HTTPError(url, status, "not a rate limit", {}, None)
+    with pytest.raises(HTTPError):
+        sync.synchronize(path.name, tmp_path, "materialize", get=fail)
+    assert path.read_bytes() == before
+    assert not (tmp_path / "vendor").exists()
+
+
+@pytest.mark.parametrize("failure", ["commit", "blob", "sha256", "git"])
+def test_locked_fallback_failure_is_exit_two_without_partial_writes(tmp_path, monkeypatch, capsys, failure):
+    from urllib.error import HTTPError
+    entries = [entry(), entry(source="LICENSE", destination="vendor/LICENSE")]
+    if failure == "sha256":
+        entries[1]["sha256"] = "0" * 64
+    path, _ = lock(tmp_path, entries)
+    before = path.read_bytes()
+    def limited(*args, **kwargs):
+        raise HTTPError("https://raw.githubusercontent.com/", 429, "limited", {}, None)
+    def snapshot(repository, commit, sources):
+        if failure == "git":
+            raise ValueError("public Git fetch/read failed")
+        files = {source: (sync.git_blob(b"old\n"), b"old\n") for source in sources}
+        if failure == "blob":
+            files["LICENSE"] = ("0" * 40, b"old\n")
+        return (NEW if failure == "commit" else OLD), files
+    monkeypatch.setattr(sync, "urlopen", limited)
+    monkeypatch.setattr(sync, "_public_git_snapshot", snapshot)
+    assert sync.main(["materialize", "--root", str(tmp_path)]) == 2
+    assert capsys.readouterr().err.startswith("vendor-sync:")
+    assert path.read_bytes() == before
+    assert not (tmp_path / "vendor").exists()
+
+
 @pytest.mark.parametrize("field", ["blob_sha", "sha256"])
 def test_bad_digest_leaves_all_files_and_lock_unchanged(tmp_path, field):
     entries = [entry(source="one.py", destination="vendor/one.py"),

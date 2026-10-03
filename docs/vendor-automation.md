@@ -54,6 +54,12 @@ whole download batch before writing; replacements are atomic per file, not a
 filesystem transaction. Run updates in a disposable clean checkout. Network,
 missing-file and verification failures are nonzero (CLI exit 2).
 
+For locked `materialize`, raw HTTP 403/429 also uses the anonymous public Git
+fallback at the exact locked commit. Snapshots are cached by repository and
+commit, so mixed historical pins remain independent. Returned commit/blob and
+downloaded SHA-256 must match the existing lock; the lock is never rewritten.
+Other HTTP errors remain failures, and the whole batch is verified before writes.
+
 Existing file permissions are retained; new files default to 0644. Manifest
 collisions and duplicate destinations are checked case-insensitively.
 The updater never imports candidate code or installs runtime dependencies. Upstream selection is not a compatibility guarantee: consumer CI evaluates the candidate in its disposable checkout. Files over 8 MiB are rejected; the scope is
