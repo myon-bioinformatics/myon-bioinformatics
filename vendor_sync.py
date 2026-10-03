@@ -9,12 +9,14 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import stat
+import subprocess
 import sys
 import tempfile
+from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __all__ = ["git_blob", "validate", "synchronize", "main"]
 
 SCHEMA = "vendor-lock/1"
@@ -90,14 +92,49 @@ def _get(url):
     headers = {"User-Agent": "vendor-sync/1"}
     if url.startswith("https://api.github.com/"):
         headers["Accept"] = "application/vnd.github+json"
-        token = os.environ.get("GH_TOKEN")
-        if token:
-            headers["Authorization"] = "Bearer " + token
     with urlopen(Request(url, headers=headers), timeout=30) as response:
         data = response.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise ValueError("download exceeds byte limit")
     return data
+
+
+def _public_git_snapshot(repository, ref, sources, *, remote=None):
+    """Read public Git objects in a temporary bare repo on API rate limits."""
+    with tempfile.TemporaryDirectory(prefix="vendor-public-git-") as directory:
+        # Do not inherit repository selectors or injected credential/config state.
+        env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+        env.update(GIT_TERMINAL_PROMPT="0", GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+        command = ["git", "-c", "credential.helper=", "-c", "core.askPass=",
+                   "-c", "http.extraHeader=", "-C", directory]
+
+        def git(*args):
+            result = subprocess.run(command + list(args), env=env, capture_output=True, timeout=60)
+            if result.returncode:
+                raise ValueError("public Git fetch/read failed: " + result.stderr.decode("utf-8", "replace").strip())
+            return result.stdout
+
+        git("init", "--bare")
+        git("fetch", "--no-tags", "--depth=1", "--filter=blob:none", "--",
+            remote or "https://github.com/" + repository + ".git", ref)
+        commit = git("rev-parse", "FETCH_HEAD^{commit}").decode().strip()
+        _hex(commit, 40)
+        files = {}
+        for source in sources:
+            obj = commit + ":" + source
+            record = git("ls-tree", commit, "--", source).split(b"\t", 1)[0].split()
+            if len(record) != 3 or record[0] not in (b"100644", b"100755") or record[1] != b"blob":
+                raise ValueError("source must be a regular file")
+            blob = record[2].decode()
+            size = int(git("cat-file", "-s", obj))
+            if size > MAX_BYTES:
+                raise ValueError("download exceeds byte limit")
+            files[source] = (blob, git("cat-file", "blob", obj))
+        return commit, files
+
+
+def _limited(error):
+    return isinstance(error, HTTPError) and error.code in (403, 429)
 
 
 def _raw(item, get):
@@ -127,7 +164,8 @@ def synchronize(manifest, root, mode, *, get=_get):
 
     All downloads/digests are validated before any write. Files are replaced
     atomically individually; filesystem I/O failure can leave a partial batch.
-    No downloaded module is imported, and no Git mutation is performed here.
+    No downloaded module is imported. Public Git fallback only writes a temporary
+    bare object store; the consumer Git checkout and remote refs are untouched.
     """
     root = Path(root).resolve()
     manifest = _target(root, manifest)
@@ -145,6 +183,7 @@ def synchronize(manifest, root, mode, *, get=_get):
     candidate = copy.deepcopy(lock)
     pending = []
     commits = {}
+    snapshots = {}
     for item in candidate["files"]:
         target = _target(root, item["destination"])
         if mode == "check":
@@ -152,25 +191,42 @@ def synchronize(manifest, root, mode, *, get=_get):
             continue
         if mode == "update":
             key = item["repository"], item["ref"]
+            sources = [i["source"] for i in candidate["files"]
+                       if (i["repository"], i["ref"]) == key]
             if key not in commits:
                 url = "https://api.github.com/repos/{}/commits?sha={}&per_page=1".format(
                     key[0], quote(key[1], safe="")
                 )
-                listed = json.loads(get(url))
-                if not isinstance(listed, list) or not listed:
-                    raise ValueError("upstream ref has no commits")
-                commits[key] = listed[0]["sha"]
-                _hex(commits[key], 40)
+                try:
+                    listed = json.loads(get(url))
+                    if not isinstance(listed, list) or not listed:
+                        raise ValueError("upstream ref has no commits")
+                    commits[key] = listed[0]["sha"]
+                    _hex(commits[key], 40)
+                except HTTPError as error:
+                    if not _limited(error):
+                        raise
+                    commits[key], snapshots[key] = _public_git_snapshot(key[0], key[1], sources)
             item["commit"] = commits[key]
-            url = "https://api.github.com/repos/{}/contents/{}?ref={}".format(
-                item["repository"], quote(item["source"], safe="/"), item["commit"]
-            )
-            metadata = json.loads(get(url))
-            if metadata.get("type") != "file":
-                raise ValueError("source must be a regular file")
-            item["blob_sha"] = metadata["sha"]
-            _hex(item["blob_sha"], 40)
-            data = _raw(item, get)
+            if key not in snapshots:
+                url = "https://api.github.com/repos/{}/contents/{}?ref={}".format(
+                    item["repository"], quote(item["source"], safe="/"), item["commit"]
+                )
+                try:
+                    metadata = json.loads(get(url))
+                    if metadata.get("type") != "file":
+                        raise ValueError("source must be a regular file")
+                    item["blob_sha"] = metadata["sha"]
+                    _hex(item["blob_sha"], 40)
+                    data = _raw(item, get)
+                except HTTPError as error:
+                    if not _limited(error):
+                        raise
+                    resolved, snapshots[key] = _public_git_snapshot(key[0], commits[key], sources)
+                    if resolved != commits[key]:
+                        raise ValueError("public Git commit does not match resolved SHA")
+            if key in snapshots:
+                item["blob_sha"], data = snapshots[key][item["source"]]
             item["sha256"] = hashlib.sha256(data).hexdigest()
         else:
             data = target.read_bytes() if target.is_file() else None
@@ -206,7 +262,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         result = synchronize(args.manifest, args.root, args.mode)
-    except (OSError, ValueError, KeyError, TypeError) as error:
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         print("vendor-sync: " + str(error), file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False))
