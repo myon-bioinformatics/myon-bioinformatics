@@ -44,6 +44,12 @@ jobs:
               echo "New ref push has no diff base; inspect the pushed commit, including merge parents, for workflow changes."
               git diff-tree --root -m --no-commit-id --name-only -r "$PUSH_HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml' \
                 | sort -u > /tmp/actionlint-files
+            elif ! git cat-file -e "${PUSH_BEFORE_SHA}^{commit}" 2>/dev/null; then
+              # A rewritten branch can leave the old push SHA outside fetched history.
+              # Lint all checked-out workflows: head-only changes can miss older edits.
+              git cat-file -e "${PUSH_HEAD_SHA}^{commit}"
+              echo "::warning::Push diff base is unavailable; validating all tracked workflows in this checkout."
+              git ls-files -- '.github/workflows/*.yml' '.github/workflows/*.yaml' > /tmp/actionlint-files
             else
               git diff --name-only "$PUSH_BEFORE_SHA" "$PUSH_HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml' > /tmp/actionlint-files
             fi

@@ -6,12 +6,14 @@ on:
       - "**.py"
       - "tests/**"
       - ".github/workflows/python-tests.yml"
+      - ".github/workflows/reusable-actionlint.yml"
   push:
     branches: [main]
     paths:
       - "**.py"
       - "tests/**"
       - ".github/workflows/python-tests.yml"
+      - ".github/workflows/reusable-actionlint.yml"
 
 permissions:
   contents: read
