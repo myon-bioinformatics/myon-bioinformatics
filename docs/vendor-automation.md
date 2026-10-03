@@ -56,12 +56,18 @@ missing-file and verification failures are nonzero (CLI exit 2).
 
 Existing file permissions are retained; new files default to 0644. Manifest
 collisions and duplicate destinations are checked case-insensitively.
-The updater never imports candidate code, invokes Git, or installs runtime
-dependencies. Upstream selection is not a compatibility guarantee: consumer CI evaluates the candidate in its disposable checkout. Files over 8 MiB are rejected; the scope is
+The updater never imports candidate code or installs runtime dependencies. Upstream selection is not a compatibility guarantee: consumer CI evaluates the candidate in its disposable checkout. Files over 8 MiB are rejected; the scope is
 small public shared Python modules and their licenses, not models or packages.
 Only **public upstream repositories** are supported. Raw downloads and metadata
 calls are anonymous; no environment token is read or sent. Anonymous API rate
-limits apply to explicit updates; a failed download fails the command. Slash-containing refs are encoded as a `sha` query parameter on the
+limits apply to updates. HTTP 403/429 switches to anonymous public Git fetch
+in a temporary bare object store, reading the same allowlisted regular files
+and verifying their Git blob identities. Git must be available for this path
+(as it is on Actions runners). User credential helpers/config are disabled.
+If metadata already resolved a full SHA, the Git fetch uses and verifies that
+exact SHA. No consumer Git changes or remote writes occur. Other download
+errors, failed Git reads and digest mismatches remain nonzero; old bytes are
+never substituted to make CI pass. Slash-containing refs are encoded as a `sha` query parameter on the
 lightweight commit-list endpoint (`per_page=1`), which omits commit patches;
 an empty result is an explicit error.
 

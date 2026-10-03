@@ -196,3 +196,69 @@ def test_slash_ref_query_and_empty_commit_list(tmp_path):
     with pytest.raises(ValueError, match="no commits"):
         sync.synchronize(path.name, tmp_path, "update", get=lambda url: b"[]")
     assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize('limited_at', ['resolve', 'metadata'])
+def test_rate_limit_falls_back_to_public_git_without_repo_writes(tmp_path, monkeypatch, limited_at):
+    from urllib.error import HTTPError
+
+    consumer = tmp_path / 'consumer'
+    consumer.mkdir()
+    path, _ = lock(consumer, [entry(), entry(source='LICENSE', destination='vendor/LICENSE')])
+    sync.synchronize(path.name, consumer, 'materialize', get=lambda url: b'old\n')
+    upstream_repo = tmp_path / 'upstream'
+    upstream_repo.mkdir()
+
+    def git(*args):
+        return subprocess.check_output(['git', '-C', str(upstream_repo), *args]).decode().strip()
+
+    git('init', '-b', 'main')
+    git('config', 'user.name', 'Fixture')
+    git('config', 'user.email', 'fixture@example.invalid')
+    (upstream_repo / 'scripts').mkdir()
+    (upstream_repo / 'scripts/adapter.py').write_bytes(b'new source\n')
+    (upstream_repo / 'LICENSE').write_bytes(b'new license\n')
+    git('add', '.')
+    git('commit', '-m', 'candidate')
+    sha = git('rev-parse', 'HEAD')
+    refs_before = git('show-ref')
+    snapshot = sync._public_git_snapshot
+    fallback_refs = []
+
+    def public_snapshot(repository, ref, sources):
+        fallback_refs.append(ref)
+        return snapshot(repository, ref, sources, remote=upstream_repo.as_uri())
+
+    def limited(url):
+        if limited_at == 'metadata' and '/commits?' in url:
+            return json.dumps([{'sha': sha}]).encode()
+        raise HTTPError(url, 403, 'rate limit exceeded', {}, None)
+
+    monkeypatch.setattr(sync, '_public_git_snapshot', public_snapshot)
+    result = sync.synchronize(path.name, consumer, 'update', get=limited)
+    assert fallback_refs == (['main'] if limited_at == 'resolve' else [sha])
+    assert result['changed_paths'] == ['vendor/adapter.py', 'vendor/LICENSE', path.name]
+    assert (consumer / 'vendor/adapter.py').read_bytes() == b'new source\n'
+    assert (consumer / 'vendor/LICENSE').read_bytes() == b'new license\n'
+    assert {i['commit'] for i in json.loads(path.read_text())['files']} == {sha}
+    sync.synchronize(path.name, consumer, 'check')
+    assert git('show-ref') == refs_before
+    assert not (consumer / '.git').exists()
+
+
+def test_rate_limit_git_failure_is_nonzero_without_fallback_to_old_bytes(tmp_path, monkeypatch, capsys):
+    from urllib.error import HTTPError
+
+    path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, 'materialize', get=lambda url: b'old\n')
+    before = path.read_bytes()
+    def rate_limited(request, timeout):
+        raise HTTPError(request.full_url, 403, 'rate limit exceeded', {}, None)
+    def unavailable(*args):
+        raise ValueError('public Git fetch/read failed')
+    monkeypatch.setattr(sync, 'urlopen', rate_limited)
+    monkeypatch.setattr(sync, '_public_git_snapshot', unavailable)
+    assert sync.main(['update', '--root', str(tmp_path)]) == 2
+    assert 'public Git fetch/read failed' in capsys.readouterr().err
+    assert path.read_bytes() == before
+    assert (tmp_path / 'vendor/adapter.py').read_bytes() == b'old\n'
