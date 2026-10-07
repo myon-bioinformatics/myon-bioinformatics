@@ -39,6 +39,7 @@ python vendor_sync.py --help
 python vendor_sync.py check --root . --manifest vendor.lock.json
 python vendor_sync.py materialize --root . --manifest vendor.lock.json
 python vendor_sync.py update --root . --manifest vendor.lock.json
+python vendor_sync.py promote --root . --manifest vendor.lock.json
 ```
 
 `--help` exits before filesystem/network activity. `check` is offline and fails
@@ -49,9 +50,14 @@ GitHub file metadata against downloaded Git blob hashes, records SHA-256, then
 places the candidate files and updates the lock. It first checks every current
 file against the old lock, rejecting missing files or local edits before any
 network call. Use `materialize` explicitly if restoring missing/incorrect locked
-copies is intended; updates never silently repair local edits. Both write modes validate the
+copies is intended; updates never silently repair local edits. Both existing write modes validate the
 whole download batch before writing; replacements are atomic per file, not a
-filesystem transaction. Run updates in a disposable clean checkout. Network,
+filesystem transaction. `promote` is the explicit reviewed-baseline operation:
+it uses the same update resolver, verifies the promoted baseline offline, and
+prints a deterministic `vendor-promotion/1` receipt containing old/new commit,
+Git blob SHA and SHA-256 identities. Promotion backs up the locked manifest and
+all locked destination bytes and rolls them back if update or verification
+fails. It never commits, pushes, opens a PR, or writes to GitHub. Run updates in a disposable clean checkout. Network,
 missing-file and verification failures are nonzero (CLI exit 2).
 
 For locked `materialize`, raw HTTP 403/429 also uses the anonymous public Git
