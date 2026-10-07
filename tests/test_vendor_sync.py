@@ -235,7 +235,7 @@ def test_cli_help_has_no_side_effects_and_missing_file_is_red(tmp_path):
     script = Path(sync.__file__).resolve()
     help_result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
     assert help_result.returncode == 0
-    assert "{check,materialize,update,promote}" in help_result.stdout
+    assert "{check,materialize,update,promote,evidence}" in help_result.stdout
     assert not list(tmp_path.iterdir())
     result = subprocess.run([sys.executable, str(script), "check"], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 2
@@ -525,7 +525,7 @@ def test_promote_cli_help_exposes_explicit_mode(tmp_path):
     script = Path(sync.__file__).resolve()
     result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 0
-    assert "{check,materialize,update,promote}" in result.stdout
+    assert "{check,materialize,update,promote,evidence}" in result.stdout
 
 
 def test_promote_cli_success_path_emits_receipt(tmp_path, capsys):
@@ -573,3 +573,39 @@ def test_promote_rolls_back_partial_filesystem_write_failure(tmp_path, monkeypat
     assert (tmp_path / "vendor/one.py").read_bytes() == before_one
     assert (tmp_path / "vendor/two.py").read_bytes() == before_two
     sync.synchronize(path.name, tmp_path, "check")
+
+
+def test_evidence_derives_locked_and_candidate_membership_from_lock(tmp_path):
+    entries = [entry(source="z.py", destination="vendor/z.py"),
+               entry(source="LICENSE", destination="vendor/LICENSE")]
+    path, _ = lock(tmp_path, entries)
+    result = sync.evidence(path.name, tmp_path)
+    assert result == {
+        "schema": "vendor-evidence/1",
+        "locked": ["vendor.lock.json", "vendor/LICENSE", "vendor/z.py"],
+        "candidate": ["vendor.lock.json", "vendor/LICENSE", "vendor/z.py"],
+        "runtime": [],
+    }
+
+
+def test_evidence_keeps_runtime_receipts_separate_and_deterministic(tmp_path):
+    path, _ = lock(tmp_path)
+    result = sync.evidence(path.name, tmp_path, runtime=["reports/z.json", "vendor-promotion.json", "reports/z.json"])
+    assert result["runtime"] == ["reports/z.json", "vendor-promotion.json"]
+    assert "vendor-promotion.json" not in result["locked"]
+    assert result["candidate"] == result["locked"]
+
+
+def test_evidence_rejects_runtime_collision_with_locked_membership(tmp_path):
+    path, _ = lock(tmp_path)
+    with pytest.raises(ValueError, match="collides"):
+        sync.evidence(path.name, tmp_path, runtime=["vendor/adapter.py"])
+
+
+def test_evidence_cli_is_offline_machine_readable(tmp_path, capsys):
+    path, _ = lock(tmp_path)
+    def no_network(url): pytest.fail("network used")
+    assert sync.main(["evidence", "--root", str(tmp_path), "--runtime-evidence", "vendor-promotion.json"], get=no_network) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["schema"] == "vendor-evidence/1"
+    assert result["runtime"] == ["vendor-promotion.json"]
