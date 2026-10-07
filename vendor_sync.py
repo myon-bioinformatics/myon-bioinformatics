@@ -281,8 +281,17 @@ def promote(manifest, root, *, get=_get):
     manifest_path = _target(root, manifest)
     before = validate(json.loads(manifest_path.read_text(encoding="utf-8")))
     before_by_destination = {item["destination"]: copy.deepcopy(item) for item in before["files"]}
-    result = synchronize(manifest, root, "update", get=get)
-    synchronize(manifest, root, "check", get=lambda url: (_ for _ in ()).throw(AssertionError("network used during promoted baseline check")))
+    backups = {manifest_path: manifest_path.read_bytes()}
+    for item in before["files"]:
+        target = _target(root, item["destination"])
+        backups[target] = target.read_bytes()
+    try:
+        result = synchronize(manifest, root, "update", get=get)
+        synchronize(manifest, root, "check", get=lambda url: (_ for _ in ()).throw(AssertionError("network used during promoted baseline check")))
+    except BaseException:
+        for target, data in backups.items():
+            _atomic(target, data)
+        raise
     after = validate(json.loads(manifest_path.read_text(encoding="utf-8")))
     changes = []
     for item in after["files"]:
