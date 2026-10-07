@@ -4,13 +4,14 @@ import argparse
 import datetime
 import json
 import os
-import pathlib
 import urllib.error
 import urllib.parse
 import urllib.request
 
 API = "https://api.github.com"
 OWNER = "myon-bioinformatics"
+__version__ = "0.1.0"
+__all__ = ["repository", "observe", "render", "main"]
 
 def get(path):
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "ci-status/0.1",
@@ -26,7 +27,7 @@ def repository(name):
     if not name or "/" in name and name.count("/") != 1:
         raise ValueError("invalid repository")
     parts = (name if "/" in name else OWNER + "/" + name).split("/")
-    if not all(p and all(c.isalnum() or c in "-_." for c in p) for p in parts):
+    if not all(p not in ("", ".", "..") and all(c.isascii() and (c.isalnum() or c in "-_.") for c in p) for p in parts):
         raise ValueError("invalid repository")
     return "/".join(parts)
 
@@ -58,7 +59,9 @@ def observe(name, pr=None):
             for x in checks]
     pending = sum(x["status"] != "completed" for x in rows)
     failed = sum(x["conclusion"] in ("failure", "timed_out", "action_required", "startup_failure") for x in rows)
-    state = "FAILED" if failed else "RUNNING" if pending else "NO CHECKS" if not rows else "COMPLETE"
+    cancelled = sum(x["conclusion"] in ("cancelled", "stale") for x in rows)
+    incomplete = sum(x["status"] == "completed" and x["conclusion"] in (None, "skipped", "neutral") for x in rows)
+    state = "FAILED" if failed else "RUNNING" if pending else "INCOMPLETE" if cancelled or incomplete else "NO CHECKS" if not rows else "COMPLETE"
     return {"repository": name, "target": target, "head_sha": sha, "state": state,
             "completed": len(rows) - pending, "total": len(rows), "checks": rows}
 
