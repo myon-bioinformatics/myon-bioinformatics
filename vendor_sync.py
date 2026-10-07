@@ -316,14 +316,14 @@ def promote(manifest, root, *, get=_get):
     }
 
 
-def main(argv=None):
+def main(argv=None, *, get=_get):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("check", "materialize", "update", "promote"))
     parser.add_argument("--manifest", default="vendor.lock.json")
     parser.add_argument("--root", default=".")
     args = parser.parse_args(argv)
     try:
-        result = promote(args.manifest, args.root) if args.mode == "promote" else synchronize(args.manifest, args.root, args.mode)
+        result = promote(args.manifest, args.root, get=get) if args.mode == "promote" else synchronize(args.manifest, args.root, args.mode, get=get)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         print("vendor-sync: " + str(error), file=sys.stderr)
         return 2
