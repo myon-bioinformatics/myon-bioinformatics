@@ -8,8 +8,9 @@ import ci_status as ci
 class StatusTests(unittest.TestCase):
     def test_repository_normalization(self):
         self.assertEqual(ci.repository("Ironmate"), "myon-bioinformatics/Ironmate")
-        with self.assertRaises(ValueError):
-            ci.repository("../../x")
+        for name in ("../../x", "..", "a/..", "./x", "a/."):
+            with self.assertRaises(ValueError):
+                ci.repository(name)
 
     def test_pr_progress(self):
         def fake(path):
@@ -32,6 +33,16 @@ class StatusTests(unittest.TestCase):
                 {"id": 3, "name": "test", "status": "completed", "conclusion": "failure"}]}
         with patch.object(ci, "get", side_effect=fake):
             self.assertEqual(ci.observe("Ironmate")["state"], "FAILED")
+
+    def test_non_green_conclusions(self):
+        for conclusion in ("cancelled", "stale", "skipped", "neutral", None):
+            def fake(path):
+                if "/pulls/7" in path:
+                    return {"head": {"sha": "a" * 40}}
+                return {"total_count": 1, "check_runs": [
+                    {"id": 1, "name": "test", "status": "completed", "conclusion": conclusion}]}
+            with patch.object(ci, "get", side_effect=fake):
+                self.assertEqual(ci.observe("Ironmate", 7)["state"], "INCOMPLETE")
 
     def test_json_cli(self):
         with patch.object(ci, "observe", return_value={"repository": "o/r", "checks": []}):
