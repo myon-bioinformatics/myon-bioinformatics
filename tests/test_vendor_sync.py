@@ -528,6 +528,16 @@ def test_promote_cli_help_exposes_explicit_mode(tmp_path):
     assert "{check,materialize,update,promote}" in result.stdout
 
 
+def test_promote_cli_success_path_emits_receipt(tmp_path, capsys):
+    path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    assert sync.main(["promote", "--root", str(tmp_path)], get=upstream(b"new\n", [])) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["schema"] == "vendor-promotion/1"
+    assert receipt["promoted"][0]["new_commit"] == NEW
+    sync.synchronize(path.name, tmp_path, "check")
+
+
 def test_promote_receipt_is_machine_readable(tmp_path):
     path, _ = lock(tmp_path)
     sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
