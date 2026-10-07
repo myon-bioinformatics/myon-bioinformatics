@@ -235,7 +235,7 @@ def test_cli_help_has_no_side_effects_and_missing_file_is_red(tmp_path):
     script = Path(sync.__file__).resolve()
     help_result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
     assert help_result.returncode == 0
-    assert "{check,materialize,update,promote}" in help_result.stdout
+    assert "{check,materialize,update,promote,enroll}" in help_result.stdout
     assert not list(tmp_path.iterdir())
     result = subprocess.run([sys.executable, str(script), "check"], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 2
@@ -525,7 +525,7 @@ def test_promote_cli_help_exposes_explicit_mode(tmp_path):
     script = Path(sync.__file__).resolve()
     result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 0
-    assert "{check,materialize,update,promote}" in result.stdout
+    assert "{check,materialize,update,promote,enroll}" in result.stdout
 
 
 def test_promote_cli_success_path_emits_receipt(tmp_path, capsys):
@@ -572,4 +572,214 @@ def test_promote_rolls_back_partial_filesystem_write_failure(tmp_path, monkeypat
     assert path.read_bytes() == before_lock
     assert (tmp_path / "vendor/one.py").read_bytes() == before_one
     assert (tmp_path / "vendor/two.py").read_bytes() == before_two
+    sync.synchronize(path.name, tmp_path, "check")
+
+
+def test_enroll_places_only_missing_locked_files(tmp_path):
+    entries = [entry(source="one.py", destination="vendor/one.py"),
+               entry(source="two.py", destination="vendor/two.py")]
+    path, _ = lock(tmp_path, entries)
+    (tmp_path / "vendor").mkdir()
+    (tmp_path / "vendor/one.py").write_bytes(b"old\n")
+    result = sync.synchronize(path.name, tmp_path, "enroll", get=lambda url: b"old\n")
+    assert result["changed_paths"] == ["vendor/two.py"]
+    assert (tmp_path / "vendor/one.py").read_bytes() == b"old\n"
+    assert (tmp_path / "vendor/two.py").read_bytes() == b"old\n"
+    sync.synchronize(path.name, tmp_path, "check")
+
+
+@pytest.mark.parametrize("missing_first", [False, True])
+def test_enroll_rejects_existing_mismatch_before_network_or_write(tmp_path, missing_first):
+    entries = [entry(source="one.py", destination="vendor/one.py"),
+               entry(source="two.py", destination="vendor/two.py")]
+    if missing_first:
+        entries.reverse()
+    path, _ = lock(tmp_path, entries)
+    (tmp_path / "vendor").mkdir()
+    (tmp_path / "vendor/one.py").write_bytes(b"local edit\n")
+    with pytest.raises(ValueError, match="digest mismatch"):
+        sync.synchronize(path.name, tmp_path, "enroll", get=lambda url: pytest.fail("network used"))
+    assert (tmp_path / "vendor/one.py").read_bytes() == b"local edit\n"
+    assert not (tmp_path / "vendor/two.py").exists()
+
+
+def test_enroll_is_noop_when_all_locked_files_exist(tmp_path, monkeypatch):
+    path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    target = tmp_path / "vendor/adapter.py"
+    before = target.stat()
+    monkeypatch.setattr(sync, "_atomic", lambda *args: pytest.fail("replacement used"))
+    monkeypatch.setattr(sync, "_create", lambda *args: pytest.fail("creation used"))
+    result = sync.synchronize(path.name, tmp_path, "enroll", get=lambda url: pytest.fail("network used"))
+    assert result["changed_paths"] == []
+    after = target.stat()
+    assert (after.st_ino, after.st_mtime_ns, after.st_mode) == (before.st_ino, before.st_mtime_ns, before.st_mode)
+
+
+def test_enroll_download_failure_leaves_all_missing_files_absent(tmp_path):
+    entries = [entry(source="one.py", destination="vendor/one.py"),
+               entry(source="two.py", destination="vendor/two.py")]
+    path, _ = lock(tmp_path, entries)
+    calls = 0
+    def getter(url):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("second download failed")
+        return b"old\n"
+    with pytest.raises(OSError, match="second download failed"):
+        sync.synchronize(path.name, tmp_path, "enroll", get=getter)
+    assert not (tmp_path / "vendor/one.py").exists()
+    assert not (tmp_path / "vendor/two.py").exists()
+
+
+def test_enroll_rejects_symlink_destination_before_network(tmp_path):
+    path, _ = lock(tmp_path)
+    outside = tmp_path / "outside.py"
+    outside.write_bytes(b"old\n")
+    target = tmp_path / "vendor/adapter.py"
+    target.parent.mkdir()
+    try:
+        target.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    with pytest.raises(ValueError, match="symlink destination"):
+        sync.synchronize(path.name, tmp_path, "enroll", get=lambda url: pytest.fail("network used"))
+    assert outside.read_bytes() == b"old\n"
+
+
+@pytest.mark.parametrize("status", [403, 429])
+def test_enroll_fallback_fetches_only_initially_missing_sources(tmp_path, monkeypatch, status):
+    from urllib.error import HTTPError
+    entries = [entry(source="existing.py", destination="vendor/existing.py"),
+               entry(source="module.py", destination="vendor/module.py"),
+               entry(source="LICENSE", destination="vendor/LICENSE")]
+    path, _ = lock(tmp_path, entries)
+    (tmp_path / "vendor").mkdir()
+    existing = tmp_path / "vendor/existing.py"
+    existing.write_bytes(b"old\n")
+    before = existing.stat()
+    snapshots = []
+    urls = []
+    def snapshot(repository, commit, sources):
+        snapshots.append((repository, commit, sources))
+        assert sources == ["module.py", "LICENSE"]
+        return commit, {source: (sync.git_blob(b"old\n"), b"old\n") for source in sources}
+    def limited(url):
+        urls.append(url)
+        raise HTTPError(url, status, "limited", {}, None)
+    monkeypatch.setattr(sync, "_public_git_snapshot", snapshot)
+    result = sync.synchronize(path.name, tmp_path, "enroll", get=limited)
+    assert snapshots == [(entries[0]["repository"], OLD, ["module.py", "LICENSE"])]
+    assert urls == [f"https://raw.githubusercontent.com/myon-bioinformatics/xprobe/{OLD}/module.py"]
+    assert result["changed_paths"] == ["vendor/module.py", "vendor/LICENSE"]
+    after = existing.stat()
+    assert (after.st_ino, after.st_mtime_ns, after.st_mode) == (before.st_ino, before.st_mtime_ns, before.st_mode)
+    sync.synchronize(path.name, tmp_path, "check")
+
+
+@pytest.mark.parametrize("field", ["blob_sha", "sha256"])
+def test_enroll_second_digest_failure_leaves_all_destinations_absent(tmp_path, field):
+    entries = [entry(source="one.py", destination="vendor/one.py"),
+               entry(source="two.py", destination="vendor/two.py")]
+    entries[1][field] = "0" * (40 if field == "blob_sha" else 64)
+    path, _ = lock(tmp_path, entries)
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match="digest mismatch"):
+        sync.synchronize(path.name, tmp_path, "enroll", get=lambda url: b"old\n")
+    assert not (tmp_path / "vendor").exists()
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("late_destination", ["vendor/one.py", "vendor/two.py"])
+@pytest.mark.parametrize("late_data", [b"local edit\n", b"old\n"])
+def test_enroll_rechecks_destinations_created_during_downloads(tmp_path, late_destination, late_data):
+    entries = [entry(source="one.py", destination="vendor/one.py"),
+               entry(source="two.py", destination="vendor/two.py")]
+    path, _ = lock(tmp_path, entries)
+    late = tmp_path / late_destination
+    calls = []
+    def get(url):
+        if not calls:
+            late.parent.mkdir()
+            late.write_bytes(late_data)
+        calls.append(url)
+        return b"old\n"
+    if late_data != b"old\n":
+        with pytest.raises(ValueError, match="digest mismatch"):
+            sync.synchronize(path.name, tmp_path, "enroll", get=get)
+        assert sorted(p.relative_to(tmp_path).as_posix() for p in late.parent.iterdir()) == [late_destination]
+    else:
+        result = sync.synchronize(path.name, tmp_path, "enroll", get=get)
+        assert result["changed_paths"] == [i["destination"] for i in entries if i["destination"] != late_destination]
+        sync.synchronize(path.name, tmp_path, "check")
+    assert late.read_bytes() == late_data
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("late_data", [b"local edit\n", b"old\n"])
+def test_enroll_create_never_replaces_file_at_install_boundary(tmp_path, monkeypatch, late_data):
+    path, _ = lock(tmp_path)
+    target = tmp_path / "vendor/adapter.py"
+    link = sync.os.link
+    calls = []
+    def appearing_file(source, destination):
+        assert Path(destination) == target
+        target.write_bytes(late_data)
+        calls.append(destination)
+        return link(source, destination)
+    monkeypatch.setattr(sync.os, "link", appearing_file)
+    if late_data != b"old\n":
+        with pytest.raises(ValueError, match="digest mismatch"):
+            sync.synchronize(path.name, tmp_path, "enroll", get=lambda url: b"old\n")
+    else:
+        result = sync.synchronize(path.name, tmp_path, "enroll", get=lambda url: b"old\n")
+        assert result["changed_paths"] == []
+        sync.synchronize(path.name, tmp_path, "check")
+    assert len(calls) == 1
+    assert target.read_bytes() == late_data
+    assert list(target.parent.iterdir()) == [target]
+
+
+def test_enroll_rejects_parent_symlink_created_during_download_before_writes(tmp_path):
+    path, _ = lock(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    def get(url):
+        try:
+            (tmp_path / "vendor").symlink_to(outside, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            pytest.skip("symlinks unavailable")
+        return b"old\n"
+    with pytest.raises(ValueError, match="symlink destination"):
+        sync.synchronize(path.name, tmp_path, "enroll", get=get)
+    assert list(outside.iterdir()) == []
+
+
+def test_enroll_partial_filesystem_failure_can_resume_without_rewriting(tmp_path, monkeypatch):
+    entries = [entry(source="one.py", destination="vendor/one.py"),
+               entry(source="two.py", destination="vendor/two.py")]
+    path, _ = lock(tmp_path, entries)
+    create = sync._create
+    def fail_second(target, data):
+        if target.name == "two.py":
+            raise OSError("second placement failed")
+        return create(target, data)
+    monkeypatch.setattr(sync, "_create", fail_second)
+    with pytest.raises(OSError, match="second placement failed"):
+        sync.synchronize(path.name, tmp_path, "enroll", get=lambda url: b"old\n")
+    first = tmp_path / "vendor/one.py"
+    before = first.stat()
+    assert first.read_bytes() == b"old\n"
+    assert not (tmp_path / "vendor/two.py").exists()
+    monkeypatch.setattr(sync, "_create", create)
+    urls = []
+    def get(url):
+        urls.append(url)
+        return b"old\n"
+    result = sync.synchronize(path.name, tmp_path, "enroll", get=get)
+    assert result["changed_paths"] == ["vendor/two.py"]
+    assert len(urls) == 1 and urls[0].endswith("/two.py")
+    after = first.stat()
+    assert (after.st_ino, after.st_mtime_ns, after.st_mode) == (before.st_ino, before.st_mtime_ns, before.st_mode)
     sync.synchronize(path.name, tmp_path, "check")
