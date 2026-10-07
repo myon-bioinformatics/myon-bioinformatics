@@ -525,7 +525,7 @@ def test_promote_cli_help_exposes_explicit_mode(tmp_path):
     script = Path(sync.__file__).resolve()
     result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 0
-    assert "{check,materialize,update,promote}" in result.stdout
+    assert "{check,materialize,update,promote,enroll}" in result.stdout
 
 
 def test_promote_cli_success_path_emits_receipt(tmp_path, capsys):
@@ -622,3 +622,18 @@ def test_enroll_download_failure_leaves_all_missing_files_absent(tmp_path):
         sync.synchronize(path.name, tmp_path, "enroll", get=getter)
     assert not (tmp_path / "vendor/one.py").exists()
     assert not (tmp_path / "vendor/two.py").exists()
+
+
+def test_enroll_rejects_symlink_destination_before_network(tmp_path):
+    path, _ = lock(tmp_path)
+    outside = tmp_path / "outside.py"
+    outside.write_bytes(b"old\n")
+    target = tmp_path / "vendor/adapter.py"
+    target.parent.mkdir()
+    try:
+        target.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    with pytest.raises(ValueError, match="symlink destination"):
+        sync.synchronize(path.name, tmp_path, "enroll", get=lambda url: pytest.fail("network used"))
+    assert outside.read_bytes() == b"old\n"
