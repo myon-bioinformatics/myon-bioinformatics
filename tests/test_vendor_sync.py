@@ -536,3 +536,30 @@ def test_promote_receipt_is_machine_readable(tmp_path):
     decoded = json.loads(encoded)
     assert decoded["schema"] == "vendor-promotion/1"
     assert decoded["promoted"][0]["new_commit"] == NEW
+
+
+def test_promote_rolls_back_partial_filesystem_write_failure(tmp_path, monkeypatch):
+    entries = [entry(source="one.py", destination="vendor/one.py"),
+               entry(source="two.py", destination="vendor/two.py")]
+    path, _ = lock(tmp_path, entries)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    before_lock = path.read_bytes()
+    before_one = (tmp_path / "vendor/one.py").read_bytes()
+    before_two = (tmp_path / "vendor/two.py").read_bytes()
+    real_atomic = sync._atomic
+    writes = 0
+    failed = False
+    def flaky(target, data):
+        nonlocal writes, failed
+        writes += 1
+        if not failed and writes == 2:
+            failed = True
+            raise OSError("simulated second write failure")
+        return real_atomic(target, data)
+    monkeypatch.setattr(sync, "_atomic", flaky)
+    with pytest.raises(OSError, match="simulated second write failure"):
+        sync.promote(path.name, tmp_path, get=upstream(b"new\n", []))
+    assert path.read_bytes() == before_lock
+    assert (tmp_path / "vendor/one.py").read_bytes() == before_one
+    assert (tmp_path / "vendor/two.py").read_bytes() == before_two
+    sync.synchronize(path.name, tmp_path, "check")
