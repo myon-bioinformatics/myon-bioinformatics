@@ -42,6 +42,7 @@ python vendor_sync.py enroll --root . --manifest vendor.lock.json
 python vendor_sync.py materialize --root . --manifest vendor.lock.json
 python vendor_sync.py update --root . --manifest vendor.lock.json
 python vendor_sync.py promote --root . --manifest vendor.lock.json
+python vendor_sync.py evidence --root . --manifest vendor.lock.json --runtime-evidence vendor-promotion.json
 ```
 
 `--help` exits before filesystem/network activity. `check` is offline and fails
@@ -168,3 +169,6 @@ For each consumer: adopt a complete lock preserving current bytes first, migrate
 provenance checks, verify offline local tests, then wire CI placement and automatic updates
 to a reviewed shared-tool commit. Verify locked and candidate test runs. Current deployment/Pages and
 runtime dependency policies are unchanged.
+
+
+The offline `evidence` mode derives `vendor-evidence/1` locked/candidate paths from the validated lock and manifest. Generated runtime receipts are passed with repeatable `--runtime-evidence` and remain separate; path collisions fail. This operation does not access the network or require receipt files to exist.

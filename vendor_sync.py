@@ -17,7 +17,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 __version__ = "0.2.0"
-__all__ = ["git_blob", "validate", "synchronize", "promote", "main"]
+__all__ = ["git_blob", "validate", "evidence", "synchronize", "promote", "main"]
 
 SCHEMA = "vendor-lock/1"
 MAX_BYTES = 8 * 1024 * 1024
@@ -172,6 +172,32 @@ def _create(path, data):
     finally:
         if name and os.path.exists(name):
             os.unlink(name)
+
+
+def evidence(manifest, root, *, runtime=None):
+    """Derive deterministic evidence membership from a validated vendor lock."""
+    root = Path(root).resolve()
+    manifest_path = _target(root, manifest)
+    lock = validate(json.loads(manifest_path.read_text(encoding="utf-8")))
+    locked = [manifest_path.relative_to(root).as_posix()]
+    locked.extend(item["destination"] for item in lock["files"])
+    folded = [p.casefold() for p in locked]
+    if len(folded) != len(set(folded)):
+        raise ValueError("locked evidence membership collides")
+    locked.sort(key=lambda p: (p.casefold(), p))
+    runtime_paths = []
+    seen = set(folded)
+    for value in runtime or []:
+        path = _path(value)
+        key = path.casefold()
+        if key in folded:
+            raise ValueError("runtime evidence collides with locked membership: " + path)
+        if key not in seen:
+            runtime_paths.append(path)
+            seen.add(key)
+    runtime_paths.sort(key=lambda p: (p.casefold(), p))
+    return {"schema": "vendor-evidence/1", "locked": locked,
+            "candidate": list(locked), "runtime": runtime_paths}
 
 
 def synchronize(manifest, root, mode, *, get=_get):
@@ -368,12 +394,18 @@ def promote(manifest, root, *, get=_get):
 
 def main(argv=None, *, get=_get):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("check", "materialize", "update", "promote", "enroll"))
+    parser.add_argument("mode", choices=("check", "materialize", "update", "promote", "enroll", "evidence"))
     parser.add_argument("--manifest", default="vendor.lock.json")
     parser.add_argument("--root", default=".")
+    parser.add_argument("--runtime-evidence", action="append", default=[])
     args = parser.parse_args(argv)
     try:
-        result = promote(args.manifest, args.root, get=get) if args.mode == "promote" else synchronize(args.manifest, args.root, args.mode, get=get)
+        if args.mode == "promote":
+            result = promote(args.manifest, args.root, get=get)
+        elif args.mode == "evidence":
+            result = evidence(args.manifest, args.root, runtime=args.runtime_evidence)
+        else:
+            result = synchronize(args.manifest, args.root, args.mode, get=get)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         print("vendor-sync: " + str(error), file=sys.stderr)
         return 2

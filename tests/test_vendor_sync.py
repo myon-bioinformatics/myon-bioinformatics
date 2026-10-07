@@ -235,7 +235,7 @@ def test_cli_help_has_no_side_effects_and_missing_file_is_red(tmp_path):
     script = Path(sync.__file__).resolve()
     help_result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
     assert help_result.returncode == 0
-    assert "{check,materialize,update,promote,enroll}" in help_result.stdout
+    assert "{check,materialize,update,promote,enroll,evidence}" in help_result.stdout
     assert not list(tmp_path.iterdir())
     result = subprocess.run([sys.executable, str(script), "check"], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 2
@@ -525,7 +525,7 @@ def test_promote_cli_help_exposes_explicit_mode(tmp_path):
     script = Path(sync.__file__).resolve()
     result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 0
-    assert "{check,materialize,update,promote,enroll}" in result.stdout
+    assert "{check,materialize,update,promote,enroll,evidence}" in result.stdout
 
 
 def test_promote_cli_success_path_emits_receipt(tmp_path, capsys):
@@ -783,3 +783,24 @@ def test_enroll_partial_filesystem_failure_can_resume_without_rewriting(tmp_path
     after = first.stat()
     assert (after.st_ino, after.st_mtime_ns, after.st_mode) == (before.st_ino, before.st_mtime_ns, before.st_mode)
     sync.synchronize(path.name, tmp_path, "check")
+
+
+def test_evidence_membership_and_receipts(tmp_path):
+    entries = [entry(source="z.py", destination="vendor/z.py"),
+               entry(source="LICENSE", destination="vendor/LICENSE")]
+    path, _ = lock(tmp_path, entries)
+    result = sync.evidence(path.name, tmp_path, runtime=["reports/z.json", "vendor-promotion.json", "reports/z.json"])
+    assert result == {"schema": "vendor-evidence/1",
+                      "locked": ["vendor.lock.json", "vendor/LICENSE", "vendor/z.py"],
+                      "candidate": ["vendor.lock.json", "vendor/LICENSE", "vendor/z.py"],
+                      "runtime": ["reports/z.json", "vendor-promotion.json"]}
+    with pytest.raises(ValueError, match="collides"):
+        sync.evidence(path.name, tmp_path, runtime=["vendor/z.py"])
+
+
+def test_evidence_cli_offline(tmp_path, capsys):
+    path, _ = lock(tmp_path)
+    def no_network(url):
+        pytest.fail("network used")
+    assert sync.main(["evidence", "--root", str(tmp_path), "--runtime-evidence", "vendor-promotion.json"], get=no_network) == 0
+    assert json.loads(capsys.readouterr().out)["runtime"] == ["vendor-promotion.json"]
