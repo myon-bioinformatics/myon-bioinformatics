@@ -235,7 +235,7 @@ def test_cli_help_has_no_side_effects_and_missing_file_is_red(tmp_path):
     script = Path(sync.__file__).resolve()
     help_result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
     assert help_result.returncode == 0
-    assert "{check,materialize,update}" in help_result.stdout
+    assert "{check,materialize,update,promote}" in help_result.stdout
     assert not list(tmp_path.iterdir())
     result = subprocess.run([sys.executable, str(script), "check"], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 2
@@ -521,13 +521,18 @@ def test_promote_resolution_failure_leaves_baseline_unchanged(tmp_path):
     assert (tmp_path / "vendor/adapter.py").read_bytes() == before_file
 
 
-def test_promote_cli_is_explicit_and_machine_readable(tmp_path, monkeypatch, capsys):
+def test_promote_cli_help_exposes_explicit_mode(tmp_path):
+    script = Path(sync.__file__).resolve()
+    result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "{check,materialize,update,promote}" in result.stdout
+
+
+def test_promote_receipt_is_machine_readable(tmp_path):
     path, _ = lock(tmp_path)
     sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
-    monkeypatch.setattr(sync, "_get", upstream(b"new\n", []))
-    # main binds the default at function definition, so exercise the public
-    # promote result directly for deterministic JSON contract.
     result = sync.promote(path.name, tmp_path, get=upstream(b"new\n", []))
     encoded = json.dumps(result, sort_keys=True)
-    assert '"schema": "vendor-promotion/1"' in encoded
-    assert '"new_commit": "' + NEW + '"' in encoded
+    decoded = json.loads(encoded)
+    assert decoded["schema"] == "vendor-promotion/1"
+    assert decoded["promoted"][0]["new_commit"] == NEW
