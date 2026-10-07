@@ -235,7 +235,7 @@ def test_cli_help_has_no_side_effects_and_missing_file_is_red(tmp_path):
     script = Path(sync.__file__).resolve()
     help_result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
     assert help_result.returncode == 0
-    assert "{check,materialize,update,promote}" in help_result.stdout
+    assert "{check,materialize,update,promote,enroll}" in help_result.stdout
     assert not list(tmp_path.iterdir())
     result = subprocess.run([sys.executable, str(script), "check"], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 2
@@ -573,3 +573,52 @@ def test_promote_rolls_back_partial_filesystem_write_failure(tmp_path, monkeypat
     assert (tmp_path / "vendor/one.py").read_bytes() == before_one
     assert (tmp_path / "vendor/two.py").read_bytes() == before_two
     sync.synchronize(path.name, tmp_path, "check")
+
+
+def test_enroll_places_only_missing_locked_files(tmp_path):
+    entries = [entry(source="one.py", destination="vendor/one.py"),
+               entry(source="two.py", destination="vendor/two.py")]
+    path, _ = lock(tmp_path, entries)
+    (tmp_path / "vendor").mkdir()
+    (tmp_path / "vendor/one.py").write_bytes(b"old\n")
+    result = sync.synchronize(path.name, tmp_path, "enroll", get=lambda url: b"old\n")
+    assert result["changed_paths"] == ["vendor/two.py"]
+    assert (tmp_path / "vendor/one.py").read_bytes() == b"old\n"
+    assert (tmp_path / "vendor/two.py").read_bytes() == b"old\n"
+    sync.synchronize(path.name, tmp_path, "check")
+
+
+def test_enroll_rejects_existing_mismatch_before_network_or_write(tmp_path):
+    entries = [entry(source="one.py", destination="vendor/one.py"),
+               entry(source="two.py", destination="vendor/two.py")]
+    path, _ = lock(tmp_path, entries)
+    (tmp_path / "vendor").mkdir()
+    (tmp_path / "vendor/one.py").write_bytes(b"local edit\n")
+    with pytest.raises(ValueError, match="digest mismatch"):
+        sync.synchronize(path.name, tmp_path, "enroll", get=lambda url: pytest.fail("network used"))
+    assert (tmp_path / "vendor/one.py").read_bytes() == b"local edit\n"
+    assert not (tmp_path / "vendor/two.py").exists()
+
+
+def test_enroll_is_noop_when_all_locked_files_exist(tmp_path):
+    path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    result = sync.synchronize(path.name, tmp_path, "enroll", get=lambda url: pytest.fail("network used"))
+    assert result["changed_paths"] == []
+
+
+def test_enroll_download_failure_leaves_all_missing_files_absent(tmp_path):
+    entries = [entry(source="one.py", destination="vendor/one.py"),
+               entry(source="two.py", destination="vendor/two.py")]
+    path, _ = lock(tmp_path, entries)
+    calls = 0
+    def getter(url):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("second download failed")
+        return b"old\n"
+    with pytest.raises(OSError, match="second download failed"):
+        sync.synchronize(path.name, tmp_path, "enroll", get=getter)
+    assert not (tmp_path / "vendor/one.py").exists()
+    assert not (tmp_path / "vendor/two.py").exists()
