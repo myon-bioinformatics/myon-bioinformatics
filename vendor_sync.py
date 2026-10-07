@@ -174,8 +174,14 @@ def synchronize(manifest, root, mode, *, get=_get):
         target = _target(root, item["destination"])
         if target.relative_to(root).as_posix().casefold() == manifest.relative_to(root).as_posix().casefold():
             raise ValueError("file destination collides with manifest")
-    if mode not in ("check", "materialize", "update"):
+    if mode not in ("check", "materialize", "update", "enroll"):
         raise ValueError("unknown mode")
+    # Enrollment may create missing locked files, but never repairs an existing edit.
+    if mode == "enroll":
+        for item in lock["files"]:
+            target = _target(root, item["destination"])
+            if target.exists():
+                _verify(item, target.read_bytes())
     # Updates must start from the recorded bytes, never silently replace edits.
     if mode == "update":
         for item in lock["files"]:
@@ -188,6 +194,8 @@ def synchronize(manifest, root, mode, *, get=_get):
         target = _target(root, item["destination"])
         if mode == "check":
             _verify(item, target.read_bytes())
+            continue
+        if mode == "enroll" and target.exists():
             continue
         if mode == "update":
             key = item["repository"], item["ref"]
@@ -318,7 +326,7 @@ def promote(manifest, root, *, get=_get):
 
 def main(argv=None, *, get=_get):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("check", "materialize", "update", "promote"))
+    parser.add_argument("mode", choices=("check", "materialize", "update", "promote", "enroll"))
     parser.add_argument("--manifest", default="vendor.lock.json")
     parser.add_argument("--root", default=".")
     args = parser.parse_args(argv)
