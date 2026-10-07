@@ -16,8 +16,8 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-__version__ = "0.1.1"
-__all__ = ["git_blob", "validate", "synchronize", "main"]
+__version__ = "0.2.0"
+__all__ = ["git_blob", "validate", "synchronize", "promote", "main"]
 
 SCHEMA = "vendor-lock/1"
 MAX_BYTES = 8 * 1024 * 1024
@@ -269,14 +269,61 @@ def synchronize(manifest, root, mode, *, get=_get):
     return {"schema": SCHEMA, "mode": mode, "changed_paths": changed}
 
 
-def main(argv=None):
+def promote(manifest, root, *, get=_get):
+    """Explicitly promote a verified upstream candidate into the working tree.
+
+    This never commits, pushes, opens a PR, or mutates GitHub. It requires the
+    current locked bytes to be intact, reuses the canonical update resolver,
+    verifies the resulting baseline offline, and returns a deterministic
+    identity receipt suitable for review/CI evidence.
+    """
+    root = Path(root).resolve()
+    manifest_path = _target(root, manifest)
+    before = validate(json.loads(manifest_path.read_text(encoding="utf-8")))
+    before_by_destination = {item["destination"]: copy.deepcopy(item) for item in before["files"]}
+    backups = {manifest_path: manifest_path.read_bytes()}
+    for item in before["files"]:
+        target = _target(root, item["destination"])
+        backups[target] = target.read_bytes()
+    try:
+        result = synchronize(manifest, root, "update", get=get)
+        synchronize(manifest, root, "check", get=lambda url: (_ for _ in ()).throw(AssertionError("network used during promoted baseline check")))
+    except BaseException:
+        for target, data in backups.items():
+            _atomic(target, data)
+        raise
+    after = validate(json.loads(manifest_path.read_text(encoding="utf-8")))
+    changes = []
+    for item in after["files"]:
+        old = before_by_destination[item["destination"]]
+        if old != item:
+            changes.append({
+                "repository": item["repository"],
+                "source": item["source"],
+                "destination": item["destination"],
+                "old_commit": old["commit"],
+                "new_commit": item["commit"],
+                "old_blob_sha": old["blob_sha"],
+                "new_blob_sha": item["blob_sha"],
+                "old_sha256": old["sha256"],
+                "new_sha256": item["sha256"],
+            })
+    return {
+        "schema": "vendor-promotion/1",
+        "mode": "promote",
+        "changed_paths": result["changed_paths"],
+        "promoted": changes,
+    }
+
+
+def main(argv=None, *, get=_get):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("check", "materialize", "update"))
+    parser.add_argument("mode", choices=("check", "materialize", "update", "promote"))
     parser.add_argument("--manifest", default="vendor.lock.json")
     parser.add_argument("--root", default=".")
     args = parser.parse_args(argv)
     try:
-        result = synchronize(args.manifest, args.root, args.mode)
+        result = promote(args.manifest, args.root, get=get) if args.mode == "promote" else synchronize(args.manifest, args.root, args.mode, get=get)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         print("vendor-sync: " + str(error), file=sys.stderr)
         return 2

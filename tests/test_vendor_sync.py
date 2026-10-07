@@ -235,7 +235,7 @@ def test_cli_help_has_no_side_effects_and_missing_file_is_red(tmp_path):
     script = Path(sync.__file__).resolve()
     help_result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
     assert help_result.returncode == 0
-    assert "{check,materialize,update}" in help_result.stdout
+    assert "{check,materialize,update,promote}" in help_result.stdout
     assert not list(tmp_path.iterdir())
     result = subprocess.run([sys.executable, str(script), "check"], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 2
@@ -455,3 +455,121 @@ def test_public_git_snapshot_boundaries(tmp_path, monkeypatch, kind):
         assert not any(k in env for k in ('GIT_DIR', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0'))
         assert not Path(argv[argv.index('-C') + 1]).exists()
     assert not (tmp_path / 'do-not-touch').exists()
+
+
+def test_promote_returns_identity_receipt_and_verified_baseline(tmp_path):
+    path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    payload = b"new promoted source\n"
+    result = sync.promote(path.name, tmp_path, get=upstream(payload, []))
+    assert result["schema"] == "vendor-promotion/1"
+    assert result["changed_paths"] == ["vendor/adapter.py", path.name]
+    assert len(result["promoted"]) == 1
+    receipt = result["promoted"][0]
+    assert receipt["destination"] == "vendor/adapter.py"
+    assert receipt["old_commit"] == OLD
+    assert receipt["new_commit"] == NEW
+    assert receipt["new_blob_sha"] == sync.git_blob(payload)
+    assert receipt["new_sha256"] == hashlib.sha256(payload).hexdigest()
+    assert not sync.synchronize(path.name, tmp_path, "check")["changed_paths"]
+    assert not sync.synchronize(path.name, tmp_path, "update", get=upstream(payload, []))["changed_paths"]
+
+
+def test_promote_source_and_license_share_verified_commit(tmp_path):
+    entries = [entry(source="module.py", destination="vendor/module.py"),
+               entry(source="LICENSE", destination="vendor/LICENSE")]
+    path, _ = lock(tmp_path, entries)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    result = sync.promote(path.name, tmp_path, get=upstream(b"new\n", []))
+    assert {row["new_commit"] for row in result["promoted"]} == {NEW}
+    assert {row["destination"] for row in result["promoted"]} == {"vendor/module.py", "vendor/LICENSE"}
+    sync.synchronize(path.name, tmp_path, "check")
+
+
+def test_promote_noop_has_empty_receipt(tmp_path):
+    path, before = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    result = sync.promote(path.name, tmp_path, get=upstream(b"old\n", []))
+    assert result["changed_paths"] == []
+    assert result["promoted"] == []
+    assert json.loads(path.read_text()) == before
+
+
+def test_promote_rejects_dirty_baseline_before_network(tmp_path):
+    path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    (tmp_path / "vendor/adapter.py").write_bytes(b"local edit\n")
+    before = path.read_bytes()
+    with pytest.raises(ValueError, match="digest mismatch"):
+        sync.promote(path.name, tmp_path, get=lambda url: pytest.fail("network"))
+    assert path.read_bytes() == before
+    assert (tmp_path / "vendor/adapter.py").read_bytes() == b"local edit\n"
+
+
+def test_promote_resolution_failure_leaves_baseline_unchanged(tmp_path):
+    path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    before_lock = path.read_bytes()
+    before_file = (tmp_path / "vendor/adapter.py").read_bytes()
+    def fail(url):
+        if "/commits?" in url:
+            raise ValueError("resolution failed")
+        return b"unexpected"
+    with pytest.raises(ValueError, match="resolution failed"):
+        sync.promote(path.name, tmp_path, get=fail)
+    assert path.read_bytes() == before_lock
+    assert (tmp_path / "vendor/adapter.py").read_bytes() == before_file
+
+
+def test_promote_cli_help_exposes_explicit_mode(tmp_path):
+    script = Path(sync.__file__).resolve()
+    result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
+    assert result.returncode == 0
+    assert "{check,materialize,update,promote}" in result.stdout
+
+
+def test_promote_cli_success_path_emits_receipt(tmp_path, capsys):
+    path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    assert sync.main(["promote", "--root", str(tmp_path)], get=upstream(b"new\n", [])) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["schema"] == "vendor-promotion/1"
+    assert receipt["promoted"][0]["new_commit"] == NEW
+    sync.synchronize(path.name, tmp_path, "check")
+
+
+def test_promote_receipt_is_machine_readable(tmp_path):
+    path, _ = lock(tmp_path)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    result = sync.promote(path.name, tmp_path, get=upstream(b"new\n", []))
+    encoded = json.dumps(result, sort_keys=True)
+    decoded = json.loads(encoded)
+    assert decoded["schema"] == "vendor-promotion/1"
+    assert decoded["promoted"][0]["new_commit"] == NEW
+
+
+def test_promote_rolls_back_partial_filesystem_write_failure(tmp_path, monkeypatch):
+    entries = [entry(source="one.py", destination="vendor/one.py"),
+               entry(source="two.py", destination="vendor/two.py")]
+    path, _ = lock(tmp_path, entries)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    before_lock = path.read_bytes()
+    before_one = (tmp_path / "vendor/one.py").read_bytes()
+    before_two = (tmp_path / "vendor/two.py").read_bytes()
+    real_atomic = sync._atomic
+    writes = 0
+    failed = False
+    def flaky(target, data):
+        nonlocal writes, failed
+        writes += 1
+        if not failed and writes == 2:
+            failed = True
+            raise OSError("simulated second write failure")
+        return real_atomic(target, data)
+    monkeypatch.setattr(sync, "_atomic", flaky)
+    with pytest.raises(OSError, match="simulated second write failure"):
+        sync.promote(path.name, tmp_path, get=upstream(b"new\n", []))
+    assert path.read_bytes() == before_lock
+    assert (tmp_path / "vendor/one.py").read_bytes() == before_one
+    assert (tmp_path / "vendor/two.py").read_bytes() == before_two
+    sync.synchronize(path.name, tmp_path, "check")
