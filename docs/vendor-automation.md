@@ -40,6 +40,7 @@ python vendor_sync.py check --root . --manifest vendor.lock.json
 python vendor_sync.py materialize --root . --manifest vendor.lock.json
 python vendor_sync.py update --root . --manifest vendor.lock.json
 python vendor_sync.py promote --root . --manifest vendor.lock.json
+python vendor_sync.py evidence --root . --manifest vendor.lock.json --runtime-evidence vendor-promotion.json
 ```
 
 `--help` exits before filesystem/network activity. `check` is offline and fails
@@ -59,6 +60,14 @@ Git blob SHA and SHA-256 identities. Promotion backs up the locked manifest and
 all locked destination bytes and rolls them back if update or verification
 fails. It never commits, pushes, opens a PR, or writes to GitHub. Run updates in a disposable clean checkout. Network,
 missing-file and verification failures are nonzero (CLI exit 2).
+
+The offline `evidence` mode validates the lock and emits `vendor-evidence/1`.
+Its `locked` and `candidate` lists are derived from the manifest path plus every
+lock destination; callers do not restate those paths. Repeat
+`--runtime-evidence PATH` for generated receipts or summaries. Runtime evidence
+is deduplicated, sorted and kept separate from locked membership; collisions
+with locked paths are rejected. The command performs no network activity and
+does not require the listed runtime files to exist.
 
 For locked `materialize`, raw HTTP 403/429 also uses the anonymous public Git
 fallback at the exact locked commit. Snapshots are cached by repository and
