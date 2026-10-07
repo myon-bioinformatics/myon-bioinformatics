@@ -159,11 +159,29 @@ def _atomic(path, data):
             os.unlink(name)
 
 
+def _create(path, data):
+    """Place complete bytes without replacing a destination that appeared late."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    name = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
+            name = stream.name
+            stream.write(data)
+        os.chmod(name, 0o644)
+        os.link(name, path)
+    finally:
+        if name and os.path.exists(name):
+            os.unlink(name)
+
+
 def synchronize(manifest, root, mode, *, get=_get):
     """Check offline, place locked bytes, or resolve an upstream update candidate.
 
-    All downloads/digests are validated before any write. Files are replaced
+    All downloads/digests are validated before any write. Files are placed
     atomically individually; filesystem I/O failure can leave a partial batch.
+    Enrollment creates only initially missing destinations, using hard links
+    to prevent replacement of a file that appears during the command. Use an
+    isolated checkout; concurrent directory/manifest changes are unsupported.
     No downloaded module is imported. Public Git fallback only writes a temporary
     bare object store; the consumer Git checkout and remote refs are untouched.
     """
@@ -177,11 +195,14 @@ def synchronize(manifest, root, mode, *, get=_get):
     if mode not in ("check", "materialize", "update", "enroll"):
         raise ValueError("unknown mode")
     # Enrollment may create missing locked files, but never repairs an existing edit.
+    missing = set()
     if mode == "enroll":
         for item in lock["files"]:
             target = _target(root, item["destination"])
             if target.exists():
                 _verify(item, target.read_bytes())
+            else:
+                missing.add(item["destination"])
     # Updates must start from the recorded bytes, never silently replace edits.
     if mode == "update":
         for item in lock["files"]:
@@ -195,7 +216,7 @@ def synchronize(manifest, root, mode, *, get=_get):
         if mode == "check":
             _verify(item, target.read_bytes())
             continue
-        if mode == "enroll" and target.exists():
+        if mode == "enroll" and item["destination"] not in missing:
             continue
         if mode == "update":
             key = item["repository"], item["ref"]
@@ -237,7 +258,7 @@ def synchronize(manifest, root, mode, *, get=_get):
                 item["blob_sha"], data = snapshots[key][item["source"]]
             item["sha256"] = hashlib.sha256(data).hexdigest()
         else:
-            data = target.read_bytes() if target.is_file() else None
+            data = target.read_bytes() if mode != "enroll" and target.is_file() else None
             if data is None or git_blob(data) != item["blob_sha"] or hashlib.sha256(data).hexdigest() != item["sha256"]:
                 key = item["repository"], item["commit"]
                 if key not in snapshots:
@@ -247,7 +268,8 @@ def synchronize(manifest, root, mode, *, get=_get):
                         if not _limited(error):
                             raise
                         sources = [i["source"] for i in candidate["files"]
-                                   if (i["repository"], i["commit"]) == key]
+                                   if (i["repository"], i["commit"]) == key
+                                   and (mode != "enroll" or i["destination"] in missing)]
                         resolved, snapshots[key] = _public_git_snapshot(key[0], key[1], sources)
                         if resolved != key[1]:
                             raise ValueError("public Git commit does not match locked SHA")
@@ -269,11 +291,31 @@ def synchronize(manifest, root, mode, *, get=_get):
         encoded = (json.dumps(candidate, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
         if candidate != lock:
             pending.append((manifest, encoded))
+    if mode == "enroll":
+        # Recheck the whole baseline before any placement: downloads can be slow.
+        for item in lock["files"]:
+            target = _target(root, item["destination"])
+            if item["destination"] not in missing or target.exists():
+                _verify(item, target.read_bytes())
     changed = []
     for target, data in pending:
+        if mode == "enroll":
+            relative = target.relative_to(root).as_posix()
+            target = _target(root, relative)
+            try:
+                _create(target, data)
+            except FileExistsError:
+                target = _target(root, relative)
+                if target.read_bytes() != data:
+                    raise ValueError("digest mismatch: " + relative)
+            else:
+                changed.append(relative)
+            continue
         if not target.exists() or target.read_bytes() != data:
             _atomic(target, data)
             changed.append(target.relative_to(root).as_posix())
+    if mode == "enroll":
+        synchronize(manifest.relative_to(root).as_posix(), root, "check", get=get)
     return {"schema": SCHEMA, "mode": mode, "changed_paths": changed}
 
 
