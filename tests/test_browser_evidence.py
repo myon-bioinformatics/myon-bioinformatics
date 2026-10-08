@@ -1,5 +1,7 @@
 """Independent Playwright/Stagehand evidence contract regression."""
 import json
+import struct
+import zlib
 from pathlib import Path
 import tempfile
 import unittest
@@ -42,6 +44,23 @@ class BrowserEvidenceTests(unittest.TestCase):
             for engine, sha in (("other", SHA), ("playwright", "bad"), ("playwright", SHA)):
                 with self.assertRaises(ValueError):
                     record(engine, image, root, run_id="1", head_sha=sha)
+
+    def test_png_structure_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image = root / "shot.png"
+            invalid = (
+                b"\\x89PNG\\r\\n\\x1a\\n" + b"not a real image",
+                PNG[:-3],
+                PNG + b"trailing",
+                PNG[:32] + bytes([PNG[32] ^ 1]) + PNG[33:],
+                PNG[:8] + PNG[33:],
+            )
+            for data in invalid:
+                with self.subTest(size=len(data)):
+                    image.write_bytes(data)
+                    with self.assertRaises(ValueError):
+                        record("playwright", image, root, run_id="1", head_sha=SHA)
 
     def test_cli_writes_one_manifest(self):
         with tempfile.TemporaryDirectory() as directory:
