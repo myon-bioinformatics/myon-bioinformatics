@@ -194,7 +194,8 @@ sibling repositories. It is both the profile README and the parent tooling repo.
 The parent's [Python tests workflow](.github/workflows/python-tests.yml) collects
 JUnit from five Python versions (3.10–3.14) and three vendor-portability jobs
 (Linux 3.9, Windows 3.12, macOS 3.12). Raw XML and compact failure identity are
-separate artifacts with 14-day retention. A complete collection does not turn a
+separate artifacts: raw XML is retained for 14 days, while compact artifacts use
+repository-default retention. A complete collection does not turn a
 failed producer job green, and a green run may have an empty failure corpus.
 
 Browser evidence currently provides a **contract only**. Shared Playwright and
