@@ -9,9 +9,9 @@ from pathlib import Path
 
 
 def _load_ghi():
-    source = Path(__file__).resolve().parent / "vendor" / "gh_identity.py"
+    source = Path(__file__).resolve().parent / "gh_identity.py"
     if not source.is_file():
-        raise RuntimeError("canonical vendor/gh_identity.py is not enrolled")
+        raise RuntimeError("canonical gh_identity.py is not present")
     spec = importlib.util.spec_from_file_location("ci_status_ghi", source)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
