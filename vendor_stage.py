@@ -12,7 +12,10 @@ __all__ = ["stage", "main"]
 
 def stage(root, manifest, output, *, kind="locked", runtime=(), legacy=()):
     root = Path(root).resolve()
-    target = (root / output).resolve()
+    raw_output = Path(output)
+    if raw_output.is_absolute() or ".." in raw_output.parts:
+        raise ValueError("unsafe staging output")
+    target = (root / raw_output).resolve()
     if target == root or not target.is_relative_to(root) or target.exists():
         raise ValueError("unsafe or existing staging output")
     if kind not in ("locked", "candidate"):
