@@ -236,7 +236,13 @@ The top-level fields are exactly `schema` and nonempty `tools`. Each tool has
 nonempty audit `reason`. Optional `source` overrides the default `<repository>.py`
 for real exceptions; optional `consumers` records per-consumer policy exceptions
 or explicit enroll decisions. Unknown fields and duplicate repository/source
-pairs are rejected. Different sources from the same repository are allowed.
+pairs are rejected. The recommendation unit is an independent source artifact,
+identified by repository/source, rather than an entire repository release.
+Different sources from the same repository are intentionally allowed for
+standalone helpers; each carries its own explicit recommended commit. This does
+not express coupled-file dependencies, a shared-commit constraint, compatibility
+between sources, or atomic multi-file promotion. Coupled artifacts need a future
+explicit grouping contract; multiple entries alone must not imply such guarantees.
 A future incompatible contract needs a new schema version.
 
 ```json
@@ -268,6 +274,11 @@ recommendation; unused alone is not a skip reason. Skip neither removes existing
 locked entries nor hides their comparison. LICENSE remains separately and
 explicitly locked under the existing vendor rules; this catalog is not a complete
 placement manifest. Source overrides do not infer source renames in old locks.
+Changing a source path, even at the same commit, intentionally reports `missing`
+when no lock entry matches that new repository/source. Treat it as a new artifact:
+explicitly review its source identity, LICENSE and destination before enrollment.
+The old lock entry remains independent; this read-only comparison neither maps
+the old source to the new one nor removes or rewrites it.
 
 Comparison matches repository (case-insensitive) and exact source path, retaining
 all matching lock entries including their destinations, commit/blob/SHA-256 and
