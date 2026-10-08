@@ -117,7 +117,8 @@ def test_existing_output_and_source_overlap(tmp_path):
     with pytest.raises(ValueError, match="existing"):
         stage(tmp_path)
     assert (tmp_path / "build/out/keep").read_text() == "keep"
-    with pytest.raises(ValueError, match="overlaps"):
+    # Case-insensitive filesystems reject the existing vendor directory earlier.
+    with pytest.raises(ValueError, match="existing|overlaps"):
         vendor_stage.stage(tmp_path, "vendor.lock.json", "VENDOR")
 
 
