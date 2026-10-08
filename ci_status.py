@@ -4,6 +4,7 @@ import argparse
 import datetime
 import json
 import urllib.error
+from urllib.parse import quote
 import importlib.util
 from pathlib import Path
 
@@ -51,7 +52,7 @@ def observe(name, pr=None):
     else:
         meta = get(base)
         ref = meta["default_branch"]
-        sha = get(base + "/git/ref/heads/" + ref)["object"]["sha"]
+        sha = get(base + "/git/ref/heads/" + quote(ref, safe=""))["object"]["sha"]
         target = ref
     if ghi is None:
         raise RuntimeError("GHI unavailable")
