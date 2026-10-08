@@ -1222,3 +1222,37 @@ def test_both_checks_interfaces_reject_zero_minimum():
     with pytest.raises(ValueError):
         gh_identity.checks_for_sha(REPO, HEAD, min_checks=0)
     assert stub.calls == []
+
+
+@pytest.mark.parametrize('case', ['limit', 'cycle', 'missing', 'changed'])
+def test_incomplete_check_pagination_never_allows_merge(case):
+    path = f"/repos/octo/demo/commits/{HEAD}/check-runs"
+    def page(parts, body):
+        n = int(urllib.parse.parse_qs(parts.query).get('page', ['1'])[0])
+        total = 51 if case == 'limit' else 2
+        if case == 'changed' and n == 2:
+            total = 3
+        next_page = 2 if case == 'cycle' else n + 1
+        link = f'<https://api.github.com{path}?page={next_page}>; rel="next"'
+        if case == 'missing' or (case == 'changed' and n == 2):
+            link = None
+        return reply({'total_count': total, 'check_runs': [check_run(str(n), run_id=n)]}, link=link)
+    routes = merge_routes()
+    routes[('GET', path)] = page
+    client, stub = client_for(routes)
+    with pytest.raises(gh_ops.GhOpsError, match='incomplete response'):
+        gh_ops.pr_merge(REPO, 11, sha=HEAD, write=True, client=client)
+    assert 'PUT' not in stub.methods
+
+
+def test_last_check_page_failure_prevents_merge():
+    path = f"/repos/octo/demo/commits/{HEAD}/check-runs"
+    routes = merge_routes()
+    routes[('GET', path)] = [
+        reply({'total_count': 2, 'check_runs': [check_run('good')]},
+              link=f'<https://api.github.com{path}?page=2>; rel="next"'),
+        reply({'total_count': 2, 'check_runs': [check_run('bad', 'failure', run_id=2)]})]
+    client, stub = client_for(routes)
+    result = gh_ops.pr_merge(REPO, 11, sha=HEAD, write=True, client=client)
+    assert not result['ok']
+    assert 'PUT' not in stub.methods
