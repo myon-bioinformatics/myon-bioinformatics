@@ -5,6 +5,8 @@ on:
     paths:
       - "**.py"
       - "tests/**"
+      - "vendor.lock.json"
+      - "vendor/**"
       - ".github/workflows/python-tests.yml"
       - ".github/workflows/reusable-actionlint.yml"
   push:
@@ -12,6 +14,8 @@ on:
     paths:
       - "**.py"
       - "tests/**"
+      - "vendor.lock.json"
+      - "vendor/**"
       - ".github/workflows/python-tests.yml"
       - ".github/workflows/reusable-actionlint.yml"
 
@@ -33,7 +37,9 @@ jobs:
           cache: pip
           cache-dependency-path: tests/requirements.txt
       - run: python -m pip install -r tests/requirements.txt
-      - run: python -m py_compile git_inspector.py
+      - run: python -m py_compile git_inspector.py gh_ops.py
+      - name: Verify enrolled GitHub identity dependency (offline)
+        run: python -S vendor_sync.py check --manifest vendor.lock.json
       - name: Run tests with JUnit
         run: python -m pytest -q --junitxml=reports/junit.xml
       - name: Preserve JUnit report
@@ -66,7 +72,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install pytest
       - name: Exercise changed public Git snapshots and rejection cases
-        run: python -m pytest -q tests/test_vendor_sync.py tests/test_vendor_stage.py tests/test_vendor_update_workflow.py --junitxml=reports/vendor.xml
+        run: python -m pytest -q tests/test_vendor_sync.py tests/test_vendor_stage.py tests/test_vendor_update_workflow.py tests/test_gh_ops.py --junitxml=reports/vendor.xml
       - name: Preserve vendor regression JUnit
         if: always()
         uses: actions/upload-artifact@v7
