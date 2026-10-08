@@ -53,7 +53,7 @@ class BrowserEvidenceTests(unittest.TestCase):
                 b"\\x89PNG\\r\\n\\x1a\\n" + b"not a real image",
                 PNG[:-3],
                 PNG + b"trailing",
-                PNG[:32] + bytes([PNG[32] ^ 1]) + PNG[33:],
+                PNG[:29] + bytes([PNG[29] ^ 1]) + PNG[30:],
                 PNG[:8] + PNG[33:],
             )
             for data in invalid:
