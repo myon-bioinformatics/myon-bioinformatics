@@ -46,9 +46,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: git-inspector-junit-py${{ matrix.python }}
+          name: junit-parent-py${{ matrix.python }}
           path: reports/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 14
 
   vendor-portability:
@@ -77,7 +77,18 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: vendor-portability-${{ matrix.os }}-py${{ matrix.python }}
+          name: junit-vendor-${{ matrix.os }}-py${{ matrix.python }}
           path: reports/vendor.xml
           if-no-files-found: error
           retention-days: 14
+
+  failure-identity:
+    needs: [pytest, vendor-portability]
+    if: always()
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/reusable-junit-identity.yml
+    with:
+      expected-reports: '["junit-parent-py3.10/junit.xml","junit-parent-py3.11/junit.xml","junit-parent-py3.12/junit.xml","junit-parent-py3.13/junit.xml","junit-parent-py3.14/junit.xml","junit-vendor-ubuntu-latest-py3.9/vendor.xml","junit-vendor-windows-latest-py3.12/vendor.xml","junit-vendor-macos-latest-py3.12/vendor.xml"]'
+      output-artifact: parent-python-failure-identity
