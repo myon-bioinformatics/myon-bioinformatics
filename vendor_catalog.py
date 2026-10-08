@@ -23,7 +23,7 @@ def validate(catalog):
     seen = set()
     for tool in result["tools"]:
         required = {"repository", "commit", "reason"}
-        optional = {"source", "consumers"}
+        optional = {"source", "consumers", "default_enrollment"}
         if not isinstance(tool, dict) or not required <= tool.keys() or tool.keys() - required - optional:
             raise ValueError("invalid tool fields")
         repo = tool["repository"]
@@ -42,10 +42,14 @@ def validate(catalog):
         if not isinstance(consumers, dict):
             raise ValueError("consumers must be an object")
         names = set()
-        for consumer, decision in consumers.items():
+        for consumer in consumers:
             if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", consumer) or any(p in (".", "..") for p in consumer.split("/")) or consumer.casefold() in names:
                 raise ValueError("invalid or duplicate consumer")
             names.add(consumer.casefold())
+        decisions = list(consumers.values())
+        if "default_enrollment" in tool:
+            decisions.append(tool["default_enrollment"])
+        for decision in decisions:
             if not isinstance(decision, dict) or set(decision) != {"enrollment", "reason"} or decision["enrollment"] not in ("enrolled", "skipped"):
                 raise ValueError("expected enrolled or skipped with reason")
             if not isinstance(decision["reason"], str) or not re.fullmatch(r"[a-z][a-z0-9_]*", decision["reason"]):
@@ -62,7 +66,7 @@ def compare(catalog, lock, consumer):
     rows = []
     for tool in catalog["tools"]:
         decision = next((v for k, v in tool["consumers"].items() if k.casefold() == consumer.casefold()),
-                        {"enrollment": "enrolled", "reason": "default_single_file_policy"})
+                        tool.get("default_enrollment", {"enrollment": "enrolled", "reason": "default_single_file_policy"}))
         locked = [copy.deepcopy(item) for item in lock["files"]
                   if item["repository"].casefold() == tool["repository"].casefold() and item["source"] == tool["source"]]
         status = "missing" if not locked else ("at_recommended" if all(i["commit"] == tool["commit"] for i in locked) else "different")
