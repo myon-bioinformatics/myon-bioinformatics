@@ -4,8 +4,18 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 import ci_status as ci
+from pathlib import Path
+import hashlib
 
 class StatusTests(unittest.TestCase):
+    def test_vendor_lock_provenance(self):
+        root = Path(ci.__file__).resolve().parent
+        lock = json.loads((root / "vendor.lock.json").read_text(encoding="utf-8"))
+        for item in lock["files"]:
+            actual = (root / item["destination"]).read_bytes()
+            self.assertEqual(hashlib.sha256(actual).hexdigest(), item["sha256"])
+        self.assertIsNotNone(ci.ghi)
+
     def test_repository_normalization(self):
         self.assertEqual(ci.repository("Ironmate"), "myon-bioinformatics/Ironmate")
         for name in ("../../x", "..", "a/..", "./x", "a/."):
