@@ -15,7 +15,7 @@ ENGINES = frozenset({"playwright", "stagehand"})
 
 def validate_png(data: bytes) -> None:
     """Check PNG chunk framing, CRC and required chunks (not pixel decoding)."""
-    if not data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
         raise ValueError("invalid PNG signature")
     offset = 8
     seen_ihdr = seen_idat = seen_iend = False
@@ -64,8 +64,7 @@ def record(engine: str, screenshot: Path, root: Path, *, run_id: str, head_sha: 
     if not image.is_relative_to(base) or not image.is_file() or image.suffix.lower() != ".png":
         raise ValueError("screenshot must be a PNG file within the evidence root")
     data = image.read_bytes()
-    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise ValueError("invalid PNG signature")
+    validate_png(data)
     return {
         "schema": SCHEMA,
         "engine": engine,
