@@ -4,7 +4,24 @@ import argparse
 import datetime
 import json
 import urllib.error
-import gh_identity as ghi
+import importlib.util
+from pathlib import Path
+
+
+def _load_ghi():
+    source = Path(__file__).resolve().parent / "vendor" / "gh_identity.py"
+    if not source.is_file():
+        raise RuntimeError("canonical vendor/gh_identity.py is not enrolled")
+    spec = importlib.util.spec_from_file_location("ci_status_ghi", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+try:
+    ghi = _load_ghi()
+except RuntimeError:
+    ghi = None
 
 OWNER = "myon-bioinformatics"
 __version__ = "0.2.0"
@@ -12,6 +29,8 @@ __all__ = ["repository", "observe", "render", "main"]
 
 def get(path):
     """Compatibility shim backed by GHI transport; no independent HTTP client."""
+    if ghi is None:
+        raise RuntimeError("GHI unavailable")
     return ghi.request("GET", path.lstrip("/"))
 
 def repository(name):
@@ -34,6 +53,8 @@ def observe(name, pr=None):
         ref = meta["default_branch"]
         sha = get(base + "/git/ref/heads/" + ref)["object"]["sha"]
         target = ref
+    if ghi is None:
+        raise RuntimeError("GHI unavailable")
     observation = ghi.checks_for_sha(name, sha)
     if not observation["complete"]:
         raise RuntimeError("check pagination incomplete")
@@ -72,7 +93,7 @@ def main(argv=None):
     for name in names:
         try:
             rows.append(observe(name, a.pr))
-        except (ValueError, KeyError, RuntimeError, ghi.Error, OSError) as exc:
+        except (ValueError, KeyError, RuntimeError, OSError) as exc:
             errors.append({"repository": name, "error": type(exc).__name__})
     output = {"schema": "ci-observation/1",
               "observed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
