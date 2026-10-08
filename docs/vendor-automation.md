@@ -208,3 +208,79 @@ overlap are rejected. Source bytes are read once, verified against the lock, and
 then copied; a copy failure removes the partially staged directory. The command is
 offline, stdlib-only, and never imports vendor modules. Use an isolated checkout;
 concurrent directory/manifest changes are unsupported, as in `vendor_sync`.
+
+## Recommended baseline catalog (#46, first phase)
+
+`vendor-catalog.json` is a separate, explicit recommendation, not a consumer
+lock or an alias for development main. `vendor_catalog.py` (stdlib-only, beside
+canonical `vendor_sync.py` in this repository) provides read-only operations:
+
+```sh
+python vendor_catalog.py validate
+python vendor_catalog.py compare --lock vendor.lock.json --consumer owner/consumer
+python vendor_catalog.py verify
+```
+
+`validate` and `compare` are offline. `verify` reads public Git objects into a
+throwaway bare repository through `vendor_sync.inspect_source`; it requires Git.
+It verifies the full resolved commit, regular-file tree mode and Git blob against
+retrieved bytes, and computes SHA-256. It never imports the source. Output is JSON;
+invalid input or retrieval errors exit 2. No command places consumer files,
+rewrites locks, promotes, commits, pushes, or creates PRs. Verification is identity
+evidence, not candidate compatibility CI or an import-safety assessment.
+
+### Contract: vendor-catalog/1
+
+The top-level fields are exactly `schema` and nonempty `tools`. Each tool has
+`repository` (`owner/repository`), `commit` (40 lowercase hex characters), and
+nonempty audit `reason`. Optional `source` overrides the default `<repository>.py`
+for real exceptions; optional `consumers` records per-consumer policy exceptions
+or explicit enroll decisions. Unknown fields and duplicate repository/source
+pairs are rejected. Different sources from the same repository are allowed.
+A future incompatible contract needs a new schema version.
+
+```json
+{
+  "schema": "vendor-catalog/1",
+  "tools": [{
+    "repository": "owner/shared_helpers",
+    "commit": "1111111111111111111111111111111111111111",
+    "source": "helpers/standalone.py",
+    "reason": "Illustrative override, not a live recommendation",
+    "consumers": {
+      "owner/unused_consumer": {
+        "enrollment": "enrolled", "reason": "safe_unused_copy"
+      },
+      "owner/incompatible_consumer": {
+        "enrollment": "skipped", "reason": "requires_external_package"
+      }
+    }
+  }]
+}
+```
+
+Absent consumer decisions default to `enrolled` with
+`reason: default_single_file_policy`. Both explicit decision types require a
+machine-readable lowercase snake_case reason. Enrollment here is **policy**,
+not proof of placement, runtime use, safety, or passing tests. Catalog maintainers
+must assess the Issue #46 inert single-file/stdlib threshold before publishing a
+recommendation; unused alone is not a skip reason. Skip neither removes existing
+locked entries nor hides their comparison. LICENSE remains separately and
+explicitly locked under the existing vendor rules; this catalog is not a complete
+placement manifest. Source overrides do not infer source renames in old locks.
+
+Comparison matches repository (case-insensitive) and exact source path, retaining
+all matching lock entries including their destinations, commit/blob/SHA-256 and
+ref. `missing`, `at_recommended`, and `different` describe commit pin equality
+only, without assuming ancestry or claiming byte parity. Unrelated entries such
+as LICENSE are outside that tool's comparison. Even identical source bytes at
+different commits report `different`; malformed locks fail existing
+`vendor_sync.validate` unchanged. Consumer locks remain authoritative for all
+existing materialize/check/enroll operations.
+
+Initial recommendations deliberately retain the parent's existing gh_identity
+pin and the previously adopted xprobe JUnit bridge baseline, not today's moving
+main. A later recommendation is a reviewed catalog commit. Development heads,
+consumer locks, and catalog commits advance independently. Candidate CI,
+compatibility receipts, automatic PR creation and coordinated promotion are
+future phases; this first phase does not change existing CI update behavior.
