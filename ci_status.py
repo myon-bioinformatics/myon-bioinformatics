@@ -3,25 +3,36 @@
 import argparse
 import datetime
 import json
-import os
 import urllib.error
-import urllib.parse
-import urllib.request
+from urllib.parse import quote
+import importlib.util
+from pathlib import Path
 
-API = "https://api.github.com"
+
+def _load_ghi():
+    source = Path(__file__).resolve().parent / "vendor" / "gh_identity.py"
+    if not source.is_file():
+        raise RuntimeError("canonical gh_identity.py is not present")
+    spec = importlib.util.spec_from_file_location("ci_status_ghi", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+try:
+    ghi = _load_ghi()
+except RuntimeError:
+    ghi = None
+
 OWNER = "myon-bioinformatics"
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = ["repository", "observe", "render", "main"]
 
 def get(path):
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": "ci-status/0.1",
-               "X-GitHub-Api-Version": "2022-11-28"}
-    token = os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN")
-    if token:
-        headers["Authorization"] = "Bearer " + token
-    request = urllib.request.Request(API + path, headers=headers)
-    with urllib.request.urlopen(request, timeout=20) as response:
-        return json.load(response)
+    """Compatibility shim backed by GHI transport; no independent HTTP client."""
+    if ghi is None:
+        raise RuntimeError("GHI unavailable")
+    return ghi.request("GET", path.lstrip("/"))
 
 def repository(name):
     if not name or "/" in name and name.count("/") != 1:
@@ -41,21 +52,16 @@ def observe(name, pr=None):
     else:
         meta = get(base)
         ref = meta["default_branch"]
-        sha = get(base + "/git/ref/heads/" + urllib.parse.quote(ref, safe=""))["object"]["sha"]
+        sha = get(base + "/git/ref/heads/" + quote(ref, safe=""))["object"]["sha"]
         target = ref
-    checks = []
-    page = 1
-    while True:
-        data = get(base + "/commits/" + sha + "/check-runs?per_page=100&page=" + str(page))
-        batch = data["check_runs"]
-        checks.extend(batch)
-        if len(checks) >= data["total_count"] or not batch:
-            break
-        page += 1
-        if page > 20:
-            raise RuntimeError("check pagination incomplete")
+    if ghi is None:
+        raise RuntimeError("GHI unavailable")
+    observation = ghi.checks_for_sha(name, sha)
+    if not observation["complete"]:
+        raise RuntimeError("check pagination incomplete")
+    checks = observation["checks"]
     rows = [{"id": x["id"], "name": x["name"], "status": x["status"],
-             "conclusion": x.get("conclusion"), "url": x.get("html_url")}
+             "conclusion": x.get("conclusion"), "url": x.get("url")}
             for x in checks]
     pending = sum(x["status"] != "completed" for x in rows)
     failed = sum(x["conclusion"] in ("failure", "timed_out", "action_required", "startup_failure") for x in rows)
@@ -88,7 +94,7 @@ def main(argv=None):
     for name in names:
         try:
             rows.append(observe(name, a.pr))
-        except (ValueError, KeyError, RuntimeError, urllib.error.URLError, OSError) as exc:
+        except (ValueError, KeyError, RuntimeError, OSError) as exc:
             errors.append({"repository": name, "error": type(exc).__name__})
     output = {"schema": "ci-observation/1",
               "observed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
