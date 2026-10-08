@@ -172,3 +172,39 @@ runtime dependency policies are unchanged.
 
 
 The offline `evidence` mode derives `vendor-evidence/1` locked/candidate paths from the validated lock and manifest. Generated runtime receipts are passed with repeatable `--runtime-evidence` and remain separate; path collisions fail. This operation does not access the network or require receipt files to exist.
+
+
+## Canonical artifact staging (#44)
+
+`vendor_stage.py` lives beside `vendor_sync.py` in the parent repository. Fetch
+both via a full-commit pinned checkout and invoke the shared script directly:
+
+```sh
+python -S .vendor-sync-tools/vendor_stage.py --root . \
+  --manifest vendor.lock.json --kind candidate --output build/vendor-evidence \
+  --promotion-receipt vendor-promotion.json \
+  --legacy-evidence tool/vendor/provenance.json
+```
+
+Upload the generated directory. The lock alone defines locked/candidate membership;
+adding an enrolled source or license requires no staging path-list edit. `kind`
+labels the selected snapshot and does not certify an update or test outcome.
+`--runtime-evidence` names required supplemental files; `--promotion-receipt`
+includes an optional file only when present in a candidate run (omitted for locked
+runs). A failed or incomplete receipt remains diagnostic bytes, not a successful
+promotion claim. `--legacy-evidence` is an explicit consumer-specific projection
+path, never a second list of canonical vendor members. The stager copies existing
+legacy output; it does not infer, regenerate, or certify a consumer's legacy format.
+
+The generated `vendor-evidence.json` retains `vendor-evidence/1` locked, candidate,
+and runtime arrays, and adds `kind`, `legacy`, and a `sha256` map for every copied
+file. Legacy files are classified separately, and runtime/legacy paths cannot
+collide with lock members or the generated manifest. Receipt and legacy files
+remain outside the checked-in lock. Required inputs, regular-file paths, byte
+identities, case-insensitive collisions, path ancestry, and output paths are checked
+before creating the directory. Existing output, symlink components (including
+in-root and dangling links), traversal, metadata-name collisions, and source/output
+overlap are rejected. Source bytes are read once, verified against the lock, and
+then copied; a copy failure removes the partially staged directory. The command is
+offline, stdlib-only, and never imports vendor modules. Use an isolated checkout;
+concurrent directory/manifest changes are unsupported, as in `vendor_sync`.
