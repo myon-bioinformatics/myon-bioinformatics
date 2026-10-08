@@ -42,3 +42,10 @@ def test_unsafe_member_rejected_before_placement(tmp_path, monkeypatch):
     with pytest.raises(ValueError):
         vendor_stage.stage(tmp_path, "vendor.lock.json", "out")
     assert not (tmp_path / "out").exists()
+
+@pytest.mark.parametrize("output", ["../outside", "/tmp/absolute"])
+def test_output_path_rejected(tmp_path, monkeypatch, output):
+    fixture(tmp_path)
+    monkeypatch.setattr(vendor_stage.vendor_sync, "evidence", evidence)
+    with pytest.raises(ValueError, match="unsafe"):
+        vendor_stage.stage(tmp_path, "vendor.lock.json", output)
