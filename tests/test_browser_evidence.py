@@ -8,7 +8,14 @@ import unittest
 
 from browser_evidence import record, main
 
-PNG = b"\x89PNG\r\n\x1a\n" + b"minimal test fixture"
+def chunk(kind, payload):
+    return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload))
+
+
+PNG = (b"\\x89PNG\\r\\n\\x1a\\n"
+       + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
+       + chunk(b"IDAT", zlib.compress(b"\\x00\\xff\\x00\\x00"))
+       + chunk(b"IEND", b""))
 SHA = "a" * 40
 
 
