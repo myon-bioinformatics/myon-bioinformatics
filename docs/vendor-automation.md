@@ -33,6 +33,63 @@ repository/ref. Include every imported upstream sibling explicitly.
 This minimal schema example is not a complete consumer manifest: add the upstream
 LICENSE with its independently verified hashes before adoption.
 
+## Central consumer topology
+
+`vendor-consumers.json` is the parent-owned machine-readable registry of
+cross-repository vendor placement intent. It answers **which repository consumes
+which upstream source at which destination**. It deliberately does not repeat
+commit, Git blob, or SHA-256 identity: the consumer's `vendor-lock/1` remains the
+authority for the exact bytes actually adopted.
+
+Source/consumer is a relationship per artifact, not a permanent repository
+classification. A repository can own one shared artifact and consume another.
+A repository must not enroll its own canonical artifact merely to make layouts
+uniform. For example, `xprobe` owns `xprobe.py`; downstream repositories may
+enroll it, but xprobe does not create a redundant self-consumer entry for
+`xprobe.py`.
+
+The registry uses `vendor-consumers/1`:
+
+- `repository`: the consumer repository.
+- `state: locked`: the relationship is represented by the listed `lock` path
+  and its topology should match the registry.
+- `state: legacy`: a known checked-in vendor relationship predates
+  `vendor-lock/1`; `lock` is null and a machine-readable `reason` plus the
+  existing `legacy_provenance` paths are recorded until migration.
+- `entries`: only `repository`, `source`, and `destination`. Exact
+  commit/ref/blob/SHA-256 values stay in each consumer lock.
+- Duplicate consumers or destinations, unsafe paths, and self-vendor entries are
+  rejected.
+
+The current registry includes the parent itself plus every repository found with
+a `vendor-lock/1` manifest in the cross-repository audit. It also records
+`search_seq_including_spaces` as a legacy xprobe consumer so the absence of a
+lock is explicit rather than silently omitted.
+
+Validate the central topology, or compare one checked-out consumer lock without
+network access:
+
+```sh
+python -S vendor_consumers.py validate
+python -S vendor_consumers.py compare \
+  --consumer myon-bioinformatics/yourself \
+  --lock path/to/yourself/vendor.lock.json
+```
+
+A comparison checks only repository/source/destination topology. It never
+promotes a recommendation or treats the parent registry as evidence of the exact
+bytes in a consumer checkout.
+
+Keep the three ownership layers distinct:
+
+1. `vendor-consumers.json` — intended consumer/source/destination topology.
+2. `vendor-catalog.json` — reviewed recommended upstream baselines and
+   enrollment policy.
+3. Consumer `vendor.lock.json` — exact adopted commit/blob/SHA-256 identity.
+
+Changing one layer does not silently rewrite either of the others. Consumer
+migration and promotion remain explicit reviewed operations.
+
 ## Commands
 
 ```sh
