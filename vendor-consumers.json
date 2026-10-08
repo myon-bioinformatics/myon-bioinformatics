@@ -1,0 +1,559 @@
+{
+  "schema": "vendor-consumers/1",
+  "consumers": [
+    {
+      "repository": "myon-bioinformatics/myon-bioinformatics",
+      "state": "locked",
+      "lock": "vendor.lock.json",
+      "entries": [
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "gh_identity.py",
+          "destination": "vendor/gh_identity.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "LICENSE",
+          "destination": "vendor/gh_identity-LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "myon-bioinformatics/yourself",
+      "state": "locked",
+      "lock": "vendor.lock.json",
+      "entries": [
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "scripts/xprobe_pytest.py",
+          "destination": "vendor/xprobe_pytest.py"
+        },
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "LICENSE",
+          "destination": "vendor/xprobe-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "xprobe.py",
+          "destination": "vendor/xprobe.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "gh_identity.py",
+          "destination": "vendor/gh_identity.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "LICENSE",
+          "destination": "vendor/gh_identity-LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "myon-bioinformatics/nvd_nist_known_vulns",
+      "state": "locked",
+      "lock": "vendor.lock.json",
+      "entries": [
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "scripts/xprobe_pytest.py",
+          "destination": "vendor/xprobe_pytest.py"
+        },
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "LICENSE",
+          "destination": "vendor/xprobe-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "gh_identity.py",
+          "destination": "vendor/gh_identity.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "LICENSE",
+          "destination": "vendor/gh_identity-LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "myon-bioinformatics/convert_img_fmt_to_webp-CUI-",
+      "state": "locked",
+      "lock": "vendor.lock.json",
+      "entries": [
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "scripts/xprobe_pytest.py",
+          "destination": "scripts/xprobe_pytest.py"
+        },
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "LICENSE",
+          "destination": "scripts/xprobe-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "gh_identity.py",
+          "destination": "scripts/gh_identity.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "LICENSE",
+          "destination": "scripts/gh_identity-LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "myon-bioinformatics/ascii_artist",
+      "state": "locked",
+      "lock": "vendor.lock.json",
+      "entries": [
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "git_inspector.py",
+          "destination": "vendor/git_inspector.py"
+        },
+        {
+          "repository": "myon-bioinformatics/mcp-toolcall-lab",
+          "source": "src/mcp_toolcall_lab/github_public_resolver.py",
+          "destination": "vendor/github_public_resolver.py"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "python_artifact_provenance.py",
+          "destination": "vendor/python_artifact_provenance.py"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "repository_metadata_contract.py",
+          "destination": "vendor/repository_metadata_contract.py"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "repository_metadata_generator.py",
+          "destination": "vendor/repository_metadata_generator.py"
+        },
+        {
+          "repository": "myon-bioinformatics/mcp-toolcall-lab",
+          "source": "LICENSE",
+          "destination": "vendor/mcp-toolcall-lab-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "LICENSE",
+          "destination": "vendor/Ironmate-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "LICENSE",
+          "destination": "vendor/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "gh_identity.py",
+          "destination": "vendor/gh_identity.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "LICENSE",
+          "destination": "vendor/gh_identity-LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "myon-bioinformatics/markdown",
+      "state": "locked",
+      "lock": "vendor.lock.json",
+      "entries": [
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "git_inspector.py",
+          "destination": "vendor/git_inspector.py"
+        },
+        {
+          "repository": "myon-bioinformatics/mcp-toolcall-lab",
+          "source": "src/mcp_toolcall_lab/github_public_resolver.py",
+          "destination": "vendor/github_public_resolver.py"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "python_artifact_provenance.py",
+          "destination": "vendor/python_artifact_provenance.py"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "repository_metadata_contract.py",
+          "destination": "vendor/repository_metadata_contract.py"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "repository_metadata_generator.py",
+          "destination": "vendor/repository_metadata_generator.py"
+        },
+        {
+          "repository": "myon-bioinformatics/mcp-toolcall-lab",
+          "source": "LICENSE",
+          "destination": "vendor/mcp-toolcall-lab-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "LICENSE",
+          "destination": "vendor/Ironmate-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "LICENSE",
+          "destination": "vendor/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "gh_identity.py",
+          "destination": "vendor/gh_identity.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "LICENSE",
+          "destination": "vendor/gh_identity-LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "myon-bioinformatics/mcp-toolcall-lab",
+      "state": "locked",
+      "lock": "vendor.lock.json",
+      "entries": [
+        {
+          "repository": "myon-bioinformatics/ascii_artist",
+          "source": "ascii_artist.py",
+          "destination": "vendor/ascii_artist.py"
+        },
+        {
+          "repository": "myon-bioinformatics/browser-test-kit",
+          "source": "scripts/gh_ops.py",
+          "destination": "vendor/gh_ops.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "git_inspector.py",
+          "destination": "vendor/git_inspector.py"
+        },
+        {
+          "repository": "myon-bioinformatics/markdown",
+          "source": "markdown.py",
+          "destination": "vendor/markdown.py"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "python_artifact_provenance.py",
+          "destination": "vendor/python_artifact_provenance.py"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "repository_metadata_contract.py",
+          "destination": "vendor/repository_metadata_contract.py"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "repository_metadata_generator.py",
+          "destination": "vendor/repository_metadata_generator.py"
+        },
+        {
+          "repository": "myon-bioinformatics/ascii_artist",
+          "source": "LICENSE",
+          "destination": "vendor/ascii_artist-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/browser-test-kit",
+          "source": "LICENSE",
+          "destination": "vendor/browser-test-kit-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/markdown",
+          "source": "LICENSE",
+          "destination": "vendor/markdown-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "LICENSE",
+          "destination": "vendor/Ironmate-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "LICENSE",
+          "destination": "vendor/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "gh_identity.py",
+          "destination": "vendor/gh_identity.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "LICENSE",
+          "destination": "vendor/gh_identity-LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "myon-bioinformatics/Ironmate",
+      "state": "locked",
+      "lock": "vendor.lock.json",
+      "entries": [
+        {
+          "repository": "myon-bioinformatics/ascii_artist",
+          "source": "ascii_artist.py",
+          "destination": "vendor/ascii_artist.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "git_inspector.py",
+          "destination": "vendor/git_inspector.py"
+        },
+        {
+          "repository": "myon-bioinformatics/markdown",
+          "source": "markdown.py",
+          "destination": "vendor/markdown.py"
+        },
+        {
+          "repository": "myon-bioinformatics/nvd_nist_known_vulns",
+          "source": "nvd_nist_known_vulns.py",
+          "destination": "vendor/nvd_nist_known_vulns.py"
+        },
+        {
+          "repository": "myon-bioinformatics/ascii_artist",
+          "source": "LICENSE",
+          "destination": "vendor/ascii_artist-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/markdown",
+          "source": "LICENSE",
+          "destination": "vendor/markdown-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/nvd_nist_known_vulns",
+          "source": "LICENSE",
+          "destination": "vendor/nvd_nist_known_vulns-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "LICENSE",
+          "destination": "vendor/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "gh_ops.py",
+          "destination": "vendor/gh_ops.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "gh_identity.py",
+          "destination": "vendor/gh_identity.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "LICENSE",
+          "destination": "vendor/gh_identity-LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "myon-bioinformatics/browser-test-kit",
+      "state": "locked",
+      "lock": "vendor.lock.json",
+      "entries": [
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "git_inspector.py",
+          "destination": "scripts/git_inspector.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "LICENSE",
+          "destination": "scripts/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "xprobe.py",
+          "destination": "tests/vendor/xprobe/xprobe.py"
+        },
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "LICENSE",
+          "destination": "tests/vendor/xprobe/LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "gh_identity.py",
+          "destination": "scripts/gh_identity.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "LICENSE",
+          "destination": "scripts/gh_identity-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "gh_ops.py",
+          "destination": "scripts/gh_ops.py"
+        }
+      ]
+    },
+    {
+      "repository": "myon-bioinformatics/web-ui",
+      "state": "locked",
+      "lock": "vendor.lock.json",
+      "entries": [
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "repository_metadata_contract.py",
+          "destination": "tool/vendor/repository_metadata_contract.py"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "repository_metadata_generator.py",
+          "destination": "tool/vendor/repository_metadata_generator.py"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "LICENSE",
+          "destination": "tool/vendor/LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "gh_identity.py",
+          "destination": "tool/vendor/gh_identity.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "LICENSE",
+          "destination": "tool/vendor/gh_identity-LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "myon-bioinformatics/flutter_navigation_basic",
+      "state": "locked",
+      "lock": "tool/python/vendor.lock.json",
+      "entries": [
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "repository_metadata_contract.py",
+          "destination": "tool/python/vendor/repository_metadata_contract.py"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "repository_metadata_generator.py",
+          "destination": "tool/python/vendor/repository_metadata_generator.py"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "LICENSE",
+          "destination": "tool/python/vendor/Ironmate-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/yourself",
+          "source": "yourself.py",
+          "destination": "tool/python/vendor/yourself.py"
+        },
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "xprobe.py",
+          "destination": "tool/python/vendor/xprobe.py"
+        },
+        {
+          "repository": "myon-bioinformatics/browser-test-kit",
+          "source": "scripts/gh_ops.py",
+          "destination": "tool/python/vendor/gh_ops.py"
+        },
+        {
+          "repository": "myon-bioinformatics/browser-test-kit",
+          "source": "scripts/check_evidence.py",
+          "destination": "tool/python/vendor/check_evidence.py"
+        },
+        {
+          "repository": "myon-bioinformatics/browser-test-kit",
+          "source": "scripts/jsonl_digest.py",
+          "destination": "tool/python/vendor/jsonl_digest.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "git_inspector.py",
+          "destination": "tool/python/vendor/git_inspector.py"
+        },
+        {
+          "repository": "myon-bioinformatics/cli_args",
+          "source": "cli_args.py",
+          "destination": "tool/python/vendor/cli_args.py"
+        },
+        {
+          "repository": "myon-bioinformatics/yourself",
+          "source": "LICENSE",
+          "destination": "tool/python/vendor/yourself-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "LICENSE",
+          "destination": "tool/python/vendor/xprobe-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/browser-test-kit",
+          "source": "LICENSE",
+          "destination": "tool/python/vendor/browser-test-kit-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "LICENSE",
+          "destination": "tool/python/vendor/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/cli_args",
+          "source": "LICENSE",
+          "destination": "tool/python/vendor/cli_args-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/browser-test-kit",
+          "source": "scripts/check_png.py",
+          "destination": "tool/python/vendor/check_png.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "gh_identity.py",
+          "destination": "tool/python/vendor/gh_identity.py"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "LICENSE",
+          "destination": "tool/python/vendor/gh_identity-LICENSE"
+        }
+      ]
+    },
+    {
+      "repository": "myon-bioinformatics/search_seq_including_spaces",
+      "state": "legacy",
+      "lock": null,
+      "reason": "legacy_provenance_without_vendor_lock",
+      "legacy_provenance": [
+        "vendor/xprobe.provenance.json",
+        "vendor/xprobe_pytest.provenance.json"
+      ],
+      "entries": [
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "xprobe.py",
+          "destination": "vendor/xprobe.py"
+        },
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "scripts/xprobe_pytest.py",
+          "destination": "vendor/xprobe_pytest.py"
+        },
+        {
+          "repository": "myon-bioinformatics/xprobe",
+          "source": "LICENSE",
+          "destination": "vendor/xprobe-LICENSE"
+        }
+      ]
+    }
+  ]
+}
