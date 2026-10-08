@@ -12,9 +12,9 @@ def chunk(kind, payload):
     return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload))
 
 
-PNG = (b"\\x89PNG\\r\\n\\x1a\\n"
+PNG = (b"\x89PNG\r\n\x1a\n"
        + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
-       + chunk(b"IDAT", zlib.compress(b"\\x00\\xff\\x00\\x00"))
+       + chunk(b"IDAT", zlib.compress(b"\x00\xff\x00\x00"))
        + chunk(b"IEND", b""))
 SHA = "a" * 40
 
@@ -57,7 +57,7 @@ class BrowserEvidenceTests(unittest.TestCase):
             root = Path(directory)
             image = root / "shot.png"
             invalid = (
-                b"\\x89PNG\\r\\n\\x1a\\n" + b"not a real image",
+                b"\x89PNG\r\n\x1a\n" + b"not a real image",
                 PNG[:-3],
                 PNG + b"trailing",
                 PNG[:29] + bytes([PNG[29] ^ 1]) + PNG[30:],
