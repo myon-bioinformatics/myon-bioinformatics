@@ -1256,3 +1256,24 @@ def test_last_check_page_failure_prevents_merge():
     result = gh_ops.pr_merge(REPO, 11, sha=HEAD, write=True, client=client)
     assert not result['ok']
     assert 'PUT' not in stub.methods
+
+
+def test_default_pr_status_uses_canonical_transport(monkeypatch):
+    seen = []
+    def request(method, path):
+        seen.append((method, path))
+        return pr_payload()
+    monkeypatch.setattr(gh_identity, "request", request)
+    assert gh_ops.pr_status(REPO, 11)["head_sha"] == HEAD
+    assert seen == [("GET", "repos/octo/demo/pulls/11")]
+
+
+def test_default_open_prs_uses_bounded_canonical_search(monkeypatch):
+    seen = []
+    def search(query, **kwargs):
+        seen.append((query, kwargs))
+        return {"items": [], "total_count": 7, "complete": False, "truncated": True}
+    monkeypatch.setattr(gh_identity, "search", search)
+    result = gh_ops.open_prs("octo", org=True, limit=5)
+    assert result["total"] == 7 and result["truncated"] and not result["complete"]
+    assert seen == [("is:open archived:false org:octo", {"kind": "pr", "max_items": 5})]
