@@ -17,7 +17,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 __version__ = "0.2.0"
-__all__ = ["git_blob", "validate", "evidence", "synchronize", "promote", "main"]
+__all__ = ["git_blob", "inspect_source", "validate", "evidence", "synchronize", "promote", "main"]
 
 SCHEMA = "vendor-lock/1"
 MAX_BYTES = 8 * 1024 * 1024
@@ -131,6 +131,25 @@ def _public_git_snapshot(repository, ref, sources, *, remote=None):
                 raise ValueError("download exceeds byte limit")
             files[source] = (blob, git("cat-file", "blob", obj))
         return commit, files
+
+
+def inspect_source(repository, commit, source):
+    """Read one exact public source without placing files or updating a lock.
+
+    Git tree mode, resolved commit, Git blob and SHA-256 are checked here;
+    recommendation metadata never supplies trusted source digests.
+    """
+    item = dict(repository=repository, ref=commit, commit=commit, source=source,
+                destination="source", blob_sha="0" * 40, sha256="0" * 64)
+    validate({"schema": SCHEMA, "files": [item]})
+    resolved, files = _public_git_snapshot(repository, commit, [source])
+    if resolved != commit:
+        raise ValueError("public Git commit does not match recommended SHA")
+    item["blob_sha"], data = files[source]
+    _hex(item["blob_sha"], 40)
+    item["sha256"] = hashlib.sha256(data).hexdigest()
+    _verify(item, data)
+    return {key: item[key] for key in ("repository", "commit", "source", "blob_sha", "sha256")}
 
 
 def _limited(error):

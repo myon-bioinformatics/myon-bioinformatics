@@ -1,0 +1,15 @@
+{
+  "schema": "vendor-catalog/1",
+  "tools": [
+    {
+      "repository": "myon-bioinformatics/gh_identity",
+      "commit": "fc2c527257b12eb99c00637bbae74f8988fd6bf4",
+      "reason": "Initial baseline preserves the parent's existing reviewed consumer pin; newer development heads require explicit recommendation."
+    },
+    {
+      "repository": "myon-bioinformatics/xprobe",
+      "commit": "642999cea4185a68bffa7f7ccc46bd78dde03e5a",
+      "reason": "Initial baseline uses the previously adopted JUnit bridge revision, independently of newer development heads."
+    }
+  ]
+}
