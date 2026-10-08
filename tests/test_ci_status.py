@@ -19,7 +19,9 @@ class StatusTests(unittest.TestCase):
             return {"total_count": 2, "check_runs": [
                 {"id": 1, "name": "pytest", "status": "completed", "conclusion": "success"},
                 {"id": 2, "name": "windows", "status": "in_progress", "conclusion": None}]}
-        with patch.object(ci, "get", side_effect=fake):
+        checks = [{"id": 1, "name": "pytest", "status": "completed", "conclusion": "success", "url": None},
+                  {"id": 2, "name": "windows", "status": "in_progress", "conclusion": None, "url": None}]
+        with patch.object(ci, "get", side_effect=fake), patch.object(ci.ghi, "checks_for_sha", return_value={"complete": True, "checks": checks}):
             item = ci.observe("Ironmate", 7)
         self.assertEqual((item["state"], item["completed"], item["total"]), ("RUNNING", 1, 2))
 
@@ -31,7 +33,8 @@ class StatusTests(unittest.TestCase):
                 return {"object": {"sha": "b" * 40}}
             return {"total_count": 1, "check_runs": [
                 {"id": 3, "name": "test", "status": "completed", "conclusion": "failure"}]}
-        with patch.object(ci, "get", side_effect=fake):
+        checks = [{"id": 3, "name": "test", "status": "completed", "conclusion": "failure", "url": None}]
+        with patch.object(ci, "get", side_effect=fake), patch.object(ci.ghi, "checks_for_sha", return_value={"complete": True, "checks": checks}):
             self.assertEqual(ci.observe("Ironmate")["state"], "FAILED")
 
     def test_non_green_conclusions(self):
@@ -41,7 +44,8 @@ class StatusTests(unittest.TestCase):
                     return {"head": {"sha": "a" * 40}}
                 return {"total_count": 1, "check_runs": [
                     {"id": 1, "name": "test", "status": "completed", "conclusion": conclusion}]}
-            with patch.object(ci, "get", side_effect=fake):
+            checks = [{"id": 1, "name": "test", "status": "completed", "conclusion": conclusion, "url": None}]
+            with patch.object(ci, "get", side_effect=fake), patch.object(ci.ghi, "checks_for_sha", return_value={"complete": True, "checks": checks}):
                 self.assertEqual(ci.observe("Ironmate", 7)["state"], "INCOMPLETE")
 
     def test_json_cli(self):
