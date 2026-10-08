@@ -177,3 +177,29 @@ Template to kickstart API-based search clients.
 browser-test-kit, with its unit/parity tests owned here. See [the contract](docs/gh-ops.md).
 Consumers enroll the source/LICENSE via `vendor_sync` and keep only integration
 checks, rather than maintain generic operation implementations or duplicate tests.
+
+## Shared tooling and evidence
+
+This repository also owns reusable CI workflows and stdlib-only tooling for
+sibling repositories. It is both the profile README and the parent tooling repo.
+
+| Capability | Entry point / contract | Consumer responsibility |
+| --- | --- | --- |
+| Git inspection | [git_inspector.py](git_inspector.py), [contract](docs/git-inspector.md) | Request observations; keep repository-specific presentation local |
+| Vendor placement and artifact staging | [vendor_sync.py](vendor_sync.py), [vendor_stage.py](vendor_stage.py), [guide](docs/vendor-automation.md) | Enroll exact source/LICENSE bytes and an explicit lock; use the parent stager |
+| GitHub workflow operations | [gh_workflow.py](gh_workflow.py), [guide](docs/gh-workflow.md) | Keep explicit write preconditions and repository-specific orchestration |
+| JUnit failure identity | [reusable collector](.github/workflows/reusable-junit-identity.yml), [contract](docs/junit-identity.md) | Produce raw XML, preserve the test exit code, and configure exact expected report paths |
+| Browser screenshot evidence | [browser_evidence.py](browser_evidence.py), [contract](docs/browser-evidence.md) | Capture screenshots with the consumer's engine runner; supply run and checkout identity |
+
+The parent's [Python tests workflow](.github/workflows/python-tests.yml) collects
+JUnit from five Python versions (3.10–3.14) and three vendor-portability jobs
+(Linux 3.9, Windows 3.12, macOS 3.12). Raw XML and compact failure identity are
+separate artifacts: raw XML is retained for 14 days, while compact artifacts use
+repository-default retention. A complete collection does not turn a
+failed producer job green, and a green run may have an empty failure corpus.
+
+Browser evidence currently provides a **contract only**. Shared Playwright and
+Stagehand execution adapters are not implemented here yet; consumer capture
+runners must remain until their replacement is verified. Repository metadata's
+contract/generator pair is still maintained in
+[Ironmate](https://github.com/myon-bioinformatics/Ironmate/blob/main/docs/repository-metadata-portability.md).
