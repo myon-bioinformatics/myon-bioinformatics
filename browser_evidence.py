@@ -5,10 +5,51 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import struct
+import zlib
 from pathlib import Path
 
 SCHEMA = "browser-screenshot-evidence/1"
 ENGINES = frozenset({"playwright", "stagehand"})
+
+
+def validate_png(data: bytes) -> None:
+    """Check PNG chunk framing, CRC and required chunks (not pixel decoding)."""
+    if not data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        raise ValueError("invalid PNG signature")
+    offset = 8
+    seen_ihdr = seen_idat = seen_iend = False
+    while offset < len(data):
+        if len(data) - offset < 12:
+            raise ValueError("truncated PNG chunk")
+        size = struct.unpack_from(">I", data, offset)[0]
+        kind = data[offset + 4:offset + 8]
+        end = offset + 12 + size
+        if end > len(data):
+            raise ValueError("truncated PNG chunk")
+        body = data[offset + 8:offset + 8 + size]
+        expected_crc = struct.unpack_from(">I", data, offset + 8 + size)[0]
+        if zlib.crc32(kind + body) != expected_crc:
+            raise ValueError("PNG chunk CRC mismatch")
+        if not seen_ihdr:
+            if kind != b"IHDR" or size != 13:
+                raise ValueError("missing PNG IHDR")
+            width, height = struct.unpack_from(">II", body)
+            if width == 0 or height == 0:
+                raise ValueError("invalid PNG dimensions")
+            seen_ihdr = True
+        elif kind == b"IHDR":
+            raise ValueError("duplicate PNG IHDR")
+        if kind == b"IDAT":
+            seen_idat = True
+        if kind == b"IEND":
+            if size != 0 or not seen_idat or end != len(data):
+                raise ValueError("invalid PNG IEND")
+            seen_iend = True
+            break
+        offset = end
+    if not (seen_ihdr and seen_idat and seen_iend):
+        raise ValueError("incomplete PNG")
 
 
 def record(engine: str, screenshot: Path, root: Path, *, run_id: str, head_sha: str) -> dict:
