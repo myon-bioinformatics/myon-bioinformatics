@@ -203,3 +203,11 @@ Stagehand execution adapters are not implemented here yet; consumer capture
 runners must remain until their replacement is verified. Repository metadata's
 contract/generator pair is still maintained in
 [Ironmate](https://github.com/myon-bioinformatics/Ironmate/blob/main/docs/repository-metadata-portability.md).
+
+The organization-wide target survey is in [docs/vendor-target-inventory.json](docs/vendor-target-inventory.json).
+Single-file candidates are catalogued even when they require an explicit skip:
+`default_enrollment` records a machine-readable default for every consumer;
+individual `consumers` entries override it. When absent, the original
+`default_single_file_policy` enrollment remains unchanged. Archived applications,
+external-package applications and parent-managed vendor tools are not implicitly
+placed into consumer trees. See [catalog coverage](docs/vendor-catalog-coverage.md).

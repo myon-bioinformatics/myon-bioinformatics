@@ -1,0 +1,583 @@
+{
+  "schema": "vendor-target-inventory/1",
+  "inspected_repositories": 36,
+  "private_repositories_omitted": 2,
+  "repositories": [
+    {
+      "repository": "myon-bioinformatics/LINENotifyAPI_Template",
+      "archived": true,
+      "sources": [
+        "LINENotifyAPI_Template.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/niconicoSearchAPI_Template",
+      "archived": true,
+      "sources": [
+        "niconico_search_api_template.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/search_seq_including_spaces",
+      "archived": false,
+      "sources": [],
+      "status": "no_standalone_root_tool"
+    },
+    {
+      "repository": "myon-bioinformatics/convert_img_fmt_to_webp-CUI-",
+      "archived": false,
+      "sources": [
+        "convert_img_fmt_to_webp(CUI).py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/convert_img_fmt_to_webp-GUI-",
+      "archived": true,
+      "sources": [
+        "convert_img_fmt_to_webp(GUI).py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/scapy_GUI_for_Beginners",
+      "archived": true,
+      "sources": [
+        "scapy_gui.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/GitHub_api_Template",
+      "archived": true,
+      "sources": [
+        "github_api_template.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/python3nmap_GUI_for_Beginners",
+      "archived": true,
+      "sources": [
+        "python3nmap_gui.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/Qiita_API_Template",
+      "archived": true,
+      "sources": [
+        "qiita_api_template.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/myon-bioinformatics.github.io",
+      "archived": false,
+      "sources": [],
+      "status": "no_standalone_root_tool"
+    },
+    {
+      "repository": "myon-bioinformatics/myon-bioinformatics",
+      "archived": false,
+      "sources": [
+        "browser_evidence.py",
+        "ci_status.py",
+        "gh_ops.py",
+        "gh_workflow.py",
+        "git_inspector.py",
+        "vendor_catalog.py",
+        "vendor_stage.py",
+        "vendor_sync.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/HelpYouBuildServer",
+      "archived": true,
+      "sources": [
+        "main.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/AttentionToJapaneseBeginners",
+      "archived": true,
+      "sources": [],
+      "status": "no_standalone_root_tool"
+    },
+    {
+      "repository": "myon-bioinformatics/flutter_navigation_basic",
+      "archived": false,
+      "sources": [],
+      "status": "no_standalone_root_tool"
+    },
+    {
+      "repository": "myon-bioinformatics/mock_server_JS",
+      "archived": false,
+      "sources": [],
+      "status": "no_standalone_root_tool"
+    },
+    {
+      "repository": "myon-bioinformatics/cumlative_usage",
+      "archived": true,
+      "sources": [
+        "cumlative_usage.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/nvd_nist_known_vulns",
+      "archived": false,
+      "sources": [
+        "nvd_nist_known_vulns.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/oci-cost-analysis",
+      "archived": true,
+      "sources": [
+        "oci-cost-analysis.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/image_ext_converter_gui",
+      "archived": false,
+      "sources": [
+        "image_ext_converter_gui.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/vlm_ocr_jp_gui",
+      "archived": true,
+      "sources": [],
+      "status": "no_standalone_root_tool"
+    },
+    {
+      "repository": "myon-bioinformatics/video2audio_gui",
+      "archived": false,
+      "sources": [
+        "video2audio_gui.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/audio_any2any_gui",
+      "archived": false,
+      "sources": [
+        "audio_any2any_gui.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/video_to_image_gui",
+      "archived": false,
+      "sources": [
+        "video_to_image_gui.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/Ironmate",
+      "archived": false,
+      "sources": [],
+      "status": "no_standalone_root_tool"
+    },
+    {
+      "repository": "myon-bioinformatics/mcp-toolcall-lab",
+      "archived": false,
+      "sources": [],
+      "status": "no_standalone_root_tool"
+    },
+    {
+      "repository": "myon-bioinformatics/markdown",
+      "archived": false,
+      "sources": [
+        "markdown.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/ascii_artist",
+      "archived": false,
+      "sources": [
+        "ascii_artist.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/web-ui",
+      "archived": false,
+      "sources": [],
+      "status": "no_standalone_root_tool"
+    },
+    {
+      "repository": "myon-bioinformatics/browser-test-kit",
+      "archived": false,
+      "sources": [],
+      "status": "no_standalone_root_tool"
+    },
+    {
+      "repository": "myon-bioinformatics/xprobe",
+      "archived": false,
+      "sources": [
+        "xprobe.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/yourself",
+      "archived": false,
+      "sources": [
+        "yourself.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/cli_args",
+      "archived": false,
+      "sources": [
+        "cli_args.py"
+      ],
+      "status": "catalogued"
+    },
+    {
+      "repository": "myon-bioinformatics/Aoi",
+      "archived": false,
+      "sources": [],
+      "status": "no_standalone_root_tool"
+    },
+    {
+      "repository": "myon-bioinformatics/gh_identity",
+      "archived": false,
+      "sources": [
+        "gh_identity.py"
+      ],
+      "status": "catalogued"
+    }
+  ],
+  "sources": [
+    {
+      "repo": "myon-bioinformatics/LINENotifyAPI_Template",
+      "source": "LINENotifyAPI_Template.py",
+      "commit": "287a00696911a64e780ae0c9c238763317204b3f",
+      "archived": true,
+      "external_imports": [
+        "requests"
+      ],
+      "enrollment": "skipped",
+      "reason": "archived_repository"
+    },
+    {
+      "repo": "myon-bioinformatics/niconicoSearchAPI_Template",
+      "source": "niconico_search_api_template.py",
+      "commit": "2168919cb5cd34a7ca523d3c352fb1a47df641df",
+      "archived": true,
+      "external_imports": [
+        "requests"
+      ],
+      "enrollment": "skipped",
+      "reason": "archived_repository"
+    },
+    {
+      "repo": "myon-bioinformatics/convert_img_fmt_to_webp-CUI-",
+      "source": "convert_img_fmt_to_webp(CUI).py",
+      "commit": "77ddf0e6b9d3d5c75f64abdb1ba8c7eadb847e9b",
+      "archived": false,
+      "external_imports": [
+        "PIL"
+      ],
+      "enrollment": "skipped",
+      "reason": "requires_external_package"
+    },
+    {
+      "repo": "myon-bioinformatics/convert_img_fmt_to_webp-GUI-",
+      "source": "convert_img_fmt_to_webp(GUI).py",
+      "commit": "b0aa51636b320dec7b572c0432c4bbee9590c58a",
+      "archived": true,
+      "external_imports": [
+        "PIL",
+        "PySimpleGUI"
+      ],
+      "enrollment": "skipped",
+      "reason": "archived_repository"
+    },
+    {
+      "repo": "myon-bioinformatics/scapy_GUI_for_Beginners",
+      "source": "scapy_gui.py",
+      "commit": "210450faba2ac78c244f25a2333bbc764ff6b170",
+      "archived": true,
+      "external_imports": [
+        "FreeSimpleGUI",
+        "PySimpleGUI",
+        "fastapi",
+        "scapy",
+        "uvicorn"
+      ],
+      "enrollment": "skipped",
+      "reason": "archived_repository"
+    },
+    {
+      "repo": "myon-bioinformatics/GitHub_api_Template",
+      "source": "github_api_template.py",
+      "commit": "e6157d738493d333c66fde2cf4d020ac69694fbb",
+      "archived": true,
+      "external_imports": [
+        "requests"
+      ],
+      "enrollment": "skipped",
+      "reason": "archived_repository"
+    },
+    {
+      "repo": "myon-bioinformatics/python3nmap_GUI_for_Beginners",
+      "source": "python3nmap_gui.py",
+      "commit": "58eecba2aad5d499c2fe70610cc3ff8c42d2a11c",
+      "archived": true,
+      "external_imports": [
+        "FreeSimpleGUI",
+        "nmap3"
+      ],
+      "enrollment": "skipped",
+      "reason": "archived_repository"
+    },
+    {
+      "repo": "myon-bioinformatics/Qiita_API_Template",
+      "source": "qiita_api_template.py",
+      "commit": "0f30a0233baf9809f8c0aefc68e720f671d45673",
+      "archived": true,
+      "external_imports": [
+        "requests"
+      ],
+      "enrollment": "skipped",
+      "reason": "archived_repository"
+    },
+    {
+      "repo": "myon-bioinformatics/myon-bioinformatics",
+      "source": "browser_evidence.py",
+      "commit": "380d877cd85837f36cf6030d626ee8bb7dfa28cb",
+      "archived": false,
+      "external_imports": [],
+      "enrollment": "enrolled",
+      "reason": "standalone_stdlib_source"
+    },
+    {
+      "repo": "myon-bioinformatics/myon-bioinformatics",
+      "source": "ci_status.py",
+      "commit": "380d877cd85837f36cf6030d626ee8bb7dfa28cb",
+      "archived": false,
+      "external_imports": [],
+      "enrollment": "skipped",
+      "reason": "requires_companion_tool"
+    },
+    {
+      "repo": "myon-bioinformatics/myon-bioinformatics",
+      "source": "gh_ops.py",
+      "commit": "380d877cd85837f36cf6030d626ee8bb7dfa28cb",
+      "archived": false,
+      "external_imports": [],
+      "enrollment": "enrolled",
+      "reason": "standalone_stdlib_source"
+    },
+    {
+      "repo": "myon-bioinformatics/myon-bioinformatics",
+      "source": "gh_workflow.py",
+      "commit": "380d877cd85837f36cf6030d626ee8bb7dfa28cb",
+      "archived": false,
+      "external_imports": [],
+      "enrollment": "enrolled",
+      "reason": "standalone_stdlib_source"
+    },
+    {
+      "repo": "myon-bioinformatics/myon-bioinformatics",
+      "source": "git_inspector.py",
+      "commit": "380d877cd85837f36cf6030d626ee8bb7dfa28cb",
+      "archived": false,
+      "external_imports": [],
+      "enrollment": "enrolled",
+      "reason": "standalone_stdlib_source"
+    },
+    {
+      "repo": "myon-bioinformatics/myon-bioinformatics",
+      "source": "vendor_catalog.py",
+      "commit": "380d877cd85837f36cf6030d626ee8bb7dfa28cb",
+      "archived": false,
+      "external_imports": [
+        "vendor_sync"
+      ],
+      "enrollment": "skipped",
+      "reason": "parent_managed_tool"
+    },
+    {
+      "repo": "myon-bioinformatics/myon-bioinformatics",
+      "source": "vendor_stage.py",
+      "commit": "380d877cd85837f36cf6030d626ee8bb7dfa28cb",
+      "archived": false,
+      "external_imports": [
+        "vendor_sync"
+      ],
+      "enrollment": "skipped",
+      "reason": "parent_managed_tool"
+    },
+    {
+      "repo": "myon-bioinformatics/myon-bioinformatics",
+      "source": "vendor_sync.py",
+      "commit": "380d877cd85837f36cf6030d626ee8bb7dfa28cb",
+      "archived": false,
+      "external_imports": [],
+      "enrollment": "skipped",
+      "reason": "parent_managed_tool"
+    },
+    {
+      "repo": "myon-bioinformatics/HelpYouBuildServer",
+      "source": "main.py",
+      "commit": "791c55d12f8fb3b50cdfc47f77d47af63b54acf3",
+      "archived": true,
+      "external_imports": [],
+      "enrollment": "skipped",
+      "reason": "archived_repository"
+    },
+    {
+      "repo": "myon-bioinformatics/cumlative_usage",
+      "source": "cumlative_usage.py",
+      "commit": "270df7a060b56e9f79784f120ae0d560d44c5ea8",
+      "archived": true,
+      "external_imports": [
+        "matplotlib",
+        "numpy",
+        "scipy"
+      ],
+      "enrollment": "skipped",
+      "reason": "archived_repository"
+    },
+    {
+      "repo": "myon-bioinformatics/nvd_nist_known_vulns",
+      "source": "nvd_nist_known_vulns.py",
+      "commit": "a5941b211b225690d44b1187b68788c22582ab3b",
+      "archived": false,
+      "external_imports": [],
+      "enrollment": "enrolled",
+      "reason": "standalone_stdlib_source"
+    },
+    {
+      "repo": "myon-bioinformatics/oci-cost-analysis",
+      "source": "oci-cost-analysis.py",
+      "commit": "1d14466b86abc80e7c7ddf318ffc97cfa004337c",
+      "archived": true,
+      "external_imports": [
+        "pandas"
+      ],
+      "enrollment": "skipped",
+      "reason": "archived_repository"
+    },
+    {
+      "repo": "myon-bioinformatics/image_ext_converter_gui",
+      "source": "image_ext_converter_gui.py",
+      "commit": "6b1593358bd842699a7dc759d3ef3f25276c7517",
+      "archived": false,
+      "external_imports": [
+        "FreeSimpleGUI",
+        "PIL",
+        "PySimpleGUI",
+        "pillow_avif",
+        "pillow_heif"
+      ],
+      "enrollment": "skipped",
+      "reason": "requires_external_package"
+    },
+    {
+      "repo": "myon-bioinformatics/video2audio_gui",
+      "source": "video2audio_gui.py",
+      "commit": "22660a5c5cf74cd5da40cbedbc8ca2df568dda92",
+      "archived": false,
+      "external_imports": [
+        "FreeSimpleGUI",
+        "PySimpleGUI"
+      ],
+      "enrollment": "skipped",
+      "reason": "requires_external_package"
+    },
+    {
+      "repo": "myon-bioinformatics/audio_any2any_gui",
+      "source": "audio_any2any_gui.py",
+      "commit": "ebd9dc399114052a0a3d97f386e5839f0e62d04e",
+      "archived": false,
+      "external_imports": [
+        "FreeSimpleGUI",
+        "PySimpleGUI"
+      ],
+      "enrollment": "skipped",
+      "reason": "requires_external_package"
+    },
+    {
+      "repo": "myon-bioinformatics/video_to_image_gui",
+      "source": "video_to_image_gui.py",
+      "commit": "655338a5463c352c177f515d6f80f7520b55b760",
+      "archived": false,
+      "external_imports": [
+        "FreeSimpleGUI",
+        "PySimpleGUI"
+      ],
+      "enrollment": "skipped",
+      "reason": "requires_external_package"
+    },
+    {
+      "repo": "myon-bioinformatics/markdown",
+      "source": "markdown.py",
+      "commit": "97fb3bcfe6d655d611b6ceb1fe000a8fb810bf97",
+      "archived": false,
+      "external_imports": [],
+      "enrollment": "enrolled",
+      "reason": "standalone_stdlib_source"
+    },
+    {
+      "repo": "myon-bioinformatics/ascii_artist",
+      "source": "ascii_artist.py",
+      "commit": "26e0daff9b7c0cf159bbf2af8dd64f628997f7e6",
+      "archived": false,
+      "external_imports": [],
+      "enrollment": "enrolled",
+      "reason": "standalone_stdlib_source"
+    },
+    {
+      "repo": "myon-bioinformatics/xprobe",
+      "source": "xprobe.py",
+      "commit": "37d582ee4039d2803335b54e855ed770caedabfc",
+      "archived": false,
+      "external_imports": [],
+      "enrollment": "enrolled",
+      "reason": "standalone_stdlib_source"
+    },
+    {
+      "repo": "myon-bioinformatics/yourself",
+      "source": "yourself.py",
+      "commit": "69a77bc339b4c8a1bc780ad4d7ad470379fb6462",
+      "archived": false,
+      "external_imports": [],
+      "enrollment": "enrolled",
+      "reason": "standalone_stdlib_source"
+    },
+    {
+      "repo": "myon-bioinformatics/cli_args",
+      "source": "cli_args.py",
+      "commit": "d849c17f5e7c18037e2ab2c04bc71eee3e22cd35",
+      "archived": false,
+      "external_imports": [],
+      "enrollment": "enrolled",
+      "reason": "standalone_stdlib_source"
+    },
+    {
+      "repo": "myon-bioinformatics/gh_identity",
+      "source": "gh_identity.py",
+      "commit": "8dc232caa5429be5f976cf39212bb035c3d44cae",
+      "archived": false,
+      "external_imports": [],
+      "enrollment": "enrolled",
+      "reason": "standalone_stdlib_source"
+    }
+  ]
+}
