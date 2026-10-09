@@ -142,7 +142,40 @@ def test_real_git_source_mode_and_exact_pin(tmp_path, monkeypatch):
 def test_checked_in_catalog_and_cli_errors(tmp_path):
     root = Path(__file__).resolve().parents[1]
     value = catalog.validate(json.loads((root / 'vendor-catalog.json').read_text()))
-    assert {t['source'] for t in value['tools']} == {'gh_identity.py', 'xprobe.py'}
+    assert {'gh_identity.py', 'xprobe.py', 'yourself.py', 'cli_args.py', 'markdown.py', 'ascii_artist.py'} <= {t['source'] for t in value['tools']}
     assert catalog.main(['validate', '--catalog', str(tmp_path / 'missing')]) == 2
     result = subprocess.run([sys.executable, str(root / 'vendor_catalog.py'), '--help'], cwd=tmp_path, capture_output=True)
     assert result.returncode == 0
+
+
+def test_default_skip_and_consumer_override_preserve_lock():
+    doc, lock = manifest(), locked()
+    before = copy.deepcopy(lock)
+    doc["tools"][0]["default_enrollment"] = {"enrollment": "skipped", "reason": "requires_external_package"}
+    row = catalog.compare(doc, lock, "owner/consumer")["tools"][0]
+    assert row["enrollment"] == "skipped" and row["comparison"] == "different"
+    doc["tools"][0]["consumers"] = {"owner/consumer": {"enrollment": "enrolled", "reason": "dependency_available"}}
+    assert catalog.compare(doc, lock, "OWNER/consumer")["tools"][0]["enrollment"] == "enrolled"
+    assert lock == before
+
+
+@pytest.mark.parametrize("decision", [None, {}, {"enrollment": "pending", "reason": "unknown"},
+    {"enrollment": "skipped", "reason": "not a code"}])
+def test_invalid_default_decision(decision):
+    doc = manifest()
+    doc["tools"][0]["default_enrollment"] = decision
+    with pytest.raises(ValueError):
+        catalog.validate(doc)
+
+
+def test_public_inventory_has_complete_catalog_coverage():
+    root = Path(__file__).resolve().parents[1]
+    doc = catalog.validate(json.loads((root / "vendor-catalog.json").read_text()))
+    inventory = json.loads((root / "docs/vendor-target-inventory.json").read_text())
+    tools = {(t["repository"], t["source"]): t for t in doc["tools"]}
+    assert len(inventory["repositories"]) + inventory["private_repositories_omitted"] == inventory["inspected_repositories"]
+    for source in inventory["sources"]:
+        tool = tools[(source["repo"], source["source"])]
+        if source["enrollment"] == "skipped":
+            assert tool["default_enrollment"]["reason"] == source["reason"]
+        assert len(tool["commit"]) == 40

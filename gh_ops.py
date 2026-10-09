@@ -310,7 +310,11 @@ def issue_comments(repo: str, number: int, *, since: str | None = None, last: in
 
 def pr_status(repo: str, number: int, *, client: Client | None = None) -> dict:
     """One-line PR state: mergeability, head, size, and merged flag."""
-    pr = _client(client).get(f"/repos/{_repo(repo)}/pulls/{int(number)}")
+    try:
+        pr = (client.get(f"/repos/{_repo(repo)}/pulls/{int(number)}") if client is not None
+              else gh_identity.request("GET", f"repos/{_repo(repo)}/pulls/{int(number)}"))
+    except gh_identity.Error as error:
+        raise GhOpsError(error.code) from error
     return {
         "ok": True,
         "number": int(number),
@@ -544,6 +548,17 @@ def open_prs(owner: str, *, org: bool = False, repos: tuple[str, ...] = (), limi
     that allow repository-scoped calls but not search. ``ok`` is False when
     nothing is open.
     """
+    if client is None and not repos:
+        qualifier = "org" if org else "user"
+        try:
+            result = gh_identity.search(f"is:open archived:false {qualifier}:{owner}", kind="pr", max_items=limit)
+        except gh_identity.Error as error:
+            raise GhOpsError(error.code) from error
+        rows = [{"repo": row["repository"], "number": row["number"], "draft": bool(row.get("draft")),
+                 "updated_at": row.get("updated_at"), "author": row.get("author") or "",
+                 "title": row["title"], "url": row["url"]} for row in result["items"]]
+        return {"ok": bool(rows), "owner": owner, "total": result["total_count"], "pulls": rows,
+                "complete": result["complete"], "truncated": result["truncated"]}
     client = _client(client)
     if repos:
         rows = []
