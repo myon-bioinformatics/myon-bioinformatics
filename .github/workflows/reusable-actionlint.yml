@@ -79,8 +79,16 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -t files < /tmp/actionlint-files
-          docker run --rm \
-            -v "$PWD:/repo" \
-            --workdir /repo \
-            rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 \
-            -color "${files[@]}"
+          # Official release archive, pinned by version and published SHA-256.
+          version=1.7.12
+          archive="actionlint_${version}_linux_amd64.tar.gz"
+          sha256=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          tmpdir=$(mktemp -d)
+          trap 'rm -rf "$tmpdir"' EXIT
+          curl --fail --location --silent --show-error --retry 3 \
+            "https://github.com/rhysd/actionlint/releases/download/v${version}/${archive}" \
+            --output "$tmpdir/$archive"
+          printf '%s  %s\n' "$sha256" "$tmpdir/$archive" | sha256sum --check --status
+          tar -xzf "$tmpdir/$archive" -C "$tmpdir" actionlint
+          chmod +x "$tmpdir/actionlint"
+          "$tmpdir/actionlint" -color "${files[@]}"
