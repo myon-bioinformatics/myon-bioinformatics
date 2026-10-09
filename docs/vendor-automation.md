@@ -76,6 +76,9 @@ python -S vendor_consumers.py compare \
   --lock path/to/yourself/vendor.lock.json
 ```
 
+The CLI exits 0 for a match (or valid registry), 1 for topology drift, and 2
+for input/schema/I/O errors. Drift still emits the full comparison JSON.
+
 A comparison checks only repository/source/destination topology. It never
 promotes a recommendation or treats the parent registry as evidence of the exact
 bytes in a consumer checkout.

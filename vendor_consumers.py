@@ -184,7 +184,7 @@ def main(argv=None):
         else:
             result = validate(registry)
         print(json.dumps(result, indent=2, ensure_ascii=False))
-        return 0
+        return 1 if args.mode == "compare" and not result["matches"] else 0
     except (ValueError, OSError, json.JSONDecodeError) as error:
         print("vendor-consumers: " + str(error), file=sys.stderr)
         return 2

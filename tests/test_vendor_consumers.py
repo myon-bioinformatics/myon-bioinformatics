@@ -225,3 +225,25 @@ def test_cli_validate_compare_and_errors(tmp_path):
         cwd=tmp_path,
     )
     assert result.returncode == 0
+
+
+@pytest.mark.parametrize("drift", ["missing", "unexpected"])
+def test_compare_cli_fails_closed_with_json_evidence(tmp_path, drift):
+    registry_path = tmp_path / "registry.json"
+    lock_path = tmp_path / "vendor.lock.json"
+    registry_path.write_text(json.dumps(registry()), encoding="utf-8")
+    value = lock()
+    if drift == "missing":
+        value["files"].pop()
+    else:
+        value["files"].append(dict(value["files"][0], destination="vendor/extra.py"))
+    lock_path.write_text(json.dumps(value), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-S", str(Path(consumers.__file__)), "compare",
+         "--registry", str(registry_path), "--consumer", "owner/app",
+         "--lock", str(lock_path)], capture_output=True, text=True, cwd=tmp_path)
+    assert result.returncode == 1
+    evidence = json.loads(result.stdout)
+    assert evidence["matches"] is False
+    assert len(evidence[drift]) == 1
+    assert not result.stderr
