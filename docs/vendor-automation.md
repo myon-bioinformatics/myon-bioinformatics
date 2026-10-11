@@ -382,3 +382,16 @@ plan never means tested, safe to promote, or fully installed. Only the
 existing registered fleet is covered; discovering new repositories remains
 a separate inventory task. The tool makes no network calls, imports no
 candidate source, and performs no filesystem writes.
+
+Parent CI automatically emits the read-only JSON report as the
+`vendor-fleet-plan` artifact when the catalog/registry/planner changes
+and also supports manual dispatch. Since existing registrations may
+intentionally be incomplete, this report is **advisory** and does not
+silently fail the workflow for every candidate. `--fail-on-missing`
+provides an explicit strict exit-1 check for a selected consumer cohort.
+Canonical source artifacts owned by the consumer itself are excluded,
+because self-vendoring is forbidden by the registry contract. For a new
+registration request, add a reviewed catalog entry or explicit consumer
+relationship in the parent; this alone does **not** mutate the child's
+lock or place files. An eventual parent-led candidate PR still requires
+source/LICENSE verification and the consumer's CI gates.
