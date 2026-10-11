@@ -97,10 +97,12 @@ jobs:
           output.mkdir(exist_ok=True)
           summary = {"reports": [], "complete": True, "commit_sha": None}
           # The caller states which checkout it tested; nothing is guessed here.
-          commit_sha = os.environ.get("COMMIT_SHA", "").strip().lower() or None
-          if commit_sha is not None and not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit_sha):
+          commit_sha = os.environ.get("COMMIT_SHA", "") or None
+          if commit_sha is not None and not re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", commit_sha):
               commit_sha = None
               summary.update(complete=False, error="invalid_commit_sha")
+          elif commit_sha is not None:
+              commit_sha = commit_sha.lower()
           summary["commit_sha"] = commit_sha
           expected = []
           try:

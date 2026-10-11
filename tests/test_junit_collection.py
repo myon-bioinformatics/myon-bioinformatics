@@ -49,14 +49,14 @@ def test_failures_preserve_provenance_and_redact(tmp_path):
 
 
 
-def test_stated_commit_sha_reaches_summary_and_every_case(tmp_path):
+@pytest.mark.parametrize('sha', ['a' * 40, 'A' * 40, 'aB09' * 16])
+def test_stated_commit_sha_reaches_summary_and_every_case(tmp_path, sha):
     xml = b'<testsuite><testcase name="a"><failure/></testcase><testcase name="b"><error/></testcase></testsuite>'
-    sha = 'A' * 40
     result, summary, cases = run_collection(tmp_path, {'job/a.xml': xml}, commit_sha=sha)
     assert result.returncode == 0, result.stderr
-    assert summary['commit_sha'] == 'a' * 40
-    assert [row['context']['commit_sha'] for row in cases] == ['a' * 40] * 2
-    assert all(row['id'].startswith('owner/repo@' + 'a' * 40 + '/') for row in cases)
+    assert summary['commit_sha'] == sha.lower()
+    assert [row['context']['commit_sha'] for row in cases] == [sha.lower()] * 2
+    assert all(row['id'].startswith('owner/repo@' + sha.lower() + '/') for row in cases)
 
 
 def test_empty_commit_sha_keeps_null(tmp_path):
@@ -70,6 +70,19 @@ def test_invalid_commit_sha_fails_closed(tmp_path, sha):
     result, summary, cases = run_collection(tmp_path, {'job/a.xml': b'<testsuite><testcase name="a"><failure/></testcase></testsuite>'}, commit_sha=sha)
     assert result.returncode == 1 and summary['error'] == 'invalid_commit_sha'
     assert summary['commit_sha'] is None and all(row['context']['commit_sha'] is None for row in cases)
+
+
+@pytest.mark.parametrize('sha', ['A' * 40, 'aB09' * 16, ''])
+@pytest.mark.parametrize('whitespace', [' ', '\n', '\t', '\r\n', '\u00a0'])
+@pytest.mark.parametrize('position', ['before', 'after'])
+def test_commit_sha_whitespace_fails_closed(tmp_path, sha, whitespace, position):
+    sha = whitespace + sha if position == 'before' else sha + whitespace
+    xml = b'<testsuite><testcase name="a"><failure/></testcase></testsuite>'
+    result, summary, cases = run_collection(tmp_path, {'job/a.xml': xml}, commit_sha=sha)
+    assert result.returncode == 1 and summary['error'] == 'invalid_commit_sha'
+    assert not summary['complete'] and summary['commit_sha'] is None
+    assert len(cases) == 1 and cases[0]['context']['commit_sha'] is None
+    assert '@unmeasured/' in cases[0]['id']
 
 def test_no_report_is_not_success(tmp_path):
     result, summary, cases = run_collection(tmp_path, {})
