@@ -84,3 +84,32 @@ def test_checked_in_fleet_and_cli_read_only(tmp_path):
     assert out.returncode == 0, out.stderr
     assert json.loads(out.stdout)["read_only"]
     assert not list(tmp_path.iterdir())
+
+
+def test_canonical_owner_is_excluded_without_self_vendor():
+    cat, reg = fixtures()
+    cat["tools"].append({
+        "repository": "owner/app", "commit": "b" * 40,
+        "source": "app.py", "reason": "owned canonical source",
+    })
+    result = vendor_fleet_plan.plan(cat, reg, active_consumers=["owner/app"])
+    assert len(result["rows"]) == 1
+    assert result["rows"][0]["tool_repository"] == "owner/tool"
+
+
+def test_strict_mode_detects_missing_without_mutation(tmp_path):
+    cat, reg = fixtures()
+    catalog = tmp_path / "catalog.json"
+    registry = tmp_path / "registry.json"
+    catalog.write_text(json.dumps(cat), encoding="utf-8")
+    registry.write_text(json.dumps(reg), encoding="utf-8")
+    root = Path(__file__).resolve().parents[1]
+    args = [sys.executable, "-S", str(root / "vendor_fleet_plan.py"),
+            "--catalog", str(catalog), "--registry", str(registry),
+            "--consumer", "owner/other", "--fail-on-missing"]
+    result = subprocess.run(args, cwd=tmp_path, capture_output=True, text=True)
+    assert result.returncode == 1
+    assert json.loads(result.stdout)["counts"]["needs_registration"] == 1
+    assert subprocess.run(args[:-1], cwd=tmp_path, capture_output=True).returncode == 0
+    assert json.loads(catalog.read_text(encoding="utf-8")) == cat
+    assert json.loads(registry.read_text(encoding="utf-8")) == reg
