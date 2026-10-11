@@ -17,7 +17,7 @@ def fixtures():
     registry = {"schema": "vendor-consumers/1", "consumers": [
         {"repository": "owner/app", "state": "locked", "lock": "vendor.lock.json",
          "entries": [{"repository": "owner/tool", "source": "tool.py", "destination": "vendor/tool.py"}]},
-        {"repository": "owner/other", "state": "locked", "lock": "vendor.lock.json", "entries": []},
+        {"repository": "owner/other", "state": "locked", "lock": "vendor.lock.json", "entries": [{"repository": "owner/other-tool", "source": "other.py", "destination": "vendor/other.py"}]},
     ]}
     return tool, registry
 
