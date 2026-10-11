@@ -34,6 +34,9 @@ def plan(catalog, registry, *, active_consumers=None):
         declared = {(item["repository"].casefold(), item["source"]): item
                     for item in consumer["entries"]}
         for tool in catalog["tools"]:
+            # The canonical owner must not vendor its own source (registry contract).
+            if tool["repository"].casefold() == name.casefold():
+                continue
             decision = next(
                 (value for key, value in tool.get("consumers", {}).items()
                  if key.casefold() == name.casefold()),
@@ -76,13 +79,15 @@ def main(argv=None):
     parser.add_argument("--catalog", default="vendor-catalog.json")
     parser.add_argument("--registry", default="vendor-consumers.json")
     parser.add_argument("--consumer", action="append", default=[])
+    parser.add_argument("--fail-on-missing", action="store_true",
+                        help="exit 1 for unregistered non-skipped source candidates")
     args = parser.parse_args(argv)
     try:
         cat = json.loads(Path(args.catalog).read_text(encoding="utf-8"))
         reg = json.loads(Path(args.registry).read_text(encoding="utf-8"))
         result = plan(cat, reg, active_consumers=args.consumer or None)
         print(json.dumps(result, indent=2, ensure_ascii=False))
-        return 0
+        return 1 if args.fail_on_missing and result["counts"]["needs_registration"] else 0
     except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
         print(f"vendor fleet plan: {exc}", file=sys.stderr)
         return 2
