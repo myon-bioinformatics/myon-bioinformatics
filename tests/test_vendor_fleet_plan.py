@@ -113,3 +113,15 @@ def test_strict_mode_detects_missing_without_mutation(tmp_path):
     assert subprocess.run(args[:-1], cwd=tmp_path, capture_output=True).returncode == 0
     assert json.loads(catalog.read_text(encoding="utf-8")) == cat
     assert json.loads(registry.read_text(encoding="utf-8")) == reg
+
+
+def test_fleet_workflow_main_push_tracks_imported_validators():
+    """Validator-only changes on main must refresh the advisory report."""
+    workflow = (Path(__file__).resolve().parents[1]
+                / ".github/workflows/vendor-fleet-plan.yml").read_text(encoding="utf-8")
+    pr_section = workflow.split("  pull_request:\n", 1)[1].split("  push:\n", 1)[0]
+    push_section = workflow.split("  push:\n", 1)[1].split("  workflow_dispatch:", 1)[0]
+    for filename in ("vendor_catalog.py", "vendor_consumers.py"):
+        entry = '      - "' + filename + '"'
+        assert entry in pr_section
+        assert entry in push_section
