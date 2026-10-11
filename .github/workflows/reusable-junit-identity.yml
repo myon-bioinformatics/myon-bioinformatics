@@ -14,6 +14,10 @@ on:
       output-artifact:
         type: string
         default: "failure-identity"
+      commit-sha:
+        description: "Full SHA of the checkout that produced the reports (caller-stated; empty keeps null)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -71,6 +75,7 @@ jobs:
           PYTHONPATH: shared-xprobe
           SOURCE_REPOSITORY: ${{ github.repository }}
           EXPECTED_REPORTS: ${{ inputs.expected-reports }}
+          COMMIT_SHA: ${{ inputs.commit-sha }}
         run: |
           python - <<'PY'
           import hashlib
@@ -91,6 +96,12 @@ jobs:
           output = Path("identity")
           output.mkdir(exist_ok=True)
           summary = {"reports": [], "complete": True, "commit_sha": None}
+          # The caller states which checkout it tested; nothing is guessed here.
+          commit_sha = os.environ.get("COMMIT_SHA", "").strip().lower() or None
+          if commit_sha is not None and not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit_sha):
+              commit_sha = None
+              summary.update(complete=False, error="invalid_commit_sha")
+          summary["commit_sha"] = commit_sha
           expected = []
           try:
               expected = json.loads(os.environ.get("EXPECTED_REPORTS", ""))
@@ -133,7 +144,7 @@ jobs:
                       raise ValueError("byte_limit")
                   report = xprobe.cases_from_junit(
                       raw.decode("utf-8"), repository=os.environ["SOURCE_REPOSITORY"],
-                      commit_sha=None, report_id=report_id,
+                      commit_sha=commit_sha, report_id=report_id,
                   )
                   item.update(measured=True, truncated=report["truncated"], failures=len(report["cases"]))
                   cases.extend(report["cases"])
