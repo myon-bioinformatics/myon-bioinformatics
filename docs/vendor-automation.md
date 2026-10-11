@@ -353,5 +353,75 @@ Initial recommendations deliberately retain the parent's existing gh_identity
 pin and the previously adopted xprobe JUnit bridge baseline, not today's moving
 main. A later recommendation is a reviewed catalog commit. Development heads,
 consumer locks, and catalog commits advance independently. Candidate CI,
-compatibility receipts, automatic PR creation and coordinated promotion are
-future phases; this first phase does not change existing CI update behavior.
+fleet compatibility receipts, automatic PR creation and coordinated promotion
+remain future phases; the candidate CI connection below does not change existing
+development-head CI update behavior.
+
+## Recommended candidate CI (#46, second phase)
+
+`vendor_candidate.py` reuses the catalog, consumer registry and canonical
+`vendor_sync` Git snapshot/digest/check operations. The first connected consumer
+is this parent repository; the proving artifact is `gh_identity.py` and its
+explicitly locked LICENSE. `.github/workflows/vendor-candidate.yml` automatically
+runs on relevant PRs/main pushes, and supports manual dispatch, on Python 3.10
+and 3.14 with read-only permissions and no persisted checkout credentials.
+
+```sh
+python -S vendor_candidate.py --root . \
+  --consumer myon-bioinformatics/myon-bioinformatics \
+  --repository myon-bioinformatics/gh_identity --source gh_identity.py \
+  --test tests/test_gh_ops.py --output ../candidate-results
+```
+
+The output directory must be new, outside the consumer root and without symlink
+components. The registered lock topology and all locked source bytes are checked
+before fetching. The catalog selects a full commit, independently of `ref` or
+upstream main. Source and LICENSE are fetched together from that exact Git
+snapshot; resolved commit, regular-file mode, Git blob and SHA-256 are checked
+before placement. Candidate metadata uses the verified source bytes, never an
+unverified catalog digest. Files and a temporary candidate lock are placed only
+in a disposable copy of the consumer. Other locked artifacts retain their pins.
+The original consumer lock, source files, catalog and registry are never written.
+
+Tests are explicit trusted consumer Python paths supplied by the workflow/operator;
+they are not catalog-provided commands. `tests/test_gh_ops.py` exercises the actual
+parent gh_identity loader and its callers, rather than testing only upstream code.
+Candidate integrity is checked again after tests. This copy isolates accidental
+relative writes; it is **not a security sandbox** for malicious tests. Concurrent
+input changes and coupled multi-source recommendation groups are unsupported.
+
+`verification.json` uses `vendor-candidate-verification/1`:
+
+- `success` / `candidate_compatible`: identity checks and selected tests passed,
+  with nonempty JUnit and no skipped cases. This is compatibility evidence only
+  for the named tests and Python environment, never promotion authorization.
+- `mismatch`: locked/candidate identity mismatch or test failure. The original
+  lock remains unchanged.
+- `unverified`: retrieval/runner/input failure, explicit skip, missing enrollment,
+  absent tests, missing/invalid/empty JUnit, or skipped cases. Never treated as a pass.
+
+The receipt records the consumer/tool, selected recommended commit, original lock
+SHA-256, normalized catalog/registry SHA-256, locked and candidate file identities,
+selected test paths, test exit status/output, JUnit SHA-256 and `promoted: false`.
+Successful CLI exit is 0; all other outcomes exit 2. Candidate JUnit is retained
+when produced, including failed tests. Actions uploads diagnostic JSON/JUnit even
+when verification fails, plus the offline verifier regression JUnit. The artifact's
+workflow run/head provides the consumer revision identity. Output creation errors
+exit before verification; otherwise input errors produce an unverified receipt.
+
+This phase neither updates recommendations nor promotes/commits/pushes/opens PRs
+from CI. Baseline recommendation remains a separate reviewed catalog change.
+Fleet fan-out, consumer-specific test selection contracts, reusable compatibility
+receipt validation, release-train aggregation and coordinated promote remain
+follow-up work. Existing development-head CI update behavior is unchanged.
+
+### First live candidate result
+
+On 2026-10-11 the parent lock used gh_identity `c950ed3882f05668575b7298a67bc811e9cf925a`,
+while the catalog recommended `fc2c527257b12eb99c00637bbae74f8988fd6bf4`.
+Exact candidate retrieval/digests passed, but the parent tests produced 123 passed
+and one failure: `test_default_open_prs_uses_bounded_canonical_search` needs
+`gh_identity.search`, absent from the recommended revision. The receipt reports
+`mismatch` / `tests_failed`; the candidate Actions job is intentionally nonzero
+until a separate reviewed recommendation or consumer compatibility change.
+Do not suppress this test, advance the catalog implicitly, or promote this candidate.
