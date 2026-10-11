@@ -20,6 +20,7 @@ commit. Do not use a floating branch or invent a commit pin before merging.
       expected-reports: '["junit-py3.12/pytest-3.12.xml", "junit-py3.14/pytest-3.14.xml"]'
       artifact-pattern: "junit-*"
       output-artifact: "failure-identity"
+      commit-sha: ${{ github.sha }}
 ```
 
 `expected-reports` is required: a JSON array of exact paths after artifact
@@ -47,8 +48,13 @@ Messages, tracebacks, parameter labels, arbitrary report paths and system output
 are omitted. Failure and error remain distinct; skip/xfail are not promoted to
 failures. This collector does not infer skip versus xfail details from XML.
 
-Repository context is the caller's `github.repository`; commit SHA remains null
-until canonical producer metadata is wired in. `github.sha` is not substituted.
+Repository context is the caller's `github.repository`. The commit SHA is what the
+caller states in the optional `commit-sha` input: the full SHA of the checkout that
+produced the reports (normally `${{ github.sha }}`; on `pull_request` that is the
+merge commit actually tested, not the PR head). The collector never guesses it:
+empty keeps `commit_sha: null` (identities say `@unmeasured`), and anything other
+than a full 40- or 64-hex SHA fails collection with `invalid_commit_sha`. The same
+value appears in `collection.json` and in every case's context and identity.
 Hashed relative artifact paths distinguish reports, including equal filenames
 from different matrix artifacts. Inputs needed to reproduce a failure are not
 reconstructable from JUnit and must be attached separately.

@@ -13,7 +13,7 @@ if 'XPROBE_SOURCE' not in os.environ:
 SOURCE = Path(os.environ['XPROBE_SOURCE'])
 
 
-def run_collection(tmp_path, reports, expected=None):
+def run_collection(tmp_path, reports, expected=None, commit_sha=None):
     reports = {name if '/' in name else 'fixture/' + name: data for name, data in reports.items()}
     if expected is None:
         expected = list(reports)[:100] or ['fixture/report.xml']
@@ -28,6 +28,9 @@ def run_collection(tmp_path, reports, expected=None):
     code = text.split("          python - <<'PY'\n", 1)[1].split('\n          PY', 1)[0]
     code = '\n'.join(line[10:] for line in code.splitlines())
     env = dict(os.environ, PYTHONPATH=str(importer), SOURCE_REPOSITORY='owner/repo', EXPECTED_REPORTS=json.dumps(expected))
+    env.pop('COMMIT_SHA', None)
+    if commit_sha is not None:
+        env['COMMIT_SHA'] = commit_sha
     result = subprocess.run([sys.executable, '-c', code], cwd=tmp_path, env=env, capture_output=True)
     summary = json.loads((tmp_path / 'identity/collection.json').read_text())
     cases = [json.loads(line) for line in (tmp_path / 'identity/failure-identity.jsonl').read_text().splitlines()]
@@ -44,6 +47,29 @@ def test_failures_preserve_provenance_and_redact(tmp_path):
     assert all(row['context']['commit_sha'] is None for row in cases)
     assert 'secret' not in json.dumps([summary, cases])
 
+
+
+def test_stated_commit_sha_reaches_summary_and_every_case(tmp_path):
+    xml = b'<testsuite><testcase name="a"><failure/></testcase><testcase name="b"><error/></testcase></testsuite>'
+    sha = 'A' * 40
+    result, summary, cases = run_collection(tmp_path, {'job/a.xml': xml}, commit_sha=sha)
+    assert result.returncode == 0, result.stderr
+    assert summary['commit_sha'] == 'a' * 40
+    assert [row['context']['commit_sha'] for row in cases] == ['a' * 40] * 2
+    assert all(row['id'].startswith('owner/repo@' + 'a' * 40 + '/') for row in cases)
+
+
+def test_empty_commit_sha_keeps_null(tmp_path):
+    result, summary, cases = run_collection(tmp_path, {'job/a.xml': b'<testsuite><testcase name="a"><failure/></testcase></testsuite>'}, commit_sha='')
+    assert result.returncode == 0 and summary['commit_sha'] is None
+    assert cases[0]['context']['commit_sha'] is None and '@unmeasured/' in cases[0]['id']
+
+
+@pytest.mark.parametrize('sha', ['abc123', 'g' * 40, 'a' * 41, 'refs/heads/main', 'a' * 39 + '\n'])
+def test_invalid_commit_sha_fails_closed(tmp_path, sha):
+    result, summary, cases = run_collection(tmp_path, {'job/a.xml': b'<testsuite><testcase name="a"><failure/></testcase></testsuite>'}, commit_sha=sha)
+    assert result.returncode == 1 and summary['error'] == 'invalid_commit_sha'
+    assert summary['commit_sha'] is None and all(row['context']['commit_sha'] is None for row in cases)
 
 def test_no_report_is_not_success(tmp_path):
     result, summary, cases = run_collection(tmp_path, {})

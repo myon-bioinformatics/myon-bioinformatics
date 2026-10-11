@@ -96,3 +96,4 @@ jobs:
     with:
       expected-reports: '["junit-parent-py3.10/junit.xml","junit-parent-py3.11/junit.xml","junit-parent-py3.12/junit.xml","junit-parent-py3.13/junit.xml","junit-parent-py3.14/junit.xml","junit-vendor-ubuntu-latest-py3.9/vendor.xml","junit-vendor-windows-latest-py3.12/vendor.xml","junit-vendor-macos-latest-py3.12/vendor.xml"]'
       output-artifact: parent-python-failure-identity
+      commit-sha: ${{ github.sha }}

@@ -46,3 +46,4 @@ jobs:
     with:
       expected-reports: '["junit-collector-tests/collector-tests.xml"]'
       output-artifact: collector-test-identity
+      commit-sha: ${{ github.sha }}
