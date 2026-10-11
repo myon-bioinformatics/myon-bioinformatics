@@ -355,3 +355,30 @@ main. A later recommendation is a reviewed catalog commit. Development heads,
 consumer locks, and catalog commits advance independently. Candidate CI,
 compatibility receipts, automatic PR creation and coordinated promotion are
 future phases; this first phase does not change existing CI update behavior.
+
+## Read-only fleet registration plan (#46)
+
+`vendor_fleet_plan.py` combines the reviewed recommendation catalog and
+parent-owned consumer topology into a **read-only** registration worklist:
+
+```sh
+python -S vendor_fleet_plan.py --consumer myon-bioinformatics/Ironmate
+python -S vendor_fleet_plan.py
+```
+
+It emits `vendor-fleet-plan/1` JSON with one row per selected consumer and
+catalog tool: `registered`, `needs_registration`, `skipped`, or
+`legacy_consumer_review`. A missing registration has a null destination:
+the planner does not invent a placement path or copy any bytes. Skips include
+their explicit policy reason, and an existing enrolled relationship is
+reported even if a newer catalog default skips it. An optional repeatable
+`--consumer` limits the report to known registered consumers.
+
+This is **not** a replacement for `vendor_consumers.py compare` (which
+compares an actual lock), `vendor_catalog.py compare` (which compares
+recommended commit pins) or `vendor_sync.py check` (which verifies bytes).
+`candidate_compatibility: unverified` is always explicit: a registration
+plan never means tested, safe to promote, or fully installed. Only the
+existing registered fleet is covered; discovering new repositories remains
+a separate inventory task. The tool makes no network calls, imports no
+candidate source, and performs no filesystem writes.
