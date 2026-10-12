@@ -67,7 +67,7 @@
       "recommended_commit": "380d877cd85837f36cf6030d626ee8bb7dfa28cb",
       "proposed_destination": "tool/python/vendor/gh_ops.py",
       "disposition": "further_investigation",
-      "reason": "destination_owned_by_browser_test_kit",
+      "reason": "already_vendored_identical_blob_under_browser_test_kit_identity",
       "registration_approved": false,
       "source_examined": true,
       "source_dependencies": "python_stdlib_only",
@@ -76,7 +76,7 @@
       "license_verified_at_recommended_commit": true,
       "consumer_ci_workflow": ".github/workflows/non-dart.yml",
       "consumer_ci_with_candidate": "not_run",
-      "existing_destination_collision": "myon-bioinformatics/browser-test-kit:scripts/gh_ops.py"
+      "existing_destination_collision": "myon-bioinformatics/browser-test-kit:scripts/gh_ops.py@6e5470e1e9395f9f3dd0908d3ce5190e0294e807"
     },
     {
       "consumer": "myon-bioinformatics/flutter_navigation_basic",
@@ -162,7 +162,7 @@
       "recommended_commit": "380d877cd85837f36cf6030d626ee8bb7dfa28cb",
       "proposed_destination": "vendor/gh_ops.py",
       "disposition": "further_investigation",
-      "reason": "destination_owned_by_browser_test_kit",
+      "reason": "existing_browser_test_kit_gh_ops_has_different_blob_and_api",
       "registration_approved": false,
       "source_examined": true,
       "source_dependencies": "python_stdlib_only",
@@ -171,7 +171,7 @@
       "license_verified_at_recommended_commit": true,
       "consumer_ci_workflow": ".github/workflows/test.yml",
       "consumer_ci_with_candidate": "not_run",
-      "existing_destination_collision": "myon-bioinformatics/browser-test-kit:scripts/gh_ops.py"
+      "existing_destination_collision": "myon-bioinformatics/browser-test-kit:scripts/gh_ops.py@e4bd079300087a275c4fe577399e3230e5cd5b54"
     },
     {
       "consumer": "myon-bioinformatics/mcp-toolcall-lab",
