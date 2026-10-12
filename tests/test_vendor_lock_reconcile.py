@@ -233,3 +233,24 @@ def test_cli_online_records_requested_ref_and_resolved_commit(tmp_path, monkeypa
     assert prov["requested_ref"] == "main"
     assert prov["commit"] == revision
     assert prov["lock_blob_sha"] == "a"*40
+
+
+def test_reconcile_workflow_refreshes_on_parent_registry_and_code_changes():
+    """A registry-only update must regenerate the actual-lock report on main."""
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / ".github/workflows/vendor-lock-reconciliation.yml").read_text(encoding="utf-8")
+    pr_section = workflow.split("  pull_request:\n", 1)[1].split("  push:\n", 1)[0]
+    push_section = workflow.split("  push:\n", 1)[1].split("\npermissions:", 1)[0]
+    assert "    branches: [main]" in push_section
+    for required in ("vendor-catalog.json", "vendor-consumers.json", "vendor_catalog.py",
+                     "vendor_consumers.py", "vendor_fleet_plan.py", "vendor_sync.py",
+                     "vendor_lock_reconcile.py", "docs/vendor-registration-review.json",
+                     "tests/test_vendor_lock_reconcile.py",
+                     ".github/workflows/vendor-lock-reconciliation.yml"):
+        expected = f'      - "{required}"'
+        assert expected in pr_section
+        assert expected in push_section
+    assert "  workflow_dispatch:" in workflow
+    assert "--fail-on-drift" not in workflow
+    assert "          GH_TOKEN: ${{ github.token }}" in workflow
+    assert "  contents: read" in workflow
