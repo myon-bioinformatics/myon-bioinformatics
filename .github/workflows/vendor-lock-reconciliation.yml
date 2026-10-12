@@ -1,0 +1,44 @@
+name: Vendor consumer lock reconciliation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "vendor_lock_reconcile.py"
+      - "tests/test_vendor_lock_reconcile.py"
+      - ".github/workflows/vendor-lock-reconciliation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Unit regressions
+        run: |
+          python -m pip install pytest
+          python -m pytest -q tests/test_vendor_lock_reconcile.py tests/test_vendor_consumers.py tests/test_vendor_catalog.py tests/test_vendor_fleet_plan.py
+      - name: Fetch real consumer locks (read only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p reports
+          python -S vendor_lock_reconcile.py \
+            --consumer myon-bioinformatics/flutter_navigation_basic \
+            --consumer myon-bioinformatics/mcp-toolcall-lab \
+            --output reports/vendor-lock-reconciliation.json
+      - name: Upload machine-readable evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vendor-lock-reconciliation
+          path: reports/vendor-lock-reconciliation.json
+          if-no-files-found: warn
+          retention-days: 14
