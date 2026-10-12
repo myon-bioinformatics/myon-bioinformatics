@@ -4,9 +4,30 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - "vendor-catalog.json"
+      - "vendor-consumers.json"
+      - "vendor_catalog.py"
+      - "vendor_consumers.py"
+      - "vendor_fleet_plan.py"
+      - "vendor_sync.py"
       - "vendor_lock_reconcile.py"
-      - "tests/test_vendor_lock_reconcile.py"
       - "docs/vendor-registration-review.json"
+      - "tests/test_vendor_lock_reconcile.py"
+      - "tests/test_flutter_vendor_registry_sync.py"
+      - ".github/workflows/vendor-lock-reconciliation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "vendor-catalog.json"
+      - "vendor-consumers.json"
+      - "vendor_catalog.py"
+      - "vendor_consumers.py"
+      - "vendor_fleet_plan.py"
+      - "vendor_sync.py"
+      - "vendor_lock_reconcile.py"
+      - "docs/vendor-registration-review.json"
+      - "tests/test_vendor_lock_reconcile.py"
+      - "tests/test_flutter_vendor_registry_sync.py"
       - ".github/workflows/vendor-lock-reconciliation.yml"
 
 permissions:
