@@ -647,21 +647,6 @@
       "lock": "tool/python/vendor.lock.json",
       "entries": [
         {
-          "repository": "myon-bioinformatics/Ironmate",
-          "source": "repository_metadata_contract.py",
-          "destination": "tool/python/vendor/repository_metadata_contract.py"
-        },
-        {
-          "repository": "myon-bioinformatics/Ironmate",
-          "source": "repository_metadata_generator.py",
-          "destination": "tool/python/vendor/repository_metadata_generator.py"
-        },
-        {
-          "repository": "myon-bioinformatics/Ironmate",
-          "source": "LICENSE",
-          "destination": "tool/python/vendor/Ironmate-LICENSE"
-        },
-        {
           "repository": "myon-bioinformatics/yourself",
           "source": "yourself.py",
           "destination": "tool/python/vendor/yourself.py"
@@ -687,11 +672,6 @@
           "destination": "tool/python/vendor/jsonl_digest.py"
         },
         {
-          "repository": "myon-bioinformatics/myon-bioinformatics",
-          "source": "git_inspector.py",
-          "destination": "tool/python/vendor/git_inspector.py"
-        },
-        {
           "repository": "myon-bioinformatics/cli_args",
           "source": "cli_args.py",
           "destination": "tool/python/vendor/cli_args.py"
@@ -710,11 +690,6 @@
           "repository": "myon-bioinformatics/browser-test-kit",
           "source": "LICENSE",
           "destination": "tool/python/vendor/browser-test-kit-LICENSE"
-        },
-        {
-          "repository": "myon-bioinformatics/myon-bioinformatics",
-          "source": "LICENSE",
-          "destination": "tool/python/vendor/myon-bioinformatics-LICENSE"
         },
         {
           "repository": "myon-bioinformatics/cli_args",
