@@ -1,0 +1,71 @@
+name: Recommended vendor candidate
+
+on:
+  pull_request:
+    paths:
+      - "vendor_candidate.py"
+      - "vendor_catalog.py"
+      - "vendor_consumers.py"
+      - "vendor_sync.py"
+      - "vendor-catalog.json"
+      - "vendor-consumers.json"
+      - "vendor.lock.json"
+      - "vendor/**"
+      - "gh_ops.py"
+      - "tests/**"
+      - ".github/workflows/vendor-candidate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "vendor*.py"
+      - "vendor*.json"
+      - "vendor/**"
+      - "gh_ops.py"
+      - "tests/**"
+      - ".github/workflows/vendor-candidate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gh-identity:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -r tests/requirements.txt
+      - name: Test candidate verifier offline
+        run: python -m pytest -q tests/test_vendor_candidate.py --junitxml=reports/verifier.xml
+      - name: Verify recommended gh_identity in disposable consumer
+        env:
+          CANDIDATE_OUTPUT: ${{ runner.temp }}/vendor-candidate-py${{ matrix.python }}
+        run: >-
+          python -S vendor_candidate.py --root .
+          --consumer myon-bioinformatics/myon-bioinformatics
+          --repository myon-bioinformatics/gh_identity --source gh_identity.py
+          --test tests/test_gh_ops.py --output "$CANDIDATE_OUTPUT"
+      - name: Preserve verification and candidate JUnit (including failures)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vendor-candidate-gh-identity-py${{ matrix.python }}
+          path: ${{ runner.temp }}/vendor-candidate-py${{ matrix.python }}/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve verifier JUnit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-vendor-candidate-verifier-py${{ matrix.python }}
+          path: reports/verifier.xml
+          if-no-files-found: error
+          retention-days: 14
