@@ -1,6 +1,7 @@
 """Offline, deterministic coverage for read-only consumer lock reconciliation."""
 import base64
 import copy
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -99,6 +100,11 @@ def test_cli_offline_and_failure_codes(tmp_path):
             "--output", str(out), "--fail-on-drift"]
     assert mod.main(args) == 0
     assert json.loads(out.read_text())["schema"] == mod.SCHEMA
+    prov = json.loads(out.read_text())["results"][0]["lock_provenance"]
+    assert prov["resolution"] == "offline_manifest"
+    assert prov["requested_ref"] is None
+    assert prov["lock_sha256"] == hashlib.sha256(files[2].read_bytes()).hexdigest()
+    assert prov["lock_blob_sha"] == mod.vendor_sync.git_blob(files[2].read_bytes())
     lock["files"][0]["commit"] = "d"*40
     files[2].write_text(json.dumps(lock), encoding="utf-8")
     assert mod.main(args) == 1
@@ -176,6 +182,8 @@ def test_remote_content_is_commit_pinned_and_git_blob_checked(monkeypatch):
     assert mod.fetch_lock(consumer, "vendor.lock.json", ref=revision)[0] == lock
     assert calls[1].endswith("?ref=" + revision)
     assert mod.fetch_lock(consumer, "vendor.lock.json", ref=revision)[1]["lock_sha256"]
+    assert mod.fetch_lock(consumer, "vendor.lock.json", ref=revision)[1]["source_url"].endswith(
+        "vendor.lock.json?ref=" + revision)
     def bad_json(url, token=None):
         record = fake_json(url, token)
         record["sha"] = "0" * 40
@@ -204,3 +212,24 @@ def test_real_review_snapshot_has_no_approved_registration():
     assert len({r["consumer"] for r in evidence["reviews"]}) == 2
     assert sum(r["disposition"] == "scoped_ci_trial_candidate" for r in evidence["reviews"]) == 6
     assert all(r["registration_approved"] is False for r in evidence["reviews"])
+
+
+def test_cli_online_records_requested_ref_and_resolved_commit(tmp_path, monkeypatch):
+    catalog, registry, consumer, lock = fixture()
+    paths = []
+    for name, value in (("catalog.json", catalog), ("registry.json", registry)):
+        file = tmp_path / name
+        file.write_text(json.dumps(value), encoding="utf-8")
+        paths.append(file)
+    revision = "f" * 40
+    monkeypatch.setattr(mod, "fetch_revision", lambda *a, **k: revision)
+    monkeypatch.setattr(mod, "fetch_lock", lambda *a, **k: (
+        lock, {"resolution": "pinned_github_commit", "commit": revision,
+               "lock_blob_sha": "a"*40, "lock_sha256": "b"*64}))
+    result = tmp_path / "report.json"
+    assert mod.main(["--catalog", str(paths[0]), "--registry", str(paths[1]),
+                     "--consumer", consumer, "--ref", "main", "--output", str(result)]) == 0
+    prov = json.loads(result.read_text(encoding="utf-8"))["results"][0]["lock_provenance"]
+    assert prov["requested_ref"] == "main"
+    assert prov["commit"] == revision
+    assert prov["lock_blob_sha"] == "a"*40
