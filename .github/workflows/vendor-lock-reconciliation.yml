@@ -6,6 +6,7 @@ on:
     paths:
       - "vendor_lock_reconcile.py"
       - "tests/test_vendor_lock_reconcile.py"
+      - "docs/vendor-registration-review.json"
       - ".github/workflows/vendor-lock-reconciliation.yml"
 
 permissions:
@@ -33,7 +34,17 @@ jobs:
           python -S vendor_lock_reconcile.py \
             --consumer myon-bioinformatics/flutter_navigation_basic \
             --consumer myon-bioinformatics/mcp-toolcall-lab \
+            --review docs/vendor-registration-review.json \
             --output reports/vendor-lock-reconciliation.json
+      - name: Summarize separate lock drift and registration review
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("reports/vendor-lock-reconciliation.json").read_text(encoding="utf-8"))
+          for row in report["results"]:
+              print(row["consumer"], row.get("counts"), row.get("lock_provenance", {}).get("commit"))
+          PY
       - name: Upload machine-readable evidence
         if: always()
         uses: actions/upload-artifact@v7
