@@ -196,7 +196,8 @@ def fetch_lock(repository, path, *, ref, token=None):
     lock = json.loads(raw.decode("utf-8"))
     vendor_sync.validate(lock)
     return lock, {"resolution": "pinned_github_commit", "commit": ref,
-                  "lock_blob_sha": data["sha"], "lock_sha256": hashlib.sha256(raw).hexdigest()}
+                  "source_url": url, "lock_blob_sha": data["sha"],
+                  "lock_sha256": hashlib.sha256(raw).hexdigest()}
 
 
 def main(argv=None):
@@ -219,12 +220,18 @@ def main(argv=None):
         validated = vendor_consumers.validate(registry)
         if len(set(args.consumer)) != len(args.consumer):
             raise ValueError("duplicate consumer")
-        local = {}
+        local, local_provenance = {}, {}
         for value in args.lock:
             name, sep, filename = value.partition("=")
             if not sep or not name or not filename or name in local:
                 raise ValueError("expected unique --lock OWNER/REPO=FILE")
-            local[name] = json.loads(Path(filename).read_text(encoding="utf-8"))
+            raw = Path(filename).read_bytes()
+            local[name] = json.loads(raw.decode("utf-8"))
+            local_provenance[name] = {
+                "resolution": "offline_manifest", "commit": None, "requested_ref": None,
+                "lock_blob_sha": vendor_sync.git_blob(raw),
+                "lock_sha256": hashlib.sha256(raw).hexdigest(),
+            }
         if set(local) - set(args.consumer):
             raise ValueError("--lock consumer was not selected")
         locks, metadata = {}, {}
@@ -233,11 +240,13 @@ def main(argv=None):
             if consumer["state"] == "locked":
                 if name in local:
                     locks[name] = local[name]
+                    metadata[name] = local_provenance[name]
                 else:
                     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
                     revision = fetch_revision(name, args.ref, token=token)
                     locks[name], metadata[name] = fetch_lock(
                         name, consumer["lock"], ref=revision, token=token)
+                    metadata[name]["requested_ref"] = args.ref
         report = reconcile(catalog, validated, locks, consumers=args.consumer,
                            metadata=metadata, evidence=evidence)
         encoded = json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
