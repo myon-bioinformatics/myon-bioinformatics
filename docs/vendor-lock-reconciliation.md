@@ -21,8 +21,11 @@ are preserved in `lock_provenance`. The report does **not** fetch/reverify
 every vendored source byte: `lock_file_bytes_verified: false`.
 
 Offline usage accepts one `--lock OWNER/REPO=/path/to/vendor.lock.json`
-per selected consumer. Offline runs cannot prove a specific consumer revision;
-manual review evidence then has status `stale_or_unpinned`.
+per selected consumer. Offline reports retain the **raw input bytes' SHA-256
+and Git blob SHA-1**, but cannot prove a specific consumer commit; manual
+review evidence then has status `stale_or_unpinned`. Online reports also
+retain the originally requested ref, immutable resolved commit and source
+URL, so the comparison can be audited after consumer main moves.
 
 `--fail-on-drift` optionally exits 1 for actual topology drift or a differing
 recommended pin. This flag is intentionally **not** used by the default
