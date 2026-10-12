@@ -441,3 +441,43 @@ Current compatibility evidence comes from the candidate workflow for this commit
 Equal recommended and installed commits do not skip verification: source and LICENSE
 are still fetched from the exact commit, their identities checked, and the real
 consumer tests run in the disposable copy. Fetch or test failures remain non-success.
+
+## Read-only fleet registration plan (#46)
+
+`vendor_fleet_plan.py` combines the reviewed recommendation catalog and
+parent-owned consumer topology into a **read-only** registration worklist:
+
+```sh
+python -S vendor_fleet_plan.py --consumer myon-bioinformatics/Ironmate
+python -S vendor_fleet_plan.py
+```
+
+It emits `vendor-fleet-plan/1` JSON with one row per selected consumer and
+catalog tool: `registered`, `needs_registration`, `skipped`, or
+`legacy_consumer_review`. A missing registration has a null destination:
+the planner does not invent a placement path or copy any bytes. Skips include
+their explicit policy reason, and an existing enrolled relationship is
+reported even if a newer catalog default skips it. An optional repeatable
+`--consumer` limits the report to known registered consumers.
+
+This is **not** a replacement for `vendor_consumers.py compare` (which
+compares an actual lock), `vendor_catalog.py compare` (which compares
+recommended commit pins) or `vendor_sync.py check` (which verifies bytes).
+`candidate_compatibility: unverified` is always explicit: a registration
+plan never means tested, safe to promote, or fully installed. Only the
+existing registered fleet is covered; discovering new repositories remains
+a separate inventory task. The tool makes no network calls, imports no
+candidate source, and performs no filesystem writes.
+
+Parent CI automatically emits the read-only JSON report as the
+`vendor-fleet-plan` artifact when the catalog/registry/planner changes
+and also supports manual dispatch. Since existing registrations may
+intentionally be incomplete, this report is **advisory** and does not
+silently fail the workflow for every candidate. `--fail-on-missing`
+provides an explicit strict exit-1 check for a selected consumer cohort.
+Canonical source artifacts owned by the consumer itself are excluded,
+because self-vendoring is forbidden by the registry contract. For a new
+registration request, add a reviewed catalog entry or explicit consumer
+relationship in the parent; this alone does **not** mutate the child's
+lock or place files. An eventual parent-led candidate PR still requires
+source/LICENSE verification and the consumer's CI gates.
