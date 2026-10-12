@@ -3,8 +3,8 @@
   "tools": [
     {
       "repository": "myon-bioinformatics/gh_identity",
-      "commit": "fc2c527257b12eb99c00637bbae74f8988fd6bf4",
-      "reason": "Initial baseline preserves the parent's existing reviewed consumer pin; newer development heads require explicit recommendation."
+      "commit": "c950ed3882f05668575b7298a67bc811e9cf925a",
+      "reason": "Explicitly recommend the parent's installed c950ed3 baseline to include the canonical search API required by gh_ops; newer development heads still require separate review."
     },
     {
       "repository": "myon-bioinformatics/xprobe",

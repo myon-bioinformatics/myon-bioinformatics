@@ -425,3 +425,19 @@ and one failure: `test_default_open_prs_uses_bounded_canonical_search` needs
 `mismatch` / `tests_failed`; the candidate Actions job is intentionally nonzero
 until a separate reviewed recommendation or consumer compatibility change.
 Do not suppress this test, advance the catalog implicitly, or promote this candidate.
+
+### Explicit compatible recommendation
+
+The catalog now explicitly recommends gh_identity
+`c950ed3882f05668575b7298a67bc811e9cf925a`, the already installed parent baseline
+that provides the required canonical search API. This is a reviewed recommendation
+change, not automatic adoption of the upstream development head. The runtime
+`vendor.lock.json` and vendored source/LICENSE remain unchanged.
+
+`docs/vendor-catalog-verification.json` and the initial coverage report are historical
+snapshots of the earlier catalog, not verification receipts for this recommendation.
+Current compatibility evidence comes from the candidate workflow for this commit.
+
+Equal recommended and installed commits do not skip verification: source and LICENSE
+are still fetched from the exact commit, their identities checked, and the real
+consumer tests run in the disposable copy. Fetch or test failures remain non-success.

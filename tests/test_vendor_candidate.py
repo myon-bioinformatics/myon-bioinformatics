@@ -74,6 +74,37 @@ def test_network_failure_is_unverified(fixture):
     assert receipt['status'] == 'unverified' and receipt['reason'] == 'fetch_error'
 
 
+@pytest.mark.parametrize('outcome', ['success', 'fetch_error', 'tests_failed'])
+def test_equal_recommendation_still_fetches_and_tests(fixture, outcome):
+    root, catalog, registry = fixture
+    catalog['tools'][0]['commit'] = OLD
+    calls = []
+
+    def snapshot(repo, commit, sources):
+        calls.append((repo, commit, sources))
+        assert commit == OLD and sources == ['LICENSE', 'example.py']
+        if outcome == 'fetch_error':
+            raise OSError('unavailable')
+        return commit, {s: (sync.git_blob(b'OLD\n'), b'OLD\n') for s in sources}
+
+    body = "assert Path('vendor/example.py').read_bytes() == b'OLD\\n'"
+    if outcome == 'tests_failed':
+        body = 'assert False'
+    (root / 'test_use.py').write_text('from pathlib import Path\ndef test_equal():\n ' + body + '\n')
+    receipt, junit = check(fixture, snapshot=snapshot)
+    assert len(calls) == 1
+    assert receipt['recommended_commit'] == OLD
+    assert receipt['promoted'] is False
+    if outcome == 'fetch_error':
+        assert receipt['status'] == 'unverified' and receipt['reason'] == outcome
+        assert junit is None
+    else:
+        assert junit is not None and receipt['tests']['executed'] == 1
+        assert {f['commit'] for f in receipt['candidate']} == {OLD}
+        assert receipt['status'] == ('success' if outcome == 'success' else 'mismatch')
+        assert receipt['reason'] == ('candidate_compatible' if outcome == 'success' else outcome)
+
+
 @pytest.mark.parametrize('body,status,reason', [
     ('assert False', 'mismatch', 'tests_failed'),
     ("import pytest; pytest.skip('unavailable')", 'unverified', 'empty_or_skipped_tests'),
