@@ -436,6 +436,50 @@ def _repository_remote(repository, remotes=None):
     return "https://github.com/" + repository + ".git"
 
 
+# --- Generic GitHub identity lookups are delegated to the vendored gh_identity
+# (vendor/gh_identity.py, pinned in vendor.lock.json). Vendor-specific policy stays here.
+GH_IDENTITY_PATH = Path(__file__).resolve().parent / "vendor" / "gh_identity.py"
+_GH_IDENTITY = None
+
+
+def _gh_identity():
+    """Load the vendored gh_identity by path (stdlib only; works under python -S)."""
+    global _GH_IDENTITY
+    if _GH_IDENTITY is None:
+        import importlib.util
+        name = "_vendored_gh_identity"
+        spec = importlib.util.spec_from_file_location(name, GH_IDENTITY_PATH)
+        if spec is None or spec.loader is None:
+            raise ValueError("vendored gh_identity is missing")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        try:
+            spec.loader.exec_module(module)
+        except BaseException:
+            sys.modules.pop(name, None)
+            raise
+        _GH_IDENTITY = module
+    return _GH_IDENTITY
+
+
+def _ghi_call(function, *args, fetch, max_pages=100, timeout=300, **kwargs):
+    """Run a read-only gh_identity function with HTTP routed through `fetch(url)`.
+
+    Keeps this module's transport (token only in headers, byte limit, test
+    monkeypatching of _github_api/_github_json) while gh_identity owns the logic.
+    """
+    ghi = _gh_identity()
+
+    def handler(method, path, **_ignored):
+        if method != "GET":
+            raise ValueError("gh_identity wrapper is read-only")
+        return fetch("https://api.github.com/" + path)
+
+    with ghi.operation(max_pages=max_pages, max_items=100000, max_bytes=100000000, timeout=timeout):
+        with ghi.request_stub(handler):
+            return function(*args, **kwargs)
+
+
 _GITHUB_TOKEN_PATTERN = re.compile(
     r"\b(?:ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|"
     r"gho_[A-Za-z0-9_]{20,}|ghs_[A-Za-z0-9_]{20,}|"
@@ -565,39 +609,37 @@ def _split_extra_heads(head_names, monitored, *, token=None, repo_fetch=None):
 
 
 def _list_account_repositories(owner, *, token=None):
+    """Public, non-archived repositories of an org (falling back to a user account).
+
+    Thin wrapper over gh_identity.list_owner_repositories; incomplete listings are errors.
+    """
     token = _api_token(token)
-    repositories = []
-    bases = (
-        "https://api.github.com/orgs/" + quote(owner, safe="") + "/repos",
-        "https://api.github.com/users/" + quote(owner, safe="") + "/repos",
-    )
-    for base in bases:
-        page = 1
-        repositories = []
+    ghi = _gh_identity()
+
+    def fetch(url):
+        return _github_api("GET", url, token) if token else _github_json(url, None)
+
+    names = []
+    for kind in ("org", "user"):
         try:
-            while True:
-                url = base + "?per_page=100&page=" + str(page) + "&type=all"
-                batch = _github_api("GET", url, token) if token else _github_json(url, None)
-                if not isinstance(batch, list):
-                    raise ValueError("invalid account repository listing")
-                if not batch:
-                    break
-                for record in batch:
-                    if not record_is_public_monitored(record):
-                        continue
-                    if _normalize_repository(record.get("full_name", "")).split("/")[0].casefold() != owner.casefold():
-                        continue
-                    repositories.append(_normalize_repository(record["full_name"]))
-                if len(batch) < 100:
-                    break
-                page += 1
+            result = _ghi_call(ghi.list_owner_repositories, owner, kind=kind, include_forks=True,
+                               max_pages=20, fetch=fetch)
         except HTTPError as error:
-            if error.code == 404 and base is bases[0]:
+            if error.code == 404 and kind == "org":
                 continue
             raise
-        if repositories or page > 1:
-            return sorted(set(repositories), key=str.casefold)
-    return sorted(set(repositories), key=str.casefold)
+        except ghi.Error as error:
+            raise ValueError("invalid account repository listing: " + error.code) from None
+        if not result["complete"]:
+            raise ValueError("account repository listing truncated")
+        names = []
+        for record in result["repositories"]:
+            name = _normalize_repository(record["full_name"])
+            if name.split("/")[0].casefold() == owner.casefold():
+                names.append(name)
+        if names:
+            break
+    return sorted(set(names), key=str.casefold)
 
 
 def list_org_repositories(owner=ORG_OWNER, *, token=None):
@@ -614,19 +656,18 @@ def verify_workflow_template_copy(copied_text, template_text, *, path=CHILD_CI_W
 
 
 def _lookup_child_main_pull_number(repository, sha, token=None):
+    """First pull request associated with sha (gh_identity.commit_pulls), or None."""
     token = _api_token(token)
     if not token:
         return None
-    url = (
-        "https://api.github.com/repos/" + _normalize_repository(repository) +
-        "/commits/" + quote(sha, safe="") + "/pulls?per_page=1"
-    )
+    ghi = _gh_identity()
     try:
-        pulls = _github_json(url, token)
-    except HTTPError:
+        result = _ghi_call(ghi.commit_pulls, _normalize_repository(repository), sha,
+                           fetch=lambda url: _github_json(url, token))
+    except (HTTPError, ghi.Error):
         return None
-    if isinstance(pulls, list) and pulls:
-        return pulls[0].get("number")
+    if result["pulls"]:
+        return result["pulls"][0].get("number")
     return None
 
 
@@ -1654,6 +1695,10 @@ def _commit_on_default_first_parent(git_runner, branch, commit):
 
 
 def _reject_merged_pull_request_intermediate_pin(repository, commit, token):
+    """Reject a commit that belongs to a PR merged into the default branch under another merge SHA.
+
+    Commit-to-PR lookup is gh_identity.commit_pulls; the policy stays here.
+    """
     repository = _normalize_repository(repository)
     try:
         repo_record = _github_json("https://api.github.com/repos/" + repository, token)
@@ -1662,21 +1707,16 @@ def _reject_merged_pull_request_intermediate_pin(repository, commit, token):
     default_branch = repo_record.get("default_branch")
     if not isinstance(default_branch, str) or not default_branch:
         return
-    url = (
-        "https://api.github.com/repos/" + repository +
-        "/commits/" + quote(commit, safe="") + "/pulls"
-    )
+    ghi = _gh_identity()
     try:
-        pulls = _github_json(url, token)
-    except HTTPError:
+        result = _ghi_call(ghi.commit_pulls, repository, commit.lower(),
+                           fetch=lambda url: _github_json(url, token))
+    except (HTTPError, ghi.Error):
         return
-    if not isinstance(pulls, list):
-        return
-    for pull in pulls:
+    for pull in result["pulls"]:
         if not pull.get("merged_at"):
             continue
-        base = pull.get("base") or {}
-        if base.get("ref") != default_branch:
+        if pull.get("base_ref") != default_branch:
             continue
         merge_sha = pull.get("merge_commit_sha")
         if isinstance(merge_sha, str) and merge_sha.lower() != commit.lower():

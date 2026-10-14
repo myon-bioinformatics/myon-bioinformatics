@@ -211,7 +211,7 @@ def test_reject_merged_pr_intermediate_via_github_api(monkeypatch):
     def fake_json(url, token=None):
         if url.endswith("/repos/owner/tool"):
             return {"default_branch": "main"}
-        if url.endswith("/pulls"):
+        if "/pulls" in url:
             return [{
                 "merged_at": "2026-01-01",
                 "merge_commit_sha": merge_commit,
@@ -231,7 +231,7 @@ def test_merged_pr_to_release_branch_does_not_reject_main_commit(monkeypatch):
     def fake_json(url, token=None):
         if url.endswith("/repos/owner/tool"):
             return {"default_branch": "main"}
-        if url.endswith("/pulls"):
+        if "/pulls" in url:
             return [{
                 "merged_at": "2026-01-01",
                 "merge_commit_sha": merge_commit,

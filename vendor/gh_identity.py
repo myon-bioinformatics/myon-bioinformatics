@@ -219,6 +219,8 @@ def _url(method,path,payload=None,timeout=30,mutating=False):
  except (UnicodeError,json.JSONDecodeError) as e:raise Error("invalid_json",mutating) from e
 
 def request(method,path,payload=None,transport="auto",timeout=30,mutating=False):
+ stub=_REQUEST.get()
+ if stub is not None:return stub(method,path,payload=payload,transport=transport,timeout=timeout,mutating=mutating)
  if transport not in ("auto","gh","urllib"):raise ValueError("bad transport")
  if transport=="gh" or (transport=="auto" and gh_available()):
   try:return _gh(method,path,payload,timeout,mutating)
@@ -234,6 +236,18 @@ def pages(path,transport="auto",timeout=30,*,requester=None):
   _BUDGET.get().charge("items",len(data));out.extend(data)
   path=_next_page(path,headers,len(data))
  return out
+def pages_bounded(path,transport="auto",timeout=30,*,max_pages=20,requester=None):
+ """Like pages() but stops after max_pages; returns (items, complete, pages_fetched)."""
+ if type(max_pages) is not int or max_pages<1:raise ValueError("max_pages must be positive")
+ out=[];n=0;sep="&" if "?" in path else "?";path+=sep+"per_page=100&page=1"
+ while path:
+  if n>=max_pages:return out,False,n
+  data,headers=_page(path,transport,timeout,requester);n+=1
+  if not isinstance(data,list):raise Error("invalid_json")
+  b=_BUDGET.get()
+  if b is not None:b.charge("items",len(data))
+  out.extend(data);path=_next_page(path,headers,len(data))
+ return out,True,n
 def capabilities():
  versions=tool_versions(("git","gh"))
  return {"schema":"gh-identity-capabilities/1","observed_at":now(),"python":sys.version.split()[0],
@@ -4046,6 +4060,165 @@ def render_pin_audit(o):
     return "\n".join(lines)
 
 
+_REQUEST = contextvars.ContextVar("ghi_request", default=None)
+
+
+@contextlib.contextmanager
+def request_stub(handler):
+    """Temporarily replace GitHub `request` for tests (stdlib ContextVar)."""
+    token = _REQUEST.set(handler)
+    try:
+        yield
+    finally:
+        _REQUEST.reset(token)
+
+
+def repo_identity(repository, *, transport="auto", timeout=30):
+    """Repository identity (public, including archived): id, visibility, archived, fork, default branch, head SHA.
+
+    Non-public repositories raise Error(not_public). Read-only.
+    """
+    r = repo(repository)
+    d = request("GET", f"repos/{r}", transport=transport, timeout=timeout)
+    if not isinstance(d, dict):
+        raise Error("invalid_repository")
+    visibility = d.get("visibility") or ("private" if d.get("private") else "public")
+    if visibility != "public" or d.get("private"):
+        raise Error("not_public")
+    branch = d.get("default_branch")
+    if not isinstance(branch, str) or not branch:
+        raise Error("no_default_branch")
+    head = request("GET", f"repos/{r}/commits/{urllib.parse.quote(branch, safe='')}", transport=transport, timeout=timeout)
+    if not isinstance(head, dict) or not re.fullmatch(r"[0-9a-f]{40}", str(head.get("sha"))):
+        raise Error("invalid_commit")
+    return {"schema": "gh-identity-repo-identity/1", "write": False, "repository": r, "repository_id": d.get("id"),
+            "visibility": visibility, "archived": bool(d.get("archived")), "fork": bool(d.get("fork")),
+            "default_branch": branch, "head": head["sha"], "owner_type": (d.get("owner") or {}).get("type")}
+
+
+def list_owner_repositories(owner, *, kind="auto", include_forks=False, include_archived=False,
+                            transport="auto", timeout=30, max_pages=20):
+    """List repositories for a user or organization (public only by default).
+
+    kind: auto (try /users then /orgs), user, or org. No hard-coded names.
+    At most max_pages pages are fetched; `complete` is False (truncated_reason
+    "max_pages") when more pages remained.
+    """
+    if not isinstance(owner, str) or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})", owner):
+        raise ValueError("invalid owner")
+    if kind not in ("auto", "user", "org"):
+        raise ValueError("kind must be auto, user or org")
+    bases = {"user": [f"users/{owner}/repos?type=owner&sort=full_name"],
+             "org": [f"orgs/{owner}/repos?type=all&sort=full_name"],
+             "auto": [f"users/{owner}/repos?type=owner&sort=full_name", f"orgs/{owner}/repos?type=all&sort=full_name"]}[kind]
+    rows, source, seen = [], None, set()
+    complete, fetched = True, 0
+    for base in bases:
+        try:
+            page, complete, fetched = pages_bounded(base, transport, timeout, max_pages=max_pages)
+        except Error as e:
+            if e.code in _NOT_FOUND_CODES and kind == "auto":
+                continue
+            raise
+        source = base.split("/", 1)[0]
+        for x in page:
+            if not isinstance(x, dict) or not isinstance(x.get("full_name"), str):
+                continue
+            if x["full_name"] in seen:
+                continue
+            visibility = x.get("visibility") or ("private" if x.get("private") else "public")
+            if visibility != "public" or x.get("private"):
+                continue
+            if x.get("archived") and not include_archived:
+                continue
+            if x.get("fork") and not include_forks:
+                continue
+            seen.add(x["full_name"])
+            rows.append({"full_name": x["full_name"], "repository_id": x.get("id"), "default_branch": x.get("default_branch"),
+                         "archived": bool(x.get("archived")), "fork": bool(x.get("fork"))})
+        if rows or kind != "auto":
+            break
+    return {"schema": "gh-identity-owner-repositories/1", "write": False, "owner": owner, "kind": source or kind,
+            "count": len(rows), "complete": complete, "pages_fetched": fetched,
+            "truncated_reason": None if complete else "max_pages", "repositories": rows}
+
+
+def pr_identity(repository, number, *, transport="auto", timeout=30):
+    """PR identity: state, head/base SHAs and refs, merge_commit_sha, repository_id."""
+    if type(number) is not int or number < 1:
+        raise ValueError("number must be positive")
+    r = repo(repository)
+    info = request("GET", f"repos/{r}", transport=transport, timeout=timeout)
+    pr = request("GET", f"repos/{r}/pulls/{number}", transport=transport, timeout=timeout)
+    if not isinstance(info, dict) or not isinstance(pr, dict):
+        raise Error("invalid_pull")
+    state = "merged" if pr.get("merged_at") else pr.get("state")
+    head, base = pr.get("head") or {}, pr.get("base") or {}
+    return {"schema": "gh-identity-pr-identity/1", "write": False, "repository": r, "repository_id": info.get("id"),
+            "number": number, "state": state, "merged_at": pr.get("merged_at"),
+            "merge_commit_sha": pr.get("merge_commit_sha") if state == "merged" else None,
+            "head": {"sha": head.get("sha"), "ref": head.get("ref")},
+            "base": {"sha": base.get("sha"), "ref": base.get("ref")},
+            "default_branch": info.get("default_branch"),
+            "merged_into_default": state == "merged" and base.get("ref") == info.get("default_branch")}
+
+
+def commit_pulls(repository, sha, *, transport="auto", timeout=30):
+    """Pull requests associated with a commit (GitHub /commits/{sha}/pulls). Read-only."""
+    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise ValueError("sha must be 40 hex")
+    r = repo(repository)
+    rows = request("GET", f"repos/{r}/commits/{sha}/pulls?per_page=100", transport=transport, timeout=timeout)
+    if not isinstance(rows, list):
+        raise Error("invalid_pulls")
+    pulls = []
+    for p in rows:
+        if not isinstance(p, dict):
+            continue
+        pulls.append({"number": p.get("number"), "state": "merged" if p.get("merged_at") else p.get("state"),
+                      "merged_at": p.get("merged_at"), "merge_commit_sha": p.get("merge_commit_sha"),
+                      "base_ref": (p.get("base") or {}).get("ref"), "head_sha": (p.get("head") or {}).get("sha")})
+    return {"schema": "gh-identity-commit-pulls/1", "write": False, "repository": r, "sha": sha, "count": len(pulls),
+            "pulls": pulls}
+
+
+def first_parent_check(repository, commit, *, branch=None, exact=False, transport="auto", timeout=30,
+                       max_pages=10, remote_base="https://github.com/"):
+    """Whether `commit` is on the default-branch (or `branch`) first-parent history.
+
+    exact=False uses the commits API (may return None when history is longer than
+    max_pages). exact=True uses a temporary bare fetch with --filter=blob:none and
+    no credentials (same method as pin-audit); True/False only.
+    """
+    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("commit must be 40 hex")
+    r = repo(repository)
+    if not exact:
+        result = _first_parent_contains(r, commit, branch=branch, transport=transport, timeout=timeout, max_pages=max_pages)
+        return {"schema": "gh-identity-first-parent/1", "write": False, "repository": r, "commit": commit,
+                "branch": branch, "exact": False, "contains": result, "reason": None if result is not None else "history_truncated"}
+    if not isinstance(remote_base, str) or not remote_base.startswith(("https://", "file://", "/")):
+        raise ValueError("remote_base must be https://, file:// or an absolute path")
+    with tempfile.TemporaryDirectory(prefix="ghi-fp-") as bare:
+        subprocess.run(["git", "init", "-q", "--bare", bare], check=True, capture_output=True, timeout=60)
+        nocred = ["-c", "credential.helper=", "-c", "http.extraHeader="]
+        def git(*args, ok=(0,)):
+            raw, _, code = _git_run(bare, [*nocred, *args], max_bytes=64 * 1024 * 1024, ok=ok, timeout=timeout)
+            return _git_decode(raw), code
+        remote = remote_base + r
+        head, _ = git("ls-remote", "--symref", "--", remote, "HEAD")
+        m = re.search(r"ref: refs/heads/(\S+)\s+HEAD", head)
+        branch = branch or (m.group(1) if m else "main")
+        git("fetch", "-q", "--no-tags", "--filter=blob:none", "--", remote, f"+refs/heads/{branch}:refs/heads/{branch}")
+        if git("cat-file", "-e", commit + "^{commit}", ok=(0, 1, 128))[1] != 0:
+            if git("fetch", "-q", "--no-tags", "--filter=blob:none", "--", remote, commit, ok=(0, 1, 128))[1] != 0:
+                return {"schema": "gh-identity-first-parent/1", "write": False, "repository": r, "commit": commit,
+                        "branch": branch, "exact": True, "contains": False, "reason": "commit_not_found"}
+        listed = set(git("rev-list", "--first-parent", branch)[0].split())
+        return {"schema": "gh-identity-first-parent/1", "write": False, "repository": r, "commit": commit,
+                "branch": branch, "exact": True, "contains": commit in listed, "reason": None}
+
+
 def local_position(root="."):
     """Where am I: cwd, Git top level, checkout HEAD, change counts, GitHub remote.
 
@@ -4282,6 +4455,11 @@ def _main(argv=None):
  x=s.add_parser("enrollment-progress",help="per public consumer: provider file in vendor lock, pin, stale, first-parent (read-only)");x.add_argument("--owner",required=True);x.add_argument("--provider",default="myon-bioinformatics/gh_identity");x.add_argument("--source",default="gh_identity.py");x.add_argument("--repos");x.add_argument("--heads");x.add_argument("--include-forks",action="store_true")
  x=s.add_parser("duplicate-files",help="same basename across an owner's repositories, with vendor-lock provenance (read-only)");x.add_argument("--owner",required=True);x.add_argument("--repos",help="comma-separated names (default: public, non-archived, non-fork repos owned by --owner)");x.add_argument("--ignore",action="append",default=[],metavar="GLOB",help="additional basename/path patterns to ignore");x.add_argument("--no-default-ignore",action="store_true");x.add_argument("--include-forks",action="store_true");x.add_argument("--min-repos",type=int,default=2);x.add_argument("--heads",help="child-heads.json: scan the recorded commits");x.add_argument("--markdown",action="store_true",help="Markdown summary (for GITHUB_STEP_SUMMARY) instead of JSON");x.add_argument("--top",type=int,default=30,help="groups shown with --markdown")
  x=s.add_parser("pin-audit",help="audit commit pins (workflows, vendor locks, parent-pr.ref.json) with plain git: ok/drift/not_final/unmerged (read-only, no token)");x.add_argument("--root",default=".");x.add_argument("--json",action="append",dest="json_globs",metavar="GLOB");x.add_argument("--only",action="append",metavar="OWNER");x.add_argument("--remote-base",default="https://github.com/");x.add_argument("--git-timeout",type=float,default=300);x.add_argument("--text",action="store_true",help="one line per pinned commit")
+ x=s.add_parser("repo-identity",help="public repository id, visibility, default branch, head SHA (read-only)");x.add_argument("repository")
+ x=s.add_parser("owner-repositories",help="public repositories of a user or org (read-only; no hard-coded names)");x.add_argument("owner");x.add_argument("--kind",choices=("auto","user","org"),default="auto");x.add_argument("--include-forks",action="store_true");x.add_argument("--include-archived",action="store_true")
+ x=s.add_parser("pr-identity",help="PR state, head/base SHAs, merge_commit_sha, repository_id (read-only)");x.add_argument("repository");x.add_argument("number",type=int)
+ x=s.add_parser("commit-pulls",help="pull requests associated with a commit (read-only)");x.add_argument("repository");x.add_argument("sha")
+ x=s.add_parser("first-parent",help="is commit on the default-branch first-parent history (API or exact git)");x.add_argument("repository");x.add_argument("commit");x.add_argument("--branch");x.add_argument("--exact",action="store_true",help="blob-less bare fetch (True/False only)");x.add_argument("--remote-base",default="https://github.com/");x.add_argument("--git-timeout",type=float,default=300)
  x=s.add_parser("repo-metadata",help="checkout repository metadata (v2 minimal, or v1 compatibility)");x.add_argument("--root",default=".");x.add_argument("--repository",default=os.environ.get("GITHUB_REPOSITORY"));x.add_argument("--format",choices=("v2","v1"),default="v2");x.add_argument("--source-sha");x.add_argument("--expected-sha");x.add_argument("--generated-at");x.add_argument("--tool",action="append",default=[],metavar="NAME",help="v1 only: observe an allowlisted tool version (python, git, gh, node, npm, npx)");x.add_argument("--output-dir")
  x=s.add_parser("repo");x.add_argument("repo")
  x=s.add_parser("tree");x.add_argument("repo");x.add_argument("--ref",default="main")
@@ -4352,6 +4530,11 @@ def _main(argv=None):
   elif ns.cmd=="duplicate-files":
    if ns.min_repos<2:raise ValueError("--min-repos must be at least 2")
    o=duplicate_files(ns.owner,[x.strip() for x in ns.repos.split(",") if x.strip()] if ns.repos else None,ignore=() if ns.no_default_ignore else DUPLICATE_IGNORE,extra_ignore=ns.ignore,min_repos=ns.min_repos,include_forks=ns.include_forks,heads=load_child_heads(ns.heads) if ns.heads else None,transport=transport)
+  elif ns.cmd=="repo-identity":o=repo_identity(ns.repository,transport=transport)
+  elif ns.cmd=="owner-repositories":o=list_owner_repositories(ns.owner,kind=ns.kind,include_forks=ns.include_forks,include_archived=ns.include_archived,transport=transport)
+  elif ns.cmd=="pr-identity":o=pr_identity(ns.repository,ns.number,transport=transport)
+  elif ns.cmd=="commit-pulls":o=commit_pulls(ns.repository,ns.sha,transport=transport)
+  elif ns.cmd=="first-parent":o=first_parent_check(ns.repository,ns.commit,branch=ns.branch,exact=ns.exact,transport=transport,timeout=ns.git_timeout if ns.exact else 30,remote_base=ns.remote_base)
   elif ns.cmd=="pin-audit":o=pin_audit(ns.root,json_globs=tuple(ns.json_globs) if ns.json_globs else PIN_JSON_GLOBS,only_owners=ns.only,remote_base=ns.remote_base,timeout=ns.git_timeout)
   elif ns.cmd=="vendor-lock-check":o=vendor_lock_check(ns.root,ns.lock,ns.rules,ns.parent_ref)
   elif ns.cmd=="vendor-lock-verify-remote":o=vendor_lock_verify_remote(ns.root,ns.lock,upstream=ns.upstream,first_parent=ns.first_parent,check_parent_ref=ns.check_parent_ref,parent_ref=ns.parent_ref,transport=transport)

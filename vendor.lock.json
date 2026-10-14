@@ -4,16 +4,16 @@
     {
       "repository": "myon-bioinformatics/gh_identity",
       "ref": "refs/heads/main",
-      "commit": "7492d73d909b4ea8ab5ffb3437fc4710469e8650",
+      "commit": "74e0404ec28f2e101d44fbbb2b84b50a915460ff",
       "source": "gh_identity.py",
       "destination": "vendor/gh_identity.py",
-      "blob_sha": "f00d00a8bc78c75b88c7bb4dd9ee5f25f707a6a3",
-      "sha256": "ddc9e0690c35af537208a40f1848420b8a310c47c16e05e0ea23768c56ce7481"
+      "blob_sha": "576d657355b0d829d8b4569624dd8d52ff95845b",
+      "sha256": "0424d91ea3d13546d9ddef77e30fef04c6d5acad2a209f89c9b6b388a07d1bb2"
     },
     {
       "repository": "myon-bioinformatics/gh_identity",
       "ref": "refs/heads/main",
-      "commit": "7492d73d909b4ea8ab5ffb3437fc4710469e8650",
+      "commit": "74e0404ec28f2e101d44fbbb2b84b50a915460ff",
       "source": "LICENSE",
       "destination": "vendor/gh_identity-LICENSE",
       "blob_sha": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
