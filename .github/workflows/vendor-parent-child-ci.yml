@@ -1,4 +1,4 @@
-name: Child head and vendor pin audit
+name: Parent child CI
 
 on:
   schedule:
@@ -9,14 +9,18 @@ on:
       - "child-heads.json"
       - "vendor-consumers.json"
       - "vendor_sync.py"
-      - ".github/workflows/vendor-child-heads.yml"
+      - "vendor.lock.json"
+      - "vendor/**"
+      - ".github/workflows/vendor-parent-child-ci.yml"
+      - ".github/workflows/reusable-vendor-child-ci.yml"
       - "tests/test_vendor_child_heads.py"
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
-  audit:
+  parent-child-ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -25,13 +29,15 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Verify child heads and consumer pins (read only)
+      - name: Run parent child CI (SHA, source diff, parent vendor baseline)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python -S vendor_sync.py check-child-heads \
+          python -S vendor_sync.py run-parent-child-ci \
+            --root . \
             --registry vendor-consumers.json \
             --heads child-heads.json \
+            --autofix \
             --summary "$GITHUB_STEP_SUMMARY"
       - name: Unit regressions (offline)
         run: |

@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -17,7 +18,7 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 __all__ = [
     "git_blob",
     "inspect_source",
@@ -33,9 +34,16 @@ __all__ = [
     "validate_child_heads",
     "refresh_child_heads",
     "check_child_heads",
+    "run_parent_child_ci",
     "resolve_parent_pr",
+    "validate_parent_pr_ref",
+    "verify_reference_identity",
+    "source_diff_report",
     "main",
 ]
+
+PARENT_PR_REF_SCHEMA = "parent-pr-ref/1"
+AUTOFIX_BRANCH_PREFIX = "vendor/child-heads-sync"
 
 SCHEMA = "vendor-lock/1"
 HTML_IMPORT_SCHEMA = "html-import-vendor/1"
@@ -447,6 +455,46 @@ def _locked_consumer_names(registry):
     )
 
 
+def _coerce_repository_id(value):
+    if isinstance(value, bool) or value is None:
+        raise ValueError("expected repository id")
+    if isinstance(value, int):
+        if value <= 0:
+            raise ValueError("expected positive repository id")
+        return value
+    if isinstance(value, str) and value.isdigit():
+        parsed = int(value)
+        if parsed <= 0:
+            raise ValueError("expected positive repository id")
+        return parsed
+    raise ValueError("expected repository id")
+
+
+def _normalize_optional_signals(value):
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("optional signals must be an object")
+    return dict(value)
+
+
+def _normalize_head_entry(value):
+    if isinstance(value, str):
+        raise ValueError("child head entries must be objects with sha and repository_id")
+    if not isinstance(value, dict):
+        raise ValueError("invalid child head entry")
+    sha = value.get("sha")
+    _hex(sha, 40)
+    entry = {
+        "sha": sha,
+        "repository_id": _coerce_repository_id(value.get("repository_id")),
+    }
+    optional = value.get("optional")
+    if optional is not None:
+        entry["optional"] = _normalize_optional_signals(optional)
+    return entry
+
+
 def validate_child_heads(document):
     if (
         not isinstance(document, dict)
@@ -461,10 +509,85 @@ def validate_child_heads(document):
     if not isinstance(heads, dict) or not heads:
         raise ValueError("child heads must be a nonempty object")
     normalized = {}
-    for name, sha in heads.items():
-        normalized[_normalize_repository(name)] = sha
-        _hex(sha, 40)
+    for name, entry in heads.items():
+        normalized[_normalize_repository(name)] = _normalize_head_entry(entry)
     return {"schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": normalized}
+
+
+def validate_parent_pr_ref(document):
+    if not isinstance(document, dict) or document.get("schema") != PARENT_PR_REF_SCHEMA:
+        raise ValueError("expected parent-pr-ref/1")
+    repository = _normalize_repository(document.get("repository"))
+    pull_number = document.get("pull_number")
+    if isinstance(pull_number, str) and pull_number.isdigit():
+        pull_number = int(pull_number)
+    if not isinstance(pull_number, int) or pull_number < 1:
+        raise ValueError("expected positive pull_number")
+    repository_id = _coerce_repository_id(document.get("repository_id"))
+    result = {
+        "schema": PARENT_PR_REF_SCHEMA,
+        "repository": repository,
+        "pull_number": pull_number,
+        "repository_id": repository_id,
+    }
+    commit = document.get("commit")
+    if commit is not None:
+        _hex(commit, 40)
+        result["commit"] = commit
+    optional = document.get("optional")
+    if optional is not None:
+        result["optional"] = _normalize_optional_signals(optional)
+    return result
+
+
+def verify_reference_identity(*, expected_sha, expected_pull_number, expected_repository_id,
+                              resolved_sha, resolved_pull_number, resolved_repository_id,
+                              optional_recorded=None, optional_live=None):
+    """Match on SHA (primary), pull number (secondary), repository id (required)."""
+    _hex(expected_sha, 40)
+    _hex(resolved_sha, 40)
+    expected_repository_id = _coerce_repository_id(expected_repository_id)
+    resolved_repository_id = _coerce_repository_id(resolved_repository_id)
+    errors = []
+    if resolved_sha != expected_sha:
+        errors.append(
+            "sha mismatch for repository id {rid}: expected {exp} got {got}".format(
+                rid=expected_repository_id, exp=expected_sha, got=resolved_sha,
+            )
+        )
+    if expected_pull_number is not None:
+        if not isinstance(expected_pull_number, int) or expected_pull_number < 1:
+            raise ValueError("expected positive pull number")
+        if resolved_pull_number != expected_pull_number:
+            errors.append(
+                "pull number mismatch for repository id {rid}: expected {exp} got {got}".format(
+                    rid=expected_repository_id, exp=expected_pull_number, got=resolved_pull_number,
+                )
+            )
+    if resolved_repository_id != expected_repository_id:
+        errors.append(
+            "repository id mismatch: expected {exp} got {got}".format(
+                exp=expected_repository_id, got=resolved_repository_id,
+            )
+        )
+    if errors:
+        raise ValueError("; ".join(errors))
+    return {
+        "matched": True,
+        "optional_recorded": _normalize_optional_signals(optional_recorded),
+        "optional_live": _normalize_optional_signals(optional_live),
+    }
+
+
+def fetch_repository_record(repository, token=None, repo_fetch=None):
+    repository = _normalize_repository(repository)
+    if repo_fetch is not None:
+        record = repo_fetch(repository)
+    else:
+        record = _github_api("GET", "https://api.github.com/repos/" + repository, token)
+    if not isinstance(record, dict) or "id" not in record:
+        raise ValueError("invalid repository response for " + repository)
+    return record
 
 
 def fetch_child_head(repository, ref="main", *, remotes=None):
@@ -480,13 +603,274 @@ def fetch_child_head(repository, ref="main", *, remotes=None):
     return _git_branch_tip(remote, branch)
 
 
-def refresh_child_heads(registry, heads_path, *, ref="main", remotes=None):
+def fetch_child_head_record(repository, ref="main", *, remotes=None, token=None, repo_fetch=None):
+    sha = fetch_child_head(repository, ref, remotes=remotes)
+    record = fetch_repository_record(repository, token, repo_fetch=repo_fetch)
+    entry = {"sha": sha, "repository_id": _coerce_repository_id(record["id"])}
+    optional = {}
+    if isinstance(record.get("created_at"), str):
+        optional["repository_created_at"] = record["created_at"]
+    if optional:
+        entry["optional"] = optional
+    return entry
+
+
+def refresh_child_heads(registry, heads_path, *, ref="main", remotes=None, token=None, repo_fetch=None):
     names = _locked_consumer_names(registry)
-    heads = {name: fetch_child_head(name, ref, remotes=remotes) for name in names}
+    heads = {
+        name: fetch_child_head_record(name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch)
+        for name in names
+    }
     document = validate_child_heads({"schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": heads})
     encoded = json.dumps(document, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
     Path(heads_path).write_text(encoded, encoding="utf-8")
     return document
+
+
+def _github_api(method, url, token=None, body=None):
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "vendor-sync/parent-child-ci"}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    request = Request(url, data=data, headers=headers, method=method)
+    with urlopen(request, timeout=60) as response:
+        raw = response.read(MAX_BYTES + 1)
+    if len(raw) > MAX_BYTES:
+        raise ValueError("GitHub response exceeds byte limit")
+    if not raw:
+        return None
+    return json.loads(raw.decode("utf-8"))
+
+
+def _repository_archived(repository, token=None):
+    record = _github_api("GET", "https://api.github.com/repos/" + _normalize_repository(repository), token)
+    return bool(record and record.get("archived"))
+
+
+def _list_remote_branches(repository, *, remotes=None, local_roots=None):
+    repository = _normalize_repository(repository)
+    local_roots = local_roots or {}
+    if repository in local_roots:
+        root = Path(local_roots[repository])
+        output = _git_run(["git", "-C", str(root), "for-each-ref", "--format=%(refname:short)",
+                           "refs/heads"]).decode("utf-8", "replace")
+        return sorted(line for line in output.splitlines() if line and line != "HEAD")
+    remote = _repository_remote(repository, remotes)
+    output = _git_run(["git", "ls-remote", "--heads", remote]).decode("utf-8", "replace")
+    branches = []
+    for line in output.splitlines():
+        if not line:
+            continue
+        _, ref = line.split("\t", 1)
+        branches.append(ref.split("/", 2)[-1])
+    return sorted(set(branches))
+
+
+def branches_differing_from_main(repository, *, remotes=None, local_roots=None, default_branch="main"):
+    repository = _normalize_repository(repository)
+    local_roots = local_roots or {}
+    diverged = []
+    if repository in local_roots:
+        root = Path(local_roots[repository])
+        for branch in _list_remote_branches(repository, local_roots=local_roots):
+            if branch == default_branch:
+                continue
+            tip = _git_run(["git", "-C", str(root), "rev-parse", branch]).decode().strip()
+            probe = subprocess.run(
+                ["git", "-C", str(root), "merge-base", "--is-ancestor", tip, default_branch],
+                env=_git_subprocess_env(),
+                capture_output=True,
+                timeout=60,
+            )
+            if probe.returncode != 0:
+                diverged.append({"repository": repository, "branch": branch, "tip": tip})
+        return diverged
+    remote = _repository_remote(repository, remotes)
+    with tempfile.TemporaryDirectory(prefix="vendor-branch-diff-") as directory:
+        command = ["git", "-c", "credential.helper=", "-C", directory]
+        def git(*args):
+            result = subprocess.run(command + list(args), env=_git_subprocess_env(),
+                                    capture_output=True, timeout=120)
+            if result.returncode:
+                raise ValueError("git branch diff failed for " + repository)
+            return result.stdout
+        git("init")
+        git("remote", "add", "origin", remote)
+        git("fetch", "--depth=1", "origin", "refs/heads/" + default_branch + ":" + default_branch)
+        for branch in _list_remote_branches(repository, remotes=remotes):
+            if branch == default_branch:
+                continue
+            git("fetch", "--depth=1", "origin", "refs/heads/" + branch + ":refs/heads/" + branch)
+            tip = git("rev-parse", branch).decode().strip()
+            probe = subprocess.run(
+                command + ["merge-base", "--is-ancestor", tip, default_branch],
+                env=_git_subprocess_env(),
+                capture_output=True,
+                timeout=60,
+            )
+            if probe.returncode != 0:
+                diverged.append({"repository": repository, "branch": branch, "tip": tip})
+    return diverged
+
+
+def source_diff_report(registry, *, token=None, remotes=None, local_roots=None, archived=None):
+    archived = archived if archived is not None else {}
+    findings = []
+    for name in _locked_consumer_names(registry):
+        if archived.get(name) or (token and _repository_archived(name, token)):
+            continue
+        findings.extend(branches_differing_from_main(
+            name, remotes=remotes, local_roots=local_roots,
+        ))
+    return {"schema": "source-diff-report/1", "findings": findings, "finding_count": len(findings)}
+
+
+def _copy_parent_vendor_baseline(parent_root, work_dir):
+    parent_root = Path(parent_root)
+    work_dir = Path(work_dir)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    lock = parent_root / "vendor.lock.json"
+    if not lock.is_file():
+        raise ValueError("missing parent vendor.lock.json")
+    shutil.copy2(lock, work_dir / "vendor.lock.json")
+    vendor = parent_root / "vendor"
+    if vendor.is_dir():
+        shutil.copytree(vendor, work_dir / "vendor", dirs_exist_ok=True)
+    return work_dir
+
+
+def _offline_parent_vendor_check(work_dir):
+    work_dir = Path(work_dir)
+    return synchronize("vendor.lock.json", work_dir, "check",
+                       get=lambda url: (_ for _ in ()).throw(AssertionError("network used during parent baseline check")))
+
+
+def _encode_child_heads(document):
+    return (json.dumps(validate_child_heads(document), indent=2, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
+
+
+def _open_or_update_autofix_pr(parent_repository, branch, title, body, files, token):
+    parent_repository = _normalize_repository(parent_repository)
+    api_repo = "https://api.github.com/repos/" + parent_repository
+    base = _github_api("GET", api_repo, token)
+    default_branch = base["default_branch"]
+    base_sha = _github_api("GET", api_repo + "/git/ref/heads/" + quote(default_branch, safe=""), token)["object"]["sha"]
+    existing = _github_api("GET", api_repo + "/pulls?state=open&head=" +
+                           quote(parent_repository.split("/")[0] + ":" + branch, safe=""), token)
+    pr_number = existing[0]["number"] if isinstance(existing, list) and existing else None
+    try:
+        _github_api("GET", api_repo + "/git/ref/heads/" + quote(branch, safe=""), token)
+    except HTTPError as error:
+        if error.code != 404:
+            raise
+        _github_api("POST", api_repo + "/git/refs", token, {
+            "ref": "refs/heads/" + branch,
+            "sha": base_sha,
+        })
+    for path, content in files.items():
+        encoded = base64.b64encode(content).decode("ascii")
+        get_url = api_repo + "/contents/" + quote(path, safe="/") + "?ref=" + quote(branch, safe="")
+        try:
+            current = _github_api("GET", get_url, token)
+            file_sha = current.get("sha")
+        except HTTPError as error:
+            if error.code != 404:
+                raise
+            file_sha = None
+        body_payload = {"message": "chore: refresh " + path, "content": encoded, "branch": branch}
+        if file_sha:
+            body_payload["sha"] = file_sha
+        _github_api("PUT", api_repo + "/contents/" + quote(path, safe="/"), token, body_payload)
+    if pr_number is None:
+        created = _github_api("POST", api_repo + "/pulls", token, {
+            "title": title,
+            "head": branch,
+            "base": default_branch,
+            "body": body,
+        })
+        pr_number = created["number"]
+        pr_url = created["html_url"]
+    else:
+        pr = _github_api("GET", api_repo + "/pulls/" + str(pr_number), token)
+        pr_url = pr["html_url"]
+    return {"pull_number": pr_number, "url": pr_url, "branch": branch}
+
+
+def _head_sha_map(heads):
+    return {name: entry["sha"] for name, entry in heads.items()}
+
+
+def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, token=None,
+                        autofix=False, parent_repository=PARENT_REPOSITORY, local_roots=None,
+                        repo_fetch=None):
+    document = validate_child_heads(document)
+    ref = document["ref"]
+    drift = []
+    identity_failures = []
+    live_heads = {}
+    for name in _locked_consumer_names(registry):
+        recorded = document["heads"].get(name)
+        if recorded is None:
+            raise ValueError("child-heads missing repository: " + name)
+        live = fetch_child_head_record(name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch)
+        live_heads[name] = live
+        if recorded["sha"] != live["sha"]:
+            drift.append({
+                "repository": name,
+                "recorded": recorded["sha"],
+                "live": live["sha"],
+            })
+        try:
+            verify_reference_identity(
+                expected_sha=recorded["sha"],
+                expected_pull_number=None,
+                expected_repository_id=recorded["repository_id"],
+                resolved_sha=live["sha"],
+                resolved_pull_number=None,
+                resolved_repository_id=live["repository_id"],
+                optional_recorded=recorded.get("optional"),
+                optional_live=live.get("optional"),
+            )
+        except ValueError as error:
+            identity_failures.append({
+                "repository": name,
+                "message": str(error),
+            })
+    desired = validate_child_heads({"schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": live_heads})
+    diff_report = source_diff_report(registry, token=token, remotes=remotes, local_roots=local_roots)
+    with tempfile.TemporaryDirectory(prefix="vendor-parent-ci-") as directory:
+        work_dir = _copy_parent_vendor_baseline(parent_root, directory)
+        vendor_check = _offline_parent_vendor_check(work_dir)
+    autofix_result = None
+    needs_heads_refresh = bool(drift)
+    if autofix and needs_heads_refresh and token:
+        branch = AUTOFIX_BRANCH_PREFIX
+        autofix_result = _open_or_update_autofix_pr(
+            parent_repository,
+            branch,
+            "chore: refresh child default-branch heads",
+            "Automated refresh of `child-heads.json` after live `main` drift.\n\n"
+            "Parent CI never merges this pull request automatically.",
+            {"child-heads.json": _encode_child_heads(desired)},
+            token,
+        )
+    failure_count = len(drift) + diff_report["finding_count"] + len(identity_failures)
+    return {
+        "schema": "parent-child-ci/1",
+        "ref": ref,
+        "drift": drift,
+        "drift_count": len(drift),
+        "identity_failures": identity_failures,
+        "identity_failure_count": len(identity_failures),
+        "source_diff": diff_report,
+        "parent_vendor_check": vendor_check,
+        "needs_heads_refresh": needs_heads_refresh,
+        "autofix": autofix_result,
+        "failure_count": failure_count,
+    }
 
 
 def check_child_heads(registry, document, *, remotes=None, token=None, parent_repository=PARENT_REPOSITORY,
@@ -499,13 +883,13 @@ def check_child_heads(registry, document, *, remotes=None, token=None, parent_re
         recorded = document["heads"].get(name)
         if recorded is None:
             raise ValueError("child-heads missing repository: " + name)
-        live = fetch_child_head(name, ref, remotes=remotes)
+        live = fetch_child_head_record(name, ref, remotes=remotes, token=token)
         live_heads[name] = live
-        if live != recorded:
+        if recorded["sha"] != live["sha"]:
             drift.append({
                 "repository": name,
-                "recorded": recorded,
-                "live": live,
+                "recorded": recorded["sha"],
+                "live": live["sha"],
             })
     extra = set(document["heads"]) - set(_locked_consumer_names(registry))
     if extra:
@@ -517,11 +901,11 @@ def check_child_heads(registry, document, *, remotes=None, token=None, parent_re
         remotes=remotes,
         local_roots=local_roots,
         local_consumers=local_consumers,
-        consumer_revisions=document["heads"],
+        consumer_revisions=_head_sha_map(document["heads"]),
     )
     pr_report = _verify_parent_pr_pins(
         registry,
-        document["heads"],
+        _head_sha_map(document["heads"]),
         parent_repository=parent_repository,
         token=token,
         local_consumers=local_consumers,
@@ -538,8 +922,13 @@ def check_child_heads(registry, document, *, remotes=None, token=None, parent_re
     }
 
 
-def resolve_parent_pr(parent_repository, pull_number, *, token=None, pr_fetch=None):
+def resolve_parent_pr(parent_repository, pull_number, *, token=None, pr_fetch=None, reference=None,
+                      repo_fetch=None):
     parent_repository = _normalize_repository(parent_repository)
+    if reference is not None:
+        reference = validate_parent_pr_ref(reference)
+        parent_repository = reference["repository"]
+        pull_number = reference["pull_number"]
     if isinstance(pull_number, str):
         if not pull_number.isdigit():
             raise ValueError("expected pull request number")
@@ -561,13 +950,35 @@ def resolve_parent_pr(parent_repository, pull_number, *, token=None, pr_fetch=No
     if not commit:
         raise ValueError("cannot resolve pull request " + str(pull_number))
     _hex(commit, 40)
-    return {
+    repo_record = fetch_repository_record(parent_repository, token, repo_fetch=repo_fetch)
+    repository_id = _coerce_repository_id(repo_record["id"])
+    optional_signals = {}
+    if isinstance(pull.get("created_at"), str):
+        optional_signals["pull_created_at"] = pull["created_at"]
+    if isinstance(repo_record.get("created_at"), str):
+        optional_signals["repository_created_at"] = repo_record["created_at"]
+    result = {
         "schema": PARENT_PR_RESOLVE_SCHEMA,
         "repository": parent_repository,
         "pull_number": pull_number,
         "state": state,
         "commit": commit,
+        "repository_id": repository_id,
+        "optional_signals": optional_signals,
     }
+    if reference is not None:
+        expected_sha = reference.get("commit", commit)
+        verify_reference_identity(
+            expected_sha=expected_sha,
+            expected_pull_number=reference["pull_number"],
+            expected_repository_id=reference["repository_id"],
+            resolved_sha=commit,
+            resolved_pull_number=pull_number,
+            resolved_repository_id=repository_id,
+            optional_recorded=reference.get("optional"),
+            optional_live=optional_signals,
+        )
+    return result
 
 
 def _fetch_parent_pull_request(parent_repository, pull_number, token=None):
@@ -854,7 +1265,7 @@ def _fetch_consumer_documents(consumer, lock_path, revision, token=None):
 
 
 def _verify_parent_pr_pins(registry, consumer_revisions, *, parent_repository=PARENT_REPOSITORY,
-                           token=None, local_consumers=None, pr_fetch=None):
+                           token=None, local_consumers=None, pr_fetch=None, repo_fetch=None):
     import vendor_consumers
     registry = vendor_consumers.validate(registry)
     local_consumers = local_consumers or {}
@@ -885,8 +1296,18 @@ def _verify_parent_pr_pins(registry, consumer_revisions, *, parent_repository=PA
                 continue
             checked.add(key)
             try:
+                parent_record = fetch_repository_record(
+                    parent_repository, token, repo_fetch=repo_fetch,
+                )
                 resolved = resolve_parent_pr(
-                    parent_repository, pin["pull_number"], token=token, pr_fetch=pr_fetch
+                    parent_repository, pin["pull_number"], token=token, pr_fetch=pr_fetch,
+                    repo_fetch=repo_fetch,
+                    reference={
+                        "schema": PARENT_PR_REF_SCHEMA,
+                        "repository": parent_repository,
+                        "pull_number": pin["pull_number"],
+                        "repository_id": parent_record["id"],
+                    },
                 )
                 if resolved["state"] == "merged":
                     commit_merged_into_default(parent_repository, resolved["commit"])
@@ -991,36 +1412,44 @@ def _write_audit_summary(report, summary_path):
 
 
 def _write_child_heads_summary(report, summary_path):
+    lines = ["## Parent child CI", ""]
+    if report.get("schema") == "parent-child-ci/1":
+        if report["drift_count"]:
+            lines.append(f"**{report['drift_count']} child head(s) drifted from child-heads.json.**")
+            if report.get("autofix"):
+                lines.append(f"Auto-fix PR: {report['autofix']['url']}")
+            lines.append("")
+            lines.append("| Repository | Recorded | Live |")
+            lines.append("| --- | --- | --- |")
+            for row in report["drift"]:
+                lines.append("| {repo} | `{recorded}` | `{live}` |".format(
+                    repo=row["repository"], recorded=row["recorded"], live=row["live"],
+                ))
+            lines.append("")
+        if report.get("identity_failure_count"):
+            lines.append(f"**{report['identity_failure_count']} identity mismatch(es).**")
+            for row in report["identity_failures"]:
+                lines.append(f"- `{row['repository']}`: {row['message']}")
+            lines.append("")
+        if report["source_diff"]["finding_count"]:
+            lines.append(f"**{report['source_diff']['finding_count']} branch tip(s) differ from default branch.**")
+            lines.append("")
+            for row in report["source_diff"]["findings"]:
+                lines.append(f"- `{row['repository']}` branch `{row['branch']}` @ `{row['tip']}`")
+            lines.append("")
+        if not report["failure_count"]:
+            lines.append("Child heads match, source branches are clean, and parent vendor baseline check passed.")
+        Path(summary_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return
     lines = ["## Child head and pin audit", ""]
     if report["drift_count"]:
         lines.append(f"**{report['drift_count']} child head(s) drifted from child-heads.json.**")
-        lines.append("Run `python -S vendor_sync.py refresh-child-heads` and commit the updated file.")
         lines.append("")
-        lines.append("| Repository | Recorded | Live |")
-        lines.append("| --- | --- | --- |")
-        for row in report["drift"]:
-            lines.append("| {repo} | `{recorded}` | `{live}` |".format(
-                repo=row["repository"], recorded=row["recorded"], live=row["live"],
-            ))
-        lines.append("")
-    failures = report["pin_audit"]["failures"] + report["parent_pr_audit"]["failures"]
+    failures = report.get("pin_audit", {}).get("failures", []) + report.get("parent_pr_audit", {}).get("failures", [])
     if failures:
         lines.append(f"**{len(failures)} pin resolution failure(s).**")
-        lines.append("")
-        lines.append("| Consumer | File | Entry | SHA | Source repository |")
-        lines.append("| --- | --- | --- | --- | --- |")
-        for row in failures:
-            line = "" if row.get("line") is None else str(row["line"])
-            file_cell = row["file"] + (":" + line if line else "")
-            lines.append("| {consumer} | {file} | {entry} | `{sha}` | {source} |".format(
-                consumer=row["consumer"],
-                file=file_cell,
-                entry=row.get("entry") or "",
-                sha=row["sha"],
-                source=row["source_repository"],
-            ))
     if not report["failure_count"]:
-        lines.append("Child heads match and all checked pins resolve on the recorded revisions.")
+        lines.append("Checks passed.")
     Path(summary_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -1085,6 +1514,7 @@ def main(argv=None, *, get=_get):
             "audit-merged-pins",
             "refresh-child-heads",
             "check-child-heads",
+            "run-parent-child-ci",
             "resolve-parent-pr",
         ),
     )
@@ -1100,11 +1530,32 @@ def main(argv=None, *, get=_get):
                         help="offline consumer checkout root (repeatable)")
     parser.add_argument("--heads", default="child-heads.json")
     parser.add_argument("--pr", help="parent pull request number for resolve-parent-pr")
+    parser.add_argument("--ref-file", default="templates/parent-pr.ref.json",
+                        help="parent-pr-ref/1 JSON for resolve-parent-pr verification")
+    parser.add_argument("--autofix", action="store_true",
+                        help="open or update a parent pull request with refreshed child-heads.json")
     args = parser.parse_args(argv)
     try:
+        if args.mode == "run-parent-child-ci":
+            registry = json.loads(Path(args.registry).read_text(encoding="utf-8"))
+            document = json.loads(Path(args.heads).read_text(encoding="utf-8"))
+            token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+            result = run_parent_child_ci(
+                registry,
+                document,
+                parent_root=args.root,
+                token=token,
+                autofix=args.autofix,
+                parent_repository=args.parent,
+            )
+            if args.summary:
+                _write_child_heads_summary(result, args.summary)
+            print(json.dumps(result, ensure_ascii=False))
+            return 1 if result["failure_count"] else 0
         if args.mode == "refresh-child-heads":
             registry = json.loads(Path(args.registry).read_text(encoding="utf-8"))
-            result = refresh_child_heads(registry, args.heads, ref=args.ref)
+            token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+            result = refresh_child_heads(registry, args.heads, ref=args.ref, token=token)
             print(json.dumps(result, ensure_ascii=False))
             return 0
         if args.mode == "check-child-heads":
@@ -1129,10 +1580,24 @@ def main(argv=None, *, get=_get):
             print(json.dumps(result, ensure_ascii=False))
             return 1 if result["failure_count"] else 0
         if args.mode == "resolve-parent-pr":
-            if not args.pr:
-                raise ValueError("--pr is required for resolve-parent-pr")
             token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-            result = resolve_parent_pr(args.parent, args.pr, token=token)
+            reference = None
+            ref_path = Path(args.ref_file)
+            if ref_path.is_file():
+                reference = json.loads(ref_path.read_text(encoding="utf-8"))
+                reference = validate_parent_pr_ref(reference)
+            if args.pr:
+                pull_number = int(args.pr)
+            elif reference is not None:
+                pull_number = reference["pull_number"]
+            else:
+                raise ValueError("--pr or --ref-file with pull_number is required for resolve-parent-pr")
+            result = resolve_parent_pr(
+                args.parent,
+                pull_number,
+                token=token,
+                reference=reference,
+            )
             print(json.dumps(result, ensure_ascii=False))
             return 0
         if args.mode == "audit-merged-pins":

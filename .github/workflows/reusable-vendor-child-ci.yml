@@ -1,0 +1,54 @@
+name: Reusable vendor child CI
+
+on:
+  workflow_call:
+    inputs:
+      parent-pull-number:
+        description: "Parent repository pull request number (merged or open)"
+        type: string
+        required: true
+      parent-repository-id:
+        description: "GitHub numeric repository id for the parent (required identity match)"
+        type: string
+        required: true
+      parent-repository:
+        description: "Parent repository owner/name"
+        type: string
+        default: "myon-bioinformatics/myon-bioinformatics"
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-parent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve parent pull request via parent vendor_sync.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          parent="${{ inputs.parent-repository }}"
+          number="${{ inputs.parent-pull-number }}"
+          repo_id="${{ inputs.parent-repository-id }}"
+          git clone --depth 1 "https://github.com/${parent}.git" parent-checkout
+          ref="$(mktemp)"
+          cat > "$ref" <<JSON
+          {
+            "schema": "parent-pr-ref/1",
+            "repository": "${parent}",
+            "pull_number": ${number},
+            "repository_id": ${repo_id}
+          }
+          JSON
+          resolved="$(python -S parent-checkout/vendor_sync.py resolve-parent-pr \
+            --parent "${parent}" \
+            --pr "${number}" \
+            --ref-file "$ref")"
+          echo "$resolved"
+          commit="$(printf '%s' "$resolved" | python -c 'import json,sys; print(json.load(sys.stdin)["commit"])')"
+          git -C parent-checkout fetch --depth 1 origin "$commit"
+          git -C parent-checkout checkout FETCH_HEAD
+          python -S parent-checkout/vendor_sync.py check \
+            --root parent-checkout \
+            --manifest vendor.lock.json
