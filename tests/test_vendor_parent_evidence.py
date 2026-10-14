@@ -191,7 +191,14 @@ def test_autofix_keeps_old_head_when_audit_fails(tmp_path, monkeypatch):
     monkeypatch.setattr(sync, 'audit_child_workflow_templates', lambda *a, **k: {'failures': [], 'missing': []})
     monkeypatch.setattr(sync, '_copy_parent_vendor_baseline', lambda *a: tmp_path)
     monkeypatch.setattr(sync, '_offline_parent_vendor_check', lambda *a: {})
-    monkeypatch.setattr(sync, '_public_git_snapshot', lambda *a: (_ for _ in ()).throw(ValueError(sync.PUBLIC_GIT_FETCH_ERROR)))
+    def snapshot(repo, revision, paths):
+        if repo == NAME and revision == NEW:
+            raise ValueError(sync.PUBLIC_GIT_FETCH_ERROR)
+        data = DATA
+        return revision, {path: (sync.git_blob(data), data) for path in paths}
+
+    monkeypatch.setattr(sync, '_public_git_snapshot', snapshot)
+    monkeypatch.setattr(sync, 'commit_merged_into_default', lambda *a, **k: True)
     captured = {}
 
     def capture_pr(repo, branch, title, body, files, token):
@@ -205,6 +212,58 @@ def test_autofix_keeps_old_head_when_audit_fails(tmp_path, monkeypatch):
     assert captured['heads'][NAME]['sha'] == SHA
     assert any(row['reason'] == 'adopted_baseline_audit_failure'
                for row in report['heads_refresh_skipped'])
+
+
+def test_autofix_records_new_head_after_child_fixes_main(tmp_path, monkeypatch):
+    registry, lock, heads = fixture(monkeypatch)
+    bad_sha = 'd' * 40
+    good_sha = NEW
+    bad_lock = copy.deepcopy(lock)
+    bad_lock['files'][0]['commit'] = bad_sha
+    bad_lock['files'][0]['ref'] = bad_sha
+    (tmp_path / 'templates').mkdir()
+    (tmp_path / sync.CHILD_CI_TEMPLATE).write_text(TEMPLATE.decode())
+    monkeypatch.setattr(sync, 'monitored_repositories', lambda *a, **k: [NAME])
+    monkeypatch.setattr(sync, 'fetch_child_head_record', lambda *a, **k: {'sha': good_sha, 'repository_id': 42})
+    monkeypatch.setattr(sync, 'audit_child_workflow_templates', lambda *a, **k: {'failures': [], 'missing': []})
+    monkeypatch.setattr(sync, '_copy_parent_vendor_baseline', lambda *a: tmp_path)
+    monkeypatch.setattr(sync, '_offline_parent_vendor_check', lambda *a: {})
+
+    def fetch_text(name, path, revision, token=None):
+        if path == sync.CHILD_CI_WORKFLOW_PATH:
+            return TEMPLATE.decode()
+        if revision == SHA:
+            return json.dumps(bad_lock)
+        if revision == good_sha:
+            return json.dumps(lock)
+        return json.dumps(lock)
+
+    monkeypatch.setattr(sync, '_fetch_repo_text', fetch_text)
+
+    def merged(repository, commit, **kwargs):
+        if commit == bad_sha:
+            raise ValueError(sync.PIN_NOT_MERGED_ERROR)
+        return True
+
+    monkeypatch.setattr(sync, 'commit_merged_into_default', merged)
+    monkeypatch.setattr(sync, '_public_git_snapshot', lambda repo, sha, paths:
+                        (sha, {p: (sync.git_blob(DATA), DATA) for p in paths}))
+    captured = {}
+
+    def capture_pr(repo, branch, title, body, files, token):
+        captured['heads'] = json.loads(files['child-heads.json'].decode())['heads']
+        return {'pull_number': 1, 'url': 'https://example.invalid/1', 'branch': branch}
+
+    monkeypatch.setattr(sync, '_open_or_update_autofix_pr', capture_pr)
+    monkeypatch.setattr(sync, '_dispatch_parent_workflow', lambda *a, **k: None)
+    validate_report = sync.run_parent_child_ci(
+        registry, heads, parent_root=tmp_path, skip_source_diff=True, pr_validation=True,
+    )
+    assert validate_report['failure_count'] == 1
+    assert sync.PIN_NOT_MERGED_ERROR in json.dumps(validate_report['audit_skipped'])
+    sync.run_parent_child_ci(registry, heads, parent_root=tmp_path,
+                             skip_source_diff=True, autofix=True, token='fixture')
+    assert captured['heads'][NAME]['sha'] == good_sha
 
 
 def test_autofix_continues_when_one_repo_skipped(tmp_path, monkeypatch):

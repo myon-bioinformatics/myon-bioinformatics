@@ -807,6 +807,25 @@ def plan_heads_refresh(registry, document, proposed_heads, template_text, *, tok
     return {"heads": merged_heads, "skipped": skipped}
 
 
+def _baseline_audit_blocked(registry, document, repository_names, template_text, *,
+                            token=None, parent_root=None, parent_repository=PARENT_REPOSITORY,
+                            remotes=None, local_roots=None):
+    """Return repositories whose baseline audit fails at the SHAs in document."""
+    names = list(repository_names)
+    template_report = audit_child_workflow_templates(
+        registry, document, template_text, token=token, repository_names=names,
+    )
+    child_files = audit_adopted_child_files(
+        registry, document, names, token=token,
+        parent_root=parent_root, parent_repository=parent_repository,
+        remotes=remotes, local_roots=local_roots,
+    )
+    blocked = sorted({
+        row["repository"] for row in template_report["failures"] + child_files["failures"]
+    }, key=str.casefold)
+    return blocked, template_report, child_files
+
+
 def run_child_ci(root, parent_ref_path, consumer, *, token=None,
                  parent_repository=PARENT_REPOSITORY, get=_get, parent_root=None):
     """Check a child against the adopted lock anchored in the executed parent pin."""
@@ -1334,8 +1353,10 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         )
     parent_root_path = Path(parent_root)
     template_text = (parent_root_path / CHILD_CI_TEMPLATE).read_text(encoding="utf-8")
-    template_report = audit_child_workflow_templates(
-        registry, document, template_text, token=token, repository_names=monitored,
+    audit_blocked, template_report, child_files = _baseline_audit_blocked(
+        registry, document, monitored, template_text, token=token,
+        parent_root=parent_root, parent_repository=parent_repository,
+        remotes=remotes, local_roots=local_roots,
     )
     template_failures = template_report["failures"]
     template_missing = template_report["missing"]
@@ -1352,11 +1373,6 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
             "kind": "workflow_template_missing",
             "message": row["message"],
         })
-    child_files = audit_adopted_child_files(
-        registry, document, monitored, token=token,
-        parent_root=parent_root, parent_repository=parent_repository,
-        remotes=remotes, local_roots=local_roots,
-    )
     for row in child_files["failures"]:
         audit_skipped.append({
             "repository": row["repository"],
@@ -1364,9 +1380,6 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
             "message": row["message"],
         })
     audit_failure_count = len(template_failures) + child_files["failure_count"]
-    audit_blocked = sorted({
-        row["repository"] for row in template_failures + child_files["failures"]
-    }, key=str.casefold)
     with tempfile.TemporaryDirectory(prefix="vendor-parent-ci-") as directory:
         work_dir = _copy_parent_vendor_baseline(parent_root, directory)
         vendor_check = _offline_parent_vendor_check(work_dir)
@@ -1377,9 +1390,36 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
             name: fetch_child_head_record(name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch)
             for name in monitored
         }
+        drift_candidates = []
+        for name in monitored:
+            recorded = document["heads"].get(name)
+            proposed = proposed_heads.get(name)
+            if recorded is None or proposed is None:
+                continue
+            if recorded["sha"] != proposed["sha"]:
+                drift_candidates.append(name)
+        autofix_audit_document = document
+        if drift_candidates:
+            autofix_heads = dict(document["heads"])
+            for name in drift_candidates:
+                autofix_heads[name] = proposed_heads[name]
+            autofix_audit_document = validate_child_heads({
+                "schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": autofix_heads,
+            })
+        autofix_audit_blocked, _, _ = _baseline_audit_blocked(
+            registry,
+            autofix_audit_document,
+            drift_candidates,
+            template_text,
+            token=token,
+            parent_root=parent_root,
+            parent_repository=parent_repository,
+            remotes=remotes,
+            local_roots=local_roots,
+        )
         refresh_plan = plan_heads_refresh(
             registry, document, proposed_heads, template_text, token=token,
-            audit_blocked=audit_blocked,
+            audit_blocked=autofix_audit_blocked,
         )
         encoded_heads = validate_child_heads({
             "schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": refresh_plan["heads"],
@@ -1578,8 +1618,6 @@ def _commit_merged_via_github_compare(repository, commit, *, token):
         compare = _github_json(url, token)
     except HTTPError:
         raise ValueError(PUBLIC_GIT_FETCH_ERROR) from None
-    except ValueError:
-        raise
     merge_base = (compare.get("merge_base_commit") or {}).get("sha")
     if isinstance(merge_base, str) and merge_base.lower() == commit.lower():
         return True
