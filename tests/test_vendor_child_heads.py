@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 from urllib.error import HTTPError
@@ -104,6 +105,90 @@ def test_commit_merged_positive_and_negative(tmp_path):
     sync.commit_merged_into_default("owner/tool", main_sha, local_roots=roots)
     with pytest.raises(ValueError, match="not merged"):
         sync.commit_merged_into_default("owner/tool", feature_sha, local_roots=roots)
+
+
+def _merge_no_ff_feature(upstream):
+    _git(upstream, "checkout", "-b", "feature")
+    (upstream / "file.txt").write_bytes(b"feature\n")
+    _git(upstream, "commit", "-am", "feature")
+    intermediate = _git(upstream, "rev-parse", "HEAD")
+    _git(upstream, "checkout", "main")
+    _git(upstream, "merge", "--no-ff", "feature", "-m", "merge feature")
+    merge_commit = _git(upstream, "rev-parse", "HEAD")
+    return intermediate, merge_commit
+
+
+def test_first_parent_rejects_merged_pr_intermediate(tmp_path):
+    upstream = tmp_path / "upstream"
+    _init_repo(upstream)
+    intermediate, merge_commit = _merge_no_ff_feature(upstream)
+    roots = {"owner/tool": str(upstream)}
+    sync.commit_merged_into_default("owner/tool", merge_commit, local_roots=roots)
+    with pytest.raises(ValueError, match="not merged"):
+        sync.commit_merged_into_default("owner/tool", intermediate, local_roots=roots)
+
+
+def test_first_parent_accepts_rebase_merged_intermediate_commits(tmp_path):
+    """Rebase merge linearizes PR commits on main; intermediates ride first-parent (out of scope)."""
+    upstream = tmp_path / "upstream"
+    _init_repo(upstream)
+    _git(upstream, "checkout", "-b", "feature")
+    (upstream / "file.txt").write_bytes(b"step1\n")
+    _git(upstream, "commit", "-am", "step1")
+    intermediate = _git(upstream, "rev-parse", "HEAD")
+    (upstream / "file.txt").write_bytes(b"step2\n")
+    _git(upstream, "commit", "-am", "step2")
+    tip = _git(upstream, "rev-parse", "HEAD")
+    _git(upstream, "checkout", "main")
+    _git(upstream, "merge", "feature")
+    roots = {"owner/tool": str(upstream)}
+    sync.commit_merged_into_default("owner/tool", intermediate, local_roots=roots)
+    sync.commit_merged_into_default("owner/tool", tip, local_roots=roots)
+
+
+def test_first_parent_accepts_squash_merge_commit(tmp_path):
+    upstream = tmp_path / "upstream"
+    _init_repo(upstream)
+    _git(upstream, "checkout", "-b", "feature")
+    (upstream / "file.txt").write_bytes(b"squashed\n")
+    _git(upstream, "commit", "-am", "feature")
+    _git(upstream, "checkout", "main")
+    _git(upstream, "merge", "--squash", "feature")
+    _git(upstream, "commit", "-m", "squash feature")
+    squash_sha = _git(upstream, "rev-parse", "HEAD")
+    roots = {"owner/tool": str(upstream)}
+    sync.commit_merged_into_default("owner/tool", squash_sha, local_roots=roots)
+
+
+@pytest.mark.skipif(
+    not (os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")),
+    reason="needs GitHub API token",
+)
+def test_web_ui_pr39_intermediate_pin_rejected_on_github():
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    intermediate = sync._github_json(
+        "https://api.github.com/repos/myon-bioinformatics/web-ui/commits/77ff511", token,
+    )["sha"]
+    merge_commit = sync._github_json(
+        "https://api.github.com/repos/myon-bioinformatics/web-ui/commits/349b1f5", token,
+    )["sha"]
+    with pytest.raises(ValueError, match="not merged"):
+        sync.commit_merged_into_default("myon-bioinformatics/web-ui", intermediate, token=token)
+    sync.commit_merged_into_default("myon-bioinformatics/web-ui", merge_commit, token=token)
+
+
+def test_reject_merged_pr_intermediate_via_github_api(monkeypatch):
+    commit = "f" * 40
+    merge_commit = "e" * 40
+
+    def fake_json(url, token=None):
+        if url.endswith("/pulls"):
+            return [{"merged_at": "2026-01-01", "merge_commit_sha": merge_commit}]
+        raise AssertionError(url)
+
+    monkeypatch.setattr(sync, "_github_json", fake_json)
+    with pytest.raises(ValueError, match="not merged"):
+        sync._reject_merged_pull_request_intermediate_pin("owner/tool", commit, "token")
 
 
 def _source_diff_empty():
@@ -276,21 +361,14 @@ def test_run_parent_child_ci_audit_failures_fail_in_pr_validation(tmp_path, monk
     assert report["failure_count"] == 2
 
 
-def test_commit_merged_into_default_old_pin_via_github_compare(monkeypatch):
-    old_sha = "a" * 40
-    calls = []
-
-    def fake_json(url, token=None):
-        calls.append(url)
-        if url.endswith("/repos/owner/tool"):
-            return {"default_branch": "main"}
-        if "/compare/" in url:
-            return {"merge_base_commit": {"sha": old_sha}}
-        raise AssertionError(url)
-
-    monkeypatch.setattr(sync, "_github_json", fake_json)
-    sync.commit_merged_into_default("owner/tool", old_sha, token="fixture-token")
-    assert any("/compare/" in url for url in calls)
+def test_commit_merged_into_default_old_main_line_pin_with_token(tmp_path, monkeypatch):
+    upstream = tmp_path / "upstream"
+    old_sha = _init_repo(upstream, initial=b"v1\n")
+    (upstream / "file.txt").write_bytes(b"v2\n")
+    _git(upstream, "commit", "-am", "second")
+    remotes = {"owner/tool": "file://" + str(upstream)}
+    monkeypatch.setattr(sync, "_reject_merged_pull_request_intermediate_pin", lambda *a, **k: None)
+    sync.commit_merged_into_default("owner/tool", old_sha, remotes=remotes, token="fixture-token")
 
 
 def test_record_is_public_source_pin_allows_archived():

@@ -882,7 +882,6 @@ def run_child_ci(root, parent_ref_path, consumer, *, token=None,
                     "destination": item["destination"],
                     "message": _audit_failure_message(error),
                 })
-            break
     if failures:
         raise ValueError("child vendor file mismatch: " + json.dumps(failures, ensure_ascii=False))
     return {
@@ -1627,54 +1626,44 @@ def _fetch_parent_pull_request(parent_repository, pull_number, token=None):
     return record
 
 
-def _commit_merged_via_github_compare(repository, commit, *, token):
-    repository = _normalize_repository(repository)
-    try:
-        record = _github_json("https://api.github.com/repos/" + repository, token)
-        default_branch = record.get("default_branch")
-        if not isinstance(default_branch, str) or not default_branch:
-            raise ValueError(PUBLIC_GIT_FETCH_ERROR)
-        basehead = quote(commit, safe="") + "..." + quote(default_branch, safe="")
-        url = "https://api.github.com/repos/" + repository + "/compare/" + basehead
-        compare = _github_json(url, token)
-    except HTTPError:
-        raise ValueError(PUBLIC_GIT_FETCH_ERROR) from None
-    merge_base = (compare.get("merge_base_commit") or {}).get("sha")
-    if isinstance(merge_base, str) and merge_base.lower() == commit.lower():
+def _commit_on_default_first_parent(git_runner, branch, commit):
+    listed = git_runner("rev-list", "--first-parent", branch).decode().splitlines()
+    if any(line.lower() == commit.lower() for line in listed):
         return True
     raise ValueError(PIN_NOT_MERGED_ERROR)
 
 
-def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=None, token=None):
-    """Return True when commit is reachable from the source repository default branch."""
-    repository = _normalize_repository(repository)
-    _hex(commit, 40)
-    local_roots = local_roots or {}
-    if repository in local_roots:
-        root = Path(local_roots[repository])
-        for branch in ("main", "master"):
-            probe = subprocess.run(
-                ["git", "-C", str(root), "merge-base", "--is-ancestor", commit, branch],
-                env=_git_subprocess_env(),
-                capture_output=True,
-                timeout=60,
-            )
-            if probe.returncode == 0:
-                return True
-        raise ValueError(PIN_NOT_MERGED_ERROR)
-    api_token = _api_token(token)
-    if api_token:
-        return _commit_merged_via_github_compare(repository, commit, token=api_token)
-    remote = _repository_remote(repository, remotes)
+def _reject_merged_pull_request_intermediate_pin(repository, commit, token):
+    url = (
+        "https://api.github.com/repos/" + _normalize_repository(repository) +
+        "/commits/" + quote(commit, safe="") + "/pulls"
+    )
+    try:
+        pulls = _github_json(url, token)
+    except HTTPError:
+        return
+    if not isinstance(pulls, list):
+        return
+    for pull in pulls:
+        if not pull.get("merged_at"):
+            continue
+        merge_sha = pull.get("merge_commit_sha")
+        if isinstance(merge_sha, str) and merge_sha.lower() != commit.lower():
+            raise ValueError(PIN_NOT_MERGED_ERROR)
+
+
+def _commit_merged_via_git_bare_fetch(repository, commit, remote, *, token=None):
     with tempfile.TemporaryDirectory(prefix="vendor-merged-pin-") as directory:
         command = ["git", "-c", "credential.helper=", "-c", "core.askPass=",
                    "-c", "http.extraHeader=", "-C", directory]
+
         def git(*args):
             result = subprocess.run(command + list(args), env=_git_subprocess_env(),
                                     capture_output=True, timeout=120)
             if result.returncode:
                 raise ValueError(PUBLIC_GIT_FETCH_ERROR)
             return result.stdout
+
         git("init", "--bare")
         branch = _default_branch_name(remote)
         try:
@@ -1685,15 +1674,50 @@ def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=
             git("fetch", "--no-tags", "--filter=blob:none", remote, commit)
         except ValueError:
             raise ValueError(PUBLIC_GIT_FETCH_ERROR) from None
-        probe = subprocess.run(
-            command + ["merge-base", "--is-ancestor", commit, branch],
-            env=_git_subprocess_env(),
-            capture_output=True,
-            timeout=60,
-        )
-        if probe.returncode == 0:
-            return True
+        _commit_on_default_first_parent(git, branch, commit)
+        if token:
+            _reject_merged_pull_request_intermediate_pin(repository, commit, token)
+        return True
+
+
+def _authenticated_github_remote(repository, token):
+    repository = _normalize_repository(repository)
+    return (
+        "https://x-access-token:" + quote(token, safe="") +
+        "@github.com/" + repository + ".git"
+    )
+
+
+def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=None, token=None):
+    """Return True when commit is on the default branch first-parent history.
+
+    Rejects no-ff merge PR intermediate commits; accepts squash and merge commits.
+    Rebase-merged PR intermediates may also pass (first-parent linearization).
+    """
+    repository = _normalize_repository(repository)
+    _hex(commit, 40)
+    local_roots = local_roots or {}
+    remotes = remotes or {}
+    if repository in local_roots:
+        root = Path(local_roots[repository])
+        for branch in ("main", "master"):
+            result = subprocess.run(
+                ["git", "-C", str(root), "rev-list", "--first-parent", branch],
+                env=_git_subprocess_env(),
+                capture_output=True,
+                timeout=120,
+            )
+            if result.returncode:
+                continue
+            if any(line.lower() == commit.lower()
+                   for line in result.stdout.decode().splitlines()):
+                return True
         raise ValueError(PIN_NOT_MERGED_ERROR)
+    api_token = _api_token(token)
+    remote = _repository_remote(repository, remotes)
+    if api_token and repository not in remotes:
+        remote = _authenticated_github_remote(repository, api_token)
+    return _commit_merged_via_git_bare_fetch(repository, commit, remote, token=api_token)
 
 
 def collect_lock_pins(lock, lock_path):

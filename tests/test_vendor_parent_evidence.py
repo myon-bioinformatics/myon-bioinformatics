@@ -2,6 +2,8 @@
 import copy
 import hashlib
 import json
+import os
+import subprocess
 
 import pytest
 
@@ -204,12 +206,34 @@ def test_parent_ci_counts_source_failure_and_does_not_write(tmp_path, monkeypatc
     assert sync.PUBLIC_GIT_FETCH_ERROR in json.dumps(report['audit_skipped'])
 
 
-def test_portfolio_pr39_unmerged_source_pin_fails_parent_ci(tmp_path, monkeypatch):
-    """github.io #39: intermediate source pin must fail parent CI even on PR validation."""
+def _git(repo, *args):
+    return subprocess.check_output(['git', '-C', str(repo), *args]).decode().strip()
+
+
+def _merged_source_repo(tmp_path):
+    path = tmp_path / 'owner-source'
+    path.mkdir()
+    _git(path, 'init', '-b', 'main')
+    _git(path, 'config', 'user.name', 'Fixture')
+    _git(path, 'config', 'user.email', 'fixture@example.invalid')
+    (path / 'tool.py').write_bytes(DATA)
+    _git(path, 'add', '.')
+    _git(path, 'commit', '-m', 'base')
+    _git(path, 'checkout', '-b', 'feature')
+    _git(path, 'commit', '--allow-empty', '-m', 'feature pin')
+    intermediate = _git(path, 'rev-parse', 'HEAD')
+    _git(path, 'checkout', 'main')
+    _git(path, 'merge', '--no-ff', 'feature', '-m', 'merge feature')
+    merge_commit = _git(path, 'rev-parse', 'HEAD')
+    return path, intermediate, merge_commit
+
+
+def test_portfolio_pr39_merged_pr_intermediate_pin_fails_parent_ci(tmp_path, monkeypatch):
+    """github.io #39: merged PR intermediate pin is an ancestor but not on main first-parent."""
     registry, lock, heads = fixture(monkeypatch)
-    merged_sha = 'c' * 40
-    lock['files'][0]['commit'] = merged_sha
-    lock['files'][0]['ref'] = merged_sha
+    source_path, intermediate, merge_commit = _merged_source_repo(tmp_path)
+    lock['files'][0]['commit'] = intermediate
+    lock['files'][0]['ref'] = intermediate
     (tmp_path / 'templates').mkdir()
     (tmp_path / sync.CHILD_CI_TEMPLATE).write_text(TEMPLATE.decode())
     monkeypatch.setattr(sync, 'monitored_repositories', lambda *a, **k: [NAME])
@@ -220,12 +244,15 @@ def test_portfolio_pr39_unmerged_source_pin_fails_parent_ci(tmp_path, monkeypatc
     monkeypatch.setattr(sync, '_fetch_repo_text', lambda *a, **k: json.dumps(lock))
     monkeypatch.setattr(sync, '_public_git_snapshot', lambda repo, sha, paths:
                         (sha, {p: (sync.git_blob(DATA), DATA) for p in paths}))
-    monkeypatch.setattr(sync, 'commit_merged_into_default', lambda *a, **k:
-                        (_ for _ in ()).throw(ValueError(sync.PIN_NOT_MERGED_ERROR)))
-    report = sync.run_parent_child_ci(registry, heads, parent_root=tmp_path,
-                                      skip_source_diff=True, pr_validation=True)
+    report = sync.run_parent_child_ci(
+        registry, heads, parent_root=tmp_path, skip_source_diff=True, pr_validation=True,
+        local_roots={'owner/source': str(source_path)},
+    )
     assert report['failure_count'] == 1
     assert sync.PIN_NOT_MERGED_ERROR in json.dumps(report['audit_skipped'])
+    sync.commit_merged_into_default(
+        'owner/source', merge_commit, local_roots={'owner/source': str(source_path)},
+    )
 
 
 def test_autofix_keeps_old_head_when_audit_fails(tmp_path, monkeypatch):

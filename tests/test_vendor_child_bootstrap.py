@@ -144,6 +144,33 @@ def child_fixture(tmp_path, monkeypatch):
     return parent, child, lock
 
 
+def test_child_ci_reports_all_source_failures(tmp_path, monkeypatch):
+    import hashlib
+    parent, child, lock = child_fixture(tmp_path, monkeypatch)
+    other_data = b'other tool\n'
+    other_item = {
+        'repository': 'owner/other', 'ref': SHA, 'commit': SHA, 'source': 'other.py',
+        'destination': 'vendor/other.py', 'blob_sha': sync.git_blob(other_data),
+        'sha256': hashlib.sha256(other_data).hexdigest(),
+    }
+    lock['files'].append(other_item)
+    registry = json.loads((parent / 'vendor-consumers.json').read_text())
+    registry['consumers'][0]['entries'].append({
+        'repository': 'owner/other', 'source': 'other.py', 'destination': 'vendor/other.py',
+    })
+    (parent / 'vendor-consumers.json').write_text(json.dumps(registry))
+    (child / 'vendor/other.py').write_bytes(other_data)
+    (child / 'vendor.lock.json').write_text(json.dumps(lock))
+    monkeypatch.setattr(sync, 'commit_merged_into_default', lambda *a, **k:
+                        (_ for _ in ()).throw(ValueError(sync.PIN_NOT_MERGED_ERROR)))
+    with pytest.raises(ValueError) as error:
+        sync.run_child_ci(child, child / 'ref.json', 'owner/child', parent_root=parent)
+    payload = json.loads(str(error.value).removeprefix("child vendor file mismatch: "))
+    destinations = {row['destination'] for row in payload}
+    assert {'vendor/tool.py', 'vendor/other.py'}.issubset(destinations)
+    assert len(payload) >= 2
+
+
 def test_child_ci_rejects_coordinated_lock_and_file_tamper(tmp_path, monkeypatch):
     import hashlib
     parent, child, lock = child_fixture(tmp_path, monkeypatch)
