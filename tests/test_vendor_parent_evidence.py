@@ -140,6 +140,52 @@ def test_plan_heads_refresh_skips_only_review_items(monkeypatch, fault, expect_s
         assert plan['heads'][NAME]['sha'] == NEW
 
 
+def test_plan_heads_refresh_drops_unmonitored_stale_entries():
+    registry = {'schema': 'vendor-consumers/1', 'consumers': []}
+    heads = {
+        'schema': sync.CHILD_HEADS_SCHEMA,
+        'ref': 'main',
+        'heads': {
+            NAME: {'sha': SHA, 'repository_id': 42},
+            'owner/former-public': {'sha': NEW, 'repository_id': 99},
+        },
+    }
+    plan = sync.plan_heads_refresh(
+        registry, heads, {NAME: {'sha': NEW, 'repository_id': 42}}, TEMPLATE.decode(),
+    )
+    assert set(plan['heads']) == {NAME}
+    assert plan['heads'][NAME]['sha'] == NEW
+
+
+def test_autofix_drops_unmonitored_stale_heads(tmp_path, monkeypatch):
+    registry, lock, heads = fixture(monkeypatch)
+    stale_name = 'owner/former-public'
+    heads['heads'][stale_name] = {'sha': NEW, 'repository_id': 99}
+    (tmp_path / 'templates').mkdir()
+    (tmp_path / sync.CHILD_CI_TEMPLATE).write_text(TEMPLATE.decode())
+    monkeypatch.setattr(sync, 'monitored_repositories', lambda *a, **k: [NAME])
+    monkeypatch.setattr(sync, 'fetch_child_head_record', lambda *a, **k: {'sha': NEW, 'repository_id': 42})
+    monkeypatch.setattr(sync, 'audit_child_workflow_templates', lambda *a, **k: {'failures': [], 'missing': []})
+    monkeypatch.setattr(sync, '_copy_parent_vendor_baseline', lambda *a: tmp_path)
+    monkeypatch.setattr(sync, '_offline_parent_vendor_check', lambda *a: {})
+    monkeypatch.setattr(sync, '_public_git_snapshot', lambda repo, sha, paths:
+                        (sha, {p: (sync.git_blob(DATA), DATA) for p in paths}))
+    monkeypatch.setattr(sync, 'commit_merged_into_default', lambda *a, **k: True)
+    monkeypatch.setattr(sync, '_fetch_repo_text', lambda *a, **k: json.dumps(lock))
+    captured = {}
+
+    def capture_pr(repo, branch, title, body, files, token):
+        captured['heads'] = json.loads(files['child-heads.json'].decode())['heads']
+        return {'pull_number': 1, 'url': 'https://example.invalid/1', 'branch': branch}
+
+    monkeypatch.setattr(sync, '_open_or_update_autofix_pr', capture_pr)
+    monkeypatch.setattr(sync, '_dispatch_parent_workflow', lambda *a, **k: None)
+    report = sync.run_parent_child_ci(registry, heads, parent_root=tmp_path,
+                                      skip_source_diff=True, autofix=True, token='fixture')
+    assert stale_name not in captured['heads']
+    assert report['heads_dropped_unmonitored_count'] == 1
+
+
 def test_parent_ci_counts_source_failure_and_does_not_write(tmp_path, monkeypatch):
     registry, _, heads = fixture(monkeypatch)
     (tmp_path / 'templates').mkdir()

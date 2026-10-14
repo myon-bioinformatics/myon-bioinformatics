@@ -131,9 +131,30 @@ def child_fixture(tmp_path, monkeypatch):
         'id': 42, 'full_name': 'owner/child', 'private': False, 'visibility': 'public', 'archived': False})
     monkeypatch.setattr(sync, '_ensure_public_source_repository', lambda *a, **k: True)
     monkeypatch.setattr(sync, 'commit_merged_into_default', lambda *a, **k: True)
+    source_bytes = {'tool.py': b'adopted code\n', 'LICENSE': b'adopted license\n'}
+
+    def snapshot(repo, revision, paths):
+        return revision, {
+            path: (sync.git_blob(source_bytes[path]), source_bytes[path]) for path in paths
+        }
+
+    monkeypatch.setattr(sync, '_public_git_snapshot', snapshot)
     def no_resolve(*a, **k): raise AssertionError('must not resolve parent PR twice')
     monkeypatch.setattr(sync, 'resolve_parent_pr', no_resolve)
     return parent, child, lock
+
+
+def test_child_ci_rejects_coordinated_lock_and_file_tamper(tmp_path, monkeypatch):
+    import hashlib
+    parent, child, lock = child_fixture(tmp_path, monkeypatch)
+    tampered = b'tampered lock and bytes\n'
+    local = copy.deepcopy(lock)
+    local['files'][0]['blob_sha'] = sync.git_blob(tampered)
+    local['files'][0]['sha256'] = hashlib.sha256(tampered).hexdigest()
+    (child / 'vendor.lock.json').write_text(json.dumps(local))
+    (child / 'vendor/tool.py').write_bytes(tampered)
+    with pytest.raises(ValueError, match='child vendor file mismatch'):
+        sync.run_child_ci(child, child / 'ref.json', 'owner/child', parent_root=parent)
 
 
 def test_child_uses_local_lock_not_parent_recorded_snapshot(tmp_path, monkeypatch):

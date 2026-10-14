@@ -780,13 +780,19 @@ def plan_heads_refresh(registry, document, proposed_heads, template_text, *, tok
                        audit_blocked=None):
     """Merge proposed main tips into child-heads, skipping repos that need parent review."""
     document = validate_child_heads(document)
-    merged_heads = dict(document["heads"])
+    merged_heads = {
+        name: document["heads"][name]
+        for name in proposed_heads
+        if name in document["heads"]
+    }
     skipped = []
     blocked = {name.casefold() for name in (audit_blocked or [])}
     for name, new in proposed_heads.items():
         old = document["heads"].get(name)
         if name.casefold() in blocked:
             skipped.append({"repository": name, "reason": "adopted_baseline_audit_failure"})
+            if old is not None:
+                merged_heads[name] = old
             continue
         if old is None:
             skipped.append({"repository": name, "reason": "new_monitored_repository"})
@@ -853,18 +859,30 @@ def run_child_ci(root, parent_ref_path, consumer, *, token=None,
     local_lock = validate(json.loads(_target(root, entry["lock"]).read_text(encoding="utf-8")))
     verify_child_lock_against_parent(registry, catalog, local_lock, consumer)
     failures = []
+    groups = {}
     for item in local_lock["files"]:
+        groups.setdefault((item["repository"], item["commit"]), []).append(item)
+    api_token = _api_token(token)
+    for (repository, revision), items in groups.items():
         try:
-            _ensure_public_source_repository(item["repository"], token=_api_token(token))
-            commit_merged_into_default(
-                item["repository"], item["commit"], token=_api_token(token),
-            )
-            _verify(item, _target(root, item["destination"]).read_bytes())
+            _ensure_public_source_repository(repository, token=api_token)
+            commit_merged_into_default(repository, revision, token=api_token)
+            resolved, sources = _public_git_snapshot(repository, revision, [row["source"] for row in items])
+            if resolved != revision:
+                raise ValueError("Git snapshot SHA mismatch")
+            for item in items:
+                blob, source_data = sources[item["source"]]
+                if blob != item["blob_sha"]:
+                    raise ValueError("source blob mismatch: " + item["destination"])
+                _verify(item, source_data)
+                _verify(item, _target(root, item["destination"]).read_bytes())
         except (OSError, ValueError) as error:
-            failures.append({
-                "destination": item["destination"],
-                "message": _audit_failure_message(error),
-            })
+            for item in items:
+                failures.append({
+                    "destination": item["destination"],
+                    "message": _audit_failure_message(error),
+                })
+            break
     if failures:
         raise ValueError("child vendor file mismatch: " + json.dumps(failures, ensure_ascii=False))
     return {
@@ -1384,6 +1402,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         work_dir = _copy_parent_vendor_baseline(parent_root, directory)
         vendor_check = _offline_parent_vendor_check(work_dir)
     autofix_result = None
+    heads_dropped_unmonitored_count = len(set(document["heads"]) - set(monitored))
     needs_heads_refresh = bool(drift) or bool(missing_heads)
     if autofix and needs_heads_refresh and token:
         proposed_heads = {
@@ -1443,6 +1462,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
             "ref": branch,
         }
         autofix_result["heads_refresh_skipped"] = refresh_plan["skipped"]
+        autofix_result["heads_dropped_unmonitored_count"] = heads_dropped_unmonitored_count
     drift_failures = len(drift) + len(missing_heads) + len(extra_heads)
     if pr_validation:
         failure_count = len(identity_failures) + len(extra_heads) + audit_failure_count
@@ -1469,6 +1489,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         "parent_vendor_check": vendor_check,
         "adopted_child_files": child_files,
         "needs_heads_refresh": needs_heads_refresh,
+        "heads_dropped_unmonitored_count": heads_dropped_unmonitored_count,
         "autofix": autofix_result,
         "heads_refresh_skipped": (autofix_result or {}).get("heads_refresh_skipped", []),
         "audit_skipped": audit_skipped,
@@ -2023,6 +2044,13 @@ def _write_child_heads_summary(report, summary_path):
             lines.append(
                 f"**{report['extra_heads_excluded_count']} non-public or archived "
                 "child-heads entr(ies) omitted from output.**"
+            )
+            lines.append("")
+        dropped = report.get("heads_dropped_unmonitored_count", 0)
+        if dropped:
+            lines.append(
+                f"**{dropped} stale child-heads entr(ies) removed from autofix output "
+                "(no longer monitored; names omitted).**"
             )
             lines.append("")
         if report.get("missing_heads"):
