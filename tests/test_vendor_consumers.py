@@ -183,12 +183,19 @@ def test_checked_in_registry_and_parent_lock():
         "myon-bioinformatics/browser-test-kit",
         "myon-bioinformatics/web-ui",
         "myon-bioinformatics/flutter_navigation_basic",
+        "myon-bioinformatics/Aoi",
+        "myon-bioinformatics/BlueProbe",
+        "myon-bioinformatics/Err-o-RoadRunner",
+        "myon-bioinformatics/cli_args",
+        "myon-bioinformatics/gh_identity",
+        "myon-bioinformatics/myon-bioinformatics.github.io",
+        "myon-bioinformatics/search_seq_including_spaces",
     }
     assert {repo for repo, row in by_repo.items() if row["state"] == "locked"} == expected_locked
     assert "myon-bioinformatics/xprobe" not in by_repo
-    legacy = by_repo["myon-bioinformatics/search_seq_including_spaces"]
-    assert legacy["state"] == "legacy"
-    assert legacy["lock"] is None
+    adopted = by_repo["myon-bioinformatics/search_seq_including_spaces"]
+    assert adopted["state"] == "locked"
+    assert adopted["lock"] == "vendor.lock.json"
 
     parent_lock = json.loads((root / "vendor.lock.json").read_text(encoding="utf-8"))
     comparison = consumers.compare(

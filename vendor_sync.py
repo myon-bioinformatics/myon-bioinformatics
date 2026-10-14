@@ -481,11 +481,9 @@ def record_is_public_monitored(record):
 
 def monitored_repositories(registry, *, token=None, owner=ORG_OWNER):
     """Public, non-archived account repositories tracked in child-heads.json."""
-    if _api_token(token):
-        return list_org_repositories(owner, token=token)
-    names = {_normalize_repository(PARENT_REPOSITORY)}
-    names.update(_locked_consumer_names(registry))
-    return sorted(names, key=str.casefold)
+    # Public inventory must also be checked without authentication. Never fall
+    # back to a registry that can contain archived or newly private repositories.
+    return list_org_repositories(owner, token=token)
 
 
 def _api_token(token=None):
@@ -535,7 +533,9 @@ def _list_account_repositories(owner, *, token=None):
             while True:
                 url = base + "?per_page=100&page=" + str(page) + "&type=all"
                 batch = _github_api("GET", url, token) if token else _github_json(url, None)
-                if not isinstance(batch, list) or not batch:
+                if not isinstance(batch, list):
+                    raise ValueError("invalid account repository listing")
+                if not batch:
                     break
                 for record in batch:
                     if not record_is_public_monitored(record):
@@ -562,7 +562,8 @@ def list_org_repositories(owner=ORG_OWNER, *, token=None):
 def verify_workflow_template_copy(copied_text, template_text, *, path=CHILD_CI_WORKFLOW_PATH):
     if copied_text != template_text:
         raise ValueError(path + " must match parent template bytes exactly")
-    if "@pr/" in copied_text or "refs/pull/" in copied_text:
+    scan = copied_text.decode("utf-8") if isinstance(copied_text, bytes) else copied_text
+    if "@pr/" in scan or "refs/pull/" in scan:
         raise ValueError(path + " must not use @pr/ or refs/pull/ pins")
     return True
 
@@ -584,75 +585,72 @@ def _lookup_child_main_pull_number(repository, sha, token=None):
     return None
 
 
-def build_expected_child_lock(registry, catalog, consumer, *, get=_get):
-    import vendor_catalog
+def build_expected_child_lock(registry, document, consumer, *, token=None):
+    """Load adopted pins from the immutable child revision recorded by the parent.
+
+    The catalog is a recommendation, not the adopted lock. Retaining the existing
+    vendor-lock/1 also covers LICENSE/helper rows absent from the catalog.
+    """
     import vendor_consumers
-    registry = vendor_consumers.validate(registry)
-    catalog = vendor_catalog.validate(catalog)
     entry = vendor_consumers.get_consumer(registry, consumer)
     if entry["state"] != "locked":
         raise ValueError("child CI requires a locked consumer registration")
-    files = []
-    for row in entry["entries"]:
-        tool = next(
-            (item for item in catalog["tools"]
-             if item["repository"].casefold() == row["repository"].casefold()
-             and item["source"] == row["source"]),
-            None,
-        )
-        if tool is None:
-            raise ValueError("missing catalog baseline for " + row["repository"] + ":" + row["source"])
-        item = {
-            "repository": row["repository"],
-            "ref": "refs/heads/main",
-            "commit": tool["commit"],
-            "source": row["source"],
-            "destination": row["destination"],
-        }
-        data = _raw(item, get)
-        item["blob_sha"] = git_blob(data)
-        item["sha256"] = hashlib.sha256(data).hexdigest()
-        files.append(item)
-    return validate({"schema": SCHEMA, "files": files})
+    heads = validate_child_heads(document)["heads"]
+    recorded = next((v for k, v in heads.items() if k.casefold() == consumer.casefold()), None)
+    if recorded is None:
+        raise ValueError("child-heads missing repository: " + consumer)
+    meta = fetch_repository_record(consumer, token)
+    if not record_is_public_monitored(meta):
+        raise ValueError("child is not a public non-archived repository")
+    if _coerce_repository_id(meta["id"]) != recorded["repository_id"]:
+        raise ValueError("child repository id mismatch")
+    text = _fetch_repo_text(consumer, entry["lock"], recorded["sha"], token)
+    if text is None:
+        raise ValueError("missing adopted child lock at recorded SHA")
+    lock = validate(json.loads(text))
+    if any(item["ref"] != item["commit"] for item in lock["files"]):
+        raise ValueError("adopted child lock requires ref=commit SHA")
+    if not vendor_consumers.compare(registry, lock, consumer)["matches"]:
+        raise ValueError("consumer topology mismatch against parent registry")
+    return lock
 
 
-def run_child_ci(root, parent_ref_path, consumer, *, token=None, parent_repository=PARENT_REPOSITORY, get=_get):
-    """Verify the child checkout using parent registry/catalog at a resolved parent PR."""
+def run_child_ci(root, parent_ref_path, consumer, *, token=None,
+                 parent_repository=PARENT_REPOSITORY, get=_get, parent_root=None):
+    """Check a child against the adopted lock anchored in the executed parent pin."""
     import vendor_consumers
     root = Path(root).resolve()
     consumer = _normalize_repository(consumer)
     reference = validate_parent_pr_ref(json.loads(Path(parent_ref_path).read_text(encoding="utf-8")))
-    if reference["repository"] != _normalize_repository(parent_repository):
+    if reference["repository"].casefold() != _normalize_repository(parent_repository).casefold():
         raise ValueError("parent-pr.ref.json repository mismatch")
+    parent_sha = reference.get("commit")
+    if parent_sha is None:
+        raise ValueError("child CI requires an explicit parent commit SHA")
+    parent_root = Path(parent_root or Path(__file__).resolve().parent).resolve()
+    actual_sha = _git_run(["git", "-C", str(parent_root), "rev-parse", "HEAD"]).decode().strip()
+    if actual_sha != parent_sha:
+        raise ValueError("executed parent SHA mismatch")
+    # The workflow verifies PR/repository identity before running this code.
+    # Never resolve a mutable open PR a second time or read data from another SHA.
+    registry = json.loads((parent_root / "vendor-consumers.json").read_text(encoding="utf-8"))
+    document = json.loads((parent_root / "child-heads.json").read_text(encoding="utf-8"))
+    template = (parent_root / CHILD_CI_TEMPLATE).read_bytes()
+    copied_path = _target(root, CHILD_CI_WORKFLOW_PATH)
+    verify_workflow_template_copy(copied_path.read_bytes(), template)
     token = _api_token(token)
-    resolved = resolve_parent_pr(
-        parent_repository, reference["pull_number"], token=token, reference=reference,
-    )
-    parent_sha = resolved["commit"]
-    registry = json.loads(_fetch_repo_text(parent_repository, "vendor-consumers.json", parent_sha, token))
-    catalog = json.loads(_fetch_repo_text(parent_repository, "vendor-catalog.json", parent_sha, token))
-    template = _fetch_repo_text(parent_repository, CHILD_CI_TEMPLATE, parent_sha, token)
-    if template is None:
-        raise ValueError("missing parent child CI template at " + parent_sha)
-    copied_path = root / CHILD_CI_WORKFLOW_PATH
-    if not copied_path.is_file():
-        raise ValueError("missing copied workflow at " + CHILD_CI_WORKFLOW_PATH)
-    verify_workflow_template_copy(copied_path.read_text(encoding="utf-8"), template)
-    lock = build_expected_child_lock(registry, catalog, consumer, get=get)
-    topology = vendor_consumers.compare(registry, lock, consumer)
-    if not topology["matches"]:
-        raise ValueError("consumer topology mismatch against parent registry")
+    lock = build_expected_child_lock(registry, document, consumer, token=token)
+    entry = vendor_consumers.get_consumer(registry, consumer)
+    local_lock = validate(json.loads(_target(root, entry["lock"]).read_text(encoding="utf-8")))
+    ordered = lambda value: sorted(value["files"], key=lambda row: row["destination"])
+    if ordered(local_lock) != ordered(lock):
+        raise ValueError("child lock differs from parent-recorded adopted lock")
     failures = []
     for item in lock["files"]:
-        target = _target(root, item["destination"])
         try:
-            _verify(item, target.read_bytes())
+            _verify(item, _target(root, item["destination"]).read_bytes())
         except (OSError, ValueError) as error:
-            failures.append({
-                "destination": item["destination"],
-                "source": item["source"],
-                "message": str(error),
-            })
+            failures.append({"destination": item["destination"], "message": str(error)})
     if failures:
         raise ValueError("child vendor file mismatch: " + json.dumps(failures, ensure_ascii=False))
     return {
@@ -660,8 +658,8 @@ def run_child_ci(root, parent_ref_path, consumer, *, token=None, parent_reposito
         "consumer": consumer,
         "parent_commit": parent_sha,
         "files_checked": len(lock["files"]),
-        "resolved_pull_number": resolved["pull_number"],
-        "resolved_repository_id": resolved["repository_id"],
+        "resolved_pull_number": reference["pull_number"],
+        "resolved_repository_id": reference["repository_id"],
     }
 
 
@@ -743,7 +741,7 @@ def _normalize_head_entry(value):
     if pull_number is not None:
         if isinstance(pull_number, str) and pull_number.isdigit():
             pull_number = int(pull_number)
-        if not isinstance(pull_number, int) or pull_number < 1:
+        if type(pull_number) is not int or pull_number < 1:
             raise ValueError("invalid optional pull_number on child head")
         entry["pull_number"] = pull_number
     optional = value.get("optional")
@@ -778,7 +776,7 @@ def validate_parent_pr_ref(document):
     pull_number = document.get("pull_number")
     if isinstance(pull_number, str) and pull_number.isdigit():
         pull_number = int(pull_number)
-    if not isinstance(pull_number, int) or pull_number < 1:
+    if type(pull_number) is not int or pull_number < 1:
         raise ValueError("expected positive pull_number")
     repository_id = _coerce_repository_id(document.get("repository_id"))
     result = {
@@ -813,7 +811,7 @@ def verify_reference_identity(*, expected_sha, expected_pull_number, expected_re
             )
         )
     if expected_pull_number is not None:
-        if not isinstance(expected_pull_number, int) or expected_pull_number < 1:
+        if type(expected_pull_number) is not int or expected_pull_number < 1:
             raise ValueError("expected positive pull number")
         if resolved_pull_number != expected_pull_number:
             errors.append(
@@ -1037,7 +1035,7 @@ def _open_or_update_autofix_pr(parent_repository, branch, title, body, files, to
     pr_number = existing[0]["number"] if isinstance(existing, list) and existing else None
     branch_ref = api_repo + "/git/refs/heads/" + quote(branch, safe="")
     try:
-        _github_api("GET", branch_ref, token)
+        _github_api("GET", api_repo + "/git/ref/heads/" + quote(branch, safe=""), token)
         _github_api("PATCH", branch_ref, token, {"sha": base_sha, "force": True})
     except HTTPError as error:
         if error.code != 404:
@@ -1249,11 +1247,26 @@ def resolve_parent_pr(parent_repository, pull_number, *, token=None, pr_fetch=No
         if not pull_number.isdigit():
             raise ValueError("expected pull request number")
         pull_number = int(pull_number)
-    if not isinstance(pull_number, int) or pull_number < 1:
+    if type(pull_number) is not int or pull_number < 1:
         raise ValueError("expected positive pull request number")
     fetch = pr_fetch or _fetch_parent_pull_request
     pull = fetch(parent_repository, pull_number, token=token)
+    repo_record = fetch_repository_record(parent_repository, token, repo_fetch=repo_fetch)
+    repository_id = _coerce_repository_id(repo_record["id"])
+    if type(pull.get("number")) is not int or pull["number"] != pull_number:
+        raise ValueError("pull number mismatch")
+    base_repo = (pull.get("base") or {}).get("repo") or {}
+    if (_coerce_repository_id(base_repo.get("id")) != repository_id or
+            str(base_repo.get("full_name", "")).casefold() != parent_repository.casefold()):
+        raise ValueError("pull base repository id/name mismatch")
     merged = bool(pull.get("merged_at"))
+    if not merged:
+        if pull.get("state") != "open":
+            raise ValueError("parent pull request is closed without merge")
+        head_repo = (pull.get("head") or {}).get("repo") or {}
+        if (_coerce_repository_id(head_repo.get("id")) != repository_id or
+                str(head_repo.get("full_name", "")).casefold() != parent_repository.casefold()):
+            raise ValueError("unmerged parent pull request must belong to parent repository")
     if merged:
         commit = pull.get("merge_commit_sha")
         if not commit:
@@ -1266,8 +1279,6 @@ def resolve_parent_pr(parent_repository, pull_number, *, token=None, pr_fetch=No
     if not commit:
         raise ValueError("cannot resolve pull request " + str(pull_number))
     _hex(commit, 40)
-    repo_record = fetch_repository_record(parent_repository, token, repo_fetch=repo_fetch)
-    repository_id = _coerce_repository_id(repo_record["id"])
     optional_signals = {}
     if isinstance(pull.get("created_at"), str):
         optional_signals["pull_created_at"] = pull["created_at"]

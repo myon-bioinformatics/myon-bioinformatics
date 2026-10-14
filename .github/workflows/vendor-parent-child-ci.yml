@@ -16,6 +16,7 @@ on:
       - "templates/parent-pr.ref.json"
       - ".github/workflows/vendor-parent-child-ci.yml"
       - "tests/test_vendor_child_heads.py"
+      - "tests/test_vendor_child_bootstrap.py"
 
 permissions:
   contents: read
@@ -49,8 +50,8 @@ jobs:
           python -S vendor_sync.py "${args[@]}"
       - name: Unit regressions (offline)
         run: |
-          python -m pip install pytest
-          python -m pytest -q tests/test_vendor_child_heads.py
+          python -m pip install -r tests/requirements.txt
+          python -m pytest -q tests/test_vendor_child_heads.py tests/test_vendor_child_bootstrap.py
 
   autofix:
     if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}

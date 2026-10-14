@@ -4,6 +4,7 @@
   "pull_number": 1,
   "repository_id": 638801160,
   "optional": {
-    "note": "Replace pull_number with the parent pull request you pin to. repository_id must match the parent repo GitHub id. Optional created_at fields are never enforced."
-  }
+    "note": "Replace pull_number AND commit with a reviewed parent PR and its exact resolved SHA (merge_commit_sha if merged, head.sha if open). All zeroes deliberately fail. Keep repository_id unchanged. Children retain their adopted vendor-lock/1."
+  },
+  "commit": "0000000000000000000000000000000000000000"
 }

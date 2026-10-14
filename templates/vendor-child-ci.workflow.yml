@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           export GH_TOKEN="$GITHUB_TOKEN"
-          python -S <<'PY'
+          python -I -S <<'PY'
           import json
           import os
           import re
@@ -61,21 +61,41 @@ jobs:
               raise SystemExit("parent-pr.ref.json repository mismatch")
           pull_number = ref.get("pull_number")
           repo_id = ref.get("repository_id")
-          if not isinstance(pull_number, int) or pull_number < 1:
+          if type(pull_number) is not int or pull_number < 1:
               raise SystemExit("invalid pull_number in parent-pr.ref.json")
-          if not isinstance(repo_id, int) or repo_id < 1:
+          if type(repo_id) is not int or repo_id < 1:
               raise SystemExit("invalid repository_id in parent-pr.ref.json")
+
+          expected_sha = ref.get("commit")
+          if not isinstance(expected_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", expected_sha):
+              raise SystemExit("explicit parent commit SHA required")
 
           pull = api("https://api.github.com/repos/" + PARENT + "/pulls/" + str(pull_number))
           parent_meta = api("https://api.github.com/repos/" + PARENT)
-          if int(parent_meta["id"]) != int(repo_id):
-              raise SystemExit("repository id mismatch for parent")
+          if (type(parent_meta.get("id")) is not int or parent_meta["id"] != repo_id or
+                  parent_meta.get("full_name", "").lower() != PARENT.lower()):
+              raise SystemExit("repository id/name mismatch for parent")
+          if type(pull.get("number")) is not int or pull["number"] != pull_number:
+              raise SystemExit("pull number mismatch")
+          base_repo = (pull.get("base") or {}).get("repo") or {}
+          if (type(base_repo.get("id")) is not int or base_repo["id"] != repo_id or
+                  base_repo.get("full_name", "").lower() != PARENT.lower()):
+              raise SystemExit("pull base repository mismatch")
           if pull.get("merged_at"):
               commit = pull.get("merge_commit_sha")
           else:
+              if pull.get("state") != "open":
+                  raise SystemExit("parent pull request is closed without merge")
+              head_repo = (pull.get("head") or {}).get("repo") or {}
+              if (type(head_repo.get("id")) is not int or head_repo["id"] != repo_id or
+                      head_repo.get("full_name", "").lower() != PARENT.lower()):
+                  raise SystemExit("unmerged parent pull request must belong to parent repository")
               commit = (pull.get("head") or {}).get("sha")
           if not commit or not re.fullmatch(r"[0-9a-f]{40}", commit):
               raise SystemExit("could not resolve parent pull request commit")
+
+          if commit != expected_sha:
+              raise SystemExit("parent SHA mismatch")
 
           work = Path("parent-at-pin")
           if work.exists():
@@ -96,8 +116,15 @@ jobs:
               ["git", "-C", str(work), "checkout", "-q", "FETCH_HEAD"],
               check=True,
           )
+          actual = subprocess.run(
+              ["git", "-C", str(work), "rev-parse", "HEAD"],
+              check=True, capture_output=True, text=True,
+          ).stdout.strip()
+          if actual != expected_sha:
+              raise SystemExit("fetched parent SHA mismatch")
           cmd = [
               sys.executable,
+              "-E",
               "-S",
               str(work / "vendor_sync.py"),
               "run-child-ci",
@@ -105,7 +132,7 @@ jobs:
               ".",
               "--ref-file",
               str(ref_path),
-              "--consumer",
+              "--consumer-name",
               consumer,
               "--parent",
               PARENT,

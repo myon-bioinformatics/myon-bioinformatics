@@ -238,7 +238,7 @@ def test_open_or_update_autofix_pr_resets_branch_to_main(monkeypatch):
             return {"object": {"sha": "m" * 40}}
         if method == "GET" and "pulls?state=open" in url:
             return []
-        if method == "GET" and "/git/refs/heads/vendor" in url:
+        if method == "GET" and "/git/ref/heads/vendor" in url:
             return {"object": {"sha": "o" * 40}}
         if method == "PATCH" and "/git/refs/heads/vendor" in url:
             return {}
@@ -362,6 +362,7 @@ def test_source_diff_detects_unmerged_branch(tmp_path):
 
 
 def test_refresh_child_heads_writes_repository_id(tmp_path, monkeypatch):
+    monkeypatch.setattr(sync, "monitored_repositories", lambda *a, **k: ["owner/child"])
     registry = _registry("owner/child")
     heads_path = tmp_path / "child-heads.json"
     monkeypatch.setattr(
@@ -398,8 +399,8 @@ def test_child_head_drift_fails(tmp_path, monkeypatch):
 def test_resolve_parent_pr_merged_and_open():
     def fetch(repo, number, token=None):
         if number == 1:
-            return {"merged_at": "2020-01-01", "merge_commit_sha": "a" * 40, "head": {"sha": "b" * 40}}
-        return {"merged_at": None, "merge_commit_sha": None, "head": {"sha": "c" * 40}}
+            return {"number": number, "state": "closed", "base": {"repo": {"id": 9001, "full_name": repo}}, "merged_at": "2020-01-01", "merge_commit_sha": "a" * 40, "head": {"sha": "b" * 40}}
+        return {"number": number, "state": "open", "base": {"repo": {"id": 9001, "full_name": repo}}, "merged_at": None, "merge_commit_sha": None, "head": {"sha": "c" * 40, "repo": {"id": 9001, "full_name": repo}}}
 
     def repo_fetch(repository):
         return {"id": 9001, "created_at": "2019-01-01T00:00:00Z"}
@@ -415,7 +416,7 @@ def test_resolve_parent_pr_merged_and_open():
 
 def test_resolve_parent_pr_rejects_repository_id_mismatch():
     def fetch(repo, number, token=None):
-        return {"merged_at": "2020-01-01", "merge_commit_sha": "a" * 40, "head": {"sha": "b" * 40}}
+        return {"number": number, "state": "closed", "base": {"repo": {"id": 2, "full_name": repo}}, "merged_at": "2020-01-01", "merge_commit_sha": "a" * 40, "head": {"sha": "b" * 40}}
 
     def repo_fetch(repository):
         return {"id": 2}
@@ -585,6 +586,7 @@ def test_split_extra_heads_omits_private_names(monkeypatch):
 
 
 def test_cli_refresh_child_heads(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(sync, "monitored_repositories", lambda *a, **k: ["owner/child"])
     registry = _registry("owner/child")
     (tmp_path / "registry.json").write_text(json.dumps(registry), encoding="utf-8")
     monkeypatch.setattr(sync, "fetch_child_head_record", lambda *args, **kwargs: _head("3" * 40, 9))
@@ -595,3 +597,44 @@ def test_cli_refresh_child_heads(tmp_path, monkeypatch, capsys):
         "--heads", str(heads),
     ]) == 0
     assert json.loads(heads.read_text())["heads"]["owner/child"]["sha"] == "3" * 40
+
+
+def test_missing_monitored_repository_fails_parent_ci(tmp_path, monkeypatch):
+    registry = _registry('owner/child')
+    (tmp_path / 'vendor.lock.json').write_text(json.dumps(_lock('a' * 40)))
+    (tmp_path / 'vendor').mkdir()
+    (tmp_path / 'vendor/tool.py').write_bytes(b'tool\n')
+    (tmp_path / 'templates').mkdir()
+    (tmp_path / sync.CHILD_CI_TEMPLATE).write_text('name: stub\n')
+    document = {'schema': sync.CHILD_HEADS_SCHEMA, 'ref': 'main',
+                'heads': {'owner/child': _head('a' * 40)}}
+    monkeypatch.setattr(sync, 'monitored_repositories', lambda *a, **k: ['owner/child', 'owner/new'])
+    monkeypatch.setattr(sync, 'fetch_child_head_record', lambda *a, **k: _head('a' * 40))
+    monkeypatch.setattr(sync, 'audit_child_workflow_templates', lambda *a, **k: {'failures': [], 'missing': []})
+    report = sync.run_parent_child_ci(registry, document, parent_root=tmp_path, skip_source_diff=True)
+    assert report['missing_heads'] == ['owner/new']
+    assert report['failure_count'] == 1
+
+
+def test_unauthenticated_inventory_still_filters_private_and_archived(monkeypatch):
+    monkeypatch.delenv('GH_TOKEN', raising=False)
+    monkeypatch.delenv('GITHUB_TOKEN', raising=False)
+    rows = [{'full_name': 'owner/public', 'archived': False, 'private': False, 'visibility': 'public'},
+            {'full_name': 'owner/secret', 'archived': False, 'private': True, 'visibility': 'private'},
+            {'full_name': 'owner/old', 'archived': True, 'private': False, 'visibility': 'public'}]
+    monkeypatch.setattr(sync, '_github_json', lambda *a, **k: rows)
+    assert sync.monitored_repositories(_registry('owner/secret'), owner='owner') == ['owner/public']
+    monkeypatch.setattr(sync, '_github_json', lambda *a, **k: {'message': 'error'})
+    with pytest.raises(ValueError, match='invalid account'):
+        sync.monitored_repositories(_registry('owner/secret'), owner='owner')
+
+
+@pytest.mark.parametrize('field,value', [('number', 9), ('state', 'closed')])
+def test_resolver_rejects_wrong_pr_response(field, value):
+    repo = {'id': 2, 'full_name': 'owner/parent'}
+    pull = {'number': 1, 'state': 'open', 'base': {'repo': repo},
+            'head': {'repo': repo, 'sha': 'a' * 40}}
+    pull[field] = value
+    with pytest.raises(ValueError):
+        sync.resolve_parent_pr('owner/parent', 1, pr_fetch=lambda *a, **k: pull,
+                               repo_fetch=lambda *a: repo)
