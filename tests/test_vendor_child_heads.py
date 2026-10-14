@@ -188,6 +188,169 @@ def test_run_parent_child_ci_detects_sha_drift(tmp_path, monkeypatch):
     assert report["needs_heads_refresh"] is True
 
 
+def test_source_diff_only_scans_monitored_public_repos(monkeypatch):
+    registry = _registry("myon-bioinformatics/secret-consumer")
+    monitored = ["myon-bioinformatics/public-one"]
+    scanned = []
+
+    def fake_branches(name, **kwargs):
+        scanned.append(name)
+        return [{"repository": name, "branch": "feature", "tip": "f" * 40}]
+
+    monkeypatch.setattr(sync, "branches_differing_from_main", fake_branches)
+    report = sync.source_diff_report(registry, repository_names=monitored)
+    assert scanned == monitored
+    payload = json.dumps(report)
+    assert "secret" not in payload.casefold()
+    assert report["findings"][0]["repository"] == monitored[0]
+
+
+def test_audit_templates_only_monitored_public_repos(monkeypatch):
+    registry = _registry("myon-bioinformatics/secret-consumer")
+    monitored = ["myon-bioinformatics/public-one"]
+    document = sync.validate_child_heads({
+        "schema": sync.CHILD_HEADS_SCHEMA,
+        "ref": "main",
+        "heads": {monitored[0]: _head("a" * 40, 1)},
+    })
+    fetched = []
+
+    def fake_fetch(repository, path, ref, token=None):
+        fetched.append(repository)
+        return None
+
+    monkeypatch.setattr(sync, "_fetch_repo_text", fake_fetch)
+    report = sync.audit_child_workflow_templates(
+        registry, document, "name: stub\n", repository_names=monitored, token="token",
+    )
+    assert fetched == [monitored[0]]
+    assert "secret" not in json.dumps(report).casefold()
+
+
+def test_open_or_update_autofix_pr_resets_branch_to_main(monkeypatch):
+    calls = []
+
+    def fake_api(method, url, token=None, body=None):
+        calls.append((method, url, body))
+        if method == "GET" and url.endswith("/repos/owner/parent"):
+            return {"default_branch": "main"}
+        if method == "GET" and url.endswith("/repos/owner/parent/git/ref/heads/main"):
+            return {"object": {"sha": "m" * 40}}
+        if method == "GET" and "pulls?state=open" in url:
+            return []
+        if method == "GET" and "/git/refs/heads/vendor" in url:
+            return {"object": {"sha": "o" * 40}}
+        if method == "PATCH" and "/git/refs/heads/vendor" in url:
+            return {}
+        if method == "GET" and "/contents/child-heads.json" in url:
+            raise HTTPError(url, 404, "not found", None, None)
+        if method == "PUT" and "/contents/" in url:
+            return {}
+        if method == "POST" and url.endswith("/pulls"):
+            return {"number": 9, "html_url": "https://example.invalid/9"}
+        raise AssertionError((method, url))
+
+    monkeypatch.setattr(sync, "_github_api", fake_api)
+    sync._open_or_update_autofix_pr(
+        "owner/parent",
+        "vendor/child-heads-sync",
+        "title",
+        "body",
+        {"child-heads.json": b"{}\n"},
+        "token",
+    )
+    patch = next(
+        (body for method, url, body in calls if method == "PATCH" and "/git/refs/heads/vendor" in url),
+        None,
+    )
+    assert patch == {"sha": "m" * 40, "force": True}
+
+
+def test_dispatch_parent_workflow_posts_dispatch(monkeypatch):
+    posted = []
+
+    def fake_api(method, url, token=None, body=None):
+        posted.append((method, url, body))
+        return None
+
+    monkeypatch.setattr(sync, "_github_api", fake_api)
+    sync._dispatch_parent_workflow(
+        "owner/parent",
+        ".github/workflows/vendor-parent-child-ci.yml",
+        "vendor/child-heads-sync",
+        "token",
+    )
+    assert posted[0][0] == "POST"
+    assert "actions/workflows" in posted[0][1]
+    assert posted[0][2] == {"ref": "vendor/child-heads-sync"}
+
+
+def test_run_parent_child_ci_autofix_propagates_dispatch_failure(tmp_path, monkeypatch):
+    consumer = "myon-bioinformatics/public-one"
+    registry = _registry(consumer)
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    sha = "1" * 40
+    (parent / "vendor.lock.json").write_text(json.dumps(_lock(sha)) + "\n", encoding="utf-8")
+    (parent / "vendor").mkdir()
+    (parent / "vendor" / "tool.py").write_bytes(b"tool\n")
+    (parent / "templates").mkdir()
+    (parent / "templates" / "vendor-child-ci.workflow.yml").write_text("name: stub\n", encoding="utf-8")
+    document = sync.validate_child_heads({
+        "schema": sync.CHILD_HEADS_SCHEMA,
+        "ref": "main",
+        "heads": {consumer: _head(sha, 1)},
+    })
+    monkeypatch.setattr(sync, "monitored_repositories", lambda *args, **kwargs: [consumer])
+    monkeypatch.setattr(sync, "fetch_child_head_record", lambda *args, **kwargs: _head("2" * 40, 1))
+    monkeypatch.setattr(sync, "audit_child_workflow_templates", lambda *args, **kwargs: {"failures": [], "missing": []})
+    monkeypatch.setattr(sync, "source_diff_report", lambda *args, **kwargs: _source_diff_empty())
+    monkeypatch.setattr(
+        sync,
+        "_open_or_update_autofix_pr",
+        lambda *args, **kwargs: {"pull_number": 1, "url": "https://example.invalid/1", "branch": "vendor/child-heads-sync"},
+    )
+
+    def boom(*args, **kwargs):
+        raise HTTPError("https://api.github.com/dispatch", 403, "forbidden", None, None)
+
+    monkeypatch.setattr(sync, "_dispatch_parent_workflow", boom)
+    with pytest.raises(HTTPError):
+        sync.run_parent_child_ci(registry, document, parent_root=parent, autofix=True, token="token")
+
+
+def test_run_parent_child_ci_source_diff_uses_monitored_list(tmp_path, monkeypatch):
+    consumer = "myon-bioinformatics/public-one"
+    registry = _registry("myon-bioinformatics/secret-consumer")
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    sha = "1" * 40
+    (parent / "vendor.lock.json").write_text(json.dumps(_lock(sha)) + "\n", encoding="utf-8")
+    (parent / "vendor").mkdir()
+    (parent / "vendor" / "tool.py").write_bytes(b"tool\n")
+    (parent / "templates").mkdir()
+    (parent / "templates" / "vendor-child-ci.workflow.yml").write_text("name: stub\n", encoding="utf-8")
+    document = sync.validate_child_heads({
+        "schema": sync.CHILD_HEADS_SCHEMA,
+        "ref": "main",
+        "heads": {consumer: _head(sha, 1)},
+    })
+    monitored = [consumer]
+    monkeypatch.setattr(sync, "monitored_repositories", lambda *args, **kwargs: monitored)
+    monkeypatch.setattr(sync, "fetch_child_head_record", lambda *args, **kwargs: _head(sha, 1))
+    monkeypatch.setattr(sync, "audit_child_workflow_templates", lambda *args, **kwargs: {"failures": [], "missing": []})
+    seen = {}
+
+    def capture(registry, **kwargs):
+        seen["repository_names"] = kwargs.get("repository_names")
+        return _source_diff_empty()
+
+    monkeypatch.setattr(sync, "source_diff_report", capture)
+    sync.run_parent_child_ci(registry, document, parent_root=parent)
+    assert seen["repository_names"] == monitored
+    assert "secret" not in json.dumps(seen)
+
+
 def test_source_diff_detects_unmerged_branch(tmp_path):
     repo = tmp_path / "repo"
     _init_repo(repo)

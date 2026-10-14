@@ -665,15 +665,19 @@ def run_child_ci(root, parent_ref_path, consumer, *, token=None, parent_reposito
     }
 
 
-def audit_child_workflow_templates(registry, document, template_text, *, token=None):
+def audit_child_workflow_templates(registry, document, template_text, *, token=None,
+                                 repository_names=None):
     failures = []
     missing = []
-    for name in _locked_consumer_names(registry):
+    names = repository_names
+    if names is None:
+        names = monitored_repositories(registry, token=token)
+    for name in names:
         entry = document["heads"].get(name)
         if entry is None:
             missing.append({
                 "repository": name,
-                "message": "locked consumer has no child-heads entry (often archived or not monitored)",
+                "message": "monitored repository has no child-heads entry",
             })
             continue
         text = _fetch_repo_text(name, CHILD_CI_WORKFLOW_PATH, entry["sha"], _api_token(token))
@@ -975,13 +979,14 @@ def branches_differing_from_main(repository, *, remotes=None, local_roots=None, 
     return diverged
 
 
-def source_diff_report(registry, *, token=None, remotes=None, local_roots=None, archived=None):
-    archived = archived if archived is not None else {}
+def source_diff_report(registry, *, token=None, remotes=None, local_roots=None,
+                       repository_names=None):
+    names = repository_names
+    if names is None:
+        names = monitored_repositories(registry, token=token)
     findings = []
     scan_errors = []
-    for name in _locked_consumer_names(registry):
-        if archived.get(name) or (token and _repository_archived(name, token)):
-            continue
+    for name in names:
         try:
             findings.extend(branches_differing_from_main(
                 name, remotes=remotes, local_roots=local_roots,
@@ -1030,8 +1035,10 @@ def _open_or_update_autofix_pr(parent_repository, branch, title, body, files, to
     existing = _github_api("GET", api_repo + "/pulls?state=open&head=" +
                            quote(parent_repository.split("/")[0] + ":" + branch, safe=""), token)
     pr_number = existing[0]["number"] if isinstance(existing, list) and existing else None
+    branch_ref = api_repo + "/git/refs/heads/" + quote(branch, safe="")
     try:
-        _github_api("GET", api_repo + "/git/ref/heads/" + quote(branch, safe=""), token)
+        _github_api("GET", branch_ref, token)
+        _github_api("PATCH", branch_ref, token, {"sha": base_sha, "force": True})
     except HTTPError as error:
         if error.code != 404:
             raise
@@ -1118,10 +1125,15 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         diff_report = {"schema": "source-diff-report/1", "findings": [], "finding_count": 0,
                        "scan_errors": [], "scan_error_count": 0, "skipped": True}
     else:
-        diff_report = source_diff_report(registry, token=token, remotes=remotes, local_roots=local_roots)
+        diff_report = source_diff_report(
+            registry, token=token, remotes=remotes, local_roots=local_roots,
+            repository_names=monitored,
+        )
     parent_root_path = Path(parent_root)
     template_text = (parent_root_path / CHILD_CI_TEMPLATE).read_text(encoding="utf-8")
-    template_report = audit_child_workflow_templates(registry, document, template_text, token=token)
+    template_report = audit_child_workflow_templates(
+        registry, document, template_text, token=token, repository_names=monitored,
+    )
     template_failures = template_report["failures"]
     template_missing = template_report["missing"]
     with tempfile.TemporaryDirectory(prefix="vendor-parent-ci-") as directory:
@@ -1147,15 +1159,12 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
             {"child-heads.json": _encode_child_heads(encoded_heads)},
             token,
         )
-        try:
-            _dispatch_parent_workflow(
-                parent_repository,
-                ".github/workflows/vendor-parent-child-ci.yml",
-                branch,
-                token,
-            )
-        except HTTPError:
-            pass
+        workflow_path = ".github/workflows/vendor-parent-child-ci.yml"
+        _dispatch_parent_workflow(parent_repository, workflow_path, branch, token)
+        autofix_result["workflow_dispatch"] = {
+            "workflow": workflow_path,
+            "ref": branch,
+        }
     drift_failures = len(drift) + len(missing_heads) + len(extra_heads)
     failure_count = drift_failures + len(identity_failures) + len(template_failures)
     if autofix and autofix_result and needs_heads_refresh:
