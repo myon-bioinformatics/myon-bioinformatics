@@ -43,6 +43,7 @@ __all__ = [
     "record_is_public_monitored",
     "monitored_repositories",
     "run_child_ci",
+    "plan_heads_refresh",
     "verify_workflow_template_copy",
     "main",
 ]
@@ -58,6 +59,7 @@ PARENT_REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
 ORG_OWNER = "myon-bioinformatics"
 CHILD_CI_TEMPLATE = "templates/vendor-child-ci.workflow.yml"
 CHILD_CI_WORKFLOW_PATH = ".github/workflows/vendor-child-ci.yml"
+PUBLIC_GIT_FETCH_ERROR = "public Git fetch/read failed"
 HTML_IMPORT_LOCK_CANDIDATES = ("tools/html-import/vendor.lock.json",)
 MAX_BYTES = 8 * 1024 * 1024
 _REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
@@ -151,7 +153,7 @@ def _public_git_snapshot(repository, ref, sources, *, remote=None):
         def git(*args):
             result = subprocess.run(command + list(args), env=env, capture_output=True, timeout=60)
             if result.returncode:
-                raise ValueError("public Git fetch/read failed: " + result.stderr.decode("utf-8", "replace").strip())
+                raise ValueError(PUBLIC_GIT_FETCH_ERROR)
             return result.stdout
 
         git("init", "--bare")
@@ -585,6 +587,13 @@ def _lookup_child_main_pull_number(repository, sha, token=None):
     return None
 
 
+def _ensure_public_source_repository(repository, *, token=None, repo_fetch=None):
+    record = fetch_repository_record(repository, token, repo_fetch=repo_fetch)
+    if not record_is_public_monitored(record):
+        raise ValueError("source repository is not public")
+    return record
+
+
 def build_expected_child_lock(registry, document, consumer, *, token=None):
     """Load adopted pins from the immutable child revision recorded by the parent.
 
@@ -658,6 +667,7 @@ def audit_adopted_child_files(registry, document, repository_names, *, token=Non
             for item in lock["files"]:
                 groups.setdefault((item["repository"], item["commit"]), []).append(item)
             for (repository, revision), items in groups.items():
+                _ensure_public_source_repository(repository, token=token)
                 sources = snapshot(repository, revision, [item["source"] for item in items])
                 for item in items:
                     blob, data = sources[item["source"]]
@@ -678,32 +688,44 @@ def audit_adopted_child_files(registry, document, repository_names, *, token=Non
     return {"checked": checked, "failures": failures, "failure_count": len(failures)}
 
 
-def verify_heads_refresh_preserves_contract(registry, document, new_heads, *, token=None):
-    """Automatic head refresh cannot adopt changed locks or CI definitions.
+def _workflow_refresh_block_reason(name, old_sha, new_sha, template_text, *, token=None):
+    old_text = _fetch_repo_text(name, CHILD_CI_WORKFLOW_PATH, old_sha, _api_token(token))
+    new_text = _fetch_repo_text(name, CHILD_CI_WORKFLOW_PATH, new_sha, _api_token(token))
+    if old_text == new_text:
+        return None
+    if new_text is None:
+        return "workflow_removed"
+    try:
+        verify_workflow_template_copy(new_text, template_text)
+    except ValueError:
+        return "workflow_template_mismatch"
+    return None
 
-    Contract changes need a deliberate parent PR, even when runtime bytes match.
-    This also makes removal of a previously installed workflow fail closed.
-    """
-    entries = {entry["repository"]: entry for entry in registry["consumers"]}
-    for name, new in new_heads.items():
+
+def plan_heads_refresh(registry, document, proposed_heads, template_text, *, token=None):
+    """Merge proposed main tips into child-heads, skipping repos that need parent review."""
+    document = validate_child_heads(document)
+    merged_heads = dict(document["heads"])
+    skipped = []
+    for name, new in proposed_heads.items():
         old = document["heads"].get(name)
         if old is None:
-            raise ValueError("new monitored repository requires reviewed enrollment: " + name)
-        if old["repository_id"] != new["repository_id"]:
-            raise ValueError("repository id mismatch: " + name)
-        if old["sha"] == new["sha"]:
+            skipped.append({"repository": name, "reason": "new_monitored_repository"})
             continue
-        entry = entries.get(name)
-        if entry and entry["state"] == "locked":
-            before = _fetch_consumer_documents(name, entry["lock"], old["sha"], token)
-            after = _fetch_consumer_documents(name, entry["lock"], new["sha"], token)
-        else:
-            before = _fetch_workflow_documents(name, old["sha"], token)
-            after = _fetch_workflow_documents(name, new["sha"], token)
-        before_ref = _fetch_repo_text(name, "templates/parent-pr.ref.json", old["sha"], token)
-        after_ref = _fetch_repo_text(name, "templates/parent-pr.ref.json", new["sha"], token)
-        if before != after or before_ref != after_ref:
-            raise ValueError("lock/workflow change requires reviewed parent baseline update: " + name)
+        if _coerce_repository_id(old["repository_id"]) != _coerce_repository_id(new["repository_id"]):
+            skipped.append({"repository": name, "reason": "repository_id_mismatch"})
+            continue
+        if old["sha"] == new["sha"]:
+            merged_heads[name] = new
+            continue
+        reason = _workflow_refresh_block_reason(
+            name, old["sha"], new["sha"], template_text, token=token,
+        )
+        if reason is not None:
+            skipped.append({"repository": name, "reason": reason})
+            continue
+        merged_heads[name] = new
+    return {"heads": merged_heads, "skipped": skipped}
 
 
 def run_child_ci(root, parent_ref_path, consumer, *, token=None,
@@ -725,20 +747,20 @@ def run_child_ci(root, parent_ref_path, consumer, *, token=None,
     # The workflow verifies PR/repository identity before running this code.
     # Never resolve a mutable open PR a second time or read data from another SHA.
     registry = json.loads((parent_root / "vendor-consumers.json").read_text(encoding="utf-8"))
-    document = json.loads((parent_root / "child-heads.json").read_text(encoding="utf-8"))
     template = (parent_root / CHILD_CI_TEMPLATE).read_bytes()
     copied_path = _target(root, CHILD_CI_WORKFLOW_PATH)
     verify_workflow_template_copy(copied_path.read_bytes(), template)
-    token = _api_token(token)
-    lock = build_expected_child_lock(registry, document, consumer, token=token)
     entry = vendor_consumers.get_consumer(registry, consumer)
     local_lock = validate(json.loads(_target(root, entry["lock"]).read_text(encoding="utf-8")))
-    ordered = lambda value: sorted(value["files"], key=lambda row: row["destination"])
-    if ordered(local_lock) != ordered(lock):
-        raise ValueError("child lock differs from parent-recorded adopted lock")
+    if not vendor_consumers.compare(registry, local_lock, consumer)["matches"]:
+        raise ValueError("consumer topology mismatch against parent registry")
+    if any(item["ref"] != item["commit"] for item in local_lock["files"]):
+        raise ValueError("child lock requires ref=commit SHA pins")
     failures = []
-    for item in lock["files"]:
+    for item in local_lock["files"]:
         try:
+            _ensure_public_source_repository(item["repository"], token=_api_token(token))
+            commit_merged_into_default(item["repository"], item["commit"])
             _verify(item, _target(root, item["destination"]).read_bytes())
         except (OSError, ValueError) as error:
             failures.append({"destination": item["destination"], "message": str(error)})
@@ -748,7 +770,7 @@ def run_child_ci(root, parent_ref_path, consumer, *, token=None,
         "schema": "child-ci/1",
         "consumer": consumer,
         "parent_commit": parent_sha,
-        "files_checked": len(lock["files"]),
+        "files_checked": len(local_lock["files"]),
         "resolved_pull_number": reference["pull_number"],
         "resolved_repository_id": reference["repository_id"],
     }
@@ -877,9 +899,12 @@ def validate_parent_pr_ref(document):
         "repository_id": repository_id,
     }
     commit = document.get("commit")
-    if commit is not None:
-        _hex(commit, 40)
-        result["commit"] = commit
+    if commit is None:
+        raise ValueError("expected commit SHA in parent-pr.ref.json")
+    _hex(commit, 40)
+    if commit == "0" * 40:
+        raise ValueError("invalid placeholder commit in parent-pr.ref.json")
+    result["commit"] = commit
     optional = document.get("optional")
     if optional is not None:
         result["optional"] = _normalize_optional_signals(optional)
@@ -1233,12 +1258,16 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
     autofix_result = None
     needs_heads_refresh = bool(drift) or bool(missing_heads)
     if autofix and needs_heads_refresh and token:
-        full_heads = {
+        proposed_heads = {
             name: fetch_child_head_record(name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch)
             for name in monitored
         }
-        encoded_heads = validate_child_heads({"schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": full_heads})
-        verify_heads_refresh_preserves_contract(registry, document, full_heads, token=token)
+        refresh_plan = plan_heads_refresh(
+            registry, document, proposed_heads, template_text, token=token,
+        )
+        encoded_heads = validate_child_heads({
+            "schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": refresh_plan["heads"],
+        })
         if child_files["failure_count"] or template_failures:
             raise ValueError("cannot refresh an invalid adopted baseline")
         branch = AUTOFIX_BRANCH_PREFIX
@@ -1259,6 +1288,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
             "workflow": workflow_path,
             "ref": branch,
         }
+        autofix_result["heads_refresh_skipped"] = refresh_plan["skipped"]
     drift_failures = len(drift) + len(missing_heads) + len(extra_heads)
     failure_count = drift_failures + len(identity_failures) + len(template_failures) + child_files["failure_count"]
     if autofix and autofix_result and needs_heads_refresh:
@@ -1283,6 +1313,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         "adopted_child_files": child_files,
         "needs_heads_refresh": needs_heads_refresh,
         "autofix": autofix_result,
+        "heads_refresh_skipped": (autofix_result or {}).get("heads_refresh_skipped", []),
         "failure_count": failure_count,
     }
 

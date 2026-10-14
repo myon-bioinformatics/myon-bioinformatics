@@ -120,49 +120,44 @@ def child_fixture(tmp_path, monkeypatch):
                                               'pull_number': 78, 'repository_id': 638801160, 'commit': pin}))
     monkeypatch.setattr(sync, 'fetch_repository_record', lambda *a, **k: {
         'id': 42, 'full_name': 'owner/child', 'private': False, 'visibility': 'public', 'archived': False})
-    calls = []
-    def fetch(repo, path, sha, token=None):
-        calls.append((repo, path, sha))
-        assert (repo, path, sha) == ('owner/child', 'vendor.lock.json', 'c' * 40)
-        return json.dumps(lock)
-    monkeypatch.setattr(sync, '_fetch_repo_text', fetch)
+    monkeypatch.setattr(sync, '_ensure_public_source_repository', lambda *a, **k: True)
+    monkeypatch.setattr(sync, 'commit_merged_into_default', lambda *a, **k: True)
     def no_resolve(*a, **k): raise AssertionError('must not resolve parent PR twice')
     monkeypatch.setattr(sync, 'resolve_parent_pr', no_resolve)
-    return parent, child, lock, calls
+    return parent, child, lock
 
 
-def test_child_uses_parent_anchored_adopted_lock_including_license(tmp_path, monkeypatch):
-    parent, child, lock, calls = child_fixture(tmp_path, monkeypatch)
-    before = (child / 'vendor.lock.json').read_bytes()
+def test_child_uses_local_lock_not_parent_recorded_snapshot(tmp_path, monkeypatch):
+    parent, child, lock = child_fixture(tmp_path, monkeypatch)
+    local = copy.deepcopy(lock)
+    local['files'][0]['commit'] = 'b' * 40
+    local['files'][0]['ref'] = 'b' * 40
+    (child / 'vendor.lock.json').write_text(json.dumps(local))
     result = sync.run_child_ci(child, child / 'ref.json', 'owner/child', parent_root=parent)
     assert result['files_checked'] == 2
-    assert (child / 'vendor.lock.json').read_bytes() == before
-    assert len(calls) == 1
 
 
 @pytest.mark.parametrize('fault', ['file', 'license', 'lock', 'missing_lock', 'template', 'crlf', 'parent_sha',
-                                  'missing_head', 'topology', 'missing_remote_lock', 'child_id'])
+                                  'topology', 'private_source'])
 def test_child_rejects_modified_or_unavailable_baseline(tmp_path, monkeypatch, fault):
-    parent, child, lock, calls = child_fixture(tmp_path, monkeypatch)
+    parent, child, lock = child_fixture(tmp_path, monkeypatch)
     if fault in ('file', 'license'):
         (child / ('vendor/tool.py' if fault == 'file' else 'vendor/LICENSE')).write_bytes(b'tampered')
     elif fault == 'lock':
         local = copy.deepcopy(lock); local['files'][0]['commit'] = 'b' * 40
+        local['files'][0]['ref'] = 'b' * 40
         (child / 'vendor.lock.json').write_text(json.dumps(local))
+        monkeypatch.setattr(sync, 'commit_merged_into_default', lambda *a, **k: (_ for _ in ()).throw(ValueError('not merged')))
     elif fault == 'missing_lock': (child / 'vendor.lock.json').unlink()
     elif fault == 'template': (child / sync.CHILD_CI_WORKFLOW_PATH).write_bytes(b'name: custom\n')
     elif fault == 'crlf': (child / sync.CHILD_CI_WORKFLOW_PATH).write_bytes(TEMPLATE.replace(b'\n', b'\r\n'))
     elif fault == 'parent_sha':
         ref = json.loads((child / 'ref.json').read_text()); ref['commit'] = 'b' * 40
         (child / 'ref.json').write_text(json.dumps(ref))
-    elif fault == 'missing_head':
-        doc = json.loads((parent / 'child-heads.json').read_text()); doc['heads']['owner/other'] = doc['heads'].pop('owner/child')
-        (parent / 'child-heads.json').write_text(json.dumps(doc))
     elif fault == 'topology':
         doc = json.loads((parent / 'vendor-consumers.json').read_text()); doc['consumers'][0]['entries'].pop()
         (parent / 'vendor-consumers.json').write_text(json.dumps(doc))
-    elif fault == 'missing_remote_lock': monkeypatch.setattr(sync, '_fetch_repo_text', lambda *a, **k: None)
-    elif fault == 'child_id': monkeypatch.setattr(sync, 'fetch_repository_record', lambda *a, **k: {
-        'id': 99, 'full_name': 'owner/child', 'private': False, 'visibility': 'public', 'archived': False})
+    elif fault == 'private_source':
+        monkeypatch.setattr(sync, '_ensure_public_source_repository', lambda *a, **k: (_ for _ in ()).throw(ValueError('source repository is not public')))
     with pytest.raises((ValueError, OSError)):
         sync.run_child_ci(child, child / 'ref.json', 'owner/child', parent_root=parent)

@@ -294,7 +294,6 @@ def test_dispatch_parent_workflow_posts_dispatch(monkeypatch):
 
 
 def test_run_parent_child_ci_autofix_propagates_dispatch_failure(tmp_path, monkeypatch):
-    monkeypatch.setattr(sync, "verify_heads_refresh_preserves_contract", lambda *a, **k: None)
     consumer = "myon-bioinformatics/public-one"
     registry = _registry(consumer)
     parent = tmp_path / "parent"
@@ -310,6 +309,7 @@ def test_run_parent_child_ci_autofix_propagates_dispatch_failure(tmp_path, monke
         "ref": "main",
         "heads": {consumer: _head(sha, 1)},
     })
+    monkeypatch.setattr(sync, "plan_heads_refresh", lambda *a, **k: {"heads": document["heads"], "skipped": []})
     monkeypatch.setattr(sync, "monitored_repositories", lambda *args, **kwargs: [consumer])
     monkeypatch.setattr(sync, "fetch_child_head_record", lambda *args, **kwargs: _head("2" * 40, 1))
     monkeypatch.setattr(sync, "audit_child_workflow_templates", lambda *args, **kwargs: {"failures": [], "missing": []})

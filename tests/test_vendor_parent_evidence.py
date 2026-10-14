@@ -11,6 +11,7 @@ NAME = 'myon-bioinformatics/child'
 SHA = 'a' * 40
 NEW = 'b' * 40
 DATA = b'upstream bytes\n'
+TEMPLATE = b'name: stub\n'
 
 
 def fixture(monkeypatch):
@@ -43,7 +44,7 @@ def test_independent_source_evidence(monkeypatch, fault):
     def snapshot(repository, revision, paths):
         calls.append(repository)
         if repository == 'owner/source' and fault == 'missing_source':
-            raise ValueError('source unavailable')
+            raise ValueError(sync.PUBLIC_GIT_FETCH_ERROR)
         data = altered if repository == NAME and fault in ('child', 'both') else DATA
         return (NEW if fault == 'source_sha' else revision), {
             path: (sync.git_blob(data), data) for path in paths}
@@ -63,31 +64,77 @@ def test_private_consumer_is_not_fetched(monkeypatch):
     assert report == {'checked': [], 'failures': [], 'failure_count': 0}
 
 
-@pytest.mark.parametrize('fault', [None, 'lock', 'deleted_workflow', 'modified_workflow', 'missing_lock', 'id', 'new_repo', 'parent_ref'])
-def test_refresh_cannot_adopt_contract_changes(monkeypatch, fault):
+def test_private_source_repo_name_not_in_audit_failure(monkeypatch):
+    registry, lock, heads = fixture(monkeypatch)
+    private_source = 'owner/secret-source'
+
+    def public_only(repository, token=None, repo_fetch=None):
+        if repository.casefold() == private_source.casefold():
+            return {
+                'id': 9,
+                'full_name': private_source,
+                'private': True,
+                'visibility': 'private',
+                'archived': False,
+            }
+        return {
+            'id': 42,
+            'full_name': repository,
+            'private': False,
+            'visibility': 'public',
+            'archived': False,
+        }
+
+    lock['files'][0]['repository'] = private_source
+    monkeypatch.setattr(sync, 'fetch_repository_record', public_only)
+    monkeypatch.setattr(sync, '_fetch_repo_text', lambda *a, **k: json.dumps(lock))
+    report = sync.audit_adopted_child_files(registry, heads, [NAME])
+    assert report['failure_count'] == 1
+    payload = json.dumps(report)
+    assert 'secret' not in payload.casefold()
+
+
+@pytest.mark.parametrize('fault,expect_skip', [
+    (None, False),
+    ('lock', False),
+    ('deleted_workflow', True),
+    ('modified_workflow', True),
+    ('missing_lock', False),
+    ('id', True),
+    ('new_repo', True),
+])
+def test_plan_heads_refresh_skips_only_review_items(monkeypatch, fault, expect_skip):
     registry, lock, heads = fixture(monkeypatch)
     new_heads = {NAME: {'sha': NEW, 'repository_id': 42}}
-    before = ([('vendor.lock.json', lock)], {'ci.yml': 'required check'})
-    after = copy.deepcopy(before)
-    if fault == 'lock': after[0][0][1]['files'][0]['commit'] = NEW
-    if fault == 'deleted_workflow': after[1].clear()
-    if fault == 'modified_workflow': after[1]['ci.yml'] = 'exit 0'
-    if fault == 'id': new_heads[NAME]['repository_id'] = 9
-    if fault == 'new_repo': new_heads[NAME + '-new'] = new_heads[NAME]
+    before_wf = 'jobs:\n  check:\n    steps: []\n'
+    after_wf = before_wf
+    if fault == 'deleted_workflow':
+        after_wf = None
+    if fault == 'modified_workflow':
+        after_wf = 'jobs:\n  custom:\n    steps: []\n'
+    if fault == 'id':
+        new_heads[NAME]['repository_id'] = 9
+    if fault == 'new_repo':
+        new_heads[NAME + '-new'] = new_heads[NAME]
 
-    def fetch(name, path, revision, token):
+    def fetch_text(name, path, revision, token=None):
+        if path == sync.CHILD_CI_WORKFLOW_PATH:
+            return before_wf if revision == SHA else after_wf
         if revision == NEW and fault == 'missing_lock':
-            raise ValueError('missing consumer lock')
-        return before if revision == SHA else after
+            return None
+        return json.dumps(lock)
 
-    monkeypatch.setattr(sync, '_fetch_consumer_documents', fetch)
-    if fault == 'parent_ref':
-        monkeypatch.setattr(sync, '_fetch_repo_text', lambda name, path, revision, token: revision)
-    if fault:
-        with pytest.raises(ValueError):
-            sync.verify_heads_refresh_preserves_contract(registry, heads, new_heads)
-    else:
-        sync.verify_heads_refresh_preserves_contract(registry, heads, new_heads)
+    monkeypatch.setattr(sync, '_fetch_repo_text', fetch_text)
+    plan = sync.plan_heads_refresh(registry, heads, new_heads, TEMPLATE.decode(), token='token')
+    if fault == 'new_repo':
+        assert any(row['reason'] == 'new_monitored_repository' for row in plan['skipped'])
+    if expect_skip and fault not in ('new_repo',):
+        assert plan['heads'][NAME]['sha'] == SHA
+        assert plan['skipped']
+    elif fault == 'lock':
+        assert plan['heads'][NAME]['sha'] == NEW
+    elif fault is None:
+        assert plan['heads'][NAME]['sha'] == NEW
 
 
 def test_parent_ci_counts_source_failure_and_does_not_write(tmp_path, monkeypatch):
@@ -99,17 +146,18 @@ def test_parent_ci_counts_source_failure_and_does_not_write(tmp_path, monkeypatc
     monkeypatch.setattr(sync, 'audit_child_workflow_templates', lambda *a, **k: {'failures': [], 'missing': []})
     monkeypatch.setattr(sync, '_copy_parent_vendor_baseline', lambda *a: tmp_path)
     monkeypatch.setattr(sync, '_offline_parent_vendor_check', lambda *a: {})
-    monkeypatch.setattr(sync, '_public_git_snapshot', lambda *a: (_ for _ in ()).throw(ValueError('missing source')))
+    monkeypatch.setattr(sync, '_public_git_snapshot', lambda *a: (_ for _ in ()).throw(ValueError(sync.PUBLIC_GIT_FETCH_ERROR)))
     monkeypatch.setattr(sync, '_open_or_update_autofix_pr', lambda *a, **k: pytest.fail('write'))
     report = sync.run_parent_child_ci(registry, heads, parent_root=tmp_path, skip_source_diff=True)
     assert report['failure_count'] == 1
     assert report['adopted_child_files']['failure_count'] == 1
+    assert sync.PUBLIC_GIT_FETCH_ERROR in json.dumps(report['adopted_child_files']['failures'])
 
 
-def test_autofix_contract_rejection_precedes_any_write(tmp_path, monkeypatch):
+def test_autofix_continues_when_one_repo_skipped(tmp_path, monkeypatch):
     registry, lock, heads = fixture(monkeypatch)
     (tmp_path / 'templates').mkdir()
-    (tmp_path / sync.CHILD_CI_TEMPLATE).write_text('template')
+    (tmp_path / sync.CHILD_CI_TEMPLATE).write_text(TEMPLATE.decode())
     monkeypatch.setattr(sync, 'monitored_repositories', lambda *a, **k: [NAME])
     monkeypatch.setattr(sync, 'fetch_child_head_record', lambda *a, **k: {'sha': NEW, 'repository_id': 42})
     monkeypatch.setattr(sync, 'audit_child_workflow_templates', lambda *a, **k: {'failures': [], 'missing': []})
@@ -117,13 +165,16 @@ def test_autofix_contract_rejection_precedes_any_write(tmp_path, monkeypatch):
     monkeypatch.setattr(sync, '_offline_parent_vendor_check', lambda *a: {})
     monkeypatch.setattr(sync, '_public_git_snapshot', lambda repo, sha, paths:
                         (sha, {p: (sync.git_blob(DATA), DATA) for p in paths}))
-    monkeypatch.setattr(sync, '_fetch_consumer_documents', lambda name, path, sha, token:
-                        ([('vendor.lock.json', lock)], {'ci.yml': 'check'} if sha == SHA else {}))
-    monkeypatch.setattr(sync, '_open_or_update_autofix_pr', lambda *a, **k: pytest.fail('write'))
-    monkeypatch.setattr(sync, '_dispatch_parent_workflow', lambda *a, **k: pytest.fail('dispatch'))
-    with pytest.raises(ValueError, match='requires reviewed parent baseline'):
-        sync.run_parent_child_ci(registry, heads, parent_root=tmp_path,
-                                 skip_source_diff=True, autofix=True, token='fixture')
+    monkeypatch.setattr(sync, '_fetch_repo_text', lambda name, path, sha, token:
+                        None if path == sync.CHILD_CI_WORKFLOW_PATH and sha == NEW else json.dumps(lock))
+    writes = []
+    monkeypatch.setattr(sync, '_open_or_update_autofix_pr', lambda *a, **k: writes.append(1) or {
+        'pull_number': 1, 'url': 'https://example.invalid/1', 'branch': 'vendor/child-heads-sync'})
+    monkeypatch.setattr(sync, '_dispatch_parent_workflow', lambda *a, **k: None)
+    report = sync.run_parent_child_ci(registry, heads, parent_root=tmp_path,
+                                      skip_source_diff=True, autofix=True, token='fixture')
+    assert writes
+    assert report['heads_refresh_skipped']
 
 
 @pytest.mark.parametrize('fault', [None, 'file', 'both'])
