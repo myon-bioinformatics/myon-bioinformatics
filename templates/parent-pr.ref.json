@@ -1,9 +1,9 @@
 {
   "schema": "parent-pr-ref/1",
   "repository": "myon-bioinformatics/myon-bioinformatics",
-  "pull_number": 78,
+  "pull_number": 1,
   "repository_id": 638801160,
   "optional": {
-    "note": "Set pull_number and repository_id to the parent PR and GitHub repo id. created_at fields are never enforced."
+    "note": "Replace pull_number with the parent pull request you pin to. repository_id must match the parent repo GitHub id. Optional created_at fields are never enforced."
   }
 }

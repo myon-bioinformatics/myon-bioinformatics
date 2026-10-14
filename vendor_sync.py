@@ -39,6 +39,10 @@ __all__ = [
     "validate_parent_pr_ref",
     "verify_reference_identity",
     "source_diff_report",
+    "list_org_repositories",
+    "monitored_repositories",
+    "run_child_ci",
+    "verify_workflow_template_copy",
     "main",
 ]
 
@@ -50,6 +54,9 @@ HTML_IMPORT_SCHEMA = "html-import-vendor/1"
 CHILD_HEADS_SCHEMA = "child-heads/1"
 PARENT_PR_RESOLVE_SCHEMA = "parent-pr-resolve/1"
 PARENT_REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
+ORG_OWNER = "myon-bioinformatics"
+CHILD_CI_TEMPLATE = "templates/vendor-child-ci.workflow.yml"
+CHILD_CI_WORKFLOW_PATH = ".github/workflows/vendor-child-ci.yml"
 HTML_IMPORT_LOCK_CANDIDATES = ("tools/html-import/vendor.lock.json",)
 MAX_BYTES = 8 * 1024 * 1024
 _REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
@@ -455,6 +462,186 @@ def _locked_consumer_names(registry):
     )
 
 
+def monitored_repositories(registry, *, token=None, owner=ORG_OWNER):
+    """Non-archived organization repositories tracked in child-heads.json."""
+    if _api_token(token):
+        return list_org_repositories(owner, token=token)
+    names = {_normalize_repository(PARENT_REPOSITORY)}
+    names.update(_locked_consumer_names(registry))
+    return sorted(names, key=str.casefold)
+
+
+def _api_token(token=None):
+    if token:
+        return token
+    for key in ("GH_READ_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
+        value = os.environ.get(key)
+        if value:
+            return value
+    return None
+
+
+def list_org_repositories(owner=ORG_OWNER, *, token=None):
+    token = _api_token(token)
+    repositories = []
+    page = 1
+    while True:
+        url = (
+            "https://api.github.com/orgs/" + quote(owner, safe="") +
+            "/repos?per_page=100&page=" + str(page) + "&type=all"
+        )
+        batch = _github_api("GET", url, token) if token else _github_json(url, None)
+        if not isinstance(batch, list) or not batch:
+            break
+        for record in batch:
+            if record.get("archived"):
+                continue
+            repositories.append(_normalize_repository(record["full_name"]))
+        if len(batch) < 100:
+            break
+        page += 1
+    return sorted(set(repositories), key=str.casefold)
+
+
+def verify_workflow_template_copy(copied_text, template_text, *, path=CHILD_CI_WORKFLOW_PATH):
+    if copied_text != template_text:
+        raise ValueError(path + " must match parent template bytes exactly")
+    if "@pr/" in copied_text or "refs/pull/" in copied_text:
+        raise ValueError(path + " must not use @pr/ or refs/pull/ pins")
+    return True
+
+
+def _lookup_child_main_pull_number(repository, sha, token=None):
+    token = _api_token(token)
+    if not token:
+        return None
+    url = (
+        "https://api.github.com/repos/" + _normalize_repository(repository) +
+        "/commits/" + quote(sha, safe="") + "/pulls?per_page=1"
+    )
+    try:
+        pulls = _github_json(url, token)
+    except HTTPError:
+        return None
+    if isinstance(pulls, list) and pulls:
+        return pulls[0].get("number")
+    return None
+
+
+def build_expected_child_lock(registry, catalog, consumer, *, get=_get):
+    import vendor_catalog
+    import vendor_consumers
+    registry = vendor_consumers.validate(registry)
+    catalog = vendor_catalog.validate(catalog)
+    entry = vendor_consumers.get_consumer(registry, consumer)
+    if entry["state"] != "locked":
+        raise ValueError("child CI requires a locked consumer registration")
+    files = []
+    for row in entry["entries"]:
+        tool = next(
+            (item for item in catalog["tools"]
+             if item["repository"].casefold() == row["repository"].casefold()
+             and item["source"] == row["source"]),
+            None,
+        )
+        if tool is None:
+            raise ValueError("missing catalog baseline for " + row["repository"] + ":" + row["source"])
+        item = {
+            "repository": row["repository"],
+            "ref": "refs/heads/main",
+            "commit": tool["commit"],
+            "source": row["source"],
+            "destination": row["destination"],
+        }
+        data = _raw(item, get)
+        item["blob_sha"] = git_blob(data)
+        item["sha256"] = hashlib.sha256(data).hexdigest()
+        files.append(item)
+    return validate({"schema": SCHEMA, "files": files})
+
+
+def run_child_ci(root, parent_ref_path, consumer, *, token=None, parent_repository=PARENT_REPOSITORY, get=_get):
+    """Verify the child checkout using parent registry/catalog at a resolved parent PR."""
+    import vendor_consumers
+    root = Path(root).resolve()
+    consumer = _normalize_repository(consumer)
+    reference = validate_parent_pr_ref(json.loads(Path(parent_ref_path).read_text(encoding="utf-8")))
+    if reference["repository"] != _normalize_repository(parent_repository):
+        raise ValueError("parent-pr.ref.json repository mismatch")
+    token = _api_token(token)
+    resolved = resolve_parent_pr(
+        parent_repository, reference["pull_number"], token=token, reference=reference,
+    )
+    parent_sha = resolved["commit"]
+    registry = json.loads(_fetch_repo_text(parent_repository, "vendor-consumers.json", parent_sha, token))
+    catalog = json.loads(_fetch_repo_text(parent_repository, "vendor-catalog.json", parent_sha, token))
+    template = _fetch_repo_text(parent_repository, CHILD_CI_TEMPLATE, parent_sha, token)
+    if template is None:
+        raise ValueError("missing parent child CI template at " + parent_sha)
+    copied_path = root / CHILD_CI_WORKFLOW_PATH
+    if not copied_path.is_file():
+        raise ValueError("missing copied workflow at " + CHILD_CI_WORKFLOW_PATH)
+    verify_workflow_template_copy(copied_path.read_text(encoding="utf-8"), template)
+    lock = build_expected_child_lock(registry, catalog, consumer, get=get)
+    topology = vendor_consumers.compare(registry, lock, consumer)
+    if not topology["matches"]:
+        raise ValueError("consumer topology mismatch against parent registry")
+    failures = []
+    for item in lock["files"]:
+        target = _target(root, item["destination"])
+        try:
+            _verify(item, target.read_bytes())
+        except (OSError, ValueError) as error:
+            failures.append({
+                "destination": item["destination"],
+                "source": item["source"],
+                "message": str(error),
+            })
+    if failures:
+        raise ValueError("child vendor file mismatch: " + json.dumps(failures, ensure_ascii=False))
+    return {
+        "schema": "child-ci/1",
+        "consumer": consumer,
+        "parent_commit": parent_sha,
+        "files_checked": len(lock["files"]),
+        "resolved_pull_number": resolved["pull_number"],
+        "resolved_repository_id": resolved["repository_id"],
+    }
+
+
+def audit_child_workflow_templates(registry, document, template_text, *, token=None):
+    failures = []
+    missing = []
+    for name in _locked_consumer_names(registry):
+        entry = document["heads"].get(name)
+        if entry is None:
+            failures.append({"repository": name, "message": "missing child-heads entry"})
+            continue
+        text = _fetch_repo_text(name, CHILD_CI_WORKFLOW_PATH, entry["sha"], _api_token(token))
+        if text is None:
+            missing.append({
+                "repository": name,
+                "message": "missing copied " + CHILD_CI_WORKFLOW_PATH,
+            })
+            continue
+        try:
+            verify_workflow_template_copy(text, template_text)
+        except ValueError as error:
+            failures.append({"repository": name, "message": str(error)})
+    return {"failures": failures, "missing": missing}
+
+
+def _dispatch_parent_workflow(parent_repository, workflow_path, ref, token):
+    parent_repository = _normalize_repository(parent_repository)
+    api_repo = "https://api.github.com/repos/" + parent_repository
+    _github_api(
+        "POST",
+        api_repo + "/actions/workflows/" + quote(workflow_path, safe="/") + "/dispatches",
+        token,
+        {"ref": ref},
+    )
+
+
 def _coerce_repository_id(value):
     if isinstance(value, bool) or value is None:
         raise ValueError("expected repository id")
@@ -489,6 +676,13 @@ def _normalize_head_entry(value):
         "sha": sha,
         "repository_id": _coerce_repository_id(value.get("repository_id")),
     }
+    pull_number = value.get("pull_number")
+    if pull_number is not None:
+        if isinstance(pull_number, str) and pull_number.isdigit():
+            pull_number = int(pull_number)
+        if not isinstance(pull_number, int) or pull_number < 1:
+            raise ValueError("invalid optional pull_number on child head")
+        entry["pull_number"] = pull_number
     optional = value.get("optional")
     if optional is not None:
         entry["optional"] = _normalize_optional_signals(optional)
@@ -607,6 +801,9 @@ def fetch_child_head_record(repository, ref="main", *, remotes=None, token=None,
     sha = fetch_child_head(repository, ref, remotes=remotes)
     record = fetch_repository_record(repository, token, repo_fetch=repo_fetch)
     entry = {"sha": sha, "repository_id": _coerce_repository_id(record["id"])}
+    pull_number = _lookup_child_main_pull_number(repository, sha, token)
+    if pull_number is not None:
+        entry["pull_number"] = pull_number
     optional = {}
     if isinstance(record.get("created_at"), str):
         optional["repository_created_at"] = record["created_at"]
@@ -616,7 +813,7 @@ def fetch_child_head_record(repository, ref="main", *, remotes=None, token=None,
 
 
 def refresh_child_heads(registry, heads_path, *, ref="main", remotes=None, token=None, repo_fetch=None):
-    names = _locked_consumer_names(registry)
+    names = monitored_repositories(registry, token=token)
     heads = {
         name: fetch_child_head_record(name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch)
         for name in names
@@ -821,13 +1018,17 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
                         repo_fetch=None, skip_source_diff=False):
     document = validate_child_heads(document)
     ref = document["ref"]
+    monitored = monitored_repositories(registry, token=token)
     drift = []
     identity_failures = []
+    missing_heads = []
+    extra_heads = sorted(set(document["heads"]) - set(monitored), key=str.casefold)
     live_heads = {}
-    for name in _locked_consumer_names(registry):
+    for name in monitored:
         recorded = document["heads"].get(name)
         if recorded is None:
-            raise ValueError("child-heads missing repository: " + name)
+            missing_heads.append(name)
+            continue
         live = fetch_child_head_record(name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch)
         live_heads[name] = live
         if recorded["sha"] != live["sha"]:
@@ -852,38 +1053,66 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
                 "repository": name,
                 "message": str(error),
             })
-    desired = validate_child_heads({"schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": live_heads})
     if skip_source_diff:
         diff_report = {"schema": "source-diff-report/1", "findings": [], "finding_count": 0,
                        "scan_errors": [], "scan_error_count": 0, "skipped": True}
     else:
         diff_report = source_diff_report(registry, token=token, remotes=remotes, local_roots=local_roots)
+    parent_root_path = Path(parent_root)
+    template_text = (parent_root_path / CHILD_CI_TEMPLATE).read_text(encoding="utf-8")
+    template_report = audit_child_workflow_templates(registry, document, template_text, token=token)
+    template_failures = template_report["failures"]
+    template_missing = template_report["missing"]
     with tempfile.TemporaryDirectory(prefix="vendor-parent-ci-") as directory:
         work_dir = _copy_parent_vendor_baseline(parent_root, directory)
         vendor_check = _offline_parent_vendor_check(work_dir)
     autofix_result = None
-    needs_heads_refresh = bool(drift)
+    needs_heads_refresh = bool(drift) or bool(missing_heads)
     if autofix and needs_heads_refresh and token:
+        full_heads = {
+            name: fetch_child_head_record(name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch)
+            for name in monitored
+        }
+        encoded_heads = validate_child_heads({"schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": full_heads})
         branch = AUTOFIX_BRANCH_PREFIX
         autofix_result = _open_or_update_autofix_pr(
             parent_repository,
             branch,
             "chore: refresh child default-branch heads",
             "Automated refresh of `child-heads.json` after live `main` drift.\n\n"
-            "Parent CI never merges this pull request automatically.",
-            {"child-heads.json": _encode_child_heads(desired)},
+            "Parent CI never merges this pull request automatically.\n\n"
+            "If the autofix pull request does not run checks automatically, ensure a GitHub App "
+            "token or re-run `workflow_dispatch` on the autofix branch.",
+            {"child-heads.json": _encode_child_heads(encoded_heads)},
             token,
         )
-    failure_count = (
-        len(drift) + diff_report["finding_count"] + diff_report.get("scan_error_count", 0) + len(identity_failures)
-    )
+        try:
+            _dispatch_parent_workflow(
+                parent_repository,
+                ".github/workflows/vendor-parent-child-ci.yml",
+                branch,
+                token,
+            )
+        except HTTPError:
+            pass
+    drift_failures = len(drift) + len(missing_heads) + len(extra_heads)
+    failure_count = drift_failures + len(identity_failures) + len(template_failures)
+    if autofix and autofix_result and needs_heads_refresh:
+        failure_count = len(identity_failures) + len(template_failures) + len(extra_heads)
     return {
         "schema": "parent-child-ci/1",
         "ref": ref,
+        "monitored_count": len(monitored),
+        "missing_heads": missing_heads,
+        "extra_heads": extra_heads,
         "drift": drift,
         "drift_count": len(drift),
         "identity_failures": identity_failures,
         "identity_failure_count": len(identity_failures),
+        "template_failures": template_failures,
+        "template_failure_count": len(template_failures),
+        "template_missing": template_missing,
+        "template_missing_count": len(template_missing),
         "source_diff": diff_report,
         "parent_vendor_check": vendor_check,
         "needs_heads_refresh": needs_heads_refresh,
@@ -898,7 +1127,7 @@ def check_child_heads(registry, document, *, remotes=None, token=None, parent_re
     ref = document["ref"]
     drift = []
     live_heads = {}
-    for name in _locked_consumer_names(registry):
+    for name in monitored_repositories(registry, token=token):
         recorded = document["heads"].get(name)
         if recorded is None:
             raise ValueError("child-heads missing repository: " + name)
@@ -910,9 +1139,13 @@ def check_child_heads(registry, document, *, remotes=None, token=None, parent_re
                 "recorded": recorded["sha"],
                 "live": live["sha"],
             })
-    extra = set(document["heads"]) - set(_locked_consumer_names(registry))
+    monitored = monitored_repositories(registry, token=token)
+    extra = set(document["heads"]) - set(monitored)
+    missing = [name for name in monitored if name not in document["heads"]]
     if extra:
         raise ValueError("child-heads has unknown repositories: " + ", ".join(sorted(extra)))
+    if missing:
+        raise ValueError("child-heads missing monitored repositories: " + ", ".join(missing))
     pin_report = audit_registry_merged_pins(
         registry,
         parent_repository=parent_repository,
@@ -922,22 +1155,13 @@ def check_child_heads(registry, document, *, remotes=None, token=None, parent_re
         local_consumers=local_consumers,
         consumer_revisions=_head_sha_map(document["heads"]),
     )
-    pr_report = _verify_parent_pr_pins(
-        registry,
-        _head_sha_map(document["heads"]),
-        parent_repository=parent_repository,
-        token=token,
-        local_consumers=local_consumers,
-        pr_fetch=resolve_parent_pr,
-    )
     return {
         "schema": "child-heads-check/1",
         "ref": ref,
         "drift": drift,
         "drift_count": len(drift),
         "pin_audit": pin_report,
-        "parent_pr_audit": pr_report,
-        "failure_count": len(drift) + pin_report["failure_count"] + pr_report["failure_count"],
+        "failure_count": len(drift) + pin_report["failure_count"],
     }
 
 
@@ -1103,10 +1327,10 @@ def collect_workflow_pins(workflows, *, parent_repository=PARENT_REPOSITORY):
         raise ValueError("workflows must be a path->text mapping")
     pins = []
     uses_parent = re.compile(
-        r"uses:\s*" + re.escape(parent_repository) + r"/(?P<workflow>[^\s@]+)@(?P<ref>pr/\d+|[0-9a-f]{40})\b"
+        r"uses:\s*" + re.escape(parent_repository) + r"/(?P<workflow>[^\s@]+)@(?P<ref>[0-9a-f]{40})\b"
     )
     checkout_repo = re.compile(r"^\s+repository:\s*" + re.escape(parent_repository) + r"\s*$")
-    ref_sha = re.compile(r"^\s+ref:\s*(pr/\d+|[0-9a-f]{40})\s*$")
+    ref_sha = re.compile(r"^\s+ref:\s*([0-9a-f]{40})\s*$")
     for path, text in sorted(workflows.items()):
         if not isinstance(text, str):
             raise ValueError("workflow content must be text: " + path)
@@ -1115,24 +1339,14 @@ def collect_workflow_pins(workflows, *, parent_repository=PARENT_REPOSITORY):
             match = uses_parent.search(line)
             if match:
                 ref = match.group("ref")
-                if ref.startswith("pr/"):
-                    pins.append({
-                        "repository": parent_repository,
-                        "pull_number": int(ref.split("/", 1)[1]),
-                        "entry": match.group("workflow"),
-                        "file": path,
-                        "line": index,
-                        "kind": "workflow-uses-pr",
-                    })
-                else:
-                    pins.append({
-                        "repository": parent_repository,
-                        "commit": ref,
-                        "entry": match.group("workflow"),
-                        "file": path,
-                        "line": index,
-                        "kind": "workflow-uses",
-                    })
+                pins.append({
+                    "repository": parent_repository,
+                    "commit": ref,
+                    "entry": match.group("workflow"),
+                    "file": path,
+                    "line": index,
+                    "kind": "workflow-uses",
+                })
         for index, line in enumerate(lines, 1):
             if not checkout_repo.match(line):
                 continue
@@ -1140,24 +1354,14 @@ def collect_workflow_pins(workflows, *, parent_repository=PARENT_REPOSITORY):
                 ref_match = ref_sha.match(lines[index + offset - 1])
                 if ref_match:
                     ref = ref_match.group(1)
-                    if ref.startswith("pr/"):
-                        pins.append({
-                            "repository": parent_repository,
-                            "pull_number": int(ref.split("/", 1)[1]),
-                            "entry": "actions/checkout",
-                            "file": path,
-                            "line": index + offset,
-                            "kind": "workflow-checkout-pr",
-                        })
-                    else:
-                        pins.append({
-                            "repository": parent_repository,
-                            "commit": ref,
-                            "entry": "actions/checkout",
-                            "file": path,
-                            "line": index + offset,
-                            "kind": "workflow-checkout",
-                        })
+                    pins.append({
+                        "repository": parent_repository,
+                        "commit": ref,
+                        "entry": "actions/checkout",
+                        "file": path,
+                        "line": index + offset,
+                        "kind": "workflow-checkout",
+                    })
                     break
     return pins
 
@@ -1175,8 +1379,6 @@ def audit_consumer_merged_pins(consumer, lock_documents, workflow_documents, *,
     checked = set()
     failures = []
     for pin in pins:
-        if "pull_number" in pin:
-            continue
         key = (pin["repository"], pin["commit"])
         if key in checked:
             continue
@@ -1281,67 +1483,6 @@ def _fetch_consumer_documents(consumer, lock_path, revision, token=None):
             lock_documents.append((candidate, json.loads(text)))
     workflows = _fetch_workflow_documents(consumer, revision, token)
     return lock_documents, workflows
-
-
-def _verify_parent_pr_pins(registry, consumer_revisions, *, parent_repository=PARENT_REPOSITORY,
-                           token=None, local_consumers=None, pr_fetch=None, repo_fetch=None):
-    import vendor_consumers
-    registry = vendor_consumers.validate(registry)
-    local_consumers = local_consumers or {}
-    failures = []
-    checked = set()
-    for entry in registry["consumers"]:
-        if entry["state"] != "locked":
-            continue
-        name = entry["repository"]
-        revision = consumer_revisions.get(name)
-        if revision is None:
-            continue
-        if name in local_consumers:
-            root = Path(local_consumers[name])
-            workflow_documents = {}
-            workflow_dir = root / ".github/workflows"
-            if workflow_dir.is_dir():
-                for item in sorted(workflow_dir.iterdir()):
-                    if item.suffix in (".yml", ".yaml"):
-                        workflow_documents[".github/workflows/" + item.name] = item.read_text(encoding="utf-8")
-        else:
-            workflow_documents = _fetch_workflow_documents(name, revision, token)
-        for pin in collect_workflow_pins(workflow_documents, parent_repository=parent_repository):
-            if "pull_number" not in pin:
-                continue
-            key = (name, pin["file"], pin["line"], pin["pull_number"])
-            if key in checked:
-                continue
-            checked.add(key)
-            try:
-                parent_record = fetch_repository_record(
-                    parent_repository, token, repo_fetch=repo_fetch,
-                )
-                resolved = resolve_parent_pr(
-                    parent_repository, pin["pull_number"], token=token, pr_fetch=pr_fetch,
-                    repo_fetch=repo_fetch,
-                    reference={
-                        "schema": PARENT_PR_REF_SCHEMA,
-                        "repository": parent_repository,
-                        "pull_number": pin["pull_number"],
-                        "repository_id": parent_record["id"],
-                    },
-                )
-                if resolved["state"] == "merged":
-                    commit_merged_into_default(parent_repository, resolved["commit"])
-            except ValueError as error:
-                failures.append({
-                    "consumer": name,
-                    "file": pin["file"],
-                    "entry": pin.get("entry"),
-                    "sha": "pr/" + str(pin["pull_number"]),
-                    "source_repository": parent_repository,
-                    "line": pin.get("line"),
-                    "kind": pin.get("kind"),
-                    "message": str(error),
-                })
-    return {"pins_checked": len(checked), "failure_count": len(failures), "failures": failures}
 
 
 def audit_registry_merged_pins(registry, *, ref="main", parent_repository=PARENT_REPOSITORY,
@@ -1450,21 +1591,49 @@ def _write_child_heads_summary(report, summary_path):
             for row in report["identity_failures"]:
                 lines.append(f"- `{row['repository']}`: {row['message']}")
             lines.append("")
+        if report.get("template_missing_count"):
+            lines.append(
+                f"**{report['template_missing_count']} locked consumer(s) without copied child CI workflow (report only).**"
+            )
+            for row in report.get("template_missing", []):
+                lines.append(f"- `{row.get('repository', '')}`: {row.get('message', '')}")
+            lines.append("")
+        if report.get("template_failure_count"):
+            lines.append(f"**{report['template_failure_count']} child workflow template mismatch(es).**")
+            for row in report.get("template_failures", []):
+                lines.append(f"- `{row.get('repository', '')}`: {row.get('message', '')}")
+            lines.append("")
+        if report.get("missing_heads"):
+            lines.append("**Missing monitored repositories in child-heads.json:**")
+            for name in report["missing_heads"]:
+                lines.append(f"- `{name}`")
+            lines.append("")
         if report["source_diff"]["finding_count"]:
             lines.append(f"**{report['source_diff']['finding_count']} branch tip(s) differ from default branch.**")
             lines.append("")
             for row in report["source_diff"]["findings"]:
                 lines.append(f"- `{row['repository']}` branch `{row['branch']}` @ `{row['tip']}`")
             lines.append("")
+        if report["source_diff"].get("scan_error_count"):
+            lines.append(
+                f"**{report['source_diff']['scan_error_count']} source-diff scan error(s) (report only).**"
+            )
+            lines.append("")
         if not report["failure_count"]:
-            lines.append("Child heads match, source branches are clean, and parent vendor baseline check passed.")
+            lines.append(
+                "Child heads match, locked child workflow templates match, and parent vendor baseline check passed."
+            )
+            if report["source_diff"]["finding_count"]:
+                lines.append(
+                    "Source-diff branch findings were reported above but do not fail this workflow."
+                )
         Path(summary_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
         return
     lines = ["## Child head and pin audit", ""]
     if report["drift_count"]:
         lines.append(f"**{report['drift_count']} child head(s) drifted from child-heads.json.**")
         lines.append("")
-    failures = report.get("pin_audit", {}).get("failures", []) + report.get("parent_pr_audit", {}).get("failures", [])
+    failures = report.get("pin_audit", {}).get("failures", [])
     if failures:
         lines.append(f"**{len(failures)} pin resolution failure(s).**")
     if not report["failure_count"]:
@@ -1534,6 +1703,7 @@ def main(argv=None, *, get=_get):
             "refresh-child-heads",
             "check-child-heads",
             "run-parent-child-ci",
+            "run-child-ci",
             "resolve-parent-pr",
         ),
     )
@@ -1555,8 +1725,39 @@ def main(argv=None, *, get=_get):
                         help="open or update a parent pull request with refreshed child-heads.json")
     parser.add_argument("--skip-source-diff", action="store_true",
                         help="skip cross-repo branch diff scan (pull request validation only)")
+    parser.add_argument("--consumer-name", dest="consumer_name",
+                        help="consumer repository for run-child-ci (default: derive from --root)")
     args = parser.parse_args(argv)
     try:
+        if args.mode == "run-child-ci":
+            root = Path(args.root).resolve()
+            consumer = args.consumer_name
+            if not consumer:
+                remote = subprocess.run(
+                    ["git", "-C", str(root), "config", "--get", "remote.origin.url"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if remote.returncode != 0 or not remote.stdout.strip():
+                    raise ValueError("--consumer-name required when origin remote is unavailable")
+                raw_remote = remote.stdout.strip()
+                if raw_remote.startswith("git@"):
+                    consumer = raw_remote.split(":", 1)[-1]
+                else:
+                    consumer = raw_remote.removeprefix("https://github.com/")
+                consumer = _normalize_repository(consumer.removesuffix(".git"))
+            token = _api_token(os.environ.get("GH_READ_TOKEN") or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN"))
+            result = run_child_ci(
+                root,
+                args.ref_file,
+                consumer,
+                token=token,
+                parent_repository=args.parent,
+                get=get,
+            )
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
         if args.mode == "run-parent-child-ci":
             registry = json.loads(Path(args.registry).read_text(encoding="utf-8"))
             document = json.loads(Path(args.heads).read_text(encoding="utf-8"))
@@ -1576,7 +1777,7 @@ def main(argv=None, *, get=_get):
             return 1 if result["failure_count"] else 0
         if args.mode == "refresh-child-heads":
             registry = json.loads(Path(args.registry).read_text(encoding="utf-8"))
-            token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+            token = _api_token(None)
             result = refresh_child_heads(registry, args.heads, ref=args.ref, token=token)
             print(json.dumps(result, ensure_ascii=False))
             return 0

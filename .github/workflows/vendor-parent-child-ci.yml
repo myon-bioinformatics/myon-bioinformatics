@@ -8,19 +8,20 @@ on:
     paths:
       - "child-heads.json"
       - "vendor-consumers.json"
+      - "vendor-catalog.json"
       - "vendor_sync.py"
       - "vendor.lock.json"
       - "vendor/**"
+      - "templates/vendor-child-ci.workflow.yml"
+      - "templates/parent-pr.ref.json"
       - ".github/workflows/vendor-parent-child-ci.yml"
-      - ".github/workflows/reusable-vendor-child-ci.yml"
       - "tests/test_vendor_child_heads.py"
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
-  parent-child-ci:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -29,9 +30,10 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Run parent child CI (SHA, source diff, parent vendor baseline)
+      - name: Validate child heads and parent vendor baseline
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           args=(
@@ -41,9 +43,7 @@ jobs:
             --heads child-heads.json
             --summary "$GITHUB_STEP_SUMMARY"
           )
-          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
-            args+=(--autofix)
-          else
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             args+=(--skip-source-diff)
           fi
           python -S vendor_sync.py "${args[@]}"
@@ -51,3 +51,29 @@ jobs:
         run: |
           python -m pip install pytest
           python -m pytest -q tests/test_vendor_child_heads.py
+
+  autofix:
+    if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Refresh child-heads and open or update autofix pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -S vendor_sync.py run-parent-child-ci \
+            --root . \
+            --registry vendor-consumers.json \
+            --heads child-heads.json \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            --autofix

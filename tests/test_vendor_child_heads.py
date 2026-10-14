@@ -97,6 +97,16 @@ def test_commit_merged_positive_and_negative(tmp_path):
         sync.commit_merged_into_default("owner/tool", feature_sha, local_roots=roots)
 
 
+def _source_diff_empty():
+    return {
+        "schema": "source-diff-report/1",
+        "findings": [],
+        "finding_count": 0,
+        "scan_errors": [],
+        "scan_error_count": 0,
+    }
+
+
 def test_run_parent_child_ci_offline(tmp_path, monkeypatch):
     child = tmp_path / "child"
     child_sha = _init_repo(child)
@@ -107,14 +117,19 @@ def test_run_parent_child_ci_offline(tmp_path, monkeypatch):
     (parent / "vendor.lock.json").write_text(json.dumps(_lock(child_sha)) + "\n", encoding="utf-8")
     (parent / "vendor").mkdir()
     (parent / "vendor" / "tool.py").write_bytes(b"tool\n")
+    template_dir = parent / "templates"
+    template_dir.mkdir()
+    template_dir.joinpath("vendor-child-ci.workflow.yml").write_text("name: stub\n", encoding="utf-8")
     document = sync.validate_child_heads({
         "schema": sync.CHILD_HEADS_SCHEMA,
         "ref": "main",
         "heads": {consumer: _head(child_sha, 99)},
     })
     record = _head(child_sha, 99)
+    monkeypatch.setattr(sync, "monitored_repositories", lambda *args, **kwargs: [consumer])
     monkeypatch.setattr(sync, "fetch_child_head_record", lambda *args, **kwargs: record)
-    monkeypatch.setattr(sync, "source_diff_report", lambda *args, **kwargs: {"finding_count": 0, "findings": []})
+    monkeypatch.setattr(sync, "audit_child_workflow_templates", lambda *args, **kwargs: {"failures": [], "missing": []})
+    monkeypatch.setattr(sync, "source_diff_report", lambda *args, **kwargs: _source_diff_empty())
     report = sync.run_parent_child_ci(registry, document, parent_root=parent)
     assert report["failure_count"] == 0
     assert report["parent_vendor_check"]["mode"] == "check"
@@ -129,13 +144,18 @@ def test_run_parent_child_ci_identity_repo_id_mismatch(tmp_path, monkeypatch):
     (parent / "vendor.lock.json").write_text(json.dumps(_lock(sha)) + "\n", encoding="utf-8")
     (parent / "vendor").mkdir()
     (parent / "vendor" / "tool.py").write_bytes(b"tool\n")
+    (parent / "templates").mkdir()
+    (parent / "templates" / "vendor-child-ci.workflow.yml").write_text("name: stub\n", encoding="utf-8")
     document = sync.validate_child_heads({
         "schema": sync.CHILD_HEADS_SCHEMA,
         "ref": "main",
         "heads": {consumer: _head(sha, 100)},
     })
+    monkeypatch.setattr(sync, "monitored_repositories", lambda *args, **kwargs: [consumer])
+    monkeypatch.setattr(sync, "audit_child_workflow_templates", lambda *args, **kwargs: {"failures": [], "missing": []})
     monkeypatch.setattr(sync, "fetch_child_head_record", lambda *args, **kwargs: _head(sha, 200))
-    monkeypatch.setattr(sync, "source_diff_report", lambda *args, **kwargs: {"finding_count": 0, "findings": []})
+    monkeypatch.setattr(sync, "audit_child_workflow_templates", lambda *args, **kwargs: {"failures": [], "missing": []})
+    monkeypatch.setattr(sync, "source_diff_report", lambda *args, **kwargs: _source_diff_empty())
     report = sync.run_parent_child_ci(registry, document, parent_root=parent)
     assert report["identity_failure_count"] == 1
     assert report["failure_count"] == 1
@@ -155,8 +175,13 @@ def test_run_parent_child_ci_detects_sha_drift(tmp_path, monkeypatch):
         "ref": "main",
         "heads": {consumer: _head(sha, 5)},
     })
+    template_dir = parent / "templates"
+    template_dir.mkdir()
+    template_dir.joinpath("vendor-child-ci.workflow.yml").write_text("name: stub\n", encoding="utf-8")
+    monkeypatch.setattr(sync, "monitored_repositories", lambda *args, **kwargs: [consumer])
     monkeypatch.setattr(sync, "fetch_child_head_record", lambda *args, **kwargs: _head("2" * 40, 5))
-    monkeypatch.setattr(sync, "source_diff_report", lambda *args, **kwargs: {"finding_count": 0, "findings": []})
+    monkeypatch.setattr(sync, "audit_child_workflow_templates", lambda *args, **kwargs: {"failures": [], "missing": []})
+    monkeypatch.setattr(sync, "source_diff_report", lambda *args, **kwargs: _source_diff_empty())
     report = sync.run_parent_child_ci(registry, document, parent_root=parent)
     assert report["drift_count"] == 1
     assert report["needs_heads_refresh"] is True
@@ -200,11 +225,7 @@ def test_child_head_drift_fails(tmp_path, monkeypatch):
         "audit_registry_merged_pins",
         lambda *args, **kwargs: {"failure_count": 0, "failures": []},
     )
-    monkeypatch.setattr(
-        sync,
-        "_verify_parent_pr_pins",
-        lambda *args, **kwargs: {"failure_count": 0, "failures": []},
-    )
+    monkeypatch.setattr(sync, "monitored_repositories", lambda *args, **kwargs: [consumer])
     report = sync.check_child_heads(registry, document)
     assert report["drift_count"] == 1
     assert report["failure_count"] == 1
@@ -259,36 +280,47 @@ def test_audit_consumer_lock_pin_at_recorded_head(tmp_path):
     assert not report["failures"]
 
 
-def test_workflow_parent_pr_pin_resolves(tmp_path, monkeypatch):
-    consumer = "owner/consumer"
+def test_verify_workflow_template_copy_rejects_pr_pins():
+    text = (
+        "name: Vendor child CI\n"
+        f"uses: {sync.PARENT_REPOSITORY}/.github/workflows/x.yml@pr/7\n"
+    )
+    with pytest.raises(ValueError, match="@pr/"):
+        sync.verify_workflow_template_copy(text, text)
+
+
+def test_source_diff_does_not_fail_parent_ci_count(tmp_path, monkeypatch):
+    consumer = "owner/child"
     registry = _registry(consumer)
-    revisions = {consumer: "1" * 40}
-
-    def pr_fetch(repo, number, token=None):
-        assert number == 7
-        return {"merged_at": "2020-01-01", "merge_commit_sha": "d" * 40, "head": {"sha": "e" * 40}}
-
-    monkeypatch.setattr(sync, "fetch_repository_record", lambda repository, token=None, **kwargs: {"id": 77})
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    sha = "1" * 40
+    (parent / "vendor.lock.json").write_text(json.dumps(_lock(sha)) + "\n", encoding="utf-8")
+    (parent / "vendor").mkdir()
+    (parent / "vendor" / "tool.py").write_bytes(b"tool\n")
+    (parent / "templates").mkdir()
+    (parent / "templates" / "vendor-child-ci.workflow.yml").write_text("name: stub\n", encoding="utf-8")
+    document = sync.validate_child_heads({
+        "schema": sync.CHILD_HEADS_SCHEMA,
+        "ref": "main",
+        "heads": {consumer: _head(sha, 5)},
+    })
+    monkeypatch.setattr(sync, "monitored_repositories", lambda *args, **kwargs: [consumer])
+    monkeypatch.setattr(sync, "fetch_child_head_record", lambda *args, **kwargs: _head(sha, 5))
+    monkeypatch.setattr(sync, "audit_child_workflow_templates", lambda *args, **kwargs: {"failures": [], "missing": []})
     monkeypatch.setattr(
         sync,
-        "commit_merged_into_default",
-        lambda repository, commit, **kwargs: True,
+        "source_diff_report",
+        lambda *args, **kwargs: {
+            "schema": "source-diff-report/1",
+            "findings": [{"repository": consumer, "branch": "feature", "tip": "f" * 40}],
+            "finding_count": 1,
+            "scan_errors": [],
+            "scan_error_count": 0,
+        },
     )
-    (tmp_path / ".github/workflows").mkdir(parents=True)
-    (tmp_path / ".github/workflows/ci.yml").write_text(
-        "jobs:\n  build:\n    steps:\n"
-        f"      - uses: {sync.PARENT_REPOSITORY}/.github/workflows/reusable-actionlint.yml@pr/7\n",
-        encoding="utf-8",
-    )
-    report = sync._verify_parent_pr_pins(
-        registry,
-        revisions,
-        parent_repository=sync.PARENT_REPOSITORY,
-        local_consumers={consumer: str(tmp_path)},
-        pr_fetch=pr_fetch,
-        repo_fetch=lambda repository: {"id": 77},
-    )
-    assert report["pins_checked"] == 1
+    report = sync.run_parent_child_ci(registry, document, parent_root=parent)
+    assert report["source_diff"]["finding_count"] == 1
     assert report["failure_count"] == 0
 
 
