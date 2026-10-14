@@ -481,26 +481,42 @@ def _api_token(token=None):
     return None
 
 
-def list_org_repositories(owner=ORG_OWNER, *, token=None):
+def _list_account_repositories(owner, *, token=None):
     token = _api_token(token)
     repositories = []
-    page = 1
-    while True:
-        url = (
-            "https://api.github.com/orgs/" + quote(owner, safe="") +
-            "/repos?per_page=100&page=" + str(page) + "&type=all"
-        )
-        batch = _github_api("GET", url, token) if token else _github_json(url, None)
-        if not isinstance(batch, list) or not batch:
-            break
-        for record in batch:
-            if record.get("archived"):
+    bases = (
+        "https://api.github.com/orgs/" + quote(owner, safe="") + "/repos",
+        "https://api.github.com/users/" + quote(owner, safe="") + "/repos",
+    )
+    for base in bases:
+        page = 1
+        repositories = []
+        try:
+            while True:
+                url = base + "?per_page=100&page=" + str(page) + "&type=all"
+                batch = _github_api("GET", url, token) if token else _github_json(url, None)
+                if not isinstance(batch, list) or not batch:
+                    break
+                for record in batch:
+                    if record.get("archived"):
+                        continue
+                    if _normalize_repository(record.get("full_name", "")).split("/")[0].casefold() != owner.casefold():
+                        continue
+                    repositories.append(_normalize_repository(record["full_name"]))
+                if len(batch) < 100:
+                    break
+                page += 1
+        except HTTPError as error:
+            if error.code == 404 and base is bases[0]:
                 continue
-            repositories.append(_normalize_repository(record["full_name"]))
-        if len(batch) < 100:
-            break
-        page += 1
+            raise
+        if repositories or page > 1:
+            return sorted(set(repositories), key=str.casefold)
     return sorted(set(repositories), key=str.casefold)
+
+
+def list_org_repositories(owner=ORG_OWNER, *, token=None):
+    return _list_account_repositories(owner, token=token)
 
 
 def verify_workflow_template_copy(copied_text, template_text, *, path=CHILD_CI_WORKFLOW_PATH):
@@ -615,7 +631,10 @@ def audit_child_workflow_templates(registry, document, template_text, *, token=N
     for name in _locked_consumer_names(registry):
         entry = document["heads"].get(name)
         if entry is None:
-            failures.append({"repository": name, "message": "missing child-heads entry"})
+            missing.append({
+                "repository": name,
+                "message": "locked consumer has no child-heads entry (often archived or not monitored)",
+            })
             continue
         text = _fetch_repo_text(name, CHILD_CI_WORKFLOW_PATH, entry["sha"], _api_token(token))
         if text is None:

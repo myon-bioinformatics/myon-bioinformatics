@@ -1,6 +1,7 @@
 import json
 import subprocess
 from pathlib import Path
+from urllib.error import HTTPError
 
 import pytest
 
@@ -322,6 +323,21 @@ def test_source_diff_does_not_fail_parent_ci_count(tmp_path, monkeypatch):
     report = sync.run_parent_child_ci(registry, document, parent_root=parent)
     assert report["source_diff"]["finding_count"] == 1
     assert report["failure_count"] == 0
+
+
+def test_list_org_repositories_falls_back_to_users_endpoint(monkeypatch):
+    calls = []
+
+    def fake_api(method, url, token=None, body=None):
+        calls.append(url)
+        if "/orgs/" in url:
+            raise HTTPError(url, 404, "not found", None, None)
+        return [{"full_name": "myon-bioinformatics/demo", "archived": False}]
+
+    monkeypatch.setattr(sync, "_github_api", fake_api)
+    repos = sync.list_org_repositories("myon-bioinformatics", token="token")
+    assert repos == ["myon-bioinformatics/demo"]
+    assert any("/users/" in url for url in calls)
 
 
 def test_cli_refresh_child_heads(tmp_path, monkeypatch, capsys):
