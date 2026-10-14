@@ -306,11 +306,6 @@
           "destination": "vendor/ascii_artist.py"
         },
         {
-          "repository": "myon-bioinformatics/myon-bioinformatics",
-          "source": "git_inspector.py",
-          "destination": "vendor/git_inspector.py"
-        },
-        {
           "repository": "myon-bioinformatics/markdown",
           "source": "markdown.py",
           "destination": "vendor/markdown.py"
@@ -469,11 +464,6 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "vendor_stage.py",
           "destination": "vendor/vendor_stage.py"
-        },
-        {
-          "repository": "myon-bioinformatics/myon-bioinformatics",
-          "source": "vendor_sync.py",
-          "destination": "vendor/vendor_sync.py"
         },
         {
           "repository": "myon-bioinformatics/HelpYouBuildServer",

@@ -127,6 +127,10 @@
         "myon-bioinformatics/flutter_navigation_basic": {
           "enrollment": "skipped",
           "reason": "retired_after_gh_identity_migration"
+        },
+        "myon-bioinformatics/Ironmate": {
+          "enrollment": "skipped",
+          "reason": "retired_after_gh_identity_migration"
         }
       }
     },
