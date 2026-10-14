@@ -80,10 +80,9 @@ jobs:
   duplicate-files:
     name: Cross-repository duplicate files (read only)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       # Pinned to gh_identity main merge commit 7492d73 (#56; first-parent verified).
-      # Currently the head of gh_identity PR #50 (includes #48 and #49).
       GH_IDENTITY_SHA: 7492d73d909b4ea8ab5ffb3437fc4710469e8650
     steps:
       - uses: actions/setup-python@v7
