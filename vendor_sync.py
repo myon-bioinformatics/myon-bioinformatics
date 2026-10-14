@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import copy
 import hashlib
 import json
@@ -16,11 +17,34 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-__version__ = "0.2.0"
-__all__ = ["git_blob", "inspect_source", "validate", "evidence", "synchronize", "promote", "main"]
+__version__ = "0.2.1"
+__all__ = [
+    "git_blob",
+    "inspect_source",
+    "validate",
+    "evidence",
+    "synchronize",
+    "promote",
+    "commit_merged_into_default",
+    "collect_lock_pins",
+    "collect_workflow_pins",
+    "audit_consumer_merged_pins",
+    "audit_registry_merged_pins",
+    "validate_child_heads",
+    "refresh_child_heads",
+    "check_child_heads",
+    "resolve_parent_pr",
+    "main",
+]
 
 SCHEMA = "vendor-lock/1"
+HTML_IMPORT_SCHEMA = "html-import-vendor/1"
+CHILD_HEADS_SCHEMA = "child-heads/1"
+PARENT_PR_RESOLVE_SCHEMA = "parent-pr-resolve/1"
+PARENT_REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
+HTML_IMPORT_LOCK_CANDIDATES = ("tools/html-import/vendor.lock.json",)
 MAX_BYTES = 8 * 1024 * 1024
+_REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 
 
 def git_blob(data):
@@ -364,6 +388,642 @@ def synchronize(manifest, root, mode, *, get=_get):
     return {"schema": SCHEMA, "mode": mode, "changed_paths": changed}
 
 
+def _git_subprocess_env():
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    env.update(GIT_TERMINAL_PROMPT="0", GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+    return env
+
+
+def _normalize_repository(value):
+    if not isinstance(value, str) or not value:
+        raise ValueError("expected repository")
+    if value.startswith("https://github.com/"):
+        value = value.removeprefix("https://github.com/").rstrip("/")
+    if value.endswith(".git"):
+        value = value[:-4]
+    if not _REPO.fullmatch(value) or any(part in (".", "..") for part in value.split("/")):
+        raise ValueError("expected owner/repository")
+    return value
+
+
+def _repository_remote(repository, remotes=None):
+    remotes = remotes or {}
+    if repository in remotes:
+        return remotes[repository]
+    return "https://github.com/" + repository + ".git"
+
+
+def _git_run(argv, *, timeout=120):
+    result = subprocess.run(argv, env=_git_subprocess_env(), capture_output=True, timeout=timeout)
+    if result.returncode:
+        detail = result.stderr.decode("utf-8", "replace").strip() or result.stdout.decode("utf-8", "replace").strip()
+        raise ValueError("git failed: " + detail)
+    return result.stdout
+
+
+def _default_branch_name(remote):
+    output = _git_run(["git", "ls-remote", "--symref", remote, "HEAD"]).decode("utf-8", "replace")
+    for line in output.splitlines():
+        if line.startswith("ref: refs/heads/"):
+            return line.split("refs/heads/", 1)[1].split("\t", 1)[0]
+    raise ValueError("cannot resolve default branch for " + remote)
+
+
+def _git_branch_tip(remote, branch):
+    output = _git_run(["git", "ls-remote", "--heads", remote, branch]).decode("utf-8", "replace").strip()
+    if not output:
+        raise ValueError("missing branch " + branch + " on " + remote)
+    sha = output.split()[0]
+    _hex(sha, 40)
+    return sha
+
+
+def _locked_consumer_names(registry):
+    import vendor_consumers
+    registry = vendor_consumers.validate(registry)
+    return sorted(
+        (entry["repository"] for entry in registry["consumers"] if entry["state"] == "locked"),
+        key=str.casefold,
+    )
+
+
+def validate_child_heads(document):
+    if (
+        not isinstance(document, dict)
+        or set(document) != {"schema", "ref", "heads"}
+        or document["schema"] != CHILD_HEADS_SCHEMA
+    ):
+        raise ValueError("expected child-heads/1")
+    ref = document["ref"]
+    if not isinstance(ref, str) or not ref or any(ord(c) < 32 for c in ref):
+        raise ValueError("invalid child-heads ref")
+    heads = document["heads"]
+    if not isinstance(heads, dict) or not heads:
+        raise ValueError("child heads must be a nonempty object")
+    normalized = {}
+    for name, sha in heads.items():
+        normalized[_normalize_repository(name)] = sha
+        _hex(sha, 40)
+    return {"schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": normalized}
+
+
+def fetch_child_head(repository, ref="main", *, remotes=None):
+    repository = _normalize_repository(repository)
+    remote = _repository_remote(repository, remotes)
+    if ref in ("main", "master"):
+        try:
+            branch = _default_branch_name(remote)
+        except ValueError:
+            branch = ref
+    else:
+        branch = ref
+    return _git_branch_tip(remote, branch)
+
+
+def refresh_child_heads(registry, heads_path, *, ref="main", remotes=None):
+    names = _locked_consumer_names(registry)
+    heads = {name: fetch_child_head(name, ref, remotes=remotes) for name in names}
+    document = validate_child_heads({"schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": heads})
+    encoded = json.dumps(document, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+    Path(heads_path).write_text(encoded, encoding="utf-8")
+    return document
+
+
+def check_child_heads(registry, document, *, remotes=None, token=None, parent_repository=PARENT_REPOSITORY,
+                        local_roots=None, local_consumers=None):
+    document = validate_child_heads(document)
+    ref = document["ref"]
+    drift = []
+    live_heads = {}
+    for name in _locked_consumer_names(registry):
+        recorded = document["heads"].get(name)
+        if recorded is None:
+            raise ValueError("child-heads missing repository: " + name)
+        live = fetch_child_head(name, ref, remotes=remotes)
+        live_heads[name] = live
+        if live != recorded:
+            drift.append({
+                "repository": name,
+                "recorded": recorded,
+                "live": live,
+            })
+    extra = set(document["heads"]) - set(_locked_consumer_names(registry))
+    if extra:
+        raise ValueError("child-heads has unknown repositories: " + ", ".join(sorted(extra)))
+    pin_report = audit_registry_merged_pins(
+        registry,
+        parent_repository=parent_repository,
+        token=token,
+        remotes=remotes,
+        local_roots=local_roots,
+        local_consumers=local_consumers,
+        consumer_revisions=document["heads"],
+    )
+    pr_report = _verify_parent_pr_pins(
+        registry,
+        document["heads"],
+        parent_repository=parent_repository,
+        token=token,
+        local_consumers=local_consumers,
+        pr_fetch=resolve_parent_pr,
+    )
+    return {
+        "schema": "child-heads-check/1",
+        "ref": ref,
+        "drift": drift,
+        "drift_count": len(drift),
+        "pin_audit": pin_report,
+        "parent_pr_audit": pr_report,
+        "failure_count": len(drift) + pin_report["failure_count"] + pr_report["failure_count"],
+    }
+
+
+def resolve_parent_pr(parent_repository, pull_number, *, token=None, pr_fetch=None):
+    parent_repository = _normalize_repository(parent_repository)
+    if isinstance(pull_number, str):
+        if not pull_number.isdigit():
+            raise ValueError("expected pull request number")
+        pull_number = int(pull_number)
+    if not isinstance(pull_number, int) or pull_number < 1:
+        raise ValueError("expected positive pull request number")
+    fetch = pr_fetch or _fetch_parent_pull_request
+    pull = fetch(parent_repository, pull_number, token=token)
+    merged = bool(pull.get("merged_at"))
+    if merged:
+        commit = pull.get("merge_commit_sha")
+        if not commit:
+            raise ValueError("merged pull request has no merge_commit_sha: " + str(pull_number))
+        state = "merged"
+    else:
+        head = pull.get("head") or {}
+        commit = head.get("sha")
+        state = "open"
+    if not commit:
+        raise ValueError("cannot resolve pull request " + str(pull_number))
+    _hex(commit, 40)
+    return {
+        "schema": PARENT_PR_RESOLVE_SCHEMA,
+        "repository": parent_repository,
+        "pull_number": pull_number,
+        "state": state,
+        "commit": commit,
+    }
+
+
+def _fetch_parent_pull_request(parent_repository, pull_number, token=None):
+    url = "https://api.github.com/repos/" + parent_repository + "/pulls/" + str(pull_number)
+    record = _github_json(url, token)
+    if not isinstance(record, dict):
+        raise ValueError("invalid pull request response")
+    return record
+
+
+def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=None):
+    """Return True when commit is reachable from the source repository default branch."""
+    repository = _normalize_repository(repository)
+    _hex(commit, 40)
+    local_roots = local_roots or {}
+    if repository in local_roots:
+        root = Path(local_roots[repository])
+        for branch in ("main", "master"):
+            probe = subprocess.run(
+                ["git", "-C", str(root), "merge-base", "--is-ancestor", commit, branch],
+                env=_git_subprocess_env(),
+                capture_output=True,
+                timeout=60,
+            )
+            if probe.returncode == 0:
+                return True
+        raise ValueError(
+            "commit " + commit + " is not merged into " + repository + " default branch"
+        )
+    remote = _repository_remote(repository, remotes)
+    with tempfile.TemporaryDirectory(prefix="vendor-merged-pin-") as directory:
+        command = ["git", "-c", "credential.helper=", "-c", "core.askPass=",
+                   "-c", "http.extraHeader=", "-C", directory]
+        def git(*args):
+            result = subprocess.run(command + list(args), env=_git_subprocess_env(),
+                                    capture_output=True, timeout=120)
+            if result.returncode:
+                detail = result.stderr.decode("utf-8", "replace").strip()
+                raise ValueError("git fetch failed for " + repository + ": " + detail)
+            return result.stdout
+        git("init", "--bare")
+        branch = _default_branch_name(remote)
+        try:
+            git("fetch", "--no-tags", "--depth=1", remote, "refs/heads/" + branch + ":refs/heads/" + branch)
+            git("fetch", "--no-tags", "--depth=1", remote, commit)
+        except ValueError as error:
+            raise ValueError("cannot fetch pin for " + repository + "@" + commit[:12] + ": " + str(error)) from error
+        probe = subprocess.run(
+            command + ["merge-base", "--is-ancestor", commit, branch],
+            env=_git_subprocess_env(),
+            capture_output=True,
+            timeout=60,
+        )
+        if probe.returncode == 0:
+            return True
+        raise ValueError(
+            "commit " + commit + " is not merged into " + repository + " default branch (" + branch + ")"
+        )
+
+
+def collect_lock_pins(lock, lock_path):
+    """Return pin rows: repository, commit, entry, file."""
+    if not isinstance(lock, dict) or "schema" not in lock:
+        raise ValueError("invalid lock document: " + lock_path)
+    schema = lock["schema"]
+    pins = []
+    if schema == SCHEMA:
+        validated = validate(lock)
+        for item in validated["files"]:
+            pins.append({
+                "repository": item["repository"],
+                "commit": item["commit"],
+                "entry": item["destination"],
+                "file": lock_path,
+                "kind": "vendor-lock",
+            })
+        return pins
+    if schema == HTML_IMPORT_SCHEMA:
+        sources = lock.get("sources")
+        if not isinstance(sources, list) or not sources:
+            raise ValueError("html-import-vendor/1 requires nonempty sources: " + lock_path)
+        for item in sources:
+            if not isinstance(item, dict):
+                raise ValueError("invalid html-import source in " + lock_path)
+            repository = _normalize_repository(item.get("repository"))
+            commit = item.get("commit")
+            _hex(commit, 40)
+            entry = item.get("path") or item.get("source_path") or "source"
+            pins.append({
+                "repository": repository,
+                "commit": commit,
+                "entry": entry,
+                "file": lock_path,
+                "kind": "html-import-vendor",
+            })
+        return pins
+    raise ValueError("unsupported lock schema in " + lock_path + ": " + schema)
+
+
+def collect_workflow_pins(workflows, *, parent_repository=PARENT_REPOSITORY):
+    """Scan workflow YAML text for reusable-workflow and checkout pins to the parent."""
+    if not isinstance(workflows, dict):
+        raise ValueError("workflows must be a path->text mapping")
+    pins = []
+    uses_parent = re.compile(
+        r"uses:\s*" + re.escape(parent_repository) + r"/(?P<workflow>[^\s@]+)@(?P<ref>pr/\d+|[0-9a-f]{40})\b"
+    )
+    checkout_repo = re.compile(r"^\s+repository:\s*" + re.escape(parent_repository) + r"\s*$")
+    ref_sha = re.compile(r"^\s+ref:\s*(pr/\d+|[0-9a-f]{40})\s*$")
+    for path, text in sorted(workflows.items()):
+        if not isinstance(text, str):
+            raise ValueError("workflow content must be text: " + path)
+        lines = text.splitlines()
+        for index, line in enumerate(lines, 1):
+            match = uses_parent.search(line)
+            if match:
+                ref = match.group("ref")
+                if ref.startswith("pr/"):
+                    pins.append({
+                        "repository": parent_repository,
+                        "pull_number": int(ref.split("/", 1)[1]),
+                        "entry": match.group("workflow"),
+                        "file": path,
+                        "line": index,
+                        "kind": "workflow-uses-pr",
+                    })
+                else:
+                    pins.append({
+                        "repository": parent_repository,
+                        "commit": ref,
+                        "entry": match.group("workflow"),
+                        "file": path,
+                        "line": index,
+                        "kind": "workflow-uses",
+                    })
+        for index, line in enumerate(lines, 1):
+            if not checkout_repo.match(line):
+                continue
+            for offset in range(1, min(12, len(lines) - index + 1)):
+                ref_match = ref_sha.match(lines[index + offset - 1])
+                if ref_match:
+                    ref = ref_match.group(1)
+                    if ref.startswith("pr/"):
+                        pins.append({
+                            "repository": parent_repository,
+                            "pull_number": int(ref.split("/", 1)[1]),
+                            "entry": "actions/checkout",
+                            "file": path,
+                            "line": index + offset,
+                            "kind": "workflow-checkout-pr",
+                        })
+                    else:
+                        pins.append({
+                            "repository": parent_repository,
+                            "commit": ref,
+                            "entry": "actions/checkout",
+                            "file": path,
+                            "line": index + offset,
+                            "kind": "workflow-checkout",
+                        })
+                    break
+    return pins
+
+
+def audit_consumer_merged_pins(consumer, lock_documents, workflow_documents, *,
+                               parent_repository=PARENT_REPOSITORY,
+                               remotes=None, local_roots=None):
+    """Verify every discovered pin is merged into its source repository default branch."""
+    if not isinstance(consumer, str) or not consumer:
+        raise ValueError("expected consumer repository")
+    pins = []
+    for lock_path, lock in lock_documents:
+        pins.extend(collect_lock_pins(lock, lock_path))
+    pins.extend(collect_workflow_pins(workflow_documents, parent_repository=parent_repository))
+    checked = set()
+    failures = []
+    for pin in pins:
+        if "pull_number" in pin:
+            continue
+        key = (pin["repository"], pin["commit"])
+        if key in checked:
+            continue
+        checked.add(key)
+        try:
+            commit_merged_into_default(
+                pin["repository"], pin["commit"], remotes=remotes, local_roots=local_roots
+            )
+        except ValueError as error:
+            failures.append({
+                "consumer": consumer,
+                "file": pin["file"],
+                "entry": pin.get("entry"),
+                "sha": pin["commit"],
+                "source_repository": pin["repository"],
+                "line": pin.get("line"),
+                "kind": pin.get("kind"),
+                "message": str(error),
+            })
+    return {
+        "schema": "vendor-merged-pin-audit/1",
+        "consumer": consumer,
+        "pins_checked": len(checked),
+        "failures": failures,
+    }
+
+
+def _github_json(url, token=None):
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "vendor-sync/merged-pin-audit"}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    with urlopen(Request(url, headers=headers), timeout=30) as response:
+        raw = response.read(MAX_BYTES + 1)
+    if len(raw) > MAX_BYTES:
+        raise ValueError("GitHub response exceeds byte limit")
+    return json.loads(raw.decode("utf-8"))
+
+
+def _fetch_consumer_revision(repository, ref, token=None):
+    url = "https://api.github.com/repos/" + repository + "/commits/" + quote(ref, safe="")
+    record = _github_json(url, token)
+    if not isinstance(record, dict):
+        raise ValueError("invalid commit response for " + repository)
+    sha = record.get("sha")
+    _hex(sha, 40)
+    return sha
+
+
+def _fetch_repo_text(repository, path, ref, token=None):
+    url = ("https://api.github.com/repos/" + repository + "/contents/" +
+           quote(path, safe="/") + "?ref=" + quote(ref, safe=""))
+    try:
+        data = _github_json(url, token)
+    except HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
+    if not isinstance(data, dict) or data.get("type") != "file" or data.get("encoding") != "base64":
+        raise ValueError("invalid GitHub file response: " + repository + ":" + path)
+    raw = base64.b64decode("".join(data["content"].split()), validate=True)
+    if len(raw) > MAX_BYTES:
+        raise ValueError("file exceeds byte limit: " + path)
+    return raw.decode("utf-8")
+
+
+def _fetch_workflow_documents(repository, ref, token=None):
+    url = ("https://api.github.com/repos/" + repository + "/contents/.github/workflows?ref=" +
+           quote(ref, safe=""))
+    try:
+        listing = _github_json(url, token)
+    except HTTPError as error:
+        if error.code == 404:
+            return {}
+        raise
+    if not isinstance(listing, list):
+        raise ValueError("invalid workflow listing for " + repository)
+    documents = {}
+    for item in listing:
+        if not isinstance(item, dict) or item.get("type") != "file":
+            continue
+        name = item.get("name", "")
+        if not name.endswith((".yml", ".yaml")):
+            continue
+        path = ".github/workflows/" + name
+        text = _fetch_repo_text(repository, path, ref, token)
+        if text is not None:
+            documents[path] = text
+    return documents
+
+
+def _fetch_consumer_documents(consumer, lock_path, revision, token=None):
+    lock_documents = []
+    primary = _fetch_repo_text(consumer, lock_path, revision, token)
+    if primary is None:
+        raise ValueError("missing consumer lock " + consumer + ":" + lock_path)
+    lock_documents.append((lock_path, json.loads(primary)))
+    for candidate in HTML_IMPORT_LOCK_CANDIDATES:
+        if candidate == lock_path:
+            continue
+        text = _fetch_repo_text(consumer, candidate, revision, token)
+        if text is not None:
+            lock_documents.append((candidate, json.loads(text)))
+    workflows = _fetch_workflow_documents(consumer, revision, token)
+    return lock_documents, workflows
+
+
+def _verify_parent_pr_pins(registry, consumer_revisions, *, parent_repository=PARENT_REPOSITORY,
+                           token=None, local_consumers=None, pr_fetch=None):
+    import vendor_consumers
+    registry = vendor_consumers.validate(registry)
+    local_consumers = local_consumers or {}
+    failures = []
+    checked = set()
+    for entry in registry["consumers"]:
+        if entry["state"] != "locked":
+            continue
+        name = entry["repository"]
+        revision = consumer_revisions.get(name)
+        if revision is None:
+            continue
+        if name in local_consumers:
+            root = Path(local_consumers[name])
+            workflow_documents = {}
+            workflow_dir = root / ".github/workflows"
+            if workflow_dir.is_dir():
+                for item in sorted(workflow_dir.iterdir()):
+                    if item.suffix in (".yml", ".yaml"):
+                        workflow_documents[".github/workflows/" + item.name] = item.read_text(encoding="utf-8")
+        else:
+            workflow_documents = _fetch_workflow_documents(name, revision, token)
+        for pin in collect_workflow_pins(workflow_documents, parent_repository=parent_repository):
+            if "pull_number" not in pin:
+                continue
+            key = (name, pin["file"], pin["line"], pin["pull_number"])
+            if key in checked:
+                continue
+            checked.add(key)
+            try:
+                resolved = resolve_parent_pr(
+                    parent_repository, pin["pull_number"], token=token, pr_fetch=pr_fetch
+                )
+                if resolved["state"] == "merged":
+                    commit_merged_into_default(parent_repository, resolved["commit"])
+            except ValueError as error:
+                failures.append({
+                    "consumer": name,
+                    "file": pin["file"],
+                    "entry": pin.get("entry"),
+                    "sha": "pr/" + str(pin["pull_number"]),
+                    "source_repository": parent_repository,
+                    "line": pin.get("line"),
+                    "kind": pin.get("kind"),
+                    "message": str(error),
+                })
+    return {"pins_checked": len(checked), "failure_count": len(failures), "failures": failures}
+
+
+def audit_registry_merged_pins(registry, *, ref="main", parent_repository=PARENT_REPOSITORY,
+                               consumers=None, token=None, remotes=None, local_roots=None,
+                               local_consumers=None, consumer_revisions=None):
+    import vendor_consumers
+    registry = vendor_consumers.validate(registry)
+    selected = None if consumers is None else {name.casefold() for name in consumers}
+    local_consumers = local_consumers or {}
+    results = []
+    failures = []
+    for entry in registry["consumers"]:
+        name = entry["repository"]
+        if selected is not None and name.casefold() not in selected:
+            continue
+        if entry["state"] != "locked":
+            results.append({"consumer": name, "state": entry["state"], "skipped": True})
+            continue
+        if name in local_consumers:
+            root = Path(local_consumers[name])
+            if consumer_revisions and name in consumer_revisions:
+                revision = consumer_revisions[name]
+                _hex(revision, 40)
+            else:
+                revision = _git_run(
+                    ["git", "-C", str(root), "rev-parse", ref],
+                    timeout=60,
+                ).decode().strip()
+                _hex(revision, 40)
+            lock_documents = []
+            for lock_path in [entry["lock"], *HTML_IMPORT_LOCK_CANDIDATES]:
+                path = root / lock_path
+                if path.is_file():
+                    lock_documents.append((lock_path, json.loads(path.read_text(encoding="utf-8"))))
+            workflow_documents = {}
+            workflow_dir = root / ".github/workflows"
+            if workflow_dir.is_dir():
+                for item in sorted(workflow_dir.iterdir()):
+                    if item.suffix in (".yml", ".yaml"):
+                        workflow_documents[".github/workflows/" + item.name] = item.read_text(encoding="utf-8")
+        else:
+            if consumer_revisions and name in consumer_revisions:
+                revision = consumer_revisions[name]
+                _hex(revision, 40)
+            else:
+                revision = _fetch_consumer_revision(name, ref, token)
+            lock_documents, workflow_documents = _fetch_consumer_documents(
+                name, entry["lock"], revision, token
+            )
+        report = audit_consumer_merged_pins(
+            name, lock_documents, workflow_documents,
+            parent_repository=parent_repository, remotes=remotes, local_roots=local_roots,
+        )
+        report["revision"] = revision
+        results.append(report)
+        failures.extend(report["failures"])
+    return {
+        "schema": "vendor-merged-pin-audit-report/1",
+        "ref": ref,
+        "parent_repository": parent_repository,
+        "results": results,
+        "failure_count": len(failures),
+        "failures": failures,
+    }
+
+
+def _write_audit_summary(report, summary_path):
+    lines = ["## Vendor merged-pin audit", ""]
+    if report["failure_count"]:
+        lines.append(f"**{report['failure_count']} unmerged pin(s) found.**")
+        lines.append("")
+        lines.append("| Consumer | File | Entry | SHA | Source repository |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for row in report["failures"]:
+            line = "" if row.get("line") is None else str(row["line"])
+            file_cell = row["file"] + (":" + line if line else "")
+            lines.append("| {consumer} | {file} | {entry} | `{sha}` | {source} |".format(
+                consumer=row["consumer"],
+                file=file_cell,
+                entry=row.get("entry") or "",
+                sha=row["sha"],
+                source=row["source_repository"],
+            ))
+    else:
+        lines.append("All checked pins are merged into their source default branches.")
+    Path(summary_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _write_child_heads_summary(report, summary_path):
+    lines = ["## Child head and pin audit", ""]
+    if report["drift_count"]:
+        lines.append(f"**{report['drift_count']} child head(s) drifted from child-heads.json.**")
+        lines.append("Run `python -S vendor_sync.py refresh-child-heads` and commit the updated file.")
+        lines.append("")
+        lines.append("| Repository | Recorded | Live |")
+        lines.append("| --- | --- | --- |")
+        for row in report["drift"]:
+            lines.append("| {repo} | `{recorded}` | `{live}` |".format(
+                repo=row["repository"], recorded=row["recorded"], live=row["live"],
+            ))
+        lines.append("")
+    failures = report["pin_audit"]["failures"] + report["parent_pr_audit"]["failures"]
+    if failures:
+        lines.append(f"**{len(failures)} pin resolution failure(s).**")
+        lines.append("")
+        lines.append("| Consumer | File | Entry | SHA | Source repository |")
+        lines.append("| --- | --- | --- | --- | --- |")
+        for row in failures:
+            line = "" if row.get("line") is None else str(row["line"])
+            file_cell = row["file"] + (":" + line if line else "")
+            lines.append("| {consumer} | {file} | {entry} | `{sha}` | {source} |".format(
+                consumer=row["consumer"],
+                file=file_cell,
+                entry=row.get("entry") or "",
+                sha=row["sha"],
+                source=row["source_repository"],
+            ))
+    if not report["failure_count"]:
+        lines.append("Child heads match and all checked pins resolve on the recorded revisions.")
+    Path(summary_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def promote(manifest, root, *, get=_get):
     """Explicitly promote a verified upstream candidate into the working tree.
 
@@ -413,19 +1073,96 @@ def promote(manifest, root, *, get=_get):
 
 def main(argv=None, *, get=_get):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("check", "materialize", "update", "promote", "enroll", "evidence"))
+    parser.add_argument(
+        "mode",
+        choices=(
+            "check",
+            "materialize",
+            "update",
+            "promote",
+            "enroll",
+            "evidence",
+            "audit-merged-pins",
+            "refresh-child-heads",
+            "check-child-heads",
+            "resolve-parent-pr",
+        ),
+    )
     parser.add_argument("--manifest", default="vendor.lock.json")
     parser.add_argument("--root", default=".")
     parser.add_argument("--runtime-evidence", action="append", default=[])
+    parser.add_argument("--registry", default="vendor-consumers.json")
+    parser.add_argument("--ref", default="main", help="consumer default branch ref to audit")
+    parser.add_argument("--parent", default=PARENT_REPOSITORY)
+    parser.add_argument("--consumer", action="append", default=[], help="limit audit to selected consumers")
+    parser.add_argument("--summary", help="write a GitHub Actions step summary markdown file")
+    parser.add_argument("--local-consumer", action="append", default=[], metavar="OWNER/REPO=PATH",
+                        help="offline consumer checkout root (repeatable)")
+    parser.add_argument("--heads", default="child-heads.json")
+    parser.add_argument("--pr", help="parent pull request number for resolve-parent-pr")
     args = parser.parse_args(argv)
     try:
+        if args.mode == "refresh-child-heads":
+            registry = json.loads(Path(args.registry).read_text(encoding="utf-8"))
+            result = refresh_child_heads(registry, args.heads, ref=args.ref)
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        if args.mode == "check-child-heads":
+            registry = json.loads(Path(args.registry).read_text(encoding="utf-8"))
+            document = json.loads(Path(args.heads).read_text(encoding="utf-8"))
+            local_consumers = {}
+            for value in args.local_consumer:
+                name, sep, root = value.partition("=")
+                if not sep or not name or not root:
+                    raise ValueError("expected --local-consumer OWNER/REPO=PATH")
+                local_consumers[_normalize_repository(name)] = str(Path(root).resolve())
+            token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+            result = check_child_heads(
+                registry,
+                document,
+                token=token,
+                parent_repository=args.parent,
+                local_consumers=local_consumers or None,
+            )
+            if args.summary:
+                _write_child_heads_summary(result, args.summary)
+            print(json.dumps(result, ensure_ascii=False))
+            return 1 if result["failure_count"] else 0
+        if args.mode == "resolve-parent-pr":
+            if not args.pr:
+                raise ValueError("--pr is required for resolve-parent-pr")
+            token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+            result = resolve_parent_pr(args.parent, args.pr, token=token)
+            print(json.dumps(result, ensure_ascii=False))
+            return 0
+        if args.mode == "audit-merged-pins":
+            registry = json.loads(Path(args.registry).read_text(encoding="utf-8"))
+            local_consumers = {}
+            for value in args.local_consumer:
+                name, sep, root = value.partition("=")
+                if not sep or not name or not root:
+                    raise ValueError("expected --local-consumer OWNER/REPO=PATH")
+                local_consumers[_normalize_repository(name)] = str(Path(root).resolve())
+            token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+            result = audit_registry_merged_pins(
+                registry,
+                ref=args.ref,
+                parent_repository=args.parent,
+                consumers=args.consumer or None,
+                token=token,
+                local_consumers=local_consumers or None,
+            )
+            if args.summary:
+                _write_audit_summary(result, args.summary)
+            print(json.dumps(result, ensure_ascii=False))
+            return 1 if result["failure_count"] else 0
         if args.mode == "promote":
             result = promote(args.manifest, args.root, get=get)
         elif args.mode == "evidence":
             result = evidence(args.manifest, args.root, runtime=args.runtime_evidence)
         else:
             result = synchronize(args.manifest, args.root, args.mode, get=get)
-    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, HTTPError) as error:
         print("vendor-sync: " + str(error), file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False))

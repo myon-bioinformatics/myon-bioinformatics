@@ -1,0 +1,39 @@
+name: Child head and vendor pin audit
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "child-heads.json"
+      - "vendor-consumers.json"
+      - "vendor_sync.py"
+      - ".github/workflows/vendor-child-heads.yml"
+      - "tests/test_vendor_child_heads.py"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Verify child heads and consumer pins (read only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python -S vendor_sync.py check-child-heads \
+            --registry vendor-consumers.json \
+            --heads child-heads.json \
+            --summary "$GITHUB_STEP_SUMMARY"
+      - name: Unit regressions (offline)
+        run: |
+          python -m pip install pytest
+          python -m pytest -q tests/test_vendor_child_heads.py
