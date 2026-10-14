@@ -703,8 +703,11 @@ def branches_differing_from_main(repository, *, remotes=None, local_roots=None, 
         for branch in _list_remote_branches(repository, remotes=remotes):
             if branch == default_branch:
                 continue
-            git("fetch", "--depth=1", "origin", "refs/heads/" + branch + ":refs/heads/" + branch)
-            tip = git("rev-parse", branch).decode().strip()
+            try:
+                git("fetch", "--depth=1", "origin", "refs/heads/" + branch + ":refs/heads/" + branch)
+                tip = git("rev-parse", branch).decode().strip()
+            except ValueError:
+                continue
             probe = subprocess.run(
                 command + ["merge-base", "--is-ancestor", tip, default_branch],
                 env=_git_subprocess_env(),
@@ -719,13 +722,23 @@ def branches_differing_from_main(repository, *, remotes=None, local_roots=None, 
 def source_diff_report(registry, *, token=None, remotes=None, local_roots=None, archived=None):
     archived = archived if archived is not None else {}
     findings = []
+    scan_errors = []
     for name in _locked_consumer_names(registry):
         if archived.get(name) or (token and _repository_archived(name, token)):
             continue
-        findings.extend(branches_differing_from_main(
-            name, remotes=remotes, local_roots=local_roots,
-        ))
-    return {"schema": "source-diff-report/1", "findings": findings, "finding_count": len(findings)}
+        try:
+            findings.extend(branches_differing_from_main(
+                name, remotes=remotes, local_roots=local_roots,
+            ))
+        except ValueError as error:
+            scan_errors.append({"repository": name, "message": str(error)})
+    return {
+        "schema": "source-diff-report/1",
+        "findings": findings,
+        "finding_count": len(findings),
+        "scan_errors": scan_errors,
+        "scan_error_count": len(scan_errors),
+    }
 
 
 def _copy_parent_vendor_baseline(parent_root, work_dir):
@@ -857,7 +870,9 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
             {"child-heads.json": _encode_child_heads(desired)},
             token,
         )
-    failure_count = len(drift) + diff_report["finding_count"] + len(identity_failures)
+    failure_count = (
+        len(drift) + diff_report["finding_count"] + diff_report.get("scan_error_count", 0) + len(identity_failures)
+    )
     return {
         "schema": "parent-child-ci/1",
         "ref": ref,
