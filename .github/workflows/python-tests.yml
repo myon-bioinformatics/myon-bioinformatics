@@ -11,6 +11,9 @@ on:
       - "vendor/**"
       - ".github/workflows/python-tests.yml"
       - ".github/workflows/reusable-actionlint.yml"
+      - ".github/workflows/vendor-parent-child-ci.yml"
+      - "templates/vendor-child-ci.workflow.yml"
+      - "child-heads.json"
   push:
     branches: [main]
     paths:
@@ -22,6 +25,9 @@ on:
       - "vendor/**"
       - ".github/workflows/python-tests.yml"
       - ".github/workflows/reusable-actionlint.yml"
+      - ".github/workflows/vendor-parent-child-ci.yml"
+      - "templates/vendor-child-ci.workflow.yml"
+      - "child-heads.json"
 
 permissions:
   contents: read

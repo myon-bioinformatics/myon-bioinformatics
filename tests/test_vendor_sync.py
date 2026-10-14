@@ -235,7 +235,8 @@ def test_cli_help_has_no_side_effects_and_missing_file_is_red(tmp_path):
     script = Path(sync.__file__).resolve()
     help_result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
     assert help_result.returncode == 0
-    assert "{check,materialize,update,promote,enroll,evidence}" in help_result.stdout
+    assert "audit-merged-pins" in help_result.stdout
+    assert "run-parent-child-ci" in help_result.stdout
     assert not list(tmp_path.iterdir())
     result = subprocess.run([sys.executable, str(script), "check"], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 2
@@ -525,7 +526,8 @@ def test_promote_cli_help_exposes_explicit_mode(tmp_path):
     script = Path(sync.__file__).resolve()
     result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 0
-    assert "{check,materialize,update,promote,enroll,evidence}" in result.stdout
+    assert "promote" in result.stdout
+    assert "run-parent-child-ci" in result.stdout
 
 
 def test_promote_cli_success_path_emits_receipt(tmp_path, capsys):

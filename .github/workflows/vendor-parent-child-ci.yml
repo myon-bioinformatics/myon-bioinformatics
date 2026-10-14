@@ -1,0 +1,82 @@
+name: Parent child CI
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "child-heads.json"
+      - "vendor-consumers.json"
+      - "vendor-catalog.json"
+      - "vendor_sync.py"
+      - "vendor.lock.json"
+      - "vendor/**"
+      - "templates/vendor-child-ci.workflow.yml"
+      - "templates/parent-pr.ref.json"
+      - ".github/workflows/vendor-parent-child-ci.yml"
+      - "tests/test_vendor_child_heads.py"
+      - "tests/test_vendor_child_bootstrap.py"
+      - "tests/test_vendor_parent_evidence.py"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Validate child heads and parent vendor baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          args=(
+            run-parent-child-ci
+            --root .
+            --registry vendor-consumers.json
+            --heads child-heads.json
+            --summary "$GITHUB_STEP_SUMMARY"
+          )
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            args+=(--skip-source-diff --pr-validation)
+          fi
+          python -S vendor_sync.py "${args[@]}"
+      - name: Unit regressions (offline)
+        run: |
+          python -m pip install -r tests/requirements.txt
+          python -m pytest -q tests/test_vendor_child_heads.py tests/test_vendor_child_bootstrap.py tests/test_vendor_parent_evidence.py
+
+  autofix:
+    if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Refresh child-heads and open or update autofix pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python -S vendor_sync.py run-parent-child-ci \
+            --root . \
+            --registry vendor-consumers.json \
+            --heads child-heads.json \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            --autofix
