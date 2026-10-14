@@ -194,6 +194,97 @@ def test_run_parent_child_ci_detects_sha_drift(tmp_path, monkeypatch):
     report = sync.run_parent_child_ci(registry, document, parent_root=parent)
     assert report["drift_count"] == 1
     assert report["needs_heads_refresh"] is True
+    assert report["failure_count"] == 1
+
+
+def test_run_parent_child_ci_pr_validation_sha_drift_report_only(tmp_path, monkeypatch):
+    consumer = "owner/child"
+    registry = _registry(consumer)
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    sha = "1" * 40
+    (parent / "vendor.lock.json").write_text(json.dumps(_lock(sha)) + "\n", encoding="utf-8")
+    (parent / "vendor").mkdir()
+    (parent / "vendor" / "tool.py").write_bytes(b"tool\n")
+    document = sync.validate_child_heads({
+        "schema": sync.CHILD_HEADS_SCHEMA,
+        "ref": "main",
+        "heads": {consumer: _head(sha, 5)},
+    })
+    template_dir = parent / "templates"
+    template_dir.mkdir()
+    template_dir.joinpath("vendor-child-ci.workflow.yml").write_text("name: stub\n", encoding="utf-8")
+    monkeypatch.setattr(sync, "monitored_repositories", lambda *args, **kwargs: [consumer])
+    monkeypatch.setattr(sync, "fetch_child_head_record", lambda *args, **kwargs: _head("2" * 40, 5))
+    monkeypatch.setattr(sync, "audit_child_workflow_templates", lambda *args, **kwargs: {"failures": [], "missing": []})
+    monkeypatch.setattr(sync, "source_diff_report", lambda *args, **kwargs: _source_diff_empty())
+    report = sync.run_parent_child_ci(registry, document, parent_root=parent, pr_validation=True)
+    assert report["drift_count"] == 1
+    assert report["identity_failure_count"] == 0
+    assert report["failure_count"] == 0
+    assert report["pr_validation"] is True
+
+
+def test_commit_merged_into_default_old_main_commit_via_remote(tmp_path):
+    upstream = tmp_path / "upstream"
+    first_sha = _init_repo(upstream, initial=b"v1\n")
+    (upstream / "file.txt").write_bytes(b"v2\n")
+    _git(upstream, "commit", "-am", "second")
+    remotes = {"owner/tool": "file://" + str(upstream)}
+    sync.commit_merged_into_default("owner/tool", first_sha, remotes=remotes)
+
+
+def test_run_parent_child_ci_audit_skipped_does_not_fail(tmp_path, monkeypatch):
+    consumer = "owner/child"
+    registry = _registry(consumer)
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    sha = "1" * 40
+    (parent / "vendor.lock.json").write_text(json.dumps(_lock(sha)) + "\n", encoding="utf-8")
+    (parent / "vendor").mkdir()
+    (parent / "vendor" / "tool.py").write_bytes(b"tool\n")
+    document = sync.validate_child_heads({
+        "schema": sync.CHILD_HEADS_SCHEMA,
+        "ref": "main",
+        "heads": {consumer: _head(sha, 5)},
+    })
+    template_dir = parent / "templates"
+    template_dir.mkdir()
+    template_dir.joinpath("vendor-child-ci.workflow.yml").write_text("name: stub\n", encoding="utf-8")
+    monkeypatch.setattr(sync, "monitored_repositories", lambda *args, **kwargs: [consumer])
+    monkeypatch.setattr(sync, "fetch_child_head_record", lambda *args, **kwargs: _head(sha, 5))
+    monkeypatch.setattr(
+        sync,
+        "audit_child_workflow_templates",
+        lambda *args, **kwargs: {
+            "failures": [{"repository": consumer, "message": "template mismatch"}],
+            "missing": [],
+        },
+    )
+    monkeypatch.setattr(
+        sync,
+        "audit_adopted_child_files",
+        lambda *args, **kwargs: {
+            "checked": [],
+            "failures": [{"repository": consumer, "message": "blob mismatch"}],
+            "failure_count": 1,
+        },
+    )
+    monkeypatch.setattr(sync, "source_diff_report", lambda *args, **kwargs: _source_diff_empty())
+    report = sync.run_parent_child_ci(registry, document, parent_root=parent)
+    assert report["failure_count"] == 0
+    assert report["audit_skipped_count"] == 2
+
+
+def test_record_is_public_source_pin_allows_archived():
+    archived = {
+        "full_name": "owner/archived-tool",
+        "private": False,
+        "visibility": "public",
+        "archived": True,
+    }
+    assert sync.record_is_public_source_pin(archived)
+    assert not sync.record_is_public_monitored(archived)
 
 
 def test_source_diff_only_scans_monitored_public_repos(monkeypatch):

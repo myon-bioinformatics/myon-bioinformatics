@@ -46,7 +46,7 @@ jobs:
             --summary "$GITHUB_STEP_SUMMARY"
           )
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-            args+=(--skip-source-diff)
+            args+=(--skip-source-diff --pr-validation)
           fi
           python -S vendor_sync.py "${args[@]}"
       - name: Unit regressions (offline)

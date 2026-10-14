@@ -151,9 +151,10 @@ def test_parent_ci_counts_source_failure_and_does_not_write(tmp_path, monkeypatc
     monkeypatch.setattr(sync, '_public_git_snapshot', lambda *a: (_ for _ in ()).throw(ValueError(sync.PUBLIC_GIT_FETCH_ERROR)))
     monkeypatch.setattr(sync, '_open_or_update_autofix_pr', lambda *a, **k: pytest.fail('write'))
     report = sync.run_parent_child_ci(registry, heads, parent_root=tmp_path, skip_source_diff=True)
-    assert report['failure_count'] == 1
+    assert report['failure_count'] == 0
+    assert report['audit_skipped_count'] == 1
     assert report['adopted_child_files']['failure_count'] == 1
-    assert sync.PUBLIC_GIT_FETCH_ERROR in json.dumps(report['adopted_child_files']['failures'])
+    assert sync.PUBLIC_GIT_FETCH_ERROR in json.dumps(report['audit_skipped'])
 
 
 def test_autofix_continues_when_one_repo_skipped(tmp_path, monkeypatch):

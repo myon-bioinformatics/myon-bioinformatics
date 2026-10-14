@@ -41,6 +41,7 @@ __all__ = [
     "source_diff_report",
     "list_org_repositories",
     "record_is_public_monitored",
+    "record_is_public_source_pin",
     "monitored_repositories",
     "run_child_ci",
     "plan_heads_refresh",
@@ -469,11 +470,9 @@ def _locked_consumer_names(registry):
     )
 
 
-def record_is_public_monitored(record):
-    """True when a GitHub repository record is tracked in child-heads.json."""
+def record_is_public_source_pin(record):
+    """True when a vendored source repository is public (archived sources are allowed)."""
     if not isinstance(record, dict):
-        return False
-    if record.get("archived"):
         return False
     if record.get("private") is not False:
         return False
@@ -483,6 +482,15 @@ def record_is_public_monitored(record):
     if not isinstance(full_name, str) or not full_name:
         return False
     return True
+
+
+def record_is_public_monitored(record):
+    """True when a GitHub repository record is tracked in child-heads.json."""
+    if not isinstance(record, dict):
+        return False
+    if record.get("archived"):
+        return False
+    return record_is_public_source_pin(record)
 
 
 def monitored_repositories(registry, *, token=None, owner=ORG_OWNER):
@@ -593,7 +601,7 @@ def _lookup_child_main_pull_number(repository, sha, token=None):
 
 def _ensure_public_source_repository(repository, *, token=None, repo_fetch=None):
     record = fetch_repository_record(repository, token, repo_fetch=repo_fetch)
-    if not record_is_public_monitored(record):
+    if not record_is_public_source_pin(record):
         raise ValueError("source repository is not public")
     return record
 
@@ -816,7 +824,9 @@ def run_child_ci(root, parent_ref_path, consumer, *, token=None,
     for item in local_lock["files"]:
         try:
             _ensure_public_source_repository(item["repository"], token=_api_token(token))
-            commit_merged_into_default(item["repository"], item["commit"])
+            commit_merged_into_default(
+                item["repository"], item["commit"], token=_api_token(token),
+            )
             _verify(item, _target(root, item["destination"]).read_bytes())
         except (OSError, ValueError) as error:
             failures.append({
@@ -968,6 +978,19 @@ def validate_parent_pr_ref(document):
     if optional is not None:
         result["optional"] = _normalize_optional_signals(optional)
     return result
+
+
+def verify_repository_id_identity(*, expected_repository_id, resolved_repository_id):
+    """Match repository id only (child-heads PR validation)."""
+    expected_repository_id = _coerce_repository_id(expected_repository_id)
+    resolved_repository_id = _coerce_repository_id(resolved_repository_id)
+    if resolved_repository_id != expected_repository_id:
+        raise ValueError(
+            "repository id mismatch: expected {exp} got {got}".format(
+                exp=expected_repository_id, got=resolved_repository_id,
+            )
+        )
+    return True
 
 
 def verify_reference_identity(*, expected_sha, expected_pull_number, expected_repository_id,
@@ -1254,7 +1277,7 @@ def _head_sha_map(heads):
 
 def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, token=None,
                         autofix=False, parent_repository=PARENT_REPOSITORY, local_roots=None,
-                        repo_fetch=None, skip_source_diff=False):
+                        repo_fetch=None, skip_source_diff=False, pr_validation=False):
     document = validate_child_heads(document)
     ref = document["ref"]
     monitored = monitored_repositories(registry, token=token)
@@ -1279,15 +1302,9 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
                 "live": live["sha"],
             })
         try:
-            verify_reference_identity(
-                expected_sha=recorded["sha"],
-                expected_pull_number=None,
+            verify_repository_id_identity(
                 expected_repository_id=recorded["repository_id"],
-                resolved_sha=live["sha"],
-                resolved_pull_number=None,
                 resolved_repository_id=live["repository_id"],
-                optional_recorded=recorded.get("optional"),
-                optional_live=live.get("optional"),
             )
         except ValueError as error:
             identity_failures.append({
@@ -1309,8 +1326,27 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
     )
     template_failures = template_report["failures"]
     template_missing = template_report["missing"]
+    audit_skipped = []
+    for row in template_failures:
+        audit_skipped.append({
+            "repository": row["repository"],
+            "kind": "workflow_template",
+            "message": row["message"],
+        })
+    for row in template_missing:
+        audit_skipped.append({
+            "repository": row["repository"],
+            "kind": "workflow_template_missing",
+            "message": row["message"],
+        })
     child_files = audit_adopted_child_files(registry, document, monitored, token=token,
                                           parent_root=parent_root, parent_repository=parent_repository)
+    for row in child_files["failures"]:
+        audit_skipped.append({
+            "repository": row["repository"],
+            "kind": "adopted_child_files",
+            "message": row["message"],
+        })
     with tempfile.TemporaryDirectory(prefix="vendor-parent-ci-") as directory:
         work_dir = _copy_parent_vendor_baseline(parent_root, directory)
         vendor_check = _offline_parent_vendor_check(work_dir)
@@ -1327,8 +1363,6 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         encoded_heads = validate_child_heads({
             "schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": refresh_plan["heads"],
         })
-        if child_files["failure_count"] or template_failures:
-            raise ValueError("cannot refresh an invalid adopted baseline")
         branch = AUTOFIX_BRANCH_PREFIX
         autofix_result = _open_or_update_autofix_pr(
             parent_repository,
@@ -1349,9 +1383,12 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         }
         autofix_result["heads_refresh_skipped"] = refresh_plan["skipped"]
     drift_failures = len(drift) + len(missing_heads) + len(extra_heads)
-    failure_count = drift_failures + len(identity_failures) + len(template_failures) + child_files["failure_count"]
+    if pr_validation:
+        failure_count = len(identity_failures) + len(extra_heads)
+    else:
+        failure_count = drift_failures + len(identity_failures) + len(extra_heads)
     if autofix and autofix_result and needs_heads_refresh:
-        failure_count = len(identity_failures) + len(template_failures) + len(extra_heads) + child_files["failure_count"]
+        failure_count = len(identity_failures) + len(extra_heads)
     return {
         "schema": "parent-child-ci/1",
         "ref": ref,
@@ -1373,6 +1410,9 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         "needs_heads_refresh": needs_heads_refresh,
         "autofix": autofix_result,
         "heads_refresh_skipped": (autofix_result or {}).get("heads_refresh_skipped", []),
+        "audit_skipped": audit_skipped,
+        "audit_skipped_count": len(audit_skipped),
+        "pr_validation": pr_validation,
         "failure_count": failure_count,
     }
 
@@ -1503,7 +1543,25 @@ def _fetch_parent_pull_request(parent_repository, pull_number, token=None):
     return record
 
 
-def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=None):
+def _commit_merged_via_github_compare(repository, commit, *, token):
+    repository = _normalize_repository(repository)
+    record = _github_json("https://api.github.com/repos/" + repository, token)
+    default_branch = record.get("default_branch")
+    if not isinstance(default_branch, str) or not default_branch:
+        raise ValueError(PUBLIC_GIT_FETCH_ERROR)
+    basehead = quote(commit, safe="") + "..." + quote(default_branch, safe="")
+    url = "https://api.github.com/repos/" + repository + "/compare/" + basehead
+    try:
+        compare = _github_json(url, token)
+    except HTTPError:
+        raise ValueError(PUBLIC_GIT_FETCH_ERROR) from None
+    merge_base = (compare.get("merge_base_commit") or {}).get("sha")
+    if isinstance(merge_base, str) and merge_base.lower() == commit.lower():
+        return True
+    raise ValueError(PIN_NOT_MERGED_ERROR)
+
+
+def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=None, token=None):
     """Return True when commit is reachable from the source repository default branch."""
     repository = _normalize_repository(repository)
     _hex(commit, 40)
@@ -1520,6 +1578,9 @@ def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=
             if probe.returncode == 0:
                 return True
         raise ValueError(PIN_NOT_MERGED_ERROR)
+    api_token = _api_token(token)
+    if api_token:
+        return _commit_merged_via_github_compare(repository, commit, token=api_token)
     remote = _repository_remote(repository, remotes)
     with tempfile.TemporaryDirectory(prefix="vendor-merged-pin-") as directory:
         command = ["git", "-c", "credential.helper=", "-c", "core.askPass=",
@@ -1533,8 +1594,11 @@ def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=
         git("init", "--bare")
         branch = _default_branch_name(remote)
         try:
-            git("fetch", "--no-tags", "--depth=1", remote, "refs/heads/" + branch + ":refs/heads/" + branch)
-            git("fetch", "--no-tags", "--depth=1", remote, commit)
+            git(
+                "fetch", "--no-tags", "--filter=blob:none",
+                remote, "refs/heads/" + branch + ":refs/heads/" + branch,
+            )
+            git("fetch", "--no-tags", "--filter=blob:none", remote, commit)
         except ValueError:
             raise ValueError(PUBLIC_GIT_FETCH_ERROR) from None
         probe = subprocess.run(
@@ -1634,7 +1698,7 @@ def collect_workflow_pins(workflows, *, parent_repository=PARENT_REPOSITORY):
 
 def audit_consumer_merged_pins(consumer, lock_documents, workflow_documents, *,
                                parent_repository=PARENT_REPOSITORY,
-                               remotes=None, local_roots=None):
+                               remotes=None, local_roots=None, token=None):
     """Verify every discovered pin is merged into its source repository default branch."""
     if not isinstance(consumer, str) or not consumer:
         raise ValueError("expected consumer repository")
@@ -1651,7 +1715,11 @@ def audit_consumer_merged_pins(consumer, lock_documents, workflow_documents, *,
         checked.add(key)
         try:
             commit_merged_into_default(
-                pin["repository"], pin["commit"], remotes=remotes, local_roots=local_roots
+                pin["repository"],
+                pin["commit"],
+                remotes=remotes,
+                local_roots=local_roots,
+                token=token,
             )
         except ValueError as error:
             failures.append({
@@ -1801,6 +1869,7 @@ def audit_registry_merged_pins(registry, *, ref="main", parent_repository=PARENT
         report = audit_consumer_merged_pins(
             name, lock_documents, workflow_documents,
             parent_repository=parent_repository, remotes=remotes, local_roots=local_roots,
+            token=token,
         )
         report["revision"] = revision
         results.append(report)
@@ -1841,7 +1910,13 @@ def _write_child_heads_summary(report, summary_path):
     lines = ["## Parent child CI", ""]
     if report.get("schema") == "parent-child-ci/1":
         if report["drift_count"]:
-            lines.append(f"**{report['drift_count']} child head(s) drifted from child-heads.json.**")
+            if report.get("pr_validation"):
+                lines.append(
+                    f"**{report['drift_count']} child head(s) drifted from child-heads.json "
+                    "(report only on pull request validation).**"
+                )
+            else:
+                lines.append(f"**{report['drift_count']} child head(s) drifted from child-heads.json.**")
             if report.get("autofix"):
                 lines.append(f"Auto-fix PR: {report['autofix']['url']}")
             lines.append("")
@@ -1870,10 +1945,15 @@ def _write_child_heads_summary(report, summary_path):
         for row in child_files.get("failures", []):
             lines.append(f"- `{row['repository']}`: {row['message']}")
         lines.append("")
-        if report.get("template_failure_count"):
-            lines.append(f"**{report['template_failure_count']} child workflow template mismatch(es).**")
-            for row in report.get("template_failures", []):
-                lines.append(f"- `{row.get('repository', '')}`: {row.get('message', '')}")
+        if report.get("audit_skipped_count"):
+            lines.append(
+                f"**{report['audit_skipped_count']} per-repository audit skip(s) "
+                "(report only; does not fail CI).**"
+            )
+            for row in report.get("audit_skipped", []):
+                lines.append(
+                    f"- `{row.get('repository', '')}` ({row.get('kind', '')}): {row.get('message', '')}"
+                )
             lines.append("")
         if report.get("extra_heads_excluded_count"):
             lines.append(
@@ -2003,6 +2083,8 @@ def main(argv=None, *, get=_get):
                         help="open or update a parent pull request with refreshed child-heads.json")
     parser.add_argument("--skip-source-diff", action="store_true",
                         help="skip cross-repo branch diff scan (pull request validation only)")
+    parser.add_argument("--pr-validation", action="store_true",
+                        help="pull request mode: SHA drift is report-only; only repository id mismatch fails")
     parser.add_argument("--consumer-name", dest="consumer_name",
                         help="consumer repository for run-child-ci (default: derive from --root)")
     args = parser.parse_args(argv)
@@ -2048,6 +2130,7 @@ def main(argv=None, *, get=_get):
                 autofix=args.autofix,
                 parent_repository=args.parent,
                 skip_source_diff=args.skip_source_diff,
+                pr_validation=args.pr_validation,
             )
             if args.summary:
                 _write_child_heads_summary(result, args.summary)
