@@ -33,12 +33,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python -S vendor_sync.py run-parent-child-ci \
-            --root . \
-            --registry vendor-consumers.json \
-            --heads child-heads.json \
-            --autofix \
+          set -euo pipefail
+          args=(
+            run-parent-child-ci
+            --root .
+            --registry vendor-consumers.json
+            --heads child-heads.json
             --summary "$GITHUB_STEP_SUMMARY"
+          )
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            args+=(--autofix)
+          else
+            args+=(--skip-source-diff)
+          fi
+          python -S vendor_sync.py "${args[@]}"
       - name: Unit regressions (offline)
         run: |
           python -m pip install pytest

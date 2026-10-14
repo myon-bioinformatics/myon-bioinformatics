@@ -818,7 +818,7 @@ def _head_sha_map(heads):
 
 def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, token=None,
                         autofix=False, parent_repository=PARENT_REPOSITORY, local_roots=None,
-                        repo_fetch=None):
+                        repo_fetch=None, skip_source_diff=False):
     document = validate_child_heads(document)
     ref = document["ref"]
     drift = []
@@ -853,7 +853,11 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
                 "message": str(error),
             })
     desired = validate_child_heads({"schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": live_heads})
-    diff_report = source_diff_report(registry, token=token, remotes=remotes, local_roots=local_roots)
+    if skip_source_diff:
+        diff_report = {"schema": "source-diff-report/1", "findings": [], "finding_count": 0,
+                       "scan_errors": [], "scan_error_count": 0, "skipped": True}
+    else:
+        diff_report = source_diff_report(registry, token=token, remotes=remotes, local_roots=local_roots)
     with tempfile.TemporaryDirectory(prefix="vendor-parent-ci-") as directory:
         work_dir = _copy_parent_vendor_baseline(parent_root, directory)
         vendor_check = _offline_parent_vendor_check(work_dir)
@@ -1549,6 +1553,8 @@ def main(argv=None, *, get=_get):
                         help="parent-pr-ref/1 JSON for resolve-parent-pr verification")
     parser.add_argument("--autofix", action="store_true",
                         help="open or update a parent pull request with refreshed child-heads.json")
+    parser.add_argument("--skip-source-diff", action="store_true",
+                        help="skip cross-repo branch diff scan (pull request validation only)")
     args = parser.parse_args(argv)
     try:
         if args.mode == "run-parent-child-ci":
@@ -1562,6 +1568,7 @@ def main(argv=None, *, get=_get):
                 token=token,
                 autofix=args.autofix,
                 parent_repository=args.parent,
+                skip_source_diff=args.skip_source_diff,
             )
             if args.summary:
                 _write_child_heads_summary(result, args.summary)
