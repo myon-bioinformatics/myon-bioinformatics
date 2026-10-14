@@ -53,3 +53,31 @@ def test_list_account_repositories_keeps_forks_and_rejects_truncation(monkeypatc
     monkeypatch.setattr(sync, "_github_api", lambda m, url, token=None, body=None: full)
     with pytest.raises(ValueError, match="truncated"):
         sync.list_org_repositories("acct", token="token")
+
+
+def test_bare_fetch_first_parent_delegates_to_gh_identity(tmp_path, monkeypatch):
+    up = tmp_path / "up"
+    up.mkdir()
+    def run(*a):
+        return subprocess.run(["git", "-C", str(up), "-c", "user.email=t@e", "-c", "user.name=t", *a],
+                              check=True, capture_output=True, text=True).stdout.strip()
+    run("init", "-q", "-b", "main"); (up / "f").write_text("1"); run("add", "f"); run("commit", "-qm", "1")
+    run("switch", "-q", "-c", "pr"); (up / "g").write_text("2"); run("add", "g"); run("commit", "-qm", "2")
+    inter = run("rev-parse", "HEAD")
+    run("switch", "-q", "main"); run("merge", "-q", "--no-ff", "-m", "m", "pr")
+    merge = run("rev-parse", "HEAD")
+    g = sync._gh_identity()
+    seen = []
+    real = g.first_parent_check
+    def spy(*a, **k):
+        seen.append(k)
+        return real(*a, **k)
+    monkeypatch.setattr(g, "first_parent_check", spy)
+    remotes = {"owner/tool": str(up)}
+    assert sync._commit_merged_via_git_bare_fetch("owner/tool", merge, remotes=remotes) is True
+    with pytest.raises(ValueError, match="not merged"):
+        sync._commit_merged_via_git_bare_fetch("owner/tool", inter, remotes=remotes)
+    with pytest.raises(ValueError) as error:
+        sync._commit_merged_via_git_bare_fetch("owner/tool", "1" * 40, remotes=remotes)
+    assert str(error.value) == sync.PUBLIC_GIT_FETCH_ERROR
+    assert seen and all(k["git_runner"] is sync._parent_git_runner and k["exact"] for k in seen)

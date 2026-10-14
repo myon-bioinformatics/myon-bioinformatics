@@ -1687,13 +1687,6 @@ def _fetch_parent_pull_request(parent_repository, pull_number, token=None):
     return record
 
 
-def _commit_on_default_first_parent(git_runner, branch, commit):
-    listed = git_runner("rev-list", "--first-parent", branch).decode().splitlines()
-    if any(line.lower() == commit.lower() for line in listed):
-        return True
-    raise ValueError(PIN_NOT_MERGED_ERROR)
-
-
 def _reject_merged_pull_request_intermediate_pin(repository, commit, token):
     """Reject a commit that belongs to a PR merged into the default branch under another merge SHA.
 
@@ -1723,30 +1716,31 @@ def _reject_merged_pull_request_intermediate_pin(repository, commit, token):
             raise ValueError(PIN_NOT_MERGED_ERROR)
 
 
+def _parent_git_runner(args, cwd):
+    """git runner for gh_identity.first_parent_check: this module's sanitized env, no shell.
+
+    gh_identity always prefixes args with credential.helper=/core.askPass=/http.extraHeader=;
+    no token is ever placed in git arguments or remotes.
+    """
+    result = subprocess.run(["git", "-C", cwd] + list(args), env=_git_subprocess_env(),
+                            capture_output=True, timeout=120)
+    return result.returncode, result.stdout
+
+
 def _commit_merged_via_git_bare_fetch(repository, commit, *, remotes=None):
+    """Exact first-parent check via gh_identity.first_parent_check (blob-less bare fetch)."""
+    ghi = _gh_identity()
     remote = _repository_remote(repository, remotes)
-    with tempfile.TemporaryDirectory(prefix="vendor-merged-pin-") as directory:
-        command = ["git"] + _git_http_config_args() + ["-C", directory]
-
-        def git(*args):
-            result = subprocess.run(command + list(args), env=_git_subprocess_env(),
-                                    capture_output=True, timeout=120)
-            if result.returncode:
-                raise ValueError(PUBLIC_GIT_FETCH_ERROR)
-            return result.stdout
-
-        git("init", "--bare")
-        branch = _default_branch_name(remote)
-        try:
-            git(
-                "fetch", "--no-tags", "--filter=blob:none",
-                remote, "refs/heads/" + branch + ":refs/heads/" + branch,
-            )
-            git("fetch", "--no-tags", "--filter=blob:none", remote, commit)
-        except ValueError:
-            raise ValueError(PUBLIC_GIT_FETCH_ERROR) from None
-        _commit_on_default_first_parent(git, branch, commit)
-        return True
+    try:
+        result = ghi.first_parent_check(_normalize_repository(repository), commit.lower(), exact=True,
+                                        remote=remote, git_runner=_parent_git_runner, timeout=300)
+    except (ghi.Error, subprocess.SubprocessError, OSError):
+        raise ValueError(PUBLIC_GIT_FETCH_ERROR) from None
+    if result["reason"] == "commit_not_found":
+        raise ValueError(PUBLIC_GIT_FETCH_ERROR)
+    if result["contains"] is not True:
+        raise ValueError(PIN_NOT_MERGED_ERROR)
+    return True
 
 
 def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=None, token=None):
