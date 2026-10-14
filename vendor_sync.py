@@ -615,6 +615,82 @@ def build_expected_child_lock(registry, document, consumer, *, token=None):
     return lock
 
 
+def audit_adopted_child_files(registry, document, repository_names, *, token=None):
+    """Independently check adopted source objects and child bytes; execute neither.
+
+    A child lock is a claim, not evidence for its own digests. Read regular Git
+    blobs at the claimed source SHA before comparing the child's placed files.
+    Cache immutable snapshots within this run, never across baseline changes.
+    """
+    import vendor_consumers
+    registry = vendor_consumers.validate(registry)
+    selected = set(repository_names)
+    failures, checked, snapshots = [], [], {}
+
+    def snapshot(repository, revision, paths):
+        paths = tuple(sorted(set(paths)))
+        key = (repository, revision, paths)
+        if key not in snapshots:
+            resolved, files = _public_git_snapshot(repository, revision, paths)
+            if resolved != revision:
+                raise ValueError("Git snapshot SHA mismatch")
+            snapshots[key] = files
+        return snapshots[key]
+
+    for entry in registry["consumers"]:
+        name = entry["repository"]
+        if name not in selected or entry["state"] != "locked":
+            continue
+        try:
+            lock = build_expected_child_lock(registry, document, name, token=token)
+            groups = {}
+            for item in lock["files"]:
+                groups.setdefault((item["repository"], item["commit"]), []).append(item)
+            for (repository, revision), items in groups.items():
+                sources = snapshot(repository, revision, [item["source"] for item in items])
+                for item in items:
+                    blob, data = sources[item["source"]]
+                    if blob != item["blob_sha"]:
+                        raise ValueError("source blob mismatch: " + item["destination"])
+                    _verify(item, data)
+            files = snapshot(name, document["heads"][name]["sha"],
+                             [item["destination"] for item in lock["files"]])
+            for item in lock["files"]:
+                _verify(item, files[item["destination"]][1])
+            checked.append({"repository": name, "files_checked": len(lock["files"])})
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            failures.append({"repository": name, "message": str(error)})
+    return {"checked": checked, "failures": failures, "failure_count": len(failures)}
+
+
+def verify_heads_refresh_preserves_contract(registry, document, new_heads, *, token=None):
+    """Automatic head refresh cannot adopt changed locks or CI definitions.
+
+    Contract changes need a deliberate parent PR, even when runtime bytes match.
+    This also makes removal of a previously installed workflow fail closed.
+    """
+    entries = {entry["repository"]: entry for entry in registry["consumers"]}
+    for name, new in new_heads.items():
+        old = document["heads"].get(name)
+        if old is None:
+            raise ValueError("new monitored repository requires reviewed enrollment: " + name)
+        if old["repository_id"] != new["repository_id"]:
+            raise ValueError("repository id mismatch: " + name)
+        if old["sha"] == new["sha"]:
+            continue
+        entry = entries.get(name)
+        if entry and entry["state"] == "locked":
+            before = _fetch_consumer_documents(name, entry["lock"], old["sha"], token)
+            after = _fetch_consumer_documents(name, entry["lock"], new["sha"], token)
+        else:
+            before = _fetch_workflow_documents(name, old["sha"], token)
+            after = _fetch_workflow_documents(name, new["sha"], token)
+        before_ref = _fetch_repo_text(name, "templates/parent-pr.ref.json", old["sha"], token)
+        after_ref = _fetch_repo_text(name, "templates/parent-pr.ref.json", new["sha"], token)
+        if before != after or before_ref != after_ref:
+            raise ValueError("lock/workflow change requires reviewed parent baseline update: " + name)
+
+
 def run_child_ci(root, parent_ref_path, consumer, *, token=None,
                  parent_repository=PARENT_REPOSITORY, get=_get, parent_root=None):
     """Check a child against the adopted lock anchored in the executed parent pin."""
@@ -1134,6 +1210,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
     )
     template_failures = template_report["failures"]
     template_missing = template_report["missing"]
+    child_files = audit_adopted_child_files(registry, document, monitored, token=token)
     with tempfile.TemporaryDirectory(prefix="vendor-parent-ci-") as directory:
         work_dir = _copy_parent_vendor_baseline(parent_root, directory)
         vendor_check = _offline_parent_vendor_check(work_dir)
@@ -1145,6 +1222,9 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
             for name in monitored
         }
         encoded_heads = validate_child_heads({"schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": full_heads})
+        verify_heads_refresh_preserves_contract(registry, document, full_heads, token=token)
+        if child_files["failure_count"] or template_failures:
+            raise ValueError("cannot refresh an invalid adopted baseline")
         branch = AUTOFIX_BRANCH_PREFIX
         autofix_result = _open_or_update_autofix_pr(
             parent_repository,
@@ -1164,9 +1244,9 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
             "ref": branch,
         }
     drift_failures = len(drift) + len(missing_heads) + len(extra_heads)
-    failure_count = drift_failures + len(identity_failures) + len(template_failures)
+    failure_count = drift_failures + len(identity_failures) + len(template_failures) + child_files["failure_count"]
     if autofix and autofix_result and needs_heads_refresh:
-        failure_count = len(identity_failures) + len(template_failures) + len(extra_heads)
+        failure_count = len(identity_failures) + len(template_failures) + len(extra_heads) + child_files["failure_count"]
     return {
         "schema": "parent-child-ci/1",
         "ref": ref,
@@ -1184,6 +1264,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         "template_missing_count": len(template_missing),
         "source_diff": diff_report,
         "parent_vendor_check": vendor_check,
+        "adopted_child_files": child_files,
         "needs_heads_refresh": needs_heads_refresh,
         "autofix": autofix_result,
         "failure_count": failure_count,
@@ -1677,11 +1758,17 @@ def _write_child_heads_summary(report, summary_path):
             lines.append("")
         if report.get("template_missing_count"):
             lines.append(
-                f"**{report['template_missing_count']} locked consumer(s) without copied child CI workflow (report only).**"
+                f"**{report['template_missing_count']} monitored repository/repositories without copied child CI workflow (not enforced).**"
             )
             for row in report.get("template_missing", []):
                 lines.append(f"- `{row.get('repository', '')}`: {row.get('message', '')}")
             lines.append("")
+        child_files = report.get("adopted_child_files", {})
+        lines.append(f"Adopted child/source file audit: {len(child_files.get('checked', []))} consumers checked; "
+                     f"{child_files.get('failure_count', 0)} failures.")
+        for row in child_files.get("failures", []):
+            lines.append(f"- `{row['repository']}`: {row['message']}")
+        lines.append("")
         if report.get("template_failure_count"):
             lines.append(f"**{report['template_failure_count']} child workflow template mismatch(es).**")
             for row in report.get("template_failures", []):

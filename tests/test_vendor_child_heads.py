@@ -8,6 +8,14 @@ import pytest
 import vendor_sync as sync
 
 
+@pytest.fixture(autouse=True)
+def isolate_source_audit(monkeypatch):
+    # This module tests inventory/drift orchestration. Source and child Git
+    # evidence, including its integration into failure_count, has its own suite.
+    monkeypatch.setattr(sync, "audit_adopted_child_files", lambda *a, **k:
+                        {"checked": [], "failures": [], "failure_count": 0})
+
+
 def _git(repo, *args):
     return subprocess.check_output(["git", "-C", str(repo), *args]).decode().strip()
 
@@ -286,6 +294,7 @@ def test_dispatch_parent_workflow_posts_dispatch(monkeypatch):
 
 
 def test_run_parent_child_ci_autofix_propagates_dispatch_failure(tmp_path, monkeypatch):
+    monkeypatch.setattr(sync, "verify_heads_refresh_preserves_contract", lambda *a, **k: None)
     consumer = "myon-bioinformatics/public-one"
     registry = _registry(consumer)
     parent = tmp_path / "parent"
