@@ -436,13 +436,15 @@ def _repository_remote(repository, remotes=None):
     return "https://github.com/" + repository + ".git"
 
 
-def _git_http_config_args(token=None):
-    args = ["-c", "credential.helper=", "-c", "core.askPass="]
-    if token:
-        args.extend(["-c", "http.extraHeader=AUTHORIZATION: bearer " + token])
-    else:
-        args.extend(["-c", "http.extraHeader="])
-    return args
+_GITHUB_TOKEN_PATTERN = re.compile(
+    r"\b(?:ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|"
+    r"gho_[A-Za-z0-9_]{20,}|ghs_[A-Za-z0-9_]{20,}|"
+    r"ghu_[A-Za-z0-9_]{20,}|ghr_[A-Za-z0-9_]{20,})\b"
+)
+
+
+def _git_http_config_args():
+    return ["-c", "credential.helper=", "-c", "core.askPass=", "-c", "http.extraHeader="]
 
 
 def _redact_secrets(message, token=None):
@@ -451,7 +453,13 @@ def _redact_secrets(message, token=None):
     if token:
         message = message.replace(token, "***")
     message = re.sub(r"https://x-access-token:[^@]+@", "https://***@", message)
-    message = re.sub(r"[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]: [Bb]earer \S+", "AUTHORIZATION: bearer ***", message)
+    message = re.sub(
+        r"[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]: [Bb]earer \S+",
+        "AUTHORIZATION: bearer ***",
+        message,
+    )
+    message = re.sub(r"\b[Bb]earer\s+\S+", "Bearer ***", message)
+    message = _GITHUB_TOKEN_PATTERN.sub("***", message)
     return message
 
 
@@ -463,8 +471,8 @@ def _git_run(argv, *, timeout=120):
     return result.stdout
 
 
-def _default_branch_name(remote, token=None):
-    argv = ["git"] + _git_http_config_args(token) + ["ls-remote", "--symref", remote, "HEAD"]
+def _default_branch_name(remote):
+    argv = ["git"] + _git_http_config_args() + ["ls-remote", "--symref", remote, "HEAD"]
     result = subprocess.run(argv, env=_git_subprocess_env(), capture_output=True, timeout=120)
     if result.returncode:
         raise ValueError(PUBLIC_GIT_FETCH_ERROR)
@@ -1663,8 +1671,16 @@ def _commit_on_default_first_parent(git_runner, branch, commit):
 
 
 def _reject_merged_pull_request_intermediate_pin(repository, commit, token):
+    repository = _normalize_repository(repository)
+    try:
+        repo_record = _github_json("https://api.github.com/repos/" + repository, token)
+    except HTTPError:
+        return
+    default_branch = repo_record.get("default_branch")
+    if not isinstance(default_branch, str) or not default_branch:
+        return
     url = (
-        "https://api.github.com/repos/" + _normalize_repository(repository) +
+        "https://api.github.com/repos/" + repository +
         "/commits/" + quote(commit, safe="") + "/pulls"
     )
     try:
@@ -1676,15 +1692,18 @@ def _reject_merged_pull_request_intermediate_pin(repository, commit, token):
     for pull in pulls:
         if not pull.get("merged_at"):
             continue
+        base = pull.get("base") or {}
+        if base.get("ref") != default_branch:
+            continue
         merge_sha = pull.get("merge_commit_sha")
         if isinstance(merge_sha, str) and merge_sha.lower() != commit.lower():
             raise ValueError(PIN_NOT_MERGED_ERROR)
 
 
-def _commit_merged_via_git_bare_fetch(repository, commit, *, token=None, remotes=None):
+def _commit_merged_via_git_bare_fetch(repository, commit, *, remotes=None):
     remote = _repository_remote(repository, remotes)
     with tempfile.TemporaryDirectory(prefix="vendor-merged-pin-") as directory:
-        command = ["git"] + _git_http_config_args(token) + ["-C", directory]
+        command = ["git"] + _git_http_config_args() + ["-C", directory]
 
         def git(*args):
             result = subprocess.run(command + list(args), env=_git_subprocess_env(),
@@ -1694,7 +1713,7 @@ def _commit_merged_via_git_bare_fetch(repository, commit, *, token=None, remotes
             return result.stdout
 
         git("init", "--bare")
-        branch = _default_branch_name(remote, token=token)
+        branch = _default_branch_name(remote)
         try:
             git(
                 "fetch", "--no-tags", "--filter=blob:none",
@@ -1732,7 +1751,7 @@ def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=
                    for line in result.stdout.decode().splitlines()):
                 return True
         raise ValueError(PIN_NOT_MERGED_ERROR)
-    _commit_merged_via_git_bare_fetch(repository, commit, token=None, remotes=remotes)
+    _commit_merged_via_git_bare_fetch(repository, commit, remotes=remotes)
     api_token = _api_token(token)
     if api_token:
         _reject_merged_pull_request_intermediate_pin(repository, commit, api_token)

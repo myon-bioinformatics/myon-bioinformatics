@@ -209,13 +209,49 @@ def test_reject_merged_pr_intermediate_via_github_api(monkeypatch):
     merge_commit = "e" * 40
 
     def fake_json(url, token=None):
+        if url.endswith("/repos/owner/tool"):
+            return {"default_branch": "main"}
         if url.endswith("/pulls"):
-            return [{"merged_at": "2026-01-01", "merge_commit_sha": merge_commit}]
+            return [{
+                "merged_at": "2026-01-01",
+                "merge_commit_sha": merge_commit,
+                "base": {"ref": "main"},
+            }]
         raise AssertionError(url)
 
     monkeypatch.setattr(sync, "_github_json", fake_json)
     with pytest.raises(ValueError, match="not merged"):
         sync._reject_merged_pull_request_intermediate_pin("owner/tool", commit, "token")
+
+
+def test_merged_pr_to_release_branch_does_not_reject_main_commit(monkeypatch):
+    commit = "f" * 40
+    merge_commit = "e" * 40
+
+    def fake_json(url, token=None):
+        if url.endswith("/repos/owner/tool"):
+            return {"default_branch": "main"}
+        if url.endswith("/pulls"):
+            return [{
+                "merged_at": "2026-01-01",
+                "merge_commit_sha": merge_commit,
+                "base": {"ref": "release/1.0"},
+            }]
+        raise AssertionError(url)
+
+    monkeypatch.setattr(sync, "_github_json", fake_json)
+    sync._reject_merged_pull_request_intermediate_pin("owner/tool", commit, "token")
+
+
+def test_redact_secrets_masks_bearer_and_github_token_prefixes():
+    token = "ghp_" + "a" * 36
+    message = "failed: Bearer " + token + " and " + token
+    redacted = sync._redact_secrets(message)
+    assert token not in redacted
+    assert "ghp_" not in redacted
+    assert "Bearer ***" in redacted
+    pat = "github_pat_" + "b" * 40
+    assert sync._redact_secrets(pat) == "***"
 
 
 def _source_diff_empty():
