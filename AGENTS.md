@@ -32,3 +32,5 @@ All fleet governance lives in **this parent repository only** (`myon-bioinformat
 - In each PR, summarize the change, verification performed, and any known limitations.
 
 - Enforcement boundary: parent CI audits recorded revisions; it is not a required check on every child PR. Missing/uninstalled child workflows remain explicitly unenforced. Do not describe green parent CI as preventing child merges or as independent reviewer approval. See `docs/parent-child-ci-decision.md`.
+
+- Child verification uses parent registry topology for adopted enrollment. Catalog `skipped` controls future recommendations and never invalidates an existing registered copy; source provenance and byte checks remain required.
