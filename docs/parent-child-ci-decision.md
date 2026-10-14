@@ -136,3 +136,12 @@ Previous statements that the four Blocking fixes or green CI established full
 anti-bypass enforcement are withdrawn. Implementation self-review is not an
 independent approval. Report implemented checks, CI results and these remaining
 boundaries separately.
+
+## Adopted enrollment vs recommendations
+
+The parent registry is authoritative for the topology of already adopted copies.
+Catalog `skipped` excludes a tool from future recommended distribution; it does
+not revoke an existing registered lock entry. Child verification still requires
+exact registry topology, immutable source provenance, source blob/SHA-256 and
+actual child bytes. Unregistered additions remain errors. Ironmate provides no
+catalog tools; its existing consumer copies are retained.

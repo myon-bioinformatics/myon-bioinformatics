@@ -648,25 +648,8 @@ def verify_child_lock_against_parent(registry, catalog, lock, consumer):
         raise ValueError("consumer topology mismatch against parent registry")
     if any(item["ref"] != item["commit"] for item in lock["files"]):
         raise ValueError("child lock requires ref=commit SHA pins")
-    consumer_key = _normalize_repository(consumer).casefold()
-    for item in lock["files"]:
-        tool = next(
-            (
-                row for row in catalog["tools"]
-                if row["repository"].casefold() == item["repository"].casefold()
-                and row["source"] == item["source"]
-            ),
-            None,
-        )
-        if tool is None:
-            continue
-        decision = next(
-            (value for key, value in tool.get("consumers", {}).items()
-             if _normalize_repository(key).casefold() == consumer_key),
-            tool.get("default_enrollment", {"enrollment": "enrolled"}),
-        )
-        if decision.get("enrollment") == "skipped":
-            raise ValueError("catalog skips vendored source for this consumer")
+    # Registry topology is the parent-approved adopted contract. Catalog
+    # enrollment only controls future recommendations, not existing copies.
     return lock
 
 
