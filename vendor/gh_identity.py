@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gh_identity: stdlib-only GitHub operations with gh-first/urllib fallback."""
 from __future__ import annotations
-import argparse,json,os,re,shutil,subprocess,sys,urllib.error,urllib.parse,urllib.request
+import argparse,fnmatch,json,os,re,shutil,subprocess,sys,urllib.error,urllib.parse,urllib.request
 from datetime import datetime,timezone
 API="https://api.github.com"; REPO=re.compile(r"^[\w.-]+/[\w.-]+$")
 class Error(RuntimeError):
@@ -474,6 +474,67 @@ def resolve_ref(r,ref,transport="auto",timeout=30):
  sha=d.get("sha") if isinstance(d,dict) else None
  if not isinstance(sha,str) or not re.fullmatch(r"[0-9a-fA-F]{40}",sha):raise Error("invalid_commit")
  return {"schema":"gh-identity-ref/1","repository":r,"ref":ref,"sha":sha.lower(),"observed_at":now()}
+def _tree_patterns(values):
+ if not isinstance(values,(tuple,list)):raise ValueError("exclusions must be a list of patterns")
+ for p in values:
+  if not isinstance(p,str) or not p or p.startswith("/") or "\\" in p or any(x in ("",".","..") for x in p.split("/")):
+   raise ValueError("exclusions must be repository-relative patterns without trailing slash")
+ return tuple(dict.fromkeys(values))
+
+def tree(r,ref="main",*,depth=1,exclude_dirs=(),exclude_files=(),transport="auto",timeout=30):
+ """List a pinned repository structure, pruning excluded directories before GET.
+
+    depth=1 is the root only; None walks all included subtrees. Patterns with
+    no slash match a basename at any level, otherwise match the full path.
+    This fetches metadata only, never blobs, history, symlink or submodule targets.
+ """
+ r=repo(r)
+ if not isinstance(ref,str) or not ref:raise ValueError("ref is required")
+ if depth is not None and (type(depth) is not int or depth<1):raise ValueError("depth must be positive or None")
+ dirs=_tree_patterns(exclude_dirs);files=_tree_patterns(exclude_files)
+ resolved=resolve_ref(r,ref,transport,timeout)
+ pending=[("",resolved["sha"],1,frozenset())];rows=[];truncated=False;requests=0;excluded=0;root_sha=None
+ modes={"040000":("tree","directory"),"100644":("blob","file"),"100755":("blob","file"),
+        "120000":("blob","symlink"),"160000":("commit","submodule")}
+ while pending:
+  prefix,sha,level,ancestors=pending.pop()
+  _BUDGET.get().charge("pages",1)
+  d=request("GET",f"repos/{r}/git/trees/{sha}",transport=transport,timeout=timeout);requests+=1
+  if not isinstance(d,dict) or not isinstance(d.get("sha"),str) or re.fullmatch(r"[0-9a-f]{40}",d["sha"]) is None:
+   raise Error("invalid_tree_identity")
+  if prefix and d["sha"]!=sha:raise Error("invalid_tree_identity")
+  if d["sha"] in ancestors:raise Error("invalid_tree_cycle")
+  if root_sha is None:root_sha=d["sha"]
+  entries=d.get("tree")
+  if not isinstance(entries,list) or type(d.get("truncated")) is not bool:raise Error("invalid_tree_response")
+  _BUDGET.get().charge("items",len(entries))
+  truncated=truncated or d["truncated"];seen=set()
+  for entry in entries:
+   if not isinstance(entry,dict):raise Error("invalid_tree_entry")
+   name=entry.get("path");mode=entry.get("mode");ident=entry.get("sha")
+   if not isinstance(name,str) or not name or name in (".","..") or "/" in name or "\0" in name or name in seen:
+    raise Error("invalid_tree_entry")
+   seen.add(name)
+   if not isinstance(mode,str) or mode not in modes or entry.get("type")!=modes[mode][0] or not isinstance(ident,str) or re.fullmatch(r"[0-9a-f]{40}",ident) is None:
+    raise Error("invalid_tree_entry")
+   path=prefix+name;kind=modes[mode][1]
+   patterns=dirs if kind=="directory" else files
+   if any(fnmatch.fnmatchcase(path if "/" in p else name,p) for p in patterns):
+    excluded+=1;continue
+   item={"path":path,"kind":kind,"type":entry["type"],"mode":mode,"sha":ident}
+   if "size" in entry:
+    if type(entry["size"]) is not int or entry["size"]<0:raise Error("invalid_tree_entry")
+    item["size"]=entry["size"]
+   if kind=="directory":
+    item["expanded"]=depth is None or level<depth
+    if item["expanded"]:pending.append((path+"/",ident,level+1,ancestors|{d["sha"]}))
+   rows.append(item)
+ return {"schema":"gh-identity-tree/1","repository":r,"ref":ref,"commit_sha":resolved["sha"],
+         "tree_sha":root_sha,"depth":depth,"exclude_dirs":list(dirs),"exclude_files":list(files),
+         "entries":sorted(rows,key=lambda x:x["path"]),"count":len(rows),"excluded_entries":excluded,
+         "tree_requests":requests,"scope":"selected_depth_and_exclusions","complete":not truncated,
+         "truncated":truncated,"observed_at":now()}
+
 def source_identity(r,ref,path,transport="auto",timeout=30):
  r=repo(r)
  if not isinstance(path,str) or not path or path.startswith("/") or "\\" in path or any(p in ("",".","..") for p in path.split("/")):
@@ -1122,6 +1183,9 @@ def _main(argv=None):
   if command=="git-grep":x.add_argument("pattern")
   if command=="git-ignore":x.add_argument("paths",nargs="+")
  x=s.add_parser("repo");x.add_argument("repo")
+ x=s.add_parser("tree");x.add_argument("repo");x.add_argument("--ref",default="main")
+ depth_args=x.add_mutually_exclusive_group();depth_args.add_argument("--depth",type=int,default=1);depth_args.add_argument("--recursive",action="store_true")
+ x.add_argument("--exclude-dir",action="append",default=[]);x.add_argument("--exclude-file",action="append",default=[])
  x=s.add_parser("repos");x.add_argument("owner")
  x=s.add_parser("issue");x.add_argument("repo");x.add_argument("number",type=int)
  x=s.add_parser("issues");x.add_argument("repo");x.add_argument("--state",choices=("open","closed","all"),default="open");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10)
@@ -1152,6 +1216,7 @@ def _main(argv=None):
   elif ns.cmd=="git-grep":o=git_grep(ns.root,ns.pattern,max_bytes=ns.output_bytes)
   elif ns.cmd=="git-ignore":o=git_check_ignore(ns.root,ns.paths,max_bytes=ns.output_bytes)
   elif ns.cmd=="repo":o=repository(ns.repo,transport=transport)
+  elif ns.cmd=="tree":o=tree(ns.repo,ns.ref,depth=None if ns.recursive else ns.depth,exclude_dirs=ns.exclude_dir,exclude_files=ns.exclude_file,transport=transport)
   elif ns.cmd=="repos":o=repositories(ns.owner,transport=transport)
   elif ns.cmd=="issue":o=issue(ns.repo,ns.number,transport=transport)
   elif ns.cmd=="issues":o=issues(ns.repo,state=ns.state,max_items=ns.limit,max_pages=ns.page_limit,transport=transport)
@@ -1192,7 +1257,7 @@ def main(argv=None):
 # One outer deadline/budget is shared across nested calls and gh fallback.
 for _name in ("_gh","_url","request","pages","repository","repositories","pr","comments","reviews",
               "issue","issues","search","pull_requests","run_history","runs","variable","set_variable","post_comment",
-              "resolve_ref","source_identity","checks_for_sha","observe_pr","workflow","run","jobs"):
+              "resolve_ref","tree","source_identity","checks_for_sha","observe_pr","workflow","run","jobs"):
  globals()[_name]=_bounded(globals()[_name])
 if __name__=="__main__":
  raise SystemExit(_http_worker() if sys.argv[1:]==["--_http-worker"] else main())
