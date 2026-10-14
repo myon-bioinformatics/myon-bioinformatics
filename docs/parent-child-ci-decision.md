@@ -35,6 +35,9 @@ manifest format, remove child locks, or add a write-capable child workflow.
    source commit, verify source blob/SHA-256, then verify the actual child files.
    No source or child code is executed. Fetch/identity/digest failures fail CI.
    This check also runs when parent baseline revisions are manually updated.
+   The parent itself keeps its existing candidate-update ref contract and is
+   checked from the current PR checkout against the exact recorded source
+   commit/blob/digest; it is not treated as a child with a migrated lock.
 3. Automatic head refresh may not change the contract: compare adopted locks
    (including the known nested html-import lock), all workflow definitions and
    the parent reference before opening/updating the refresh PR. Missing locks,

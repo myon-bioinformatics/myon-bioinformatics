@@ -124,3 +124,20 @@ def test_autofix_contract_rejection_precedes_any_write(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match='requires reviewed parent baseline'):
         sync.run_parent_child_ci(registry, heads, parent_root=tmp_path,
                                  skip_source_diff=True, autofix=True, token='fixture')
+
+
+@pytest.mark.parametrize('fault', [None, 'file', 'both'])
+def test_parent_candidate_ref_keeps_independent_source_check(tmp_path, monkeypatch, fault):
+    registry, lock, heads = fixture(monkeypatch)
+    lock['files'][0]['ref'] = 'main'  # parent's existing candidate-update contract
+    data = DATA if fault is None else b'edited\n'
+    if fault == 'both':
+        lock['files'][0].update(blob_sha=sync.git_blob(data), sha256=hashlib.sha256(data).hexdigest())
+    (tmp_path / 'vendor').mkdir()
+    (tmp_path / 'vendor/tool.py').write_bytes(data)
+    (tmp_path / 'vendor.lock.json').write_text(json.dumps(lock))
+    monkeypatch.setattr(sync, '_public_git_snapshot', lambda repo, sha, paths:
+                        (sha, {p: (sync.git_blob(DATA), DATA) for p in paths}))
+    report = sync.audit_adopted_child_files(registry, heads, [NAME],
+                                            parent_root=tmp_path, parent_repository=NAME)
+    assert report['failure_count'] == (0 if fault is None else 1)

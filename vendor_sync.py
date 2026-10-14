@@ -615,7 +615,8 @@ def build_expected_child_lock(registry, document, consumer, *, token=None):
     return lock
 
 
-def audit_adopted_child_files(registry, document, repository_names, *, token=None):
+def audit_adopted_child_files(registry, document, repository_names, *, token=None,
+                             parent_root=None, parent_repository=PARENT_REPOSITORY):
     """Independently check adopted source objects and child bytes; execute neither.
 
     A child lock is a claim, not evidence for its own digests. Read regular Git
@@ -642,7 +643,17 @@ def audit_adopted_child_files(registry, document, repository_names, *, token=Non
         if name not in selected or entry["state"] != "locked":
             continue
         try:
-            lock = build_expected_child_lock(registry, document, name, token=token)
+            local_parent = parent_root is not None and name == parent_repository
+            if local_parent:
+                # The parent has an existing candidate-update lock contract:
+                # ref may be a branch, but commit/blob/digest remain immutable.
+                # Check this PR's parent bytes, not the old main snapshot.
+                root = Path(parent_root).resolve()
+                lock = validate(json.loads(_target(root, entry["lock"]).read_text(encoding="utf-8")))
+                if not vendor_consumers.compare(registry, lock, name)["matches"]:
+                    raise ValueError("parent topology mismatch")
+            else:
+                lock = build_expected_child_lock(registry, document, name, token=token)
             groups = {}
             for item in lock["files"]:
                 groups.setdefault((item["repository"], item["commit"]), []).append(item)
@@ -653,8 +664,12 @@ def audit_adopted_child_files(registry, document, repository_names, *, token=Non
                     if blob != item["blob_sha"]:
                         raise ValueError("source blob mismatch: " + item["destination"])
                     _verify(item, data)
-            files = snapshot(name, document["heads"][name]["sha"],
-                             [item["destination"] for item in lock["files"]])
+            if local_parent:
+                files = {item["destination"]: (None, _target(root, item["destination"]).read_bytes())
+                         for item in lock["files"]}
+            else:
+                files = snapshot(name, document["heads"][name]["sha"],
+                                 [item["destination"] for item in lock["files"]])
             for item in lock["files"]:
                 _verify(item, files[item["destination"]][1])
             checked.append({"repository": name, "files_checked": len(lock["files"])})
@@ -1210,7 +1225,8 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
     )
     template_failures = template_report["failures"]
     template_missing = template_report["missing"]
-    child_files = audit_adopted_child_files(registry, document, monitored, token=token)
+    child_files = audit_adopted_child_files(registry, document, monitored, token=token,
+                                          parent_root=parent_root, parent_repository=parent_repository)
     with tempfile.TemporaryDirectory(prefix="vendor-parent-ci-") as directory:
         work_dir = _copy_parent_vendor_baseline(parent_root, directory)
         vendor_check = _offline_parent_vendor_check(work_dir)
