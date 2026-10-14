@@ -192,7 +192,9 @@ def test_commit_merged_git_auth_never_embeds_token_in_command_or_errors(monkeypa
         sync.commit_merged_into_default("owner/tool", "a" * 40, token=token)
     assert token not in str(error.value)
     recorded_json = json.dumps(recorded)
+    assert token not in recorded_json
     assert "x-access-token" not in recorded_json
+    assert "AUTHORIZATION: bearer" not in recorded_json
     assert "https://github.com/owner/tool.git" in recorded_json
     assert sync._audit_failure_message(error.value, token=token) == sync.PUBLIC_GIT_FETCH_ERROR
     leaked = sync._audit_failure_message(

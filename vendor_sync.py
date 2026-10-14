@@ -1704,8 +1704,6 @@ def _commit_merged_via_git_bare_fetch(repository, commit, *, token=None, remotes
         except ValueError:
             raise ValueError(PUBLIC_GIT_FETCH_ERROR) from None
         _commit_on_default_first_parent(git, branch, commit)
-        if token:
-            _reject_merged_pull_request_intermediate_pin(repository, commit, token)
         return True
 
 
@@ -1734,10 +1732,11 @@ def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=
                    for line in result.stdout.decode().splitlines()):
                 return True
         raise ValueError(PIN_NOT_MERGED_ERROR)
+    _commit_merged_via_git_bare_fetch(repository, commit, token=None, remotes=remotes)
     api_token = _api_token(token)
-    return _commit_merged_via_git_bare_fetch(
-        repository, commit, token=api_token, remotes=remotes,
-    )
+    if api_token:
+        _reject_merged_pull_request_intermediate_pin(repository, commit, api_token)
+    return True
 
 
 def collect_lock_pins(lock, lock_path):
