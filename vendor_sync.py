@@ -436,20 +436,43 @@ def _repository_remote(repository, remotes=None):
     return "https://github.com/" + repository + ".git"
 
 
+def _git_http_config_args(token=None):
+    args = ["-c", "credential.helper=", "-c", "core.askPass="]
+    if token:
+        args.extend(["-c", "http.extraHeader=AUTHORIZATION: bearer " + token])
+    else:
+        args.extend(["-c", "http.extraHeader="])
+    return args
+
+
+def _redact_secrets(message, token=None):
+    if not isinstance(message, str):
+        return message
+    if token:
+        message = message.replace(token, "***")
+    message = re.sub(r"https://x-access-token:[^@]+@", "https://***@", message)
+    message = re.sub(r"[Aa][Uu][Tt][Hh][Oo][Rr][Ii][Zz][Aa][Tt][Ii][Oo][Nn]: [Bb]earer \S+", "AUTHORIZATION: bearer ***", message)
+    return message
+
+
 def _git_run(argv, *, timeout=120):
     result = subprocess.run(argv, env=_git_subprocess_env(), capture_output=True, timeout=timeout)
     if result.returncode:
         detail = result.stderr.decode("utf-8", "replace").strip() or result.stdout.decode("utf-8", "replace").strip()
-        raise ValueError("git failed: " + detail)
+        raise ValueError("git failed: " + _redact_secrets(detail))
     return result.stdout
 
 
-def _default_branch_name(remote):
-    output = _git_run(["git", "ls-remote", "--symref", remote, "HEAD"]).decode("utf-8", "replace")
+def _default_branch_name(remote, token=None):
+    argv = ["git"] + _git_http_config_args(token) + ["ls-remote", "--symref", remote, "HEAD"]
+    result = subprocess.run(argv, env=_git_subprocess_env(), capture_output=True, timeout=120)
+    if result.returncode:
+        raise ValueError(PUBLIC_GIT_FETCH_ERROR)
+    output = result.stdout.decode("utf-8", "replace")
     for line in output.splitlines():
         if line.startswith("ref: refs/heads/"):
             return line.split("refs/heads/", 1)[1].split("\t", 1)[0]
-    raise ValueError("cannot resolve default branch for " + remote)
+    raise ValueError(PUBLIC_GIT_FETCH_ERROR)
 
 
 def _git_branch_tip(remote, branch):
@@ -639,8 +662,8 @@ def verify_child_lock_against_parent(registry, catalog, lock, consumer):
     return lock
 
 
-def _audit_failure_message(error):
-    message = str(error)
+def _audit_failure_message(error, token=None):
+    message = _redact_secrets(str(error), token=_api_token(token))
     if message in (
         PUBLIC_GIT_FETCH_ERROR,
         PIN_NOT_MERGED_ERROR,
@@ -758,7 +781,10 @@ def audit_adopted_child_files(registry, document, repository_names, *, token=Non
                 _verify(item, files[item["destination"]][1])
             checked.append({"repository": name, "files_checked": len(lock["files"])})
         except (ValueError, OSError, subprocess.SubprocessError) as error:
-            failures.append({"repository": name, "message": _audit_failure_message(error)})
+            failures.append({
+                "repository": name,
+                "message": _audit_failure_message(error, token=token),
+            })
     return {"checked": checked, "failures": failures, "failure_count": len(failures)}
 
 
@@ -880,10 +906,13 @@ def run_child_ci(root, parent_ref_path, consumer, *, token=None,
             for item in items:
                 failures.append({
                     "destination": item["destination"],
-                    "message": _audit_failure_message(error),
+                    "message": _audit_failure_message(error, token=api_token),
                 })
     if failures:
-        raise ValueError("child vendor file mismatch: " + json.dumps(failures, ensure_ascii=False))
+        raise ValueError(
+            "child vendor file mismatch: "
+            + _redact_secrets(json.dumps(failures, ensure_ascii=False), token=api_token)
+        )
     return {
         "schema": "child-ci/1",
         "consumer": consumer,
@@ -1652,10 +1681,10 @@ def _reject_merged_pull_request_intermediate_pin(repository, commit, token):
             raise ValueError(PIN_NOT_MERGED_ERROR)
 
 
-def _commit_merged_via_git_bare_fetch(repository, commit, remote, *, token=None):
+def _commit_merged_via_git_bare_fetch(repository, commit, *, token=None, remotes=None):
+    remote = _repository_remote(repository, remotes)
     with tempfile.TemporaryDirectory(prefix="vendor-merged-pin-") as directory:
-        command = ["git", "-c", "credential.helper=", "-c", "core.askPass=",
-                   "-c", "http.extraHeader=", "-C", directory]
+        command = ["git"] + _git_http_config_args(token) + ["-C", directory]
 
         def git(*args):
             result = subprocess.run(command + list(args), env=_git_subprocess_env(),
@@ -1665,7 +1694,7 @@ def _commit_merged_via_git_bare_fetch(repository, commit, remote, *, token=None)
             return result.stdout
 
         git("init", "--bare")
-        branch = _default_branch_name(remote)
+        branch = _default_branch_name(remote, token=token)
         try:
             git(
                 "fetch", "--no-tags", "--filter=blob:none",
@@ -1678,14 +1707,6 @@ def _commit_merged_via_git_bare_fetch(repository, commit, remote, *, token=None)
         if token:
             _reject_merged_pull_request_intermediate_pin(repository, commit, token)
         return True
-
-
-def _authenticated_github_remote(repository, token):
-    repository = _normalize_repository(repository)
-    return (
-        "https://x-access-token:" + quote(token, safe="") +
-        "@github.com/" + repository + ".git"
-    )
 
 
 def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=None, token=None):
@@ -1714,10 +1735,9 @@ def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=
                 return True
         raise ValueError(PIN_NOT_MERGED_ERROR)
     api_token = _api_token(token)
-    remote = _repository_remote(repository, remotes)
-    if api_token and repository not in remotes:
-        remote = _authenticated_github_remote(repository, api_token)
-    return _commit_merged_via_git_bare_fetch(repository, commit, remote, token=api_token)
+    return _commit_merged_via_git_bare_fetch(
+        repository, commit, token=api_token, remotes=remotes,
+    )
 
 
 def collect_lock_pins(lock, lock_path):

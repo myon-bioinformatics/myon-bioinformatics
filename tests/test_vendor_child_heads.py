@@ -177,6 +177,31 @@ def test_web_ui_pr39_intermediate_pin_rejected_on_github():
     sync.commit_merged_into_default("myon-bioinformatics/web-ui", merge_commit, token=token)
 
 
+def test_commit_merged_git_auth_never_embeds_token_in_command_or_errors(monkeypatch):
+    token = "DUMMY_SECRET_TOKEN_abcdef"
+    recorded = []
+
+    def run(argv, *args, **kwargs):
+        recorded.append(list(argv))
+        if "ls-remote" in argv:
+            return subprocess.CompletedProcess(argv, 1, b"", b"fatal: authentication failed")
+        return subprocess.CompletedProcess(argv, 0, b"", b"")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(ValueError) as error:
+        sync.commit_merged_into_default("owner/tool", "a" * 40, token=token)
+    assert token not in str(error.value)
+    recorded_json = json.dumps(recorded)
+    assert "x-access-token" not in recorded_json
+    assert "https://github.com/owner/tool.git" in recorded_json
+    assert sync._audit_failure_message(error.value, token=token) == sync.PUBLIC_GIT_FETCH_ERROR
+    leaked = sync._audit_failure_message(
+        ValueError("git failed: AUTHORIZATION: bearer " + token), token=token,
+    )
+    assert token not in leaked
+    assert leaked == sync.PUBLIC_GIT_FETCH_ERROR
+
+
 def test_reject_merged_pr_intermediate_via_github_api(monkeypatch):
     commit = "f" * 40
     merge_commit = "e" * 40
