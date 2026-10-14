@@ -691,7 +691,8 @@ def build_expected_child_lock(registry, document, consumer, *, token=None):
 
 
 def audit_adopted_child_files(registry, document, repository_names, *, token=None,
-                             parent_root=None, parent_repository=PARENT_REPOSITORY):
+                             parent_root=None, parent_repository=PARENT_REPOSITORY,
+                             remotes=None, local_roots=None):
     """Independently check adopted source objects and child bytes; execute neither.
 
     A child lock is a claim, not evidence for its own digests. Read regular Git
@@ -734,6 +735,13 @@ def audit_adopted_child_files(registry, document, repository_names, *, token=Non
                 groups.setdefault((item["repository"], item["commit"]), []).append(item)
             for (repository, revision), items in groups.items():
                 _ensure_public_source_repository(repository, token=token)
+                commit_merged_into_default(
+                    repository,
+                    revision,
+                    remotes=remotes,
+                    local_roots=local_roots,
+                    token=_api_token(token),
+                )
                 sources = snapshot(repository, revision, [item["source"] for item in items])
                 for item in items:
                     blob, data = sources[item["source"]]
@@ -768,13 +776,18 @@ def _workflow_refresh_block_reason(name, old_sha, new_sha, template_text, *, tok
     return None
 
 
-def plan_heads_refresh(registry, document, proposed_heads, template_text, *, token=None):
+def plan_heads_refresh(registry, document, proposed_heads, template_text, *, token=None,
+                       audit_blocked=None):
     """Merge proposed main tips into child-heads, skipping repos that need parent review."""
     document = validate_child_heads(document)
     merged_heads = dict(document["heads"])
     skipped = []
+    blocked = {name.casefold() for name in (audit_blocked or [])}
     for name, new in proposed_heads.items():
         old = document["heads"].get(name)
+        if name.casefold() in blocked:
+            skipped.append({"repository": name, "reason": "adopted_baseline_audit_failure"})
+            continue
         if old is None:
             skipped.append({"repository": name, "reason": "new_monitored_repository"})
             continue
@@ -1339,14 +1352,21 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
             "kind": "workflow_template_missing",
             "message": row["message"],
         })
-    child_files = audit_adopted_child_files(registry, document, monitored, token=token,
-                                          parent_root=parent_root, parent_repository=parent_repository)
+    child_files = audit_adopted_child_files(
+        registry, document, monitored, token=token,
+        parent_root=parent_root, parent_repository=parent_repository,
+        remotes=remotes, local_roots=local_roots,
+    )
     for row in child_files["failures"]:
         audit_skipped.append({
             "repository": row["repository"],
             "kind": "adopted_child_files",
             "message": row["message"],
         })
+    audit_failure_count = len(template_failures) + child_files["failure_count"]
+    audit_blocked = sorted({
+        row["repository"] for row in template_failures + child_files["failures"]
+    }, key=str.casefold)
     with tempfile.TemporaryDirectory(prefix="vendor-parent-ci-") as directory:
         work_dir = _copy_parent_vendor_baseline(parent_root, directory)
         vendor_check = _offline_parent_vendor_check(work_dir)
@@ -1359,6 +1379,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         }
         refresh_plan = plan_heads_refresh(
             registry, document, proposed_heads, template_text, token=token,
+            audit_blocked=audit_blocked,
         )
         encoded_heads = validate_child_heads({
             "schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": refresh_plan["heads"],
@@ -1384,11 +1405,11 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         autofix_result["heads_refresh_skipped"] = refresh_plan["skipped"]
     drift_failures = len(drift) + len(missing_heads) + len(extra_heads)
     if pr_validation:
-        failure_count = len(identity_failures) + len(extra_heads)
+        failure_count = len(identity_failures) + len(extra_heads) + audit_failure_count
     else:
-        failure_count = drift_failures + len(identity_failures) + len(extra_heads)
+        failure_count = drift_failures + len(identity_failures) + len(extra_heads) + audit_failure_count
     if autofix and autofix_result and needs_heads_refresh:
-        failure_count = len(identity_failures) + len(extra_heads)
+        failure_count = len(identity_failures) + len(extra_heads) + audit_failure_count
     return {
         "schema": "parent-child-ci/1",
         "ref": ref,
@@ -1412,6 +1433,8 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         "heads_refresh_skipped": (autofix_result or {}).get("heads_refresh_skipped", []),
         "audit_skipped": audit_skipped,
         "audit_skipped_count": len(audit_skipped),
+        "audit_failure_count": audit_failure_count,
+        "audit_blocked": audit_blocked,
         "pr_validation": pr_validation,
         "failure_count": failure_count,
     }
@@ -1545,16 +1568,18 @@ def _fetch_parent_pull_request(parent_repository, pull_number, token=None):
 
 def _commit_merged_via_github_compare(repository, commit, *, token):
     repository = _normalize_repository(repository)
-    record = _github_json("https://api.github.com/repos/" + repository, token)
-    default_branch = record.get("default_branch")
-    if not isinstance(default_branch, str) or not default_branch:
-        raise ValueError(PUBLIC_GIT_FETCH_ERROR)
-    basehead = quote(commit, safe="") + "..." + quote(default_branch, safe="")
-    url = "https://api.github.com/repos/" + repository + "/compare/" + basehead
     try:
+        record = _github_json("https://api.github.com/repos/" + repository, token)
+        default_branch = record.get("default_branch")
+        if not isinstance(default_branch, str) or not default_branch:
+            raise ValueError(PUBLIC_GIT_FETCH_ERROR)
+        basehead = quote(commit, safe="") + "..." + quote(default_branch, safe="")
+        url = "https://api.github.com/repos/" + repository + "/compare/" + basehead
         compare = _github_json(url, token)
     except HTTPError:
         raise ValueError(PUBLIC_GIT_FETCH_ERROR) from None
+    except ValueError:
+        raise
     merge_base = (compare.get("merge_base_commit") or {}).get("sha")
     if isinstance(merge_base, str) and merge_base.lower() == commit.lower():
         return True
@@ -1945,15 +1970,16 @@ def _write_child_heads_summary(report, summary_path):
         for row in child_files.get("failures", []):
             lines.append(f"- `{row['repository']}`: {row['message']}")
         lines.append("")
-        if report.get("audit_skipped_count"):
+        if report.get("audit_failure_count"):
             lines.append(
-                f"**{report['audit_skipped_count']} per-repository audit skip(s) "
-                "(report only; does not fail CI).**"
+                f"**{report['audit_failure_count']} adopted baseline audit failure(s) "
+                "(fail CI; autofix keeps the recorded head for affected repositories).**"
             )
             for row in report.get("audit_skipped", []):
-                lines.append(
-                    f"- `{row.get('repository', '')}` ({row.get('kind', '')}): {row.get('message', '')}"
-                )
+                if row.get("kind") in ("workflow_template", "adopted_child_files"):
+                    lines.append(
+                        f"- `{row.get('repository', '')}` ({row.get('kind', '')}): {row.get('message', '')}"
+                    )
             lines.append("")
         if report.get("extra_heads_excluded_count"):
             lines.append(

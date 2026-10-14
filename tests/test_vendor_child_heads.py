@@ -234,7 +234,7 @@ def test_commit_merged_into_default_old_main_commit_via_remote(tmp_path):
     sync.commit_merged_into_default("owner/tool", first_sha, remotes=remotes)
 
 
-def test_run_parent_child_ci_audit_skipped_does_not_fail(tmp_path, monkeypatch):
+def test_run_parent_child_ci_audit_failures_fail_in_pr_validation(tmp_path, monkeypatch):
     consumer = "owner/child"
     registry = _registry(consumer)
     parent = tmp_path / "parent"
@@ -271,9 +271,26 @@ def test_run_parent_child_ci_audit_skipped_does_not_fail(tmp_path, monkeypatch):
         },
     )
     monkeypatch.setattr(sync, "source_diff_report", lambda *args, **kwargs: _source_diff_empty())
-    report = sync.run_parent_child_ci(registry, document, parent_root=parent)
-    assert report["failure_count"] == 0
-    assert report["audit_skipped_count"] == 2
+    report = sync.run_parent_child_ci(registry, document, parent_root=parent, pr_validation=True)
+    assert report["audit_failure_count"] == 2
+    assert report["failure_count"] == 2
+
+
+def test_commit_merged_into_default_old_pin_via_github_compare(monkeypatch):
+    old_sha = "a" * 40
+    calls = []
+
+    def fake_json(url, token=None):
+        calls.append(url)
+        if url.endswith("/repos/owner/tool"):
+            return {"default_branch": "main"}
+        if "/compare/" in url:
+            return {"merge_base_commit": {"sha": old_sha}}
+        raise AssertionError(url)
+
+    monkeypatch.setattr(sync, "_github_json", fake_json)
+    sync.commit_merged_into_default("owner/tool", old_sha, token="fixture-token")
+    assert any("/compare/" in url for url in calls)
 
 
 def test_record_is_public_source_pin_allows_archived():

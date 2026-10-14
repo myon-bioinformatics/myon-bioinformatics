@@ -50,6 +50,7 @@ def test_independent_source_evidence(monkeypatch, fault):
             path: (sync.git_blob(data), data) for path in paths}
 
     monkeypatch.setattr(sync, '_public_git_snapshot', snapshot)
+    monkeypatch.setattr(sync, 'commit_merged_into_default', lambda *a, **k: True)
     report = sync.audit_adopted_child_files(registry, heads, [NAME])
     assert report['failure_count'] == (0 if fault is None else 1)
     assert bool(report['checked']) == (fault is None)
@@ -151,10 +152,59 @@ def test_parent_ci_counts_source_failure_and_does_not_write(tmp_path, monkeypatc
     monkeypatch.setattr(sync, '_public_git_snapshot', lambda *a: (_ for _ in ()).throw(ValueError(sync.PUBLIC_GIT_FETCH_ERROR)))
     monkeypatch.setattr(sync, '_open_or_update_autofix_pr', lambda *a, **k: pytest.fail('write'))
     report = sync.run_parent_child_ci(registry, heads, parent_root=tmp_path, skip_source_diff=True)
-    assert report['failure_count'] == 0
-    assert report['audit_skipped_count'] == 1
+    assert report['failure_count'] == 1
+    assert report['audit_failure_count'] == 1
     assert report['adopted_child_files']['failure_count'] == 1
     assert sync.PUBLIC_GIT_FETCH_ERROR in json.dumps(report['audit_skipped'])
+
+
+def test_portfolio_pr39_unmerged_source_pin_fails_parent_ci(tmp_path, monkeypatch):
+    """github.io #39: intermediate source pin must fail parent CI even on PR validation."""
+    registry, lock, heads = fixture(monkeypatch)
+    merged_sha = 'c' * 40
+    lock['files'][0]['commit'] = merged_sha
+    lock['files'][0]['ref'] = merged_sha
+    (tmp_path / 'templates').mkdir()
+    (tmp_path / sync.CHILD_CI_TEMPLATE).write_text(TEMPLATE.decode())
+    monkeypatch.setattr(sync, 'monitored_repositories', lambda *a, **k: [NAME])
+    monkeypatch.setattr(sync, 'fetch_child_head_record', lambda *a, **k: heads['heads'][NAME])
+    monkeypatch.setattr(sync, 'audit_child_workflow_templates', lambda *a, **k: {'failures': [], 'missing': []})
+    monkeypatch.setattr(sync, '_copy_parent_vendor_baseline', lambda *a: tmp_path)
+    monkeypatch.setattr(sync, '_offline_parent_vendor_check', lambda *a: {})
+    monkeypatch.setattr(sync, '_fetch_repo_text', lambda *a, **k: json.dumps(lock))
+    monkeypatch.setattr(sync, '_public_git_snapshot', lambda repo, sha, paths:
+                        (sha, {p: (sync.git_blob(DATA), DATA) for p in paths}))
+    monkeypatch.setattr(sync, 'commit_merged_into_default', lambda *a, **k:
+                        (_ for _ in ()).throw(ValueError(sync.PIN_NOT_MERGED_ERROR)))
+    report = sync.run_parent_child_ci(registry, heads, parent_root=tmp_path,
+                                      skip_source_diff=True, pr_validation=True)
+    assert report['failure_count'] == 1
+    assert sync.PIN_NOT_MERGED_ERROR in json.dumps(report['audit_skipped'])
+
+
+def test_autofix_keeps_old_head_when_audit_fails(tmp_path, monkeypatch):
+    registry, lock, heads = fixture(monkeypatch)
+    (tmp_path / 'templates').mkdir()
+    (tmp_path / sync.CHILD_CI_TEMPLATE).write_text(TEMPLATE.decode())
+    monkeypatch.setattr(sync, 'monitored_repositories', lambda *a, **k: [NAME])
+    monkeypatch.setattr(sync, 'fetch_child_head_record', lambda *a, **k: {'sha': NEW, 'repository_id': 42})
+    monkeypatch.setattr(sync, 'audit_child_workflow_templates', lambda *a, **k: {'failures': [], 'missing': []})
+    monkeypatch.setattr(sync, '_copy_parent_vendor_baseline', lambda *a: tmp_path)
+    monkeypatch.setattr(sync, '_offline_parent_vendor_check', lambda *a: {})
+    monkeypatch.setattr(sync, '_public_git_snapshot', lambda *a: (_ for _ in ()).throw(ValueError(sync.PUBLIC_GIT_FETCH_ERROR)))
+    captured = {}
+
+    def capture_pr(repo, branch, title, body, files, token):
+        captured['heads'] = json.loads(files['child-heads.json'].decode())['heads']
+        return {'pull_number': 1, 'url': 'https://example.invalid/1', 'branch': branch}
+
+    monkeypatch.setattr(sync, '_open_or_update_autofix_pr', capture_pr)
+    monkeypatch.setattr(sync, '_dispatch_parent_workflow', lambda *a, **k: None)
+    report = sync.run_parent_child_ci(registry, heads, parent_root=tmp_path,
+                                      skip_source_diff=True, autofix=True, token='fixture')
+    assert captured['heads'][NAME]['sha'] == SHA
+    assert any(row['reason'] == 'adopted_baseline_audit_failure'
+               for row in report['heads_refresh_skipped'])
 
 
 def test_autofix_continues_when_one_repo_skipped(tmp_path, monkeypatch):
@@ -192,6 +242,7 @@ def test_parent_candidate_ref_keeps_independent_source_check(tmp_path, monkeypat
     (tmp_path / 'vendor.lock.json').write_text(json.dumps(lock))
     monkeypatch.setattr(sync, '_public_git_snapshot', lambda repo, sha, paths:
                         (sha, {p: (sync.git_blob(DATA), DATA) for p in paths}))
+    monkeypatch.setattr(sync, 'commit_merged_into_default', lambda *a, **k: True)
     report = sync.audit_adopted_child_files(registry, heads, [NAME],
                                             parent_root=tmp_path, parent_repository=NAME)
     assert report['failure_count'] == (0 if fault is None else 1)
