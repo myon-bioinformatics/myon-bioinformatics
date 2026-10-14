@@ -24,14 +24,13 @@ jobs:
           python-version: "3.12"
       - name: Resolve parent pull request and verify child checkout
         env:
-          GH_READ_TOKEN: ${{ secrets.GH_READ_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
           PARENT_REF_PATH: templates/parent-pr.ref.json
           CHILD_CONSUMER: ${{ github.repository }}
           PARENT_REPOSITORY: myon-bioinformatics/myon-bioinformatics
         run: |
           set -euo pipefail
-          export GH_TOKEN="${GH_READ_TOKEN:-$GITHUB_TOKEN}"
+          export GH_TOKEN="$GITHUB_TOKEN"
           python -S <<'PY'
           import json
           import os

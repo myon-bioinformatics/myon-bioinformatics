@@ -325,6 +325,22 @@ def test_source_diff_does_not_fail_parent_ci_count(tmp_path, monkeypatch):
     assert report["failure_count"] == 0
 
 
+def test_record_is_public_monitored_filters():
+    public = {
+        "full_name": "myon-bioinformatics/demo",
+        "archived": False,
+        "private": False,
+        "visibility": "public",
+    }
+    assert sync.record_is_public_monitored(public)
+    archived = dict(public, archived=True)
+    assert not sync.record_is_public_monitored(archived)
+    private = dict(public, private=True, visibility="private")
+    assert not sync.record_is_public_monitored(private)
+    internal = dict(public, private=True, visibility="internal")
+    assert not sync.record_is_public_monitored(internal)
+
+
 def test_list_org_repositories_falls_back_to_users_endpoint(monkeypatch):
     calls = []
 
@@ -332,12 +348,77 @@ def test_list_org_repositories_falls_back_to_users_endpoint(monkeypatch):
         calls.append(url)
         if "/orgs/" in url:
             raise HTTPError(url, 404, "not found", None, None)
-        return [{"full_name": "myon-bioinformatics/demo", "archived": False}]
+        return [{
+            "full_name": "myon-bioinformatics/demo",
+            "archived": False,
+            "private": False,
+            "visibility": "public",
+        }]
 
     monkeypatch.setattr(sync, "_github_api", fake_api)
     repos = sync.list_org_repositories("myon-bioinformatics", token="token")
     assert repos == ["myon-bioinformatics/demo"]
     assert any("/users/" in url for url in calls)
+
+
+def test_list_org_repositories_omits_private_and_archived(monkeypatch):
+    def fake_api(method, url, token=None, body=None):
+        return [
+            {
+                "full_name": "myon-bioinformatics/public-one",
+                "archived": False,
+                "private": False,
+                "visibility": "public",
+            },
+            {
+                "full_name": "myon-bioinformatics/hidden",
+                "archived": False,
+                "private": True,
+                "visibility": "private",
+            },
+            {
+                "full_name": "myon-bioinformatics/old",
+                "archived": True,
+                "private": False,
+                "visibility": "public",
+            },
+            {
+                "full_name": "myon-bioinformatics/enterprise",
+                "archived": False,
+                "private": True,
+                "visibility": "internal",
+            },
+        ]
+
+    monkeypatch.setattr(sync, "_github_api", fake_api)
+    repos = sync.list_org_repositories("myon-bioinformatics", token="token")
+    assert repos == ["myon-bioinformatics/public-one"]
+
+
+def test_split_extra_heads_omits_private_names(monkeypatch):
+    monitored = ["myon-bioinformatics/public-one"]
+    heads = {
+        "myon-bioinformatics/public-one": _head("a" * 40, 1),
+        "myon-bioinformatics/secret": _head("b" * 40, 2),
+    }
+
+    def repo_fetch(repository):
+        if repository.endswith("secret"):
+            return {
+                "id": 2,
+                "full_name": repository,
+                "archived": False,
+                "private": True,
+                "visibility": "private",
+            }
+        raise AssertionError("unexpected fetch")
+
+    unexpected, excluded = sync._split_extra_heads(
+        heads, monitored, token="token", repo_fetch=repo_fetch,
+    )
+    assert unexpected == []
+    assert excluded == 1
+    assert "secret" not in str(unexpected)
 
 
 def test_cli_refresh_child_heads(tmp_path, monkeypatch, capsys):

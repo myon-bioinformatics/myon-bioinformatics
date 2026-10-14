@@ -40,6 +40,7 @@ __all__ = [
     "verify_reference_identity",
     "source_diff_report",
     "list_org_repositories",
+    "record_is_public_monitored",
     "monitored_repositories",
     "run_child_ci",
     "verify_workflow_template_copy",
@@ -462,8 +463,24 @@ def _locked_consumer_names(registry):
     )
 
 
+def record_is_public_monitored(record):
+    """True when a GitHub repository record is tracked in child-heads.json."""
+    if not isinstance(record, dict):
+        return False
+    if record.get("archived"):
+        return False
+    if record.get("private") is not False:
+        return False
+    if record.get("visibility") != "public":
+        return False
+    full_name = record.get("full_name")
+    if not isinstance(full_name, str) or not full_name:
+        return False
+    return True
+
+
 def monitored_repositories(registry, *, token=None, owner=ORG_OWNER):
-    """Non-archived organization repositories tracked in child-heads.json."""
+    """Public, non-archived account repositories tracked in child-heads.json."""
     if _api_token(token):
         return list_org_repositories(owner, token=token)
     names = {_normalize_repository(PARENT_REPOSITORY)}
@@ -474,11 +491,34 @@ def monitored_repositories(registry, *, token=None, owner=ORG_OWNER):
 def _api_token(token=None):
     if token:
         return token
-    for key in ("GH_READ_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"):
+    for key in ("GH_TOKEN", "GITHUB_TOKEN"):
         value = os.environ.get(key)
         if value:
             return value
     return None
+
+
+def _split_extra_heads(head_names, monitored, *, token=None, repo_fetch=None):
+    """Classify child-heads keys outside the monitored set without leaking private names."""
+    extra = sorted(set(head_names) - set(monitored), key=str.casefold)
+    unexpected = []
+    excluded_count = 0
+    for name in extra:
+        try:
+            record = fetch_repository_record(name, token, repo_fetch=repo_fetch)
+        except HTTPError as error:
+            if error.code in (403, 404):
+                excluded_count += 1
+                continue
+            raise
+        except ValueError:
+            excluded_count += 1
+            continue
+        if record_is_public_monitored(record):
+            unexpected.append(name)
+        else:
+            excluded_count += 1
+    return unexpected, excluded_count
 
 
 def _list_account_repositories(owner, *, token=None):
@@ -498,7 +538,7 @@ def _list_account_repositories(owner, *, token=None):
                 if not isinstance(batch, list) or not batch:
                     break
                 for record in batch:
-                    if record.get("archived"):
+                    if not record_is_public_monitored(record):
                         continue
                     if _normalize_repository(record.get("full_name", "")).split("/")[0].casefold() != owner.casefold():
                         continue
@@ -1041,7 +1081,9 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
     drift = []
     identity_failures = []
     missing_heads = []
-    extra_heads = sorted(set(document["heads"]) - set(monitored), key=str.casefold)
+    extra_heads, extra_heads_excluded = _split_extra_heads(
+        document["heads"], monitored, token=token, repo_fetch=repo_fetch,
+    )
     live_heads = {}
     for name in monitored:
         recorded = document["heads"].get(name)
@@ -1124,6 +1166,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         "monitored_count": len(monitored),
         "missing_heads": missing_heads,
         "extra_heads": extra_heads,
+        "extra_heads_excluded_count": extra_heads_excluded,
         "drift": drift,
         "drift_count": len(drift),
         "identity_failures": identity_failures,
@@ -1159,10 +1202,12 @@ def check_child_heads(registry, document, *, remotes=None, token=None, parent_re
                 "live": live["sha"],
             })
     monitored = monitored_repositories(registry, token=token)
-    extra = set(document["heads"]) - set(monitored)
+    extra, extra_excluded = _split_extra_heads(
+        document["heads"], monitored, token=token,
+    )
     missing = [name for name in monitored if name not in document["heads"]]
     if extra:
-        raise ValueError("child-heads has unknown repositories: " + ", ".join(sorted(extra)))
+        raise ValueError("child-heads has unknown public repositories: " + ", ".join(sorted(extra)))
     if missing:
         raise ValueError("child-heads missing monitored repositories: " + ", ".join(missing))
     pin_report = audit_registry_merged_pins(
@@ -1622,6 +1667,12 @@ def _write_child_heads_summary(report, summary_path):
             for row in report.get("template_failures", []):
                 lines.append(f"- `{row.get('repository', '')}`: {row.get('message', '')}")
             lines.append("")
+        if report.get("extra_heads_excluded_count"):
+            lines.append(
+                f"**{report['extra_heads_excluded_count']} non-public or archived "
+                "child-heads entr(ies) omitted from output.**"
+            )
+            lines.append("")
         if report.get("missing_heads"):
             lines.append("**Missing monitored repositories in child-heads.json:**")
             for name in report["missing_heads"]:
@@ -1766,7 +1817,7 @@ def main(argv=None, *, get=_get):
                 else:
                     consumer = raw_remote.removeprefix("https://github.com/")
                 consumer = _normalize_repository(consumer.removesuffix(".git"))
-            token = _api_token(os.environ.get("GH_READ_TOKEN") or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN"))
+            token = _api_token(None)
             result = run_child_ci(
                 root,
                 args.ref_file,
