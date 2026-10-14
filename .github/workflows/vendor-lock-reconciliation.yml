@@ -2,6 +2,8 @@ name: Vendor consumer lock reconciliation
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "30 0 * * 1"  # weekly read-only drift report (Monday 00:30 UTC = 09:30 JST)
   pull_request:
     paths:
       - "vendor-catalog.json"
@@ -72,5 +74,48 @@ jobs:
         with:
           name: vendor-lock-reconciliation
           path: reports/vendor-lock-reconciliation.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  duplicate-files:
+    name: Cross-repository duplicate files (read only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # TODO: repin to the gh_identity main merge commit after PRs #48-#50 are merged.
+      # Currently the head of gh_identity PR #50 (includes #48 and #49).
+      GH_IDENTITY_SHA: 7e9f60997d7b9e96a07fcb258b84f622b9209368
+    steps:
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Fetch pinned gh_identity
+        uses: actions/checkout@v7
+        with:
+          repository: myon-bioinformatics/gh_identity
+          ref: ${{ env.GH_IDENTITY_SHA }}
+          path: .gh-identity
+          persist-credentials: false
+      - name: Verify pin
+        run: test "$(git -C .gh-identity rev-parse HEAD)" = "$GH_IDENTITY_SHA"
+      - name: Duplicate files with vendor-lock provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p reports
+          python -S .gh-identity/gh_identity.py duplicate-files --owner myon-bioinformatics > reports/duplicate-files.json
+          python -S - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, sys
+          sys.path.insert(0, ".gh-identity")
+          import gh_identity
+          report = json.load(open("reports/duplicate-files.json", encoding="utf-8"))
+          print(gh_identity.render_duplicates_markdown(report, top=30))
+          PY
+      - name: Upload duplicate-files report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: duplicate-files
+          path: reports/duplicate-files.json
           if-no-files-found: warn
           retention-days: 14
