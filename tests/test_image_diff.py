@@ -10,8 +10,7 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("PIL")
-
+# Pillow is required for regression tests; runtime usage remains optional.
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -263,4 +262,36 @@ def test_negative_clip_coordinate_exit_two(tmp_path):
     write_png(path, solid_rgba((10, 10), (0, 0, 0, 255)))
     proc = run_image_diff(str(path), str(path), "--clip", "-1,0,5,5")
     assert proc.returncode == 2
+    assert "Traceback" not in proc.stderr
+
+
+@pytest.mark.parametrize("channel", range(4), ids=["red", "green", "blue", "alpha"])
+@pytest.mark.parametrize("tolerance,changed", [(4, 1), (5, 0), (6, 0)])
+def test_each_rgba_channel_tolerance_metrics(channel, tolerance, changed):
+    base = solid_rgba((2, 1), (100, 100, 100, 100))
+    altered = base.copy()
+    pixel = [100, 100, 100, 100]
+    pixel[channel] += 5
+    altered.putpixel((1, 0), tuple(pixel))
+    result = image_diff.compare(base, altered, tolerance=tolerance)
+    assert result["changed"] == changed
+    assert result["ratio"] == changed / 2
+    assert result["bbox"] == ((1, 0, 2, 1) if changed else None)
+    assert result["max_delta"] == 5
+    assert result["differs"] is bool(changed)
+
+
+@pytest.mark.parametrize("in_zip", [False, True], ids=["file", "zip"])
+def test_invalid_image_bytes_exit_two(tmp_path, in_zip):
+    path = tmp_path / "invalid.png"
+    path.write_bytes(b"not a PNG image")
+    source = str(path)
+    if in_zip:
+        archive = tmp_path / "invalid.zip"
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.write(path, "invalid.png")
+        source = f"{archive}::invalid.png"
+    proc = run_image_diff(source, source)
+    assert proc.returncode == 2
+    assert "image_diff:" in proc.stderr
     assert "Traceback" not in proc.stderr
