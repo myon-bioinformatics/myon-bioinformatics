@@ -105,10 +105,19 @@ def child_fixture(tmp_path, monkeypatch):
         target = child / item['destination']; target.parent.mkdir(exist_ok=True); target.write_bytes(data)
     (child / 'vendor.lock.json').write_text(json.dumps(lock))
     (parent / 'vendor-consumers.json').write_text(json.dumps(registry))
-    (parent / 'child-heads.json').write_text(json.dumps({'schema': sync.CHILD_HEADS_SCHEMA, 'ref': 'main',
-                                                       'heads': {'owner/child': {'sha': 'c' * 40, 'repository_id': 42}}}))
-    # Deliberately newer/irrelevant recommendation must never replace adopted pins.
-    (parent / 'vendor-catalog.json').write_text('{"recommendation": "not an adopted lock"}')
+    (parent / 'vendor-catalog.json').write_text(json.dumps({
+        'schema': 'vendor-catalog/1',
+        'tools': [{
+            'repository': 'owner/tool', 'source': 'tool.py', 'commit': SHA, 'reason': 'test',
+            'consumers': {'owner/child': {'enrollment': 'enrolled', 'reason': 'test'}},
+        }, {
+            'repository': 'owner/tool', 'source': 'LICENSE', 'commit': SHA, 'reason': 'test',
+            'consumers': {'owner/child': {'enrollment': 'enrolled', 'reason': 'test'}},
+        }],
+    }))
+    stale_heads = {'schema': sync.CHILD_HEADS_SCHEMA, 'ref': 'main',
+                   'heads': {'owner/child': {'sha': 'c' * 40, 'repository_id': 42}}}
+    (parent / 'child-heads.json').write_text(json.dumps(stale_heads))
     for root, path in [(parent, sync.CHILD_CI_TEMPLATE), (child, sync.CHILD_CI_WORKFLOW_PATH)]:
         target = root / path; target.parent.mkdir(parents=True); target.write_bytes(TEMPLATE)
     def git(*args):
@@ -135,6 +144,13 @@ def test_child_uses_local_lock_not_parent_recorded_snapshot(tmp_path, monkeypatc
     (child / 'vendor.lock.json').write_text(json.dumps(local))
     result = sync.run_child_ci(child, child / 'ref.json', 'owner/child', parent_root=parent)
     assert result['files_checked'] == 2
+    assert json.loads((parent / 'child-heads.json').read_text())['heads']['owner/child']['sha'] == 'c' * 40
+
+
+def test_run_child_ci_does_not_read_child_heads_snapshot(tmp_path, monkeypatch):
+    parent, child, lock = child_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(sync, 'validate_child_heads', lambda *a, **k: pytest.fail('child-heads must not gate child CI'))
+    sync.run_child_ci(child, child / 'ref.json', 'owner/child', parent_root=parent)
 
 
 @pytest.mark.parametrize('fault', ['file', 'license', 'lock', 'missing_lock', 'template', 'crlf', 'parent_sha',

@@ -86,12 +86,14 @@ def test_private_source_repo_name_not_in_audit_failure(monkeypatch):
         }
 
     lock['files'][0]['repository'] = private_source
+    registry['consumers'][0]['entries'][0]['repository'] = private_source
     monkeypatch.setattr(sync, 'fetch_repository_record', public_only)
     monkeypatch.setattr(sync, '_fetch_repo_text', lambda *a, **k: json.dumps(lock))
     report = sync.audit_adopted_child_files(registry, heads, [NAME])
     assert report['failure_count'] == 1
     payload = json.dumps(report)
     assert 'secret' not in payload.casefold()
+    assert 'source repository is not public' in payload
 
 
 @pytest.mark.parametrize('fault,expect_skip', [

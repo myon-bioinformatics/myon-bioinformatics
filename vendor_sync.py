@@ -44,6 +44,7 @@ __all__ = [
     "monitored_repositories",
     "run_child_ci",
     "plan_heads_refresh",
+    "verify_child_lock_against_parent",
     "verify_workflow_template_copy",
     "main",
 ]
@@ -60,6 +61,9 @@ ORG_OWNER = "myon-bioinformatics"
 CHILD_CI_TEMPLATE = "templates/vendor-child-ci.workflow.yml"
 CHILD_CI_WORKFLOW_PATH = ".github/workflows/vendor-child-ci.yml"
 PUBLIC_GIT_FETCH_ERROR = "public Git fetch/read failed"
+PIN_NOT_MERGED_ERROR = "pin commit is not merged into source default branch"
+BRANCH_DIFF_SCAN_ERROR = "branch diff scan failed"
+AUDIT_SOURCE_ERROR = "source verification failed"
 HTML_IMPORT_LOCK_CANDIDATES = ("tools/html-import/vendor.lock.json",)
 MAX_BYTES = 8 * 1024 * 1024
 _REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
@@ -594,6 +598,60 @@ def _ensure_public_source_repository(repository, *, token=None, repo_fetch=None)
     return record
 
 
+def verify_child_lock_against_parent(registry, catalog, lock, consumer):
+    """Validate a child lock against parent registry/catalog without child-heads."""
+    import vendor_catalog
+    import vendor_consumers
+    registry = vendor_consumers.validate(registry)
+    catalog = vendor_catalog.validate(catalog)
+    lock = validate(lock)
+    if not vendor_consumers.compare(registry, lock, consumer)["matches"]:
+        raise ValueError("consumer topology mismatch against parent registry")
+    if any(item["ref"] != item["commit"] for item in lock["files"]):
+        raise ValueError("child lock requires ref=commit SHA pins")
+    consumer_key = _normalize_repository(consumer).casefold()
+    for item in lock["files"]:
+        tool = next(
+            (
+                row for row in catalog["tools"]
+                if row["repository"].casefold() == item["repository"].casefold()
+                and row["source"] == item["source"]
+            ),
+            None,
+        )
+        if tool is None:
+            continue
+        decision = next(
+            (value for key, value in tool.get("consumers", {}).items()
+             if _normalize_repository(key).casefold() == consumer_key),
+            tool.get("default_enrollment", {"enrollment": "enrolled"}),
+        )
+        if decision.get("enrollment") == "skipped":
+            raise ValueError("catalog skips vendored source for this consumer")
+    return lock
+
+
+def _audit_failure_message(error):
+    message = str(error)
+    if message in (
+        PUBLIC_GIT_FETCH_ERROR,
+        PIN_NOT_MERGED_ERROR,
+        "source repository is not public",
+        "consumer topology mismatch against parent registry",
+        "catalog skips vendored source for this consumer",
+        "child lock requires ref=commit SHA pins",
+        "Git snapshot SHA mismatch",
+    ):
+        return message
+    if "blob mismatch" in message or "mismatch" in message or "topology" in message:
+        return AUDIT_SOURCE_ERROR
+    if "git" in message.casefold() or "fetch" in message.casefold() or "not found" in message.casefold():
+        return PUBLIC_GIT_FETCH_ERROR
+    if "merged" in message.casefold():
+        return PIN_NOT_MERGED_ERROR
+    return AUDIT_SOURCE_ERROR
+
+
 def build_expected_child_lock(registry, document, consumer, *, token=None):
     """Load adopted pins from the immutable child revision recorded by the parent.
 
@@ -684,7 +742,7 @@ def audit_adopted_child_files(registry, document, repository_names, *, token=Non
                 _verify(item, files[item["destination"]][1])
             checked.append({"repository": name, "files_checked": len(lock["files"])})
         except (ValueError, OSError, subprocess.SubprocessError) as error:
-            failures.append({"repository": name, "message": str(error)})
+            failures.append({"repository": name, "message": _audit_failure_message(error)})
     return {"checked": checked, "failures": failures, "failure_count": len(failures)}
 
 
@@ -747,15 +805,13 @@ def run_child_ci(root, parent_ref_path, consumer, *, token=None,
     # The workflow verifies PR/repository identity before running this code.
     # Never resolve a mutable open PR a second time or read data from another SHA.
     registry = json.loads((parent_root / "vendor-consumers.json").read_text(encoding="utf-8"))
+    catalog = json.loads((parent_root / "vendor-catalog.json").read_text(encoding="utf-8"))
     template = (parent_root / CHILD_CI_TEMPLATE).read_bytes()
     copied_path = _target(root, CHILD_CI_WORKFLOW_PATH)
     verify_workflow_template_copy(copied_path.read_bytes(), template)
     entry = vendor_consumers.get_consumer(registry, consumer)
     local_lock = validate(json.loads(_target(root, entry["lock"]).read_text(encoding="utf-8")))
-    if not vendor_consumers.compare(registry, local_lock, consumer)["matches"]:
-        raise ValueError("consumer topology mismatch against parent registry")
-    if any(item["ref"] != item["commit"] for item in local_lock["files"]):
-        raise ValueError("child lock requires ref=commit SHA pins")
+    verify_child_lock_against_parent(registry, catalog, local_lock, consumer)
     failures = []
     for item in local_lock["files"]:
         try:
@@ -763,7 +819,10 @@ def run_child_ci(root, parent_ref_path, consumer, *, token=None,
             commit_merged_into_default(item["repository"], item["commit"])
             _verify(item, _target(root, item["destination"]).read_bytes())
         except (OSError, ValueError) as error:
-            failures.append({"destination": item["destination"], "message": str(error)})
+            failures.append({
+                "destination": item["destination"],
+                "message": _audit_failure_message(error),
+            })
     if failures:
         raise ValueError("child vendor file mismatch: " + json.dumps(failures, ensure_ascii=False))
     return {
@@ -1069,7 +1128,7 @@ def branches_differing_from_main(repository, *, remotes=None, local_roots=None, 
             result = subprocess.run(command + list(args), env=_git_subprocess_env(),
                                     capture_output=True, timeout=120)
             if result.returncode:
-                raise ValueError("git branch diff failed for " + repository)
+                raise ValueError(BRANCH_DIFF_SCAN_ERROR)
             return result.stdout
         git("init")
         git("remote", "add", "origin", remote)
@@ -1105,8 +1164,8 @@ def source_diff_report(registry, *, token=None, remotes=None, local_roots=None,
             findings.extend(branches_differing_from_main(
                 name, remotes=remotes, local_roots=local_roots,
             ))
-        except ValueError as error:
-            scan_errors.append({"repository": name, "message": str(error)})
+        except ValueError:
+            scan_errors.append({"repository": name, "message": BRANCH_DIFF_SCAN_ERROR})
     return {
         "schema": "source-diff-report/1",
         "findings": findings,
@@ -1460,9 +1519,7 @@ def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=
             )
             if probe.returncode == 0:
                 return True
-        raise ValueError(
-            "commit " + commit + " is not merged into " + repository + " default branch"
-        )
+        raise ValueError(PIN_NOT_MERGED_ERROR)
     remote = _repository_remote(repository, remotes)
     with tempfile.TemporaryDirectory(prefix="vendor-merged-pin-") as directory:
         command = ["git", "-c", "credential.helper=", "-c", "core.askPass=",
@@ -1471,16 +1528,15 @@ def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=
             result = subprocess.run(command + list(args), env=_git_subprocess_env(),
                                     capture_output=True, timeout=120)
             if result.returncode:
-                detail = result.stderr.decode("utf-8", "replace").strip()
-                raise ValueError("git fetch failed for " + repository + ": " + detail)
+                raise ValueError(PUBLIC_GIT_FETCH_ERROR)
             return result.stdout
         git("init", "--bare")
         branch = _default_branch_name(remote)
         try:
             git("fetch", "--no-tags", "--depth=1", remote, "refs/heads/" + branch + ":refs/heads/" + branch)
             git("fetch", "--no-tags", "--depth=1", remote, commit)
-        except ValueError as error:
-            raise ValueError("cannot fetch pin for " + repository + "@" + commit[:12] + ": " + str(error)) from error
+        except ValueError:
+            raise ValueError(PUBLIC_GIT_FETCH_ERROR) from None
         probe = subprocess.run(
             command + ["merge-base", "--is-ancestor", commit, branch],
             env=_git_subprocess_env(),
@@ -1489,9 +1545,7 @@ def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=
         )
         if probe.returncode == 0:
             return True
-        raise ValueError(
-            "commit " + commit + " is not merged into " + repository + " default branch (" + branch + ")"
-        )
+        raise ValueError(PIN_NOT_MERGED_ERROR)
 
 
 def collect_lock_pins(lock, lock_path):
