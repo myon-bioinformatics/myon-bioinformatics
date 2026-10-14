@@ -82,9 +82,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # TODO: repin to the gh_identity main merge commit after PRs #48-#50 are merged.
+      # Pinned to gh_identity main merge commit 7492d73 (#56; first-parent verified).
       # Currently the head of gh_identity PR #50 (includes #48 and #49).
-      GH_IDENTITY_SHA: 7e9f60997d7b9e96a07fcb258b84f622b9209368
+      GH_IDENTITY_SHA: 7492d73d909b4ea8ab5ffb3437fc4710469e8650
     steps:
       - uses: actions/setup-python@v7
         with:
@@ -103,7 +103,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p reports
-          python -S .gh-identity/gh_identity.py duplicate-files --owner myon-bioinformatics > reports/duplicate-files.json
+          python -S .gh-identity/gh_identity.py --timeout 900 duplicate-files --owner myon-bioinformatics > reports/duplicate-files.json
           python -S - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json, sys
           sys.path.insert(0, ".gh-identity")
