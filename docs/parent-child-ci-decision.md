@@ -145,3 +145,15 @@ not revoke an existing registered lock entry. Child verification still requires
 exact registry topology, immutable source provenance, source blob/SHA-256 and
 actual child bytes. Unregistered additions remain errors. Ironmate provides no
 catalog tools; its existing consumer copies are retained.
+
+## Product CI for rollout-only changes
+
+Reusable change detection adds `product_changed`, while preserving all existing
+outputs. Only `.github/workflows/vendor-child-ci.yml` and
+`templates/parent-pr.ref.json` are excluded from product changes, along with
+existing docs-only paths. Vendor bytes, locks, dependencies, other workflows and
+unknown paths still enable product tests. `force_heavy_paths` wins over these
+exclusions. Empty diffs and manual runs enable product tests; diff failures fail
+the classification job. Consumers may adopt this output only while retaining
+independent Vendor child CI and actionlint. This does not weaken vendor auditing
+or change the existing docs-as-test-input override contract.
