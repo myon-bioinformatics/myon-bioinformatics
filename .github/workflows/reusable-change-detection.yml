@@ -15,6 +15,9 @@ on:
       non_docs_changed:
         description: "true when at least one changed file is not documentation-only."
         value: ${{ jobs.changes.outputs.non_docs_changed }}
+      product_changed:
+        description: "true unless changes are docs or the two parent CI rollout files; use only with vendor CI and workflow lint retained."
+        value: ${{ jobs.changes.outputs.product_changed }}
       workflow_changed:
         description: "true when .github/workflows/** changed."
         value: ${{ jobs.changes.outputs.workflow_changed }}
@@ -31,6 +34,7 @@ jobs:
     outputs:
       docs_only: ${{ steps.classify.outputs.docs_only }}
       non_docs_changed: ${{ steps.classify.outputs.non_docs_changed }}
+      product_changed: ${{ steps.classify.outputs.product_changed }}
       workflow_changed: ${{ steps.classify.outputs.workflow_changed }}
       changed_count: ${{ steps.classify.outputs.changed_count }}
     steps:
@@ -62,6 +66,7 @@ jobs:
             {
               echo "docs_only=false"
               echo "non_docs_changed=true"
+              echo "product_changed=true"
               echo "workflow_changed=false"
               echo "changed_count=0"
             } >> "$GITHUB_OUTPUT"
@@ -69,11 +74,14 @@ jobs:
             exit 0
           fi
 
-          mapfile -t files < <(git diff --name-only "$BASE" "$HEAD")
+          # Preserve arbitrary filenames, and fail the job if diff retrieval fails.
+          git diff --name-only -z "$BASE" "$HEAD" > "$RUNNER_TEMP/changed-paths"
+          mapfile -d '' -t files < "$RUNNER_TEMP/changed-paths"
           mapfile -t forced < <(printf '%s\n' "$FORCE_HEAVY_PATHS" | tr ' ' '\n' | sed '/^$/d')
 
           docs_only=true
           non_docs_changed=false
+          product_changed=false
           workflow_changed=false
 
           for f in "${files[@]}"; do
@@ -90,13 +98,27 @@ jobs:
             if [[ "$forced_heavy" == true ]]; then
               docs_only=false
               non_docs_changed=true
+              product_changed=true
+              continue
+            fi
+
+            # Ambiguous log/line-oriented paths conservatively run product CI.
+            if [[ "$f" == *$'\n'* || "$f" == *$'\r'* ]]; then
+              docs_only=false
+              non_docs_changed=true
+              product_changed=true
               continue
             fi
 
             case "$f" in
               docs/*|*.md|*.mdx|*.rst)
                 ;;
+              .github/workflows/vendor-child-ci.yml|templates/parent-pr.ref.json)
+                docs_only=false
+                non_docs_changed=true
+                ;;
               *)
+                product_changed=true
                 docs_only=false
                 non_docs_changed=true
                 ;;
@@ -107,11 +129,13 @@ jobs:
           if (( ${#files[@]} == 0 )); then
             docs_only=false
             non_docs_changed=true
+            product_changed=true
           fi
 
           {
             echo "docs_only=$docs_only"
             echo "non_docs_changed=$non_docs_changed"
+            echo "product_changed=$product_changed"
             echo "workflow_changed=$workflow_changed"
             echo "changed_count=${#files[@]}"
           } >> "$GITHUB_OUTPUT"
