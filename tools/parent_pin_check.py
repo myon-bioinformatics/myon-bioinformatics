@@ -54,6 +54,24 @@ class ParentPinError(RuntimeError):
     """Fail-closed configuration or GitHub API failure."""
 
 
+def should_enforce(
+    *,
+    event_name: str | None = None,
+    ref: str | None = None,
+    enforce: bool | None = None,
+) -> bool:
+    """Return True when stale/unified-pin findings should fail CI (not warn only)."""
+    if enforce is not None:
+        return enforce
+    event_name = (event_name or os.environ.get("GITHUB_EVENT_NAME") or "").strip()
+    ref = (ref or os.environ.get("GITHUB_REF") or "").strip()
+    if event_name == "schedule":
+        return True
+    if event_name == "push" and ref == "refs/heads/main":
+        return True
+    return False
+
+
 def _normalize_repo(value: str) -> str | None:
     if not isinstance(value, str):
         return None
@@ -355,7 +373,7 @@ def evaluate(
     parent_repository: str,
     main_sha: str | None,
     token: str | None,
-    fail_on_stale: bool,
+    enforce: bool = False,
 ) -> dict[str, Any]:
     by_sha: dict[str, list[dict[str, Any]]] = {}
     for pin in pins:
@@ -364,14 +382,15 @@ def evaluate(
     inconsistent = len(unique) > 1
     stale = False
     stale_shas: list[str] = []
-    if main_sha and unique and token and not inconsistent:
+    if main_sha and unique and token:
         for sha in unique:
             if sha == main_sha:
                 continue
             if pin_behind_main(parent_repository, sha, main_sha, token):
                 stale = True
                 stale_shas.append(sha)
-    fail = inconsistent or (fail_on_stale and stale)
+    findings = inconsistent or stale
+    fail = enforce and findings
     return {
         "schema": SCHEMA,
         "parent_repository": parent_repository,
@@ -381,7 +400,7 @@ def evaluate(
         "inconsistent": inconsistent,
         "stale": stale,
         "stale_commits": stale_shas,
-        "fail_on_stale": fail_on_stale,
+        "enforce": enforce,
         "ok": not fail,
     }
 
@@ -399,11 +418,12 @@ def render_text(report: dict[str, Any]) -> str:
             f"  {pin['commit']} {pin['file']}{line} ({pin['kind']})"
             + (f" {pin['entry']}" if pin.get("entry") else "")
         )
+    level = "ERROR" if report.get("enforce") else "WARNING"
     if report["inconsistent"]:
-        lines.append("ERROR: parent pin values are not unified across the checkout.")
+        lines.append(f"{level}: parent pin values are not unified across the checkout.")
     if report["stale"]:
         lines.append(
-            "WARNING: pinned commit(s) are behind parent default branch HEAD: "
+            f"{level}: pinned commit(s) are behind parent default branch HEAD: "
             + ", ".join(report["stale_commits"])
         )
     if report.get("main_sha"):
@@ -412,6 +432,7 @@ def render_text(report: dict[str, Any]) -> str:
 
 
 def emit_annotations(report: dict[str, Any]) -> None:
+    level = "error" if report.get("enforce") else "warning"
     if report["inconsistent"]:
         for sha, group in _group_by_sha(report["pins"]).items():
             if len(report["unique_commits"]) <= 1:
@@ -419,12 +440,14 @@ def emit_annotations(report: dict[str, Any]) -> None:
             for pin in group:
                 line = pin.get("line") or 1
                 print(
-                    f"::error file={pin['file']},line={line}::"
+                    f"::{level} file={pin['file']},line={line}::"
                     f"parent pin mismatch ({sha}); expected a single unified parent SHA"
                 )
     if report["stale"]:
         for sha in report["stale_commits"]:
-            print(f"::warning::parent pin {sha} is behind {report['parent_repository']} main")
+            print(
+                f"::{level}::parent pin {sha} is behind {report['parent_repository']} main"
+            )
 
 
 def _group_by_sha(pins: Sequence[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -642,9 +665,9 @@ def audit_fleet_child(
         parent_repository=parent_repository,
         main_sha=main_sha,
         token=token,
-        fail_on_stale=True,
+        enforce=False,
     )
-    if report["ok"]:
+    if not report["inconsistent"] and not report["stale"]:
         return None
     return {
         "repository": repository,
@@ -662,6 +685,7 @@ def run_fleet(
     exclude_globs: Sequence[str] = (),
     include_default_excludes: bool = True,
     token: str | None = None,
+    enforce: bool = False,
 ) -> dict[str, Any]:
     if not token:
         token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
@@ -697,7 +721,8 @@ def run_fleet(
         "skipped_repositories": skipped,
         "failure_count": len(failures),
         "failures": failures,
-        "ok": not failures,
+        "enforce": enforce,
+        "ok": not (enforce and failures),
     }
 
 
@@ -717,14 +742,16 @@ def render_fleet_text(report: dict[str, Any]) -> str:
                 f"  {pin['reason']} {pin['file']}{line} pin={pin['commit']} ({pin['kind']})"
             )
     if report["failure_count"]:
+        level = "ERROR" if report.get("enforce") else "WARNING"
         lines.append(
-            "ERROR: at least one public child default branch still pins an old parent commit."
+            f"{level}: at least one public child default branch still pins an old parent commit."
         )
     return "\n".join(lines) + "\n"
 
 
 def emit_fleet_annotations(report: dict[str, Any]) -> None:
     main_sha = report["parent_main_sha"]
+    level = "error" if report.get("enforce") else "warning"
     for item in report["failures"]:
         repo = item["repository"]
         for pin in item["pins"]:
@@ -739,7 +766,7 @@ def emit_fleet_annotations(report: dict[str, Any]) -> None:
                     f"{repo} {pin['file']}:{line} parent pin {pin['commit']} "
                     "is not unified with other parent pins in this repository"
                 )
-            print(f"::error::{message}")
+            print(f"::{level}::{message}")
 
 
 def run(
@@ -750,7 +777,7 @@ def run(
     include_default_excludes: bool = True,
     token: str | None = None,
     skip_api: bool = False,
-    fail_on_stale: bool = False,
+    enforce: bool = False,
 ) -> dict[str, Any]:
     pins = scan(
         root,
@@ -772,7 +799,7 @@ def run(
         parent_repository=parent_repository,
         main_sha=main_sha,
         token=token,
-        fail_on_stale=fail_on_stale,
+        enforce=enforce,
     )
     return report
 
@@ -794,9 +821,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Do not apply built-in fleet observation excludes",
     )
     parser.add_argument(
-        "--fail-on-stale",
+        "--enforce",
         action="store_true",
-        help="Exit non-zero when pins are behind parent main (default: warn only)",
+        help="Exit non-zero on stale or inconsistent pins (overrides event/ref policy)",
+    )
+    parser.add_argument(
+        "--warn-only",
+        action="store_true",
+        help="Never fail on findings; emit warnings only",
+    )
+    parser.add_argument(
+        "--event",
+        default=None,
+        help="GitHub event name for default enforce policy (else GITHUB_EVENT_NAME)",
+    )
+    parser.add_argument(
+        "--ref",
+        default=None,
+        help="GitHub ref for default enforce policy (else GITHUB_REF)",
     )
     parser.add_argument("--json", action="store_true", help="Print JSON report on stdout")
     parser.add_argument(
@@ -815,6 +857,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="GitHub account owner for fleet listing (default: myon-bioinformatics)",
     )
     args = parser.parse_args(argv)
+    if args.warn_only and args.enforce:
+        parser.error("--enforce and --warn-only are mutually exclusive")
+    if args.warn_only:
+        enforce_mode = False
+    elif args.enforce:
+        enforce_mode = True
+    else:
+        enforce_mode = should_enforce(event_name=args.event, ref=args.ref)
     try:
         if args.fleet:
             report = run_fleet(
@@ -822,6 +872,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 parent_repository=args.parent,
                 exclude_globs=args.exclude,
                 include_default_excludes=not args.no_default_excludes,
+                enforce=enforce_mode,
             )
         else:
             report = run(
@@ -829,7 +880,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 parent_repository=args.parent,
                 exclude_globs=args.exclude,
                 include_default_excludes=not args.no_default_excludes,
-                fail_on_stale=args.fail_on_stale,
+                enforce=enforce_mode,
                 skip_api=args.skip_api,
             )
     except ParentPinError as error:

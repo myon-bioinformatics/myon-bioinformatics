@@ -15,12 +15,12 @@ on:
         description: "Newline-separated extra fnmatch globs to skip"
         type: string
         default: ""
-      fail-on-stale:
-        description: "Fail when pins are behind parent default branch (default warns only)"
-        type: boolean
-        default: false
       skip-default-excludes:
         description: "Scan fleet observation files such as child-heads.json"
+        type: boolean
+        default: false
+      fleet:
+        description: "Audit all public child default branches (parent CI only)"
         type: boolean
         default: false
 
@@ -30,7 +30,7 @@ permissions:
 jobs:
   parent-pin-check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -44,16 +44,20 @@ jobs:
           PARENT_REPOSITORY: ${{ inputs.parent-repository }}
           CHECK_ROOT: ${{ inputs.root }}
           EXCLUDE_GLOBS: ${{ inputs.exclude-globs }}
-          FAIL_ON_STALE: ${{ inputs.fail-on-stale }}
           SKIP_DEFAULT_EXCLUDES: ${{ inputs.skip-default-excludes }}
+          RUN_FLEET: ${{ inputs.fleet }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          args=(--root "$CHECK_ROOT" --parent "$PARENT_REPOSITORY")
+          args=(--parent "$PARENT_REPOSITORY" --event "$GITHUB_EVENT_NAME" --ref "$GITHUB_REF")
+          if [[ "$RUN_FLEET" == "true" ]]; then
+            args+=(--fleet)
+          else
+            args+=(--root "$CHECK_ROOT")
+          fi
           if [[ "$SKIP_DEFAULT_EXCLUDES" == "true" ]]; then
             args+=(--no-default-excludes)
-          fi
-          if [[ "$FAIL_ON_STALE" == "true" ]]; then
-            args+=(--fail-on-stale)
           fi
           if [[ -n "$EXCLUDE_GLOBS" ]]; then
             while IFS= read -r pattern; do

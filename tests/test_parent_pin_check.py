@@ -18,6 +18,7 @@ from tools.parent_pin_check import (
     run_fleet,
     scan,
     scan_text_files,
+    should_enforce,
 )
 
 
@@ -49,14 +50,14 @@ def test_unified_pins_are_ok(tmp_path: Path) -> None:
         parent_repository=PARENT_REPOSITORY,
         main_sha=sha,
         token=None,
-        fail_on_stale=False,
+        enforce=False,
     )
     assert report["ok"]
     assert not report["inconsistent"]
     assert not report["stale"]
 
 
-def test_one_old_pin_fails_unification(tmp_path: Path) -> None:
+def test_one_old_pin_fails_unification_when_enforced(tmp_path: Path) -> None:
     good = "b" * 40
     bad = "c" * 40
     _write(
@@ -76,13 +77,39 @@ def test_one_old_pin_fails_unification(tmp_path: Path) -> None:
         parent_repository=PARENT_REPOSITORY,
         main_sha=good,
         token=None,
-        fail_on_stale=False,
+        enforce=True,
     )
     assert not report["ok"]
     assert report["inconsistent"]
 
 
-def test_docs_only_old_pin_fails(tmp_path: Path) -> None:
+def test_one_old_pin_warns_without_enforce(tmp_path: Path) -> None:
+    good = "b" * 40
+    bad = "c" * 40
+    _write(
+        tmp_path,
+        ".github/workflows/ci.yml",
+        f"""
+        jobs:
+          a:
+            uses: {PARENT_REPOSITORY}/.github/workflows/reusable-actionlint.yml@{good}
+          b:
+            uses: {PARENT_REPOSITORY}/.github/workflows/reusable-pages-static.yml@{bad}
+        """,
+    )
+    pins = scan(tmp_path, include_default_excludes=False)
+    report = evaluate(
+        pins,
+        parent_repository=PARENT_REPOSITORY,
+        main_sha=good,
+        token=None,
+        enforce=False,
+    )
+    assert report["ok"]
+    assert report["inconsistent"]
+
+
+def test_docs_only_old_pin_fails_when_enforced(tmp_path: Path) -> None:
     good = "d" * 40
     bad = "e" * 40
     _write(
@@ -108,7 +135,7 @@ def test_docs_only_old_pin_fails(tmp_path: Path) -> None:
         parent_repository=PARENT_REPOSITORY,
         main_sha=good,
         token=None,
-        fail_on_stale=False,
+        enforce=True,
     )
     assert not report["ok"]
 
@@ -192,7 +219,7 @@ def test_stale_only_warns_by_default(tmp_path: Path) -> None:
             parent_repository=PARENT_REPOSITORY,
             main_sha=main,
             token="token",
-            fail_on_stale=False,
+            enforce=False,
         )
         assert report["stale"]
         assert report["ok"]
@@ -201,7 +228,7 @@ def test_stale_only_warns_by_default(tmp_path: Path) -> None:
             parent_repository=PARENT_REPOSITORY,
             main_sha=main,
             token="token",
-            fail_on_stale=True,
+            enforce=True,
         )
         assert not report_strict["ok"]
     finally:
@@ -300,6 +327,62 @@ def test_fleet_skips_private_without_naming(monkeypatch: pytest.MonkeyPatch) -> 
     assert report["ok"]
     assert report["skipped_repositories"] == 1
     assert report["failure_count"] == 0
+
+
+def test_should_enforce_event_policy() -> None:
+    assert should_enforce(event_name="schedule", ref="refs/heads/main")
+    assert should_enforce(event_name="schedule", ref="refs/heads/other")
+    assert should_enforce(event_name="push", ref="refs/heads/main")
+    assert not should_enforce(event_name="push", ref="refs/heads/feature/x")
+    assert not should_enforce(event_name="pull_request", ref="refs/pull/85/merge")
+    assert not should_enforce(event_name="workflow_dispatch", ref="refs/heads/main")
+
+
+def test_fleet_warn_only_on_pull_request_event(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "tools.parent_pin_check.fetch_parent_main_sha",
+        lambda *args, **kwargs: ("a" * 40, "main"),
+    )
+    monkeypatch.setattr(
+        "tools.parent_pin_check._list_public_child_repositories",
+        lambda *args, **kwargs: ["myon-bioinformatics/Ironmate"],
+    )
+    monkeypatch.setattr(
+        "tools.parent_pin_check.audit_fleet_child",
+        lambda *args, **kwargs: {
+            "repository": "myon-bioinformatics/Ironmate",
+            "revision": "b" * 40,
+            "pins": [{"file": ".github/workflows/ci.yml", "line": 1, "commit": "c" * 40, "kind": "workflow-uses", "reason": "stale"}],
+            "inconsistent": False,
+            "stale": True,
+        },
+    )
+    report = run_fleet(token="token", enforce=False)
+    assert report["failure_count"] == 1
+    assert report["ok"]
+
+
+def test_fleet_enforces_on_schedule(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "tools.parent_pin_check.fetch_parent_main_sha",
+        lambda *args, **kwargs: ("a" * 40, "main"),
+    )
+    monkeypatch.setattr(
+        "tools.parent_pin_check._list_public_child_repositories",
+        lambda *args, **kwargs: ["myon-bioinformatics/Ironmate"],
+    )
+    monkeypatch.setattr(
+        "tools.parent_pin_check.audit_fleet_child",
+        lambda *args, **kwargs: {
+            "repository": "myon-bioinformatics/Ironmate",
+            "revision": "b" * 40,
+            "pins": [{"file": ".github/workflows/ci.yml", "line": 1, "commit": "c" * 40, "kind": "workflow-uses", "reason": "stale"}],
+            "inconsistent": False,
+            "stale": True,
+        },
+    )
+    report = run_fleet(token="token", enforce=True)
+    assert not report["ok"]
 
 
 def test_compare_stale_behind(monkeypatch: pytest.MonkeyPatch) -> None:
