@@ -27,8 +27,11 @@ def fixture(monkeypatch):
         'blob_sha': sync.git_blob(DATA), 'sha256': hashlib.sha256(DATA).hexdigest()}]}
     heads = {'schema': sync.CHILD_HEADS_SCHEMA, 'ref': 'main',
              'heads': {NAME: {'sha': SHA, 'repository_id': 42}}}
-    monkeypatch.setattr(sync, 'fetch_repository_record', lambda *a, **k: {
-        'id': 42, 'full_name': NAME, 'private': False, 'visibility': 'public', 'archived': False})
+    public_record = {
+        'id': 42, 'full_name': NAME, 'private': False, 'visibility': 'public', 'archived': False,
+    }
+    monkeypatch.setattr(sync, 'fetch_repository_record', lambda *a, **k: dict(public_record))
+    monkeypatch.setattr(sync, 'public_repository_page_record', lambda *a, **k: dict(public_record))
     monkeypatch.setattr(sync, '_fetch_repo_text', lambda *a, **k: json.dumps(lock))
     return registry, lock, heads
 
