@@ -105,7 +105,7 @@ def test_private_source_repo_name_not_in_audit_failure(monkeypatch):
 @pytest.mark.parametrize('fault,expect_skip', [
     (None, False),
     ('lock', False),
-    ('deleted_workflow', True),
+    ('deleted_workflow', False),
     ('modified_workflow', True),
     ('missing_lock', False),
     ('id', True),
@@ -141,8 +141,26 @@ def test_plan_heads_refresh_skips_only_review_items(monkeypatch, fault, expect_s
         assert plan['skipped']
     elif fault == 'lock':
         assert plan['heads'][NAME]['sha'] == NEW
-    elif fault is None:
+    elif fault in (None, 'deleted_workflow'):
         assert plan['heads'][NAME]['sha'] == NEW
+
+
+def test_plan_heads_refresh_allows_vendor_child_ci_removal(monkeypatch):
+    registry, lock, heads = fixture(monkeypatch)
+    workflow = TEMPLATE.decode()
+    new_heads = {NAME: {'sha': NEW, 'repository_id': 42}}
+
+    def fetch_text(name, path, revision, token=None):
+        if path == sync.CHILD_CI_WORKFLOW_PATH:
+            if revision == SHA:
+                return workflow
+            return None
+        return json.dumps(lock)
+
+    monkeypatch.setattr(sync, '_fetch_repo_text', fetch_text)
+    plan = sync.plan_heads_refresh(registry, heads, new_heads, workflow, token='token')
+    assert plan['heads'][NAME]['sha'] == NEW
+    assert not any(row.get('reason') == 'workflow_removed' for row in plan['skipped'])
 
 
 def test_plan_heads_refresh_drops_unmonitored_stale_entries():
@@ -353,16 +371,63 @@ def test_autofix_continues_when_one_repo_skipped(tmp_path, monkeypatch):
     monkeypatch.setattr(sync, '_offline_parent_vendor_check', lambda *a: {})
     monkeypatch.setattr(sync, '_public_git_snapshot', lambda repo, sha, paths:
                         (sha, {p: (sync.git_blob(DATA), DATA) for p in paths}))
-    monkeypatch.setattr(sync, '_fetch_repo_text', lambda name, path, sha, token:
-                        None if path == sync.CHILD_CI_WORKFLOW_PATH and sha == NEW else json.dumps(lock))
+    monkeypatch.setattr(sync, 'commit_merged_into_default', lambda *a, **k: True)
+    bad_workflow = 'jobs:\n  custom:\n    steps: []\n'
+
+    def fetch_text(name, path, sha, token=None):
+        if path == sync.CHILD_CI_WORKFLOW_PATH:
+            return bad_workflow if sha == NEW else TEMPLATE.decode()
+        return json.dumps(lock)
+
+    monkeypatch.setattr(sync, '_fetch_repo_text', fetch_text)
     writes = []
-    monkeypatch.setattr(sync, '_open_or_update_autofix_pr', lambda *a, **k: writes.append(1) or {
-        'pull_number': 1, 'url': 'https://example.invalid/1', 'branch': 'vendor/child-heads-sync'})
+    captured = {}
+
+    def capture_pr(repo, branch, title, body, files, token):
+        writes.append(1)
+        captured['heads'] = json.loads(files['child-heads.json'].decode())['heads']
+        return {'pull_number': 1, 'url': 'https://example.invalid/1', 'branch': 'vendor/child-heads-sync'}
+
+    monkeypatch.setattr(sync, '_open_or_update_autofix_pr', capture_pr)
     monkeypatch.setattr(sync, '_dispatch_parent_workflow', lambda *a, **k: None)
     report = sync.run_parent_child_ci(registry, heads, parent_root=tmp_path,
                                       skip_source_diff=True, autofix=True, token='fixture')
     assert writes
-    assert report['heads_refresh_skipped']
+    assert captured['heads'][NAME]['sha'] == SHA
+    assert any(row['reason'] == 'workflow_template_mismatch' for row in report['heads_refresh_skipped'])
+
+
+def test_autofix_refreshes_head_when_vendor_child_ci_removed(tmp_path, monkeypatch):
+    registry, lock, heads = fixture(monkeypatch)
+    (tmp_path / 'templates').mkdir()
+    (tmp_path / sync.CHILD_CI_TEMPLATE).write_text(TEMPLATE.decode())
+    monkeypatch.setattr(sync, 'monitored_repositories', lambda *a, **k: [NAME])
+    monkeypatch.setattr(sync, 'fetch_child_head_record', lambda *a, **k: {'sha': NEW, 'repository_id': 42})
+    monkeypatch.setattr(sync, 'audit_child_workflow_templates', lambda *a, **k: {'failures': [], 'missing': []})
+    monkeypatch.setattr(sync, '_copy_parent_vendor_baseline', lambda *a: tmp_path)
+    monkeypatch.setattr(sync, '_offline_parent_vendor_check', lambda *a: {})
+    monkeypatch.setattr(sync, '_public_git_snapshot', lambda repo, sha, paths:
+                        (sha, {p: (sync.git_blob(DATA), DATA) for p in paths}))
+    monkeypatch.setattr(sync, 'commit_merged_into_default', lambda *a, **k: True)
+
+    def fetch_text(name, path, sha, token=None):
+        if path == sync.CHILD_CI_WORKFLOW_PATH:
+            return TEMPLATE.decode() if sha == SHA else None
+        return json.dumps(lock)
+
+    monkeypatch.setattr(sync, '_fetch_repo_text', fetch_text)
+    captured = {}
+
+    def capture_pr(repo, branch, title, body, files, token):
+        captured['heads'] = json.loads(files['child-heads.json'].decode())['heads']
+        return {'pull_number': 1, 'url': 'https://example.invalid/1', 'branch': 'vendor/child-heads-sync'}
+
+    monkeypatch.setattr(sync, '_open_or_update_autofix_pr', capture_pr)
+    monkeypatch.setattr(sync, '_dispatch_parent_workflow', lambda *a, **k: None)
+    report = sync.run_parent_child_ci(registry, heads, parent_root=tmp_path,
+                                      skip_source_diff=True, autofix=True, token='fixture')
+    assert captured['heads'][NAME]['sha'] == NEW
+    assert not any(row.get('reason') == 'workflow_removed' for row in report['heads_refresh_skipped'])
 
 
 @pytest.mark.parametrize('fault', [None, 'file', 'both'])
