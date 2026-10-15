@@ -37,16 +37,24 @@ jobs:
         with:
           path: consumer
           persist-credentials: false
-      - name: Checkout parent pin tool from public main
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ inputs.parent-repository }}
-          ref: main
-          path: parent-pin-tool
-          sparse-checkout: |
-            tools/parent_pin_check.py
-          sparse-checkout-cone-mode: false
-          persist-credentials: false
+      - name: Fetch parent pin tool from public main (fixed path)
+        env:
+          PARENT_REPOSITORY: ${{ inputs.parent-repository }}
+          TOOL_PATH: tools/parent_pin_check.py
+        run: |
+          set -euo pipefail
+          mkdir -p parent-pin-tool/tools
+          url="https://raw.githubusercontent.com/${PARENT_REPOSITORY}/main/${TOOL_PATH}"
+          if curl -fsSL "$url" -o "parent-pin-tool/${TOOL_PATH}"; then
+            echo "Fetched parent pin tool from ${url}"
+          elif [[ "${{ github.repository }}" == "${PARENT_REPOSITORY}" ]] \
+            && [[ -f "consumer/${TOOL_PATH}" ]]; then
+            echo "::warning::Parent pin tool not on main yet; bootstrapping from this checkout for parent CI only."
+            cp "consumer/${TOOL_PATH}" "parent-pin-tool/${TOOL_PATH}"
+          else
+            echo "::error::Parent pin tool not found at ${url}" >&2
+            exit 1
+          fi
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
