@@ -19,7 +19,7 @@ PARENT_REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
 ORG_OWNER = "myon-bioinformatics"
 SCHEMA = "parent-pin-check/1"
 FLEET_SCHEMA = "parent-pin-fleet/1"
-FLEET_PATH_PREFIXES = (".github/", "docs/", "templates/")
+FLEET_PATH_PREFIXES = (".github/", "templates/")
 MAX_BYTES = 8 * 1024 * 1024
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", ".test-deps"}
 ZERO_SHA = "0" * 40
@@ -527,7 +527,7 @@ def _list_public_child_repositories(owner: str, parent_repository: str, token: s
 
 
 def _remote_scannable_paths(
-    repository: str, ref: str, token: str, patterns: Sequence[str]
+    repository: str, ref: str, token: str, patterns: Sequence[str], *, fleet: bool = False
 ) -> list[str]:
     commit = _github_json(
         "https://api.github.com/repos/"
@@ -554,7 +554,10 @@ def _remote_scannable_paths(
             continue
         if any(part in path.split("/") for part in SKIP_DIRS):
             continue
-        if not (
+        if fleet:
+            if not path.startswith(FLEET_PATH_PREFIXES):
+                continue
+        elif not (
             path.startswith(FLEET_PATH_PREFIXES)
             or ("/" not in path and Path(path).suffix)
         ):
@@ -565,11 +568,16 @@ def _remote_scannable_paths(
         if size > MAX_BYTES:
             continue
         suffix = Path(path).suffix.lower()
-        scannable = (
-            (path.startswith(".github/workflows/") and suffix in (".yml", ".yaml"))
-            or suffix == ".json"
-            or suffix in (".md", ".py", ".yml", ".yaml", ".toml", ".txt")
-        )
+        if fleet:
+            scannable = (path.startswith(".github/workflows/") and suffix in (".yml", ".yaml")) or path.endswith(
+                "parent-pr.ref.json"
+            )
+        else:
+            scannable = (
+                (path.startswith(".github/workflows/") and suffix in (".yml", ".yaml"))
+                or suffix == ".json"
+                or suffix in (".md", ".py", ".yml", ".yaml", ".toml", ".txt")
+            )
         if scannable:
             paths.append(path)
     return paths
@@ -582,12 +590,13 @@ def fetch_repository_pin_files(
     *,
     exclude_globs: Sequence[str] = (),
     include_default_excludes: bool = True,
+    fleet: bool = False,
 ) -> dict[str, str]:
     patterns = list(exclude_globs)
     if include_default_excludes:
         patterns = list(DEFAULT_EXCLUDE_GLOBS) + list(exclude_globs)
     files: dict[str, str] = {}
-    for path in _remote_scannable_paths(repository, ref, token, patterns):
+    for path in _remote_scannable_paths(repository, ref, token, patterns, fleet=fleet):
         text = _fetch_repository_file(repository, path, ref, token)
         if text is not None:
             files[path] = text
@@ -623,6 +632,7 @@ def audit_fleet_child(
         token,
         exclude_globs=exclude_globs,
         include_default_excludes=include_default_excludes,
+        fleet=True,
     )
     pins = scan_text_files(files, parent_repository=parent_repository)
     if not pins:
