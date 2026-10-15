@@ -19,6 +19,7 @@ PARENT_REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
 ORG_OWNER = "myon-bioinformatics"
 SCHEMA = "parent-pin-check/1"
 FLEET_SCHEMA = "parent-pin-fleet/1"
+FLEET_PATH_PREFIXES = (".github/", "docs/", "templates/")
 MAX_BYTES = 8 * 1024 * 1024
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", ".test-deps"}
 ZERO_SHA = "0" * 40
@@ -552,6 +553,11 @@ def _remote_scannable_paths(
         if not isinstance(path, str):
             continue
         if any(part in path.split("/") for part in SKIP_DIRS):
+            continue
+        if not (
+            path.startswith(FLEET_PATH_PREFIXES)
+            or ("/" not in path and Path(path).suffix)
+        ):
             continue
         if _excluded(path, patterns):
             continue
