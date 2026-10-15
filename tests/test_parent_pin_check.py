@@ -177,6 +177,107 @@ def test_non_parent_sha_is_ignored(tmp_path: Path) -> None:
     assert commits == {parent_sha}
 
 
+def test_parent_pr_ref_json_ignored_even_with_parent_commit(tmp_path: Path) -> None:
+    workflow_sha = "2" * 40
+    ref_sha = "3" * 40
+    _write(
+        tmp_path,
+        ".github/workflows/ci.yml",
+        f"""
+        jobs:
+          lint:
+            uses: {PARENT_REPOSITORY}/.github/workflows/reusable-actionlint.yml@{workflow_sha}
+        """,
+    )
+    _write(
+        tmp_path,
+        "templates/parent-pr.ref.json",
+        json.dumps(
+            {
+                "schema": "parent-pr-ref/1",
+                "repository": PARENT_REPOSITORY,
+                "pull_number": 1,
+                "repository_id": 1,
+                "commit": ref_sha,
+            }
+        ),
+    )
+    pins = scan(tmp_path, include_default_excludes=True)
+    commits = {pin["commit"] for pin in pins}
+    assert commits == {workflow_sha}
+
+
+def test_parent_pr_ref_missing_is_ok(tmp_path: Path) -> None:
+    sha = "2" * 40
+    _write(
+        tmp_path,
+        ".github/workflows/ci.yml",
+        f"""
+        jobs:
+          lint:
+            uses: {PARENT_REPOSITORY}/.github/workflows/reusable-actionlint.yml@{sha}
+        """,
+    )
+    pins = scan(tmp_path, include_default_excludes=True)
+    report = evaluate(
+        pins,
+        parent_repository=PARENT_REPOSITORY,
+        main_sha=sha,
+        token=None,
+        enforce=True,
+    )
+    assert report["ok"]
+
+
+def test_parent_pr_ref_without_commit_field_is_ok(tmp_path: Path) -> None:
+    sha = "2" * 40
+    _write(
+        tmp_path,
+        ".github/workflows/ci.yml",
+        f"""
+        jobs:
+          lint:
+            uses: {PARENT_REPOSITORY}/.github/workflows/reusable-actionlint.yml@{sha}
+        """,
+    )
+    _write(
+        tmp_path,
+        "parent-pr.ref.json",
+        json.dumps(
+            {
+                "schema": "parent-pr-ref/1",
+                "repository": PARENT_REPOSITORY,
+                "pull_number": 1,
+                "repository_id": 1,
+            }
+        ),
+    )
+    pins = scan(tmp_path, include_default_excludes=True)
+    assert pins
+    assert all(pin["commit"] == sha for pin in pins)
+
+
+def test_fetch_parent_main_retries_without_token_on_403(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str | None] = []
+
+    def fake_json(url, token, **_kwargs):
+        calls.append(token)
+        if token:
+            raise ParentPinError("forbidden", http_code=403)
+        if url.endswith("/myon-bioinformatics/myon-bioinformatics"):
+            return {"visibility": "public", "private": False, "default_branch": "main"}
+        return {"object": {"sha": "a" * 40}}
+
+    import tools.parent_pin_check as module
+
+    monkeypatch.setattr(module, "_github_json", fake_json)
+    sha, branch = fetch_parent_main_sha(PARENT_REPOSITORY, "token")
+    assert branch == "main"
+    assert sha == "a" * 40
+    assert calls[0] == "token"
+    assert calls[1] is None
+
+
 def test_child_heads_excluded_by_default(tmp_path: Path) -> None:
     sha = "2" * 40
     _write(
@@ -265,14 +366,14 @@ def test_run_skip_api_offline(tmp_path: Path) -> None:
 
 
 def test_fetch_parent_main_requires_public(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_json(url, token):
+    def fake_public(url, token, **_kwargs):
         if url.endswith("/myon-bioinformatics/myon-bioinformatics"):
             return {"private": True, "visibility": "private"}
         raise AssertionError(url)
 
     import tools.parent_pin_check as module
 
-    monkeypatch.setattr(module, "_github_json", fake_json)
+    monkeypatch.setattr(module, "_github_json_public_read", fake_public)
     with pytest.raises(module.ParentPinError, match="not public"):
         fetch_parent_main_sha(PARENT_REPOSITORY, "token")
 

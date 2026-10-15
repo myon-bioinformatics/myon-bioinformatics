@@ -29,7 +29,6 @@ jobs:
     uses: ./.github/workflows/reusable-parent-pin-check.yml
     with:
       exclude-globs: |
-        templates/parent-pr.ref.json
         tests/**
 
   reusable-layout-smoke:
@@ -66,6 +65,5 @@ jobs:
             --root consumer \
             --skip-api \
             --exclude 'tests/**' \
-            --exclude 'templates/parent-pr.ref.json' \
             --event pull_request \
             --ref refs/pull/85/merge

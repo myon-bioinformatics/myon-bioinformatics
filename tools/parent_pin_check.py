@@ -31,7 +31,12 @@ DEFAULT_EXCLUDE_GLOBS = (
     "vendor-consumers.json",
     "docs/vendor-*.json",
     "docs/vendor-target-inventory.json",
+    "**/parent-pr.ref.json",
+    "parent-pr.ref.json",
+    "templates/parent-pr.ref.json",
 )
+
+PARENT_PR_REF_NAME = "parent-pr.ref.json"
 
 USES_PARENT = re.compile(
     r"uses:\s*['\"]?"
@@ -136,6 +141,11 @@ def _excluded(rel: str, patterns: Sequence[str]) -> bool:
     return any(fnmatch.fnmatch(normalized, pattern) for pattern in patterns)
 
 
+def _is_parent_pr_ref_path(rel: str) -> bool:
+    normalized = rel.replace(os.sep, "/")
+    return normalized == PARENT_PR_REF_NAME or normalized.endswith("/" + PARENT_PR_REF_NAME)
+
+
 def _github_request(url: str, token: str | None, *, timeout: float = 60.0) -> Any:
     headers = {
         "Accept": "application/vnd.github+json",
@@ -167,6 +177,18 @@ def _github_json(url: str, token: str | None, *, timeout: float = 60.0) -> dict[
     return data
 
 
+def _github_json_public_read(
+    url: str, token: str | None, *, timeout: float = 60.0
+) -> dict[str, Any]:
+    """Read public GitHub JSON; retry without token when auth is rejected."""
+    try:
+        return _github_json(url, token, timeout=timeout)
+    except ParentPinError as error:
+        if error.http_code in (401, 403) and token:
+            return _github_json(url, None, timeout=timeout)
+        raise
+
+
 def _github_json_list(url: str, token: str | None, *, timeout: float = 60.0) -> list[Any]:
     data = _github_request(url, token, timeout=timeout)
     if not isinstance(data, list):
@@ -175,7 +197,7 @@ def _github_json_list(url: str, token: str | None, *, timeout: float = 60.0) -> 
 
 
 def fetch_parent_main_sha(parent_repository: str, token: str | None) -> tuple[str, str]:
-    meta = _github_json(f"https://api.github.com/repos/{parent_repository}", token)
+    meta = _github_json_public_read(f"https://api.github.com/repos/{parent_repository}", token)
     visibility = meta.get("visibility") or ("private" if meta.get("private") else "public")
     if visibility != "public" or meta.get("private"):
         raise ParentPinError("Parent repository is not public; refusing to proceed (fail-closed).")
@@ -184,7 +206,7 @@ def fetch_parent_main_sha(parent_repository: str, token: str | None) -> tuple[st
     branch = meta.get("default_branch")
     if not isinstance(branch, str) or not branch:
         raise ParentPinError("Parent repository default branch is missing from GitHub API response.")
-    ref = _github_json(
+    ref = _github_json_public_read(
         f"https://api.github.com/repos/{parent_repository}/git/ref/heads/"
         + quote(branch, safe=""),
         token,
@@ -356,6 +378,8 @@ def scan_text_files(
 ) -> list[dict[str, Any]]:
     pins: list[dict[str, Any]] = []
     for rel in sorted(files):
+        if _is_parent_pr_ref_path(rel):
+            continue
         text = files[rel]
         suffix = Path(rel).suffix.lower()
         if rel.startswith(".github/workflows/") and suffix in (".yml", ".yaml"):
@@ -639,9 +663,7 @@ def _remote_scannable_paths(
             continue
         suffix = Path(path).suffix.lower()
         if fleet:
-            scannable = (path.startswith(".github/workflows/") and suffix in (".yml", ".yaml")) or path.endswith(
-                "parent-pr.ref.json"
-            )
+            scannable = path.startswith(".github/workflows/") and suffix in (".yml", ".yaml")
         else:
             scannable = (
                 (path.startswith(".github/workflows/") and suffix in (".yml", ".yaml"))
