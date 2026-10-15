@@ -79,7 +79,7 @@ def _excluded(rel: str, patterns: Sequence[str]) -> bool:
     return any(fnmatch.fnmatch(normalized, pattern) for pattern in patterns)
 
 
-def _github_json(url: str, token: str | None, *, timeout: float = 60.0) -> dict[str, Any]:
+def _github_request(url: str, token: str | None, *, timeout: float = 60.0) -> Any:
     headers = {
         "Accept": "application/vnd.github+json",
         "User-Agent": "parent-pin-check",
@@ -100,9 +100,20 @@ def _github_json(url: str, token: str | None, *, timeout: float = 60.0) -> dict[
         ) from error
     if len(raw) > MAX_BYTES:
         raise ParentPinError("GitHub API response exceeds size limit.")
-    data = json.loads(raw.decode("utf-8"))
+    return json.loads(raw.decode("utf-8"))
+
+
+def _github_json(url: str, token: str | None, *, timeout: float = 60.0) -> dict[str, Any]:
+    data = _github_request(url, token, timeout=timeout)
     if not isinstance(data, dict):
         raise ParentPinError("GitHub API returned an unexpected payload.")
+    return data
+
+
+def _github_json_list(url: str, token: str | None, *, timeout: float = 60.0) -> list[Any]:
+    data = _github_request(url, token, timeout=timeout)
+    if not isinstance(data, list):
+        raise ParentPinError("GitHub API returned an unexpected list payload.")
     return data
 
 
@@ -481,12 +492,12 @@ def _list_public_child_repositories(owner: str, parent_repository: str, token: s
                 f"https://api.github.com/{kind}/{owner}/repos?per_page=100&type=public&page={page}"
             )
             try:
-                data = _github_json(url, token)
+                data = _github_json_list(url, token)
             except ParentPinError as error:
                 if kind == "orgs" and "404" in str(error):
                     break
                 raise
-            if not isinstance(data, list) or not data:
+            if not data:
                 break
             for item in data:
                 if not isinstance(item, dict):
