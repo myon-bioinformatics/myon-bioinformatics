@@ -34,7 +34,6 @@ jobs:
           python-version: "3.12"
       - name: Validate child heads and parent vendor baseline
         env:
-          GH_TOKEN: ${{ github.token }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
