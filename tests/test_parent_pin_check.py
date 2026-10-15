@@ -9,11 +9,15 @@ import pytest
 
 from tools.parent_pin_check import (
     PARENT_REPOSITORY,
+    ParentPinError,
+    audit_fleet_child,
     evaluate,
     fetch_parent_main_sha,
     pin_behind_main,
     run,
+    run_fleet,
     scan,
+    scan_text_files,
 )
 
 
@@ -242,6 +246,60 @@ def test_fetch_parent_main_requires_public(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(module, "_github_json", fake_json)
     with pytest.raises(module.ParentPinError, match="not public"):
         fetch_parent_main_sha(PARENT_REPOSITORY, "token")
+
+
+def test_scan_text_files_matches_local_scan(tmp_path: Path) -> None:
+    sha = "7" * 40
+    text = f"uses: {PARENT_REPOSITORY}/.github/workflows/x.yml@{sha}\n"
+    files = {".github/workflows/ci.yml": text}
+    assert scan_text_files(files)[0]["commit"] == sha
+
+
+def test_fleet_child_stale_pin(monkeypatch: pytest.MonkeyPatch) -> None:
+    main = "8" * 40
+    stale = "9" * 40
+    workflow = f"uses: {PARENT_REPOSITORY}/.github/workflows/x.yml@{stale}\n"
+
+    def fake_resolve(repository, token):
+        assert repository == "myon-bioinformatics/Ironmate"
+        return ("a" * 40, "main")
+
+    def fake_fetch(repository, ref, token, **kwargs):
+        return {".github/workflows/ci.yml": workflow}
+
+    monkeypatch.setattr("tools.parent_pin_check._resolve_default_branch_head", fake_resolve)
+    monkeypatch.setattr("tools.parent_pin_check.fetch_repository_pin_files", fake_fetch)
+    monkeypatch.setattr("tools.parent_pin_check.pin_behind_main", lambda *args, **kwargs: True)
+
+    item = audit_fleet_child(
+        "myon-bioinformatics/Ironmate",
+        parent_repository=PARENT_REPOSITORY,
+        main_sha=main,
+        token="token",
+    )
+    assert item is not None
+    assert item["pins"][0]["reason"] == "stale"
+    assert item["pins"][0]["file"] == ".github/workflows/ci.yml"
+
+
+def test_fleet_skips_private_without_naming(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "tools.parent_pin_check.fetch_parent_main_sha",
+        lambda *args, **kwargs: ("a" * 40, "main"),
+    )
+    monkeypatch.setattr(
+        "tools.parent_pin_check._list_public_child_repositories",
+        lambda *args, **kwargs: ["myon-bioinformatics/Ironmate"],
+    )
+
+    def fail_child(*args, **kwargs):
+        raise ParentPinError("repository is not public")
+
+    monkeypatch.setattr("tools.parent_pin_check.audit_fleet_child", fail_child)
+    report = run_fleet(token="token")
+    assert report["ok"]
+    assert report["skipped_repositories"] == 1
+    assert report["failure_count"] == 0
 
 
 def test_compare_stale_behind(monkeypatch: pytest.MonkeyPatch) -> None:

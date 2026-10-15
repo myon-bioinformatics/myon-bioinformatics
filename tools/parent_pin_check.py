@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import fnmatch
 import json
 import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 PARENT_REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
+ORG_OWNER = "myon-bioinformatics"
 SCHEMA = "parent-pin-check/1"
+FLEET_SCHEMA = "parent-pin-fleet/1"
 MAX_BYTES = 8 * 1024 * 1024
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", ".test-deps"}
 ZERO_SHA = "0" * 40
@@ -125,8 +128,16 @@ def fetch_parent_main_sha(parent_repository: str, token: str | None) -> tuple[st
     return sha, branch
 
 
+_COMPARE_CACHE: dict[tuple[str, str, str], bool] = {}
+
+
 def pin_behind_main(parent_repository: str, pin: str, main_sha: str, token: str | None) -> bool:
+    cache_key = (parent_repository.casefold(), pin, main_sha)
+    cached = _COMPARE_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     if pin == main_sha:
+        _COMPARE_CACHE[cache_key] = False
         return False
     url = (
         f"https://api.github.com/repos/{parent_repository}/compare/"
@@ -134,22 +145,24 @@ def pin_behind_main(parent_repository: str, pin: str, main_sha: str, token: str 
     )
     data = _github_json(url, token)
     status = data.get("status")
+    stale = False
     if status == "identical":
-        return False
-    if status in ("ahead", "behind", "diverged"):
+        stale = False
+    elif status in ("ahead", "behind", "diverged"):
         ahead = int(data.get("ahead_by") or 0)
         behind = int(data.get("behind_by") or 0)
         if ahead > 0 and behind == 0:
-            return True
-        if status == "diverged":
+            stale = True
+        elif status == "diverged":
             raise ParentPinError(
                 "Pinned parent commit is not an ancestor of default branch HEAD (diverged)."
             )
-        if behind > 0:
+        elif behind > 0:
             raise ParentPinError(
                 "Pinned parent commit is ahead of default branch HEAD; review the pin manually."
             )
-    return False
+    _COMPARE_CACHE[cache_key] = stale
+    return stale
 
 
 def _append_pin(
@@ -259,6 +272,29 @@ def _json_parent_pins(path: str, document: Any, parent_repository: str) -> list[
     return pins
 
 
+def scan_text_files(
+    files: dict[str, str],
+    *,
+    parent_repository: str = PARENT_REPOSITORY,
+) -> list[dict[str, Any]]:
+    pins: list[dict[str, Any]] = []
+    for rel in sorted(files):
+        text = files[rel]
+        suffix = Path(rel).suffix.lower()
+        if rel.startswith(".github/workflows/") and suffix in (".yml", ".yaml"):
+            pins.extend(collect_workflow_pins(rel, text, parent_repository))
+            pins.extend(collect_text_pins(rel, text, parent_repository))
+        elif suffix == ".json":
+            try:
+                document = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+            pins.extend(_json_parent_pins(rel, document, parent_repository))
+        elif suffix in (".md", ".py", ".yml", ".yaml", ".toml", ".txt"):
+            pins.extend(collect_text_pins(rel, text, parent_repository))
+    return pins
+
+
 def scan(
     root: str | Path,
     *,
@@ -270,7 +306,7 @@ def scan(
     patterns = list(exclude_globs)
     if include_default_excludes:
         patterns = list(DEFAULT_EXCLUDE_GLOBS) + list(exclude_globs)
-    pins: list[dict[str, Any]] = []
+    collected: dict[str, str] = {}
     for directory, dirs, files in os.walk(root_path):
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
         for name in sorted(files):
@@ -287,20 +323,18 @@ def scan(
             if size > MAX_BYTES:
                 continue
             suffix = full.suffix.lower()
-            try:
-                if rel.startswith(".github/workflows/") and suffix in (".yml", ".yaml"):
-                    text = full.read_text(encoding="utf-8")
-                    pins.extend(collect_workflow_pins(rel, text, parent_repository))
-                    pins.extend(collect_text_pins(rel, text, parent_repository))
-                elif suffix == ".json":
-                    document = json.loads(full.read_text(encoding="utf-8"))
-                    pins.extend(_json_parent_pins(rel, document, parent_repository))
-                elif suffix in (".md", ".py", ".yml", ".yaml", ".toml", ".txt"):
-                    text = full.read_text(encoding="utf-8")
-                    pins.extend(collect_text_pins(rel, text, parent_repository))
-            except (OSError, UnicodeError, json.JSONDecodeError):
+            scannable = (
+                (rel.startswith(".github/workflows/") and suffix in (".yml", ".yaml"))
+                or suffix == ".json"
+                or suffix in (".md", ".py", ".yml", ".yaml", ".toml", ".txt")
+            )
+            if not scannable:
                 continue
-    return pins
+            try:
+                collected[rel] = full.read_text(encoding="utf-8")
+            except (OSError, UnicodeError):
+                continue
+    return scan_text_files(collected, parent_repository=parent_repository)
 
 
 def evaluate(
@@ -388,6 +422,299 @@ def _group_by_sha(pins: Sequence[dict[str, Any]]) -> dict[str, list[dict[str, An
     return grouped
 
 
+def _decode_file_content(data: dict[str, Any]) -> str:
+    if data.get("type") != "file" or data.get("encoding") != "base64":
+        raise ParentPinError("unexpected GitHub file payload")
+    raw = base64.b64decode("".join(str(data.get("content", "")).split()), validate=True)
+    if len(raw) > MAX_BYTES:
+        raise ParentPinError("remote file exceeds size limit")
+    return raw.decode("utf-8")
+
+
+def _fetch_repository_file(repository: str, path: str, ref: str, token: str) -> str | None:
+    url = (
+        "https://api.github.com/repos/"
+        + repository
+        + "/contents/"
+        + quote(path, safe="/")
+        + "?ref="
+        + quote(ref, safe="")
+    )
+    try:
+        data = _github_json(url, token)
+    except ParentPinError as error:
+        if "404" in str(error):
+            return None
+        raise
+    if not isinstance(data, dict):
+        return None
+    return _decode_file_content(data)
+
+
+def _resolve_default_branch_head(repository: str, token: str) -> tuple[str, str]:
+    meta = _github_json(f"https://api.github.com/repos/{repository}", token)
+    visibility = meta.get("visibility") or ("private" if meta.get("private") else "public")
+    if visibility != "public" or meta.get("private"):
+        raise ParentPinError("repository is not public")
+    if meta.get("archived"):
+        raise ParentPinError("repository is archived")
+    branch = meta.get("default_branch")
+    if not isinstance(branch, str) or not branch:
+        raise ParentPinError("default branch missing")
+    ref = _github_json(
+        f"https://api.github.com/repos/{repository}/git/ref/heads/" + quote(branch, safe=""),
+        token,
+    )
+    object_info = ref.get("object") if isinstance(ref.get("object"), dict) else {}
+    sha = object_info.get("sha")
+    if not isinstance(sha, str) or not HEX40.fullmatch(sha):
+        raise ParentPinError("could not resolve default branch head")
+    return sha, branch
+
+
+def _list_public_child_repositories(owner: str, parent_repository: str, token: str) -> list[str]:
+    names: list[str] = []
+    for kind in ("orgs", "users"):
+        page = 1
+        while page <= 20:
+            url = (
+                f"https://api.github.com/{kind}/{owner}/repos?per_page=100&type=public&page={page}"
+            )
+            try:
+                data = _github_json(url, token)
+            except ParentPinError as error:
+                if kind == "orgs" and "404" in str(error):
+                    break
+                raise
+            if not isinstance(data, list) or not data:
+                break
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("private") or item.get("archived"):
+                    continue
+                visibility = item.get("visibility") or (
+                    "private" if item.get("private") else "public"
+                )
+                if visibility != "public":
+                    continue
+                full_name = item.get("full_name")
+                if not isinstance(full_name, str):
+                    continue
+                if full_name.casefold() == parent_repository.casefold():
+                    continue
+                if full_name.split("/")[0].casefold() != owner.casefold():
+                    continue
+                names.append(full_name)
+            if len(data) < 100:
+                break
+            page += 1
+        if names:
+            return sorted(set(names), key=str.casefold)
+    return sorted(set(names), key=str.casefold)
+
+
+def _remote_scannable_paths(
+    repository: str, ref: str, token: str, patterns: Sequence[str]
+) -> list[str]:
+    commit = _github_json(
+        "https://api.github.com/repos/"
+        + repository
+        + "/commits/"
+        + quote(ref, safe=""),
+        token,
+    )
+    tree_sha = (commit.get("commit") or {}).get("tree", {}).get("sha")
+    if not isinstance(tree_sha, str):
+        raise ParentPinError("commit tree missing")
+    tree = _github_json(
+        f"https://api.github.com/repos/{repository}/git/trees/{tree_sha}?recursive=1",
+        token,
+    )
+    if tree.get("truncated"):
+        raise ParentPinError("repository tree listing truncated")
+    paths: list[str] = []
+    for item in tree.get("tree", []):
+        if not isinstance(item, dict) or item.get("type") != "blob":
+            continue
+        path = item.get("path")
+        if not isinstance(path, str):
+            continue
+        if any(part in path.split("/") for part in SKIP_DIRS):
+            continue
+        if _excluded(path, patterns):
+            continue
+        size = int(item.get("size") or 0)
+        if size > MAX_BYTES:
+            continue
+        suffix = Path(path).suffix.lower()
+        scannable = (
+            (path.startswith(".github/workflows/") and suffix in (".yml", ".yaml"))
+            or suffix == ".json"
+            or suffix in (".md", ".py", ".yml", ".yaml", ".toml", ".txt")
+        )
+        if scannable:
+            paths.append(path)
+    return paths
+
+
+def fetch_repository_pin_files(
+    repository: str,
+    ref: str,
+    token: str,
+    *,
+    exclude_globs: Sequence[str] = (),
+    include_default_excludes: bool = True,
+) -> dict[str, str]:
+    patterns = list(exclude_globs)
+    if include_default_excludes:
+        patterns = list(DEFAULT_EXCLUDE_GLOBS) + list(exclude_globs)
+    files: dict[str, str] = {}
+    for path in _remote_scannable_paths(repository, ref, token, patterns):
+        text = _fetch_repository_file(repository, path, ref, token)
+        if text is not None:
+            files[path] = text
+    return files
+
+
+def _failure_pin_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    if report["inconsistent"]:
+        for pin in report["pins"]:
+            rows.append({**pin, "reason": "inconsistent"})
+        return rows
+    stale_set = set(report.get("stale_commits") or [])
+    for pin in report["pins"]:
+        if pin["commit"] in stale_set:
+            rows.append({**pin, "reason": "stale"})
+    return rows
+
+
+def audit_fleet_child(
+    repository: str,
+    *,
+    parent_repository: str,
+    main_sha: str,
+    token: str,
+    exclude_globs: Sequence[str] = (),
+    include_default_excludes: bool = True,
+) -> dict[str, Any] | None:
+    revision, _branch = _resolve_default_branch_head(repository, token)
+    files = fetch_repository_pin_files(
+        repository,
+        revision,
+        token,
+        exclude_globs=exclude_globs,
+        include_default_excludes=include_default_excludes,
+    )
+    pins = scan_text_files(files, parent_repository=parent_repository)
+    if not pins:
+        return None
+    report = evaluate(
+        pins,
+        parent_repository=parent_repository,
+        main_sha=main_sha,
+        token=token,
+        fail_on_stale=True,
+    )
+    if report["ok"]:
+        return None
+    return {
+        "repository": repository,
+        "revision": revision,
+        "pins": _failure_pin_rows(report),
+        "inconsistent": report["inconsistent"],
+        "stale": report["stale"],
+    }
+
+
+def run_fleet(
+    *,
+    owner: str = ORG_OWNER,
+    parent_repository: str = PARENT_REPOSITORY,
+    exclude_globs: Sequence[str] = (),
+    include_default_excludes: bool = True,
+    token: str | None = None,
+) -> dict[str, Any]:
+    if not token:
+        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if not token:
+        raise ParentPinError(
+            "GITHUB_TOKEN (or GH_TOKEN) is required for fleet parent-pin audit (fail-closed)."
+        )
+    main_sha, branch = fetch_parent_main_sha(parent_repository, token)
+    children = _list_public_child_repositories(owner, parent_repository, token)
+    failures: list[dict[str, Any]] = []
+    skipped = 0
+    for name in children:
+        try:
+            item = audit_fleet_child(
+                name,
+                parent_repository=parent_repository,
+                main_sha=main_sha,
+                token=token,
+                exclude_globs=exclude_globs,
+                include_default_excludes=include_default_excludes,
+            )
+        except ParentPinError:
+            skipped += 1
+            continue
+        if item is not None:
+            failures.append(item)
+    return {
+        "schema": FLEET_SCHEMA,
+        "parent_repository": parent_repository,
+        "parent_main_sha": main_sha,
+        "parent_default_branch": branch,
+        "checked_repositories": len(children),
+        "skipped_repositories": skipped,
+        "failure_count": len(failures),
+        "failures": failures,
+        "ok": not failures,
+    }
+
+
+def render_fleet_text(report: dict[str, Any]) -> str:
+    lines = [
+        "parent-pin-fleet: checked "
+        f"{report['checked_repositories']} public child repositories; "
+        f"{report['failure_count']} failure(s); "
+        f"{report['skipped_repositories']} skipped without detail"
+    ]
+    lines.append(f"parent main ({report['parent_default_branch']}): {report['parent_main_sha']}")
+    for item in report["failures"]:
+        lines.append(f"FAIL {item['repository']} @ {item['revision']}")
+        for pin in item["pins"]:
+            line = "" if pin.get("line") is None else f":{pin['line']}"
+            lines.append(
+                f"  {pin['reason']} {pin['file']}{line} pin={pin['commit']} ({pin['kind']})"
+            )
+    if report["failure_count"]:
+        lines.append(
+            "ERROR: at least one public child default branch still pins an old parent commit."
+        )
+    return "\n".join(lines) + "\n"
+
+
+def emit_fleet_annotations(report: dict[str, Any]) -> None:
+    main_sha = report["parent_main_sha"]
+    for item in report["failures"]:
+        repo = item["repository"]
+        for pin in item["pins"]:
+            line = pin.get("line") or 1
+            if pin["reason"] == "stale":
+                message = (
+                    f"{repo} {pin['file']}:{line} parent pin {pin['commit']} "
+                    f"is behind {report['parent_repository']} main {main_sha}"
+                )
+            else:
+                message = (
+                    f"{repo} {pin['file']}:{line} parent pin {pin['commit']} "
+                    "is not unified with other parent pins in this repository"
+                )
+            print(f"::error::{message}")
+
+
 def run(
     root: str | Path,
     *,
@@ -450,25 +777,50 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Offline mode: skip parent main resolution and stale checks",
     )
+    parser.add_argument(
+        "--fleet",
+        action="store_true",
+        help="Audit public child default branches for stale parent pins (parent CI only)",
+    )
+    parser.add_argument(
+        "--owner",
+        default=ORG_OWNER,
+        help="GitHub account owner for fleet listing (default: myon-bioinformatics)",
+    )
     args = parser.parse_args(argv)
     try:
-        report = run(
-            args.root,
-            parent_repository=args.parent,
-            exclude_globs=args.exclude,
-            include_default_excludes=not args.no_default_excludes,
-            fail_on_stale=args.fail_on_stale,
-            skip_api=args.skip_api,
-        )
+        if args.fleet:
+            report = run_fleet(
+                owner=args.owner,
+                parent_repository=args.parent,
+                exclude_globs=args.exclude,
+                include_default_excludes=not args.no_default_excludes,
+            )
+        else:
+            report = run(
+                args.root,
+                parent_repository=args.parent,
+                exclude_globs=args.exclude,
+                include_default_excludes=not args.no_default_excludes,
+                fail_on_stale=args.fail_on_stale,
+                skip_api=args.skip_api,
+            )
     except ParentPinError as error:
         print(f"::error::{error}", file=sys.stderr)
         print(str(error), file=sys.stderr)
         return 2
-    emit_annotations(report)
-    if args.json:
-        print(json.dumps(report, indent=2, sort_keys=True))
+    if args.fleet:
+        emit_fleet_annotations(report)
+        if args.json:
+            print(json.dumps(report, indent=2, sort_keys=True))
+        else:
+            sys.stdout.write(render_fleet_text(report))
     else:
-        sys.stdout.write(render_text(report))
+        emit_annotations(report)
+        if args.json:
+            print(json.dumps(report, indent=2, sort_keys=True))
+        else:
+            sys.stdout.write(render_text(report))
     if not report["ok"]:
         return 1
     return 0

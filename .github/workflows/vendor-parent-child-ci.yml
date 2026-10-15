@@ -4,7 +4,10 @@ on:
   schedule:
     - cron: "0 7 * * *"
   workflow_dispatch:
+  push:
+    branches: [main]
   pull_request:
+    branches: [main]
     paths:
       - "child-heads.json"
       - "vendor-consumers.json"
@@ -14,7 +17,11 @@ on:
       - "vendor/**"
       - "templates/vendor-child-ci.workflow.yml"
       - "templates/parent-pr.ref.json"
+      - "tools/parent_pin_check.py"
+      - "tests/test_parent_pin_check.py"
       - ".github/workflows/vendor-parent-child-ci.yml"
+      - ".github/workflows/reusable-parent-pin-check.yml"
+      - ".github/workflows/parent-pin-check.yml"
       - "tests/test_vendor_child_heads.py"
       - "tests/test_vendor_child_bootstrap.py"
       - "tests/test_vendor_parent_evidence.py"
@@ -24,6 +31,7 @@ permissions:
 
 jobs:
   validate:
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -53,6 +61,22 @@ jobs:
         run: |
           python -m pip install -r tests/requirements.txt
           python -m pytest -q tests/test_vendor_child_heads.py tests/test_vendor_child_bootstrap.py tests/test_vendor_parent_evidence.py
+
+  child-parent-pin-freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Fail when any public child main branch pins stale parent commits
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python tools/parent_pin_check.py --fleet --fail-on-stale
 
   autofix:
     if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
