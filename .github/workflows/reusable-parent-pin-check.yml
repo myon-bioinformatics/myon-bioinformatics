@@ -8,7 +8,7 @@ on:
         type: string
         default: "myon-bioinformatics/myon-bioinformatics"
       root:
-        description: "Checkout-relative root to scan"
+        description: "Checkout-relative root to scan in the caller repository"
         type: string
         default: "."
       exclude-globs:
@@ -32,8 +32,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout caller repository
+        uses: actions/checkout@v7
         with:
+          path: consumer
+          persist-credentials: false
+      - name: Resolve parent reusable workflow ref
+        id: parent_tool_ref
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          ref="${WORKFLOW_REF##*@}"
+          if [[ -z "$ref" || "$ref" == "$WORKFLOW_REF" ]]; then
+            echo "::error::Could not parse parent tool ref from workflow_ref=${WORKFLOW_REF}" >&2
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+      - name: Checkout parent pin tool at workflow ref
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.parent-repository }}
+          ref: ${{ steps.parent_tool_ref.outputs.ref }}
+          path: parent-pin-tool
+          sparse-checkout: |
+            tools/parent_pin_check.py
+            tools/__init__.py
+          sparse-checkout-cone-mode: false
           persist-credentials: false
       - uses: actions/setup-python@v7
         with:
@@ -54,7 +79,7 @@ jobs:
           if [[ "$RUN_FLEET" == "true" ]]; then
             args+=(--fleet)
           else
-            args+=(--root "$CHECK_ROOT")
+            args+=(--root "consumer/${CHECK_ROOT}")
           fi
           if [[ "$SKIP_DEFAULT_EXCLUDES" == "true" ]]; then
             args+=(--no-default-excludes)
@@ -65,4 +90,4 @@ jobs:
               args+=(--exclude "$pattern")
             done <<< "$EXCLUDE_GLOBS"
           fi
-          python tools/parent_pin_check.py "${args[@]}"
+          python parent-pin-tool/tools/parent_pin_check.py "${args[@]}"

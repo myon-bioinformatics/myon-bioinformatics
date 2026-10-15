@@ -53,6 +53,17 @@ HEX40 = re.compile(r"^[0-9a-f]{40}$")
 class ParentPinError(RuntimeError):
     """Fail-closed configuration or GitHub API failure."""
 
+    def __init__(self, message: str, *, http_code: int | None = None) -> None:
+        super().__init__(message)
+        self.http_code = http_code
+
+
+def _redact_fleet_child_name(error: ParentPinError) -> bool:
+    message = str(error).casefold()
+    if error.http_code in (401, 403, 404):
+        return True
+    return "not public" in message or "private" in message
+
 
 def should_enforce(
     *,
@@ -110,8 +121,8 @@ def _github_request(url: str, token: str | None, *, timeout: float = 60.0) -> An
             raw = response.read(MAX_BYTES + 1)
     except HTTPError as error:
         raise ParentPinError(
-            f"GitHub API request failed ({error.code}) while resolving parent default branch; "
-            "set GITHUB_TOKEN and ensure the parent repository is public."
+            f"GitHub API request failed ({error.code}); fail-closed.",
+            http_code=error.code,
         ) from error
     except URLError as error:
         raise ParentPinError(
@@ -191,6 +202,10 @@ def pin_behind_main(parent_repository: str, pin: str, main_sha: str, token: str 
             raise ParentPinError(
                 "Pinned parent commit is ahead of default branch HEAD; review the pin manually."
             )
+    else:
+        raise ParentPinError(
+            f"Unexpected GitHub compare status for parent pin freshness: {status!r}"
+        )
     _COMPARE_CACHE[cache_key] = stale
     return stale
 
@@ -478,7 +493,7 @@ def _fetch_repository_file(repository: str, path: str, ref: str, token: str) -> 
     try:
         data = _github_json(url, token)
     except ParentPinError as error:
-        if "404" in str(error):
+        if error.http_code == 404:
             return None
         raise
     if not isinstance(data, dict):
@@ -518,7 +533,7 @@ def _list_public_child_repositories(owner: str, parent_repository: str, token: s
             try:
                 data = _github_json_list(url, token)
             except ParentPinError as error:
-                if kind == "orgs" and "404" in str(error):
+                if kind == "orgs" and error.http_code == 404:
                     break
                 raise
             if not data:
@@ -696,7 +711,7 @@ def run_fleet(
     main_sha, branch = fetch_parent_main_sha(parent_repository, token)
     children = _list_public_child_repositories(owner, parent_repository, token)
     failures: list[dict[str, Any]] = []
-    skipped = 0
+    audit_errors: list[dict[str, Any]] = []
     for name in children:
         try:
             item = audit_fleet_child(
@@ -707,22 +722,27 @@ def run_fleet(
                 exclude_globs=exclude_globs,
                 include_default_excludes=include_default_excludes,
             )
-        except ParentPinError:
-            skipped += 1
+        except ParentPinError as error:
+            entry: dict[str, Any] = {"message": str(error)}
+            if not _redact_fleet_child_name(error):
+                entry["repository"] = name
+            audit_errors.append(entry)
             continue
         if item is not None:
             failures.append(item)
+    findings = bool(failures or audit_errors)
     return {
         "schema": FLEET_SCHEMA,
         "parent_repository": parent_repository,
         "parent_main_sha": main_sha,
         "parent_default_branch": branch,
         "checked_repositories": len(children),
-        "skipped_repositories": skipped,
         "failure_count": len(failures),
         "failures": failures,
+        "audit_error_count": len(audit_errors),
+        "audit_errors": audit_errors,
         "enforce": enforce,
-        "ok": not (enforce and failures),
+        "ok": not (enforce and findings),
     }
 
 
@@ -730,8 +750,8 @@ def render_fleet_text(report: dict[str, Any]) -> str:
     lines = [
         "parent-pin-fleet: checked "
         f"{report['checked_repositories']} public child repositories; "
-        f"{report['failure_count']} failure(s); "
-        f"{report['skipped_repositories']} skipped without detail"
+        f"{report['failure_count']} pin finding(s); "
+        f"{report.get('audit_error_count', 0)} audit error(s)"
     ]
     lines.append(f"parent main ({report['parent_default_branch']}): {report['parent_main_sha']}")
     for item in report["failures"]:
@@ -741,17 +761,25 @@ def render_fleet_text(report: dict[str, Any]) -> str:
             lines.append(
                 f"  {pin['reason']} {pin['file']}{line} pin={pin['commit']} ({pin['kind']})"
             )
+    level = "ERROR" if report.get("enforce") else "WARNING"
     if report["failure_count"]:
-        level = "ERROR" if report.get("enforce") else "WARNING"
         lines.append(
             f"{level}: at least one public child default branch still pins an old parent commit."
         )
+    for item in report.get("audit_errors", []):
+        repo = item.get("repository")
+        prefix = f"{repo} " if repo else ""
+        lines.append(f"{level}: {prefix}{item['message']}")
     return "\n".join(lines) + "\n"
 
 
 def emit_fleet_annotations(report: dict[str, Any]) -> None:
     main_sha = report["parent_main_sha"]
     level = "error" if report.get("enforce") else "warning"
+    for item in report.get("audit_errors", []):
+        repo = item.get("repository")
+        prefix = f"{repo} " if repo else ""
+        print(f"::{level}::{prefix}{item['message']}")
     for item in report["failures"]:
         repo = item["repository"]
         for pin in item["pins"]:

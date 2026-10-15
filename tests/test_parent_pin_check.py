@@ -13,6 +13,7 @@ from tools.parent_pin_check import (
     audit_fleet_child,
     evaluate,
     fetch_parent_main_sha,
+    main,
     pin_behind_main,
     run,
     run_fleet,
@@ -309,7 +310,7 @@ def test_fleet_child_stale_pin(monkeypatch: pytest.MonkeyPatch) -> None:
     assert item["pins"][0]["file"] == ".github/workflows/ci.yml"
 
 
-def test_fleet_skips_private_without_naming(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fleet_child_audit_error_warns_without_enforce(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "tools.parent_pin_check.fetch_parent_main_sha",
         lambda *args, **kwargs: ("a" * 40, "main"),
@@ -320,13 +321,32 @@ def test_fleet_skips_private_without_naming(monkeypatch: pytest.MonkeyPatch) -> 
     )
 
     def fail_child(*args, **kwargs):
-        raise ParentPinError("repository is not public")
+        raise ParentPinError("repository is not public", http_code=403)
 
     monkeypatch.setattr("tools.parent_pin_check.audit_fleet_child", fail_child)
-    report = run_fleet(token="token")
+    report = run_fleet(token="token", enforce=False)
     assert report["ok"]
-    assert report["skipped_repositories"] == 1
-    assert report["failure_count"] == 0
+    assert report["audit_error_count"] == 1
+    assert "repository" not in report["audit_errors"][0]
+
+
+def test_fleet_child_audit_error_fails_when_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "tools.parent_pin_check.fetch_parent_main_sha",
+        lambda *args, **kwargs: ("a" * 40, "main"),
+    )
+    monkeypatch.setattr(
+        "tools.parent_pin_check._list_public_child_repositories",
+        lambda *args, **kwargs: ["myon-bioinformatics/Ironmate"],
+    )
+
+    def fail_child(*args, **kwargs):
+        raise ParentPinError("repository is not public", http_code=403)
+
+    monkeypatch.setattr("tools.parent_pin_check.audit_fleet_child", fail_child)
+    report = run_fleet(token="token", enforce=True)
+    assert not report["ok"]
+    assert report["audit_error_count"] == 1
 
 
 def test_should_enforce_event_policy() -> None:
@@ -393,3 +413,151 @@ def test_compare_stale_behind(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(module, "_github_json", fake_json)
     assert pin_behind_main(PARENT_REPOSITORY, "a" * 40, "b" * 40, "token")
+
+
+def test_compare_unexpected_status_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tools.parent_pin_check as module
+
+    module._COMPARE_CACHE.clear()
+    monkeypatch.setattr(module, "_github_json", lambda *args, **kwargs: {"status": "unknown"})
+    with pytest.raises(ParentPinError, match="Unexpected GitHub compare status"):
+        pin_behind_main(PARENT_REPOSITORY, "e" * 40, "f" * 40, "token")
+
+
+def test_fetch_repository_file_uses_http_404(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tools.parent_pin_check as module
+
+    def boom(*args, **kwargs):
+        raise ParentPinError("missing", http_code=404)
+
+    monkeypatch.setattr(module, "_github_json", boom)
+    assert module._fetch_repository_file("myon-bioinformatics/x", "missing.yml", "a" * 40, "t") is None
+
+
+def _fake_pin_report(*, enforce: bool, stale: bool = True) -> dict:
+    return {
+        "schema": "parent-pin-check/1",
+        "parent_repository": PARENT_REPOSITORY,
+        "main_sha": "4" * 40,
+        "pins": [],
+        "unique_commits": ["3" * 40],
+        "inconsistent": False,
+        "stale": stale,
+        "stale_commits": ["3" * 40] if stale else [],
+        "enforce": enforce,
+        "ok": not (enforce and stale),
+    }
+
+
+def test_main_exit_code_schedule_enforces_stale_pin(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(*_args, enforce=False, **_kwargs):
+        assert enforce is True
+        return _fake_pin_report(enforce=True)
+
+    monkeypatch.setattr("tools.parent_pin_check.run", fake_run)
+    assert main(["--root", ".", "--event", "schedule", "--ref", "refs/heads/main"]) == 1
+
+
+def test_main_exit_code_pull_request_warns_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(*_args, enforce=False, **_kwargs):
+        assert enforce is False
+        return _fake_pin_report(enforce=False)
+
+    monkeypatch.setattr("tools.parent_pin_check.run", fake_run)
+    assert (
+        main(
+            [
+                "--root",
+                ".",
+                "--event",
+                "pull_request",
+                "--ref",
+                "refs/pull/85/merge",
+            ]
+        )
+        == 0
+    )
+
+
+def test_main_exit_code_non_main_push_warns_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(*_args, enforce=False, **_kwargs):
+        assert enforce is False
+        return _fake_pin_report(enforce=False)
+
+    monkeypatch.setattr("tools.parent_pin_check.run", fake_run)
+    assert (
+        main(
+            [
+                "--root",
+                ".",
+                "--event",
+                "push",
+                "--ref",
+                "refs/heads/feature/x",
+            ]
+        )
+        == 0
+    )
+
+
+def test_main_exit_code_main_push_enforces(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(*_args, enforce=False, **_kwargs):
+        assert enforce is True
+        return _fake_pin_report(enforce=True)
+
+    monkeypatch.setattr("tools.parent_pin_check.run", fake_run)
+    assert main(["--root", ".", "--event", "push", "--ref", "refs/heads/main"]) == 1
+
+
+def test_main_fleet_audit_error_enforces(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_fleet(*_args, enforce=False, **_kwargs):
+        assert enforce is True
+        return {
+            "schema": "parent-pin-fleet/1",
+            "parent_repository": PARENT_REPOSITORY,
+            "parent_main_sha": "a" * 40,
+            "parent_default_branch": "main",
+            "checked_repositories": 1,
+            "failure_count": 0,
+            "failures": [],
+            "audit_error_count": 1,
+            "audit_errors": [{"message": "repository is not public"}],
+            "enforce": True,
+            "ok": False,
+        }
+
+    monkeypatch.setattr("tools.parent_pin_check.run_fleet", fake_fleet)
+    assert main(["--fleet", "--event", "schedule", "--ref", "refs/heads/main"]) == 1
+
+
+def test_reusable_child_layout_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    consumer = tmp_path / "consumer"
+    tool_root = tmp_path / "parent-pin-tool"
+    sha = "a" * 40
+    _write(
+        consumer,
+        ".github/workflows/ci.yml",
+        f"uses: {PARENT_REPOSITORY}/.github/workflows/reusable-parent-pin-check.yml@{sha}\n",
+    )
+    tool_root.mkdir()
+    tool_src = Path(__file__).resolve().parents[1] / "tools" / "parent_pin_check.py"
+    (tool_root / "tools").mkdir()
+    (tool_root / "tools" / "parent_pin_check.py").write_text(
+        tool_src.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        "tools.parent_pin_check.fetch_parent_main_sha",
+        lambda *args, **kwargs: (sha, "main"),
+    )
+    code = main(
+        [
+            "--root",
+            str(consumer),
+            "--event",
+            "pull_request",
+            "--ref",
+            "refs/pull/1/merge",
+            "--skip-api",
+        ]
+    )
+    assert code == 0

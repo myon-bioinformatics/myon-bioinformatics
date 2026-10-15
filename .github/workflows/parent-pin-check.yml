@@ -31,3 +31,24 @@ jobs:
       exclude-globs: |
         templates/parent-pr.ref.json
         tests/**
+
+  reusable-layout-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: consumer
+          persist-credentials: false
+      - name: Simulate child repo calling parent tool from separate checkout
+        run: |
+          set -euo pipefail
+          mkdir -p parent-pin-tool/tools
+          cp tools/parent_pin_check.py parent-pin-tool/tools/
+          cp tools/__init__.py parent-pin-tool/tools/ 2>/dev/null || true
+          python parent-pin-tool/tools/parent_pin_check.py \
+            --root consumer \
+            --skip-api \
+            --exclude 'tests/**' \
+            --exclude 'templates/parent-pr.ref.json' \
+            --event pull_request \
+            --ref refs/pull/85/merge
