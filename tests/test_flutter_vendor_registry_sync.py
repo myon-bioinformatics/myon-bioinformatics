@@ -25,7 +25,7 @@ def test_flutter_registry_matches_pinned_post_migration_lock():
     assert result["matches"] is True
     assert result["missing"] == result["unexpected"] == []
     entries = vendor_consumers.get_consumer(registry, FLUTTER)["entries"]
-    assert len(entries) == len(lock["files"]) == 13
+    assert len(entries) == len(lock["files"]) == 14
     assert {x["destination"] for x in entries} == {x["destination"] for x in lock["files"]}
 
 
@@ -52,7 +52,7 @@ def test_regression_detects_removed_or_reintroduced_vendor_source():
     assert result["matches"] is False
     assert len(result["missing"]) == 1
     assert result["unexpected"] == []
-    assert len(lock["files"]) == 13
+    assert len(lock["files"]) == 14
 
 
 def test_existing_pins_remain_sole_consumer_authority():

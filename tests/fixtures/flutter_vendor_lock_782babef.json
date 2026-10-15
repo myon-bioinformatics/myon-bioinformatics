@@ -101,6 +101,15 @@
       "sha256": "12d5c7c0189b53540649ea26d57aeca827588b9118050d10b100b185845a2ad6"
     },
     {
+      "repository": "myon-bioinformatics/browser-test-kit",
+      "ref": "refs/heads/main",
+      "commit": "725f35900021f2fa8beecafe850cd5f7062b1ae5",
+      "source": "scripts/image_diff.py",
+      "destination": "tool/python/vendor/image_diff.py",
+      "blob_sha": "7c3a44314eda81a81b80f08fe060dc6581fffa22",
+      "sha256": "7efc94609644eced61f13e9af3c7a47061e4c9ba03bf0664c2266a58d1302191"
+    },
+    {
       "repository": "myon-bioinformatics/gh_identity",
       "ref": "refs/heads/main",
       "commit": "68ba77ede5456e37ac50964c91003d64573c2983",

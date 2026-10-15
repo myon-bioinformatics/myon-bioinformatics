@@ -602,6 +602,11 @@
           "destination": "tool/python/vendor/check_png.py"
         },
         {
+          "repository": "myon-bioinformatics/browser-test-kit",
+          "source": "scripts/image_diff.py",
+          "destination": "tool/python/vendor/image_diff.py"
+        },
+        {
           "repository": "myon-bioinformatics/gh_identity",
           "source": "gh_identity.py",
           "destination": "tool/python/vendor/gh_identity.py"
