@@ -9,19 +9,37 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def classify(tmp_path, files, *, event='pull_request', forced='', fail=False):
+def classify(tmp_path, files, *, event='pull_request', forced='', fail=False, missing_base=False,
+            push_forced=False):
     doc = yaml.safe_load((ROOT / '.github/workflows/reusable-change-detection.yml').read_text())
     script = doc['jobs']['changes']['steps'][1]['run']
     paths = tmp_path / 'paths'
     paths.write_bytes(b''.join(p.encode() + b'\0' for p in files))
     git = tmp_path / 'git'
-    git.write_text('#!/bin/bash\n' + ('exit 128\n' if fail else 'cat "$FAKE_PATHS"\n'))
+    git.write_text(
+        '#!/bin/bash\n'
+        'set -euo pipefail\n'
+        'if [[ "$1" == "cat-file" && "$2" == "-e" ]]; then\n'
+        '  [[ "${FAKE_MISSING_BASE:-}" == "1" ]] && exit 1\n'
+        '  exit 0\n'
+        'fi\n'
+        'if [[ "$1" == "fetch" ]]; then exit 0; fi\n'
+        'if [[ "$1" == "diff" ]]; then\n'
+        '  [[ "${FAKE_DIFF_FAIL:-}" == "1" ]] && exit 128\n'
+        '  cat "$FAKE_PATHS"\n'
+        '  exit 0\n'
+        'fi\n'
+        'exit 0\n'
+    )
     git.chmod(0o755)
     out = tmp_path / 'output'
     env = dict(os.environ, PATH=str(tmp_path) + ':' + os.environ['PATH'],
                FAKE_PATHS=str(paths), GITHUB_OUTPUT=str(out), RUNNER_TEMP=str(tmp_path),
                EVENT_NAME=event, PR_BASE_SHA='a'*40, PR_HEAD_SHA='b'*40,
-               PUSH_BEFORE_SHA='a'*40, PUSH_HEAD_SHA='b'*40, FORCE_HEAVY_PATHS=forced)
+               PUSH_BEFORE_SHA='a'*40, PUSH_HEAD_SHA='b'*40, FORCE_HEAVY_PATHS=forced,
+               PUSH_FORCED='true' if push_forced else 'false',
+               FAKE_MISSING_BASE='1' if missing_base else '0',
+               FAKE_DIFF_FAIL='1' if fail else '0')
     result = subprocess.run(['bash', '-c', script], env=env, capture_output=True)
     values = dict(line.split('=', 1) for line in out.read_text().splitlines()) if out.exists() else {}
     return result, values
@@ -63,3 +81,17 @@ def test_diff_failure_cannot_claim_product_skip(tmp_path):
     result, values = classify(tmp_path, [], fail=True)
     assert result.returncode != 0
     assert values.get('product_changed') != 'false'
+
+
+def test_missing_push_base_fails_open_with_workflow_lint(tmp_path):
+    result, values = classify(tmp_path, [], event='push', missing_base=True)
+    assert result.returncode == 0, result.stderr
+    assert values['product_changed'] == 'true'
+    assert values['workflow_changed'] == 'true'
+
+
+def test_forced_push_fails_open_with_workflow_lint(tmp_path):
+    result, values = classify(tmp_path, ['docs/guide.md'], event='push', push_forced=True)
+    assert result.returncode == 0, result.stderr
+    assert values['product_changed'] == 'true'
+    assert values['workflow_changed'] == 'true'

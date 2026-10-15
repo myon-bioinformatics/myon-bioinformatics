@@ -52,8 +52,20 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
           PUSH_HEAD_SHA: ${{ github.sha }}
+          PUSH_FORCED: ${{ github.event.forced }}
         run: |
           set -euo pipefail
+
+          write_fail_open_outputs() {
+            local workflow_changed="$1"
+            {
+              echo "docs_only=false"
+              echo "non_docs_changed=true"
+              echo "product_changed=true"
+              echo "workflow_changed=$workflow_changed"
+              echo "changed_count=0"
+            } >> "$GITHUB_OUTPUT"
+          }
 
           # Fail open: if the event has no reliable diff base, keep heavy jobs enabled.
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
@@ -63,14 +75,23 @@ jobs:
             BASE="$PUSH_BEFORE_SHA"
             HEAD="$PUSH_HEAD_SHA"
           else
-            {
-              echo "docs_only=false"
-              echo "non_docs_changed=true"
-              echo "product_changed=true"
-              echo "workflow_changed=false"
-              echo "changed_count=0"
-            } >> "$GITHUB_OUTPUT"
+            write_fail_open_outputs false
             echo "No reliable diff base for event '$EVENT_NAME'; heavy jobs remain enabled."
+            exit 0
+          fi
+
+          if [[ "$EVENT_NAME" == "push" && "$PUSH_FORCED" == "true" ]]; then
+            write_fail_open_outputs true
+            echo "Diff base $BASE unavailable (force-push?); heavy jobs remain enabled."
+            exit 0
+          fi
+
+          if ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            git fetch --no-tags --depth=1 origin "$BASE" 2>/dev/null || true
+          fi
+          if ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            write_fail_open_outputs true
+            echo "Diff base $BASE unavailable (force-push?); heavy jobs remain enabled."
             exit 0
           fi
 
