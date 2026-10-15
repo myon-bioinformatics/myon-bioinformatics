@@ -65,6 +65,15 @@ PUBLIC_GIT_FETCH_ERROR = "public Git fetch/read failed"
 PUBLIC_ACCESS_BLOCKED = "GitHub public access blocked (authentication or rate limit)"
 PIN_NOT_MERGED_ERROR = "pin commit is not merged into source default branch"
 _COMMIT_ATOM_SHA = re.compile(r"Commit/([0-9a-f]{40})")
+_REPOSITORY_ID_META = re.compile(
+    r'<meta name="octolytics-dimension-repository_id" content="(\d+)"'
+)
+_REPOSITORY_PUBLIC_META = re.compile(
+    r'<meta name="octolytics-dimension-repository_public" content="(true|false)"'
+)
+_REPOSITORY_NWO_META = re.compile(
+    r'<meta name="octolytics-dimension-repository_nwo" content="([^"]+)"'
+)
 BRANCH_DIFF_SCAN_ERROR = "branch diff scan failed"
 AUDIT_SOURCE_ERROR = "source verification failed"
 HTML_IMPORT_LOCK_CANDIDATES = ("tools/html-import/vendor.lock.json",)
@@ -202,22 +211,35 @@ def public_raw_bytes(repository, ref, path):
         return None
 
 
-def _public_repo_is_archived(repository):
-    html = _public_http_get("https://github.com/" + repository).decode("utf-8", "replace")
+def _public_repo_is_archived_from_html(html):
     return ("This repository has been archived" in html
             or '"isArchived":true' in html)
 
 
-def _registry_consumer_is_public_monitored(repository, *, ref="main"):
-    try:
-        public_ref_sha(repository, ref)
-    except PublicGitNotFound:
-        return False
-    except PublicGitAccessBlocked:
-        raise
-    if _public_repo_is_archived(repository):
-        return False
-    return True
+def public_repository_page_record(repository):
+    """Read repository identity from the public github.com HTML page (no REST API).
+
+    Uses ``octolytics-dimension-repository_id`` (and related meta tags) from the
+    same response used for archived detection. Atom/raw URLs are not used for id.
+    """
+    repository = _normalize_repository(repository)
+    html = _public_http_get("https://github.com/" + repository).decode("utf-8", "replace")
+    id_match = _REPOSITORY_ID_META.search(html)
+    if not id_match:
+        raise ValueError("missing repository id in public page metadata")
+    public_match = _REPOSITORY_PUBLIC_META.search(html)
+    is_public = public_match is not None and public_match.group(1) == "true"
+    nwo_match = _REPOSITORY_NWO_META.search(html)
+    full_name = nwo_match.group(1) if nwo_match else repository
+    if full_name.casefold() != repository.casefold():
+        raise ValueError("repository name mismatch on public page")
+    return {
+        "id": int(id_match.group(1)),
+        "full_name": full_name,
+        "private": not is_public,
+        "visibility": "public" if is_public else "private",
+        "archived": _public_repo_is_archived_from_html(html),
+    }
 
 
 def _public_git_snapshot(repository, ref, sources, *, remote=None):
@@ -644,24 +666,32 @@ def record_is_public_monitored(record):
 
 def monitored_repositories(registry, *, token=None, owner=ORG_OWNER):
     """Locked parent-registry consumers that are public and not archived."""
+    import vendor_consumers
+    registry = vendor_consumers.validate(registry)
     monitored = []
-    excluded = 0
-    for name in _locked_consumer_names(registry):
+    for entry in registry["consumers"]:
+        if entry["state"] != "locked":
+            continue
+        name = entry["repository"]
         if name.split("/")[0].casefold() != owner.casefold():
             continue
-        try:
-            if not _registry_consumer_is_public_monitored(name):
-                excluded += 1
-                continue
-        except PublicGitAccessBlocked:
-            raise
+        if token:
+            record = fetch_repository_record(name, token)
+        else:
+            try:
+                record = public_repository_page_record(name)
+            except PublicGitNotFound:
+                raise ValueError(
+                    "registered consumer repository is not publicly accessible: " + name,
+                ) from None
+            except PublicGitAccessBlocked:
+                raise
+        if not record_is_public_monitored(record):
+            raise ValueError(
+                "registered consumer is not a public non-archived repository: " + name,
+            )
         monitored.append(name)
-    if excluded:
-        print(
-            "vendor-sync: excluded {} non-public or inaccessible registry consumer(s)".format(excluded),
-            file=sys.stderr,
-        )
-    return monitored
+    return sorted(set(monitored), key=str.casefold)
 
 
 def _api_token(token=None):
@@ -820,12 +850,11 @@ def build_expected_child_lock(registry, document, consumer, *, token=None):
     recorded = next((v for k, v in heads.items() if k.casefold() == consumer.casefold()), None)
     if recorded is None:
         raise ValueError("child-heads missing repository: " + consumer)
-    meta = fetch_repository_record(consumer, token)
-    if meta.get("id") is not None:
-        if not record_is_public_monitored(meta):
-            raise ValueError("child is not a public non-archived repository")
-        if _coerce_repository_id(meta["id"]) != recorded["repository_id"]:
-            raise ValueError("child repository id mismatch")
+    meta = _live_consumer_repository_record(consumer, token=token)
+    if not record_is_public_monitored(meta):
+        raise ValueError("child is not a public non-archived repository")
+    if _coerce_repository_id(meta["id"]) != recorded["repository_id"]:
+        raise ValueError("child repository id mismatch")
     text = _fetch_repo_text(consumer, entry["lock"], recorded["sha"], token)
     if text is None:
         raise ValueError("missing adopted child lock at recorded SHA")
@@ -1234,6 +1263,12 @@ def verify_reference_identity(*, expected_sha, expected_pull_number, expected_re
     }
 
 
+def _live_consumer_repository_record(repository, *, token=None, repo_fetch=None):
+    if repo_fetch is not None or token:
+        return fetch_repository_record(repository, token, repo_fetch=repo_fetch)
+    return public_repository_page_record(repository)
+
+
 def fetch_repository_record(repository, token=None, repo_fetch=None):
     repository = _normalize_repository(repository)
     if repo_fetch is not None:
@@ -1242,19 +1277,12 @@ def fetch_repository_record(repository, token=None, repo_fetch=None):
         record = _github_api("GET", "https://api.github.com/repos/" + repository, token)
     else:
         try:
-            public_ref_sha(repository, "main")
+            record = public_repository_page_record(repository)
         except PublicGitNotFound:
             raise PublicGitNotFound("not accessible") from None
         except PublicGitAccessBlocked:
             raise
-        record = {
-            "id": None,
-            "full_name": repository,
-            "private": False,
-            "visibility": "public",
-            "archived": _public_repo_is_archived(repository),
-        }
-    if not isinstance(record, dict) or "id" not in record:
+    if not isinstance(record, dict) or record.get("id") is None:
         raise ValueError("invalid repository response for " + repository)
     return record
 
@@ -1278,24 +1306,24 @@ def fetch_child_head(repository, ref="main", *, remotes=None):
 def fetch_child_head_record(repository, ref="main", *, remotes=None, token=None, repo_fetch=None,
                             prior_record=None):
     sha = fetch_child_head(repository, ref, remotes=remotes)
-    entry = {"sha": sha}
-    if prior_record is not None and "repository_id" in prior_record:
-        entry["repository_id"] = prior_record["repository_id"]
+    record = _live_consumer_repository_record(repository, token=token, repo_fetch=repo_fetch)
+    if not record_is_public_monitored(record):
+        raise ValueError("child is not a public non-archived repository")
+    live_id = _coerce_repository_id(record["id"])
+    entry = {"sha": sha, "repository_id": live_id}
+    if prior_record is not None:
+        verify_repository_id_identity(
+            expected_repository_id=prior_record["repository_id"],
+            resolved_repository_id=live_id,
+        )
         optional = prior_record.get("optional")
         if isinstance(optional, dict):
             entry["optional"] = dict(optional)
-    elif token or repo_fetch is not None:
-        record = fetch_repository_record(repository, token, repo_fetch=repo_fetch)
-        if not record_is_public_monitored(record):
-            raise ValueError("child is not a public non-archived repository")
-        entry["repository_id"] = _coerce_repository_id(record["id"])
-        optional = {}
-        if isinstance(record.get("created_at"), str):
-            optional["repository_created_at"] = record["created_at"]
-        if optional:
-            entry["optional"] = optional
-    else:
-        raise ValueError("missing repository_id for " + repository)
+    optional = {}
+    if isinstance(record.get("created_at"), str):
+        optional["repository_created_at"] = record["created_at"]
+    if optional:
+        entry["optional"] = {**entry.get("optional", {}), **optional}
     pull_number = _lookup_child_main_pull_number(repository, sha, token)
     if pull_number is not None:
         entry["pull_number"] = pull_number

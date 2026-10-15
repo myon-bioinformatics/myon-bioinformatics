@@ -874,9 +874,7 @@ def test_missing_monitored_repository_fails_parent_ci(tmp_path, monkeypatch):
     assert report['failure_count'] == 1
 
 
-def test_unauthenticated_inventory_still_filters_private_and_archived(monkeypatch):
-    monkeypatch.delenv('GH_TOKEN', raising=False)
-    monkeypatch.delenv('GITHUB_TOKEN', raising=False)
+def test_legacy_consumer_is_excluded_without_public_probe(monkeypatch):
     entry = {
         "repository": "owner/tool",
         "source": "tool.py",
@@ -886,24 +884,52 @@ def test_unauthenticated_inventory_still_filters_private_and_archived(monkeypatc
         "schema": "vendor-consumers/1",
         "consumers": [
             {"repository": "owner/public", "state": "locked", "lock": "vendor.lock.json", "entries": [entry]},
-            {"repository": "owner/secret", "state": "locked", "lock": "vendor.lock.json", "entries": [entry]},
-            {"repository": "owner/old", "state": "locked", "lock": "vendor.lock.json", "entries": [entry]},
+            {
+                "repository": "owner/retired", "state": "legacy", "lock": None,
+                "reason": "repository_archived", "legacy_provenance": ["vendor.lock.json"],
+                "entries": [entry],
+            },
+        ],
+    }
+    monkeypatch.setattr(sync, "public_repository_page_record", lambda name: {
+        "id": 1, "full_name": name, "private": False, "visibility": "public", "archived": False,
+    })
+    assert sync.monitored_repositories(registry, owner="owner") == ["owner/public"]
+
+
+def test_locked_registry_consumer_404_fails_instead_of_silent_exclude(monkeypatch):
+    entry = {
+        "repository": "owner/tool",
+        "source": "tool.py",
+        "destination": "vendor/tool.py",
+    }
+    registry = {
+        "schema": "vendor-consumers/1",
+        "consumers": [
+            {"repository": "owner/public", "state": "locked", "lock": "vendor.lock.json", "entries": [entry]},
+            {"repository": "owner/missing", "state": "locked", "lock": "vendor.lock.json", "entries": [entry]},
         ],
     }
 
-    def public_only(name, *, ref="main"):
-        if name.endswith("secret") or name.endswith("old"):
-            return False
-        return True
+    def page_record(name):
+        if name.endswith("missing"):
+            raise sync.PublicGitNotFound("not found")
+        return {"id": 1, "full_name": name, "private": False, "visibility": "public", "archived": False}
 
-    monkeypatch.setattr(sync, "_registry_consumer_is_public_monitored", public_only)
-    assert sync.monitored_repositories(registry, owner='owner') == ['owner/public']
-    monkeypatch.setattr(
-        sync, "_registry_consumer_is_public_monitored",
-        lambda *a, **k: (_ for _ in ()).throw(sync.PublicGitAccessBlocked("blocked")),
-    )
-    with pytest.raises(sync.PublicGitAccessBlocked):
-        sync.monitored_repositories(registry, owner='owner')
+    monkeypatch.setattr(sync, "public_repository_page_record", page_record)
+    with pytest.raises(ValueError, match="not publicly accessible"):
+        sync.monitored_repositories(registry, owner="owner")
+
+
+def test_fetch_child_head_record_verifies_live_repository_id(monkeypatch):
+    repository = "owner/child"
+    prior = {"sha": "a" * 40, "repository_id": 42}
+    monkeypatch.setattr(sync, "fetch_child_head", lambda *a, **k: "b" * 40)
+    monkeypatch.setattr(sync, "public_repository_page_record", lambda *a, **k: {
+        "id": 99, "full_name": repository, "private": False, "visibility": "public", "archived": False,
+    })
+    with pytest.raises(ValueError, match="repository id mismatch"):
+        sync.fetch_child_head_record(repository, prior_record=prior)
 
 
 @pytest.mark.parametrize('field,value', [('number', 9), ('state', 'closed')])
