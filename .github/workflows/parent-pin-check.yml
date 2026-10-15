@@ -43,8 +43,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p parent-pin-tool/tools
-          cp tools/parent_pin_check.py parent-pin-tool/tools/
-          cp tools/__init__.py parent-pin-tool/tools/ 2>/dev/null || true
+          cp consumer/tools/parent_pin_check.py parent-pin-tool/tools/
+          cp consumer/tools/__init__.py parent-pin-tool/tools/ 2>/dev/null || true
           python parent-pin-tool/tools/parent_pin_check.py \
             --root consumer \
             --skip-api \
