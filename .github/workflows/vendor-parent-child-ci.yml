@@ -104,7 +104,7 @@ jobs:
           GITHUB_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          python tools/parent_pin_check.py --fleet --event "$GITHUB_EVENT_NAME" --ref "$GITHUB_REF"
+          python tools/parent_pin_check.py --fleet --child-heads child-heads.json --event "$GITHUB_EVENT_NAME" --ref "$GITHUB_REF"
 
   autofix:
     if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}

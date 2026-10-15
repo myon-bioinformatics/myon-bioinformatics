@@ -257,25 +257,22 @@ def test_parent_pr_ref_without_commit_field_is_ok(tmp_path: Path) -> None:
     assert all(pin["commit"] == sha for pin in pins)
 
 
-def test_fetch_parent_main_retries_without_token_on_403(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[str | None] = []
-
-    def fake_json(url, token, **_kwargs):
-        calls.append(token)
-        if token:
-            raise ParentPinError("forbidden", http_code=403)
-        if url.endswith("/myon-bioinformatics/myon-bioinformatics"):
-            return {"visibility": "public", "private": False, "default_branch": "main"}
-        return {"object": {"sha": "a" * 40}}
+def test_fetch_parent_main_from_atom(monkeypatch: pytest.MonkeyPatch) -> None:
+    atom = """<?xml version="1.0"?>
+    <feed><entry>
+      <id>tag:github.com,2008:Commit/ece241afedb60d5daf0b12e37241ebb1dd001bd8</id>
+    </entry></feed>"""
 
     import tools.parent_pin_check as module
 
-    monkeypatch.setattr(module, "_github_json", fake_json)
+    def fake_http_get_text(url, *, token=None, **_kwargs):
+        assert token is None
+        return atom
+
+    monkeypatch.setattr(module, "_http_get_text", fake_http_get_text)
     sha, branch = fetch_parent_main_sha(PARENT_REPOSITORY, "token")
     assert branch == "main"
-    assert sha == "a" * 40
-    assert calls[0] == "token"
-    assert calls[1] is None
+    assert sha == "ece241afedb60d5daf0b12e37241ebb1dd001bd8"
 
 
 def test_child_heads_excluded_by_default(tmp_path: Path) -> None:
@@ -365,16 +362,14 @@ def test_run_skip_api_offline(tmp_path: Path) -> None:
     assert report["ok"]
 
 
-def test_fetch_parent_main_requires_public(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_public(url, token, **_kwargs):
-        if url.endswith("/myon-bioinformatics/myon-bioinformatics"):
-            return {"private": True, "visibility": "private"}
-        raise AssertionError(url)
-
+def test_fetch_parent_main_atom_failure_is_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     import tools.parent_pin_check as module
 
-    monkeypatch.setattr(module, "_github_json_public_read", fake_public)
-    with pytest.raises(module.ParentPinError, match="not public"):
+    def boom(*args, **kwargs):
+        raise ParentPinError("missing", http_code=404)
+
+    monkeypatch.setattr(module, "_http_get_text", boom)
+    with pytest.raises(module.ParentPinError, match="missing"):
         fetch_parent_main_sha(PARENT_REPOSITORY, "token")
 
 
@@ -420,7 +415,7 @@ def test_fleet_child_private_after_list_is_skipped_silently(
         lambda *args, **kwargs: ("a" * 40, "main"),
     )
     monkeypatch.setattr(
-        "tools.parent_pin_check._list_public_child_repositories",
+        "tools.parent_pin_check._list_fleet_child_repositories",
         lambda *args, **kwargs: ["myon-bioinformatics/Ironmate"],
     )
 
@@ -443,7 +438,7 @@ def test_fleet_child_auth_error_warns_even_when_enforced(
         lambda *args, **kwargs: ("a" * 40, "main"),
     )
     monkeypatch.setattr(
-        "tools.parent_pin_check._list_public_child_repositories",
+        "tools.parent_pin_check._list_fleet_child_repositories",
         lambda *args, **kwargs: ["myon-bioinformatics/Ironmate"],
     )
 
@@ -466,7 +461,7 @@ def test_fleet_child_unclassified_error_fails_when_enforced(
         lambda *args, **kwargs: ("a" * 40, "main"),
     )
     monkeypatch.setattr(
-        "tools.parent_pin_check._list_public_child_repositories",
+        "tools.parent_pin_check._list_fleet_child_repositories",
         lambda *args, **kwargs: ["myon-bioinformatics/Ironmate"],
     )
 
@@ -498,7 +493,7 @@ def test_fleet_warn_only_on_pull_request_event(monkeypatch: pytest.MonkeyPatch) 
         lambda *args, **kwargs: ("a" * 40, "main"),
     )
     monkeypatch.setattr(
-        "tools.parent_pin_check._list_public_child_repositories",
+        "tools.parent_pin_check._list_fleet_child_repositories",
         lambda *args, **kwargs: ["myon-bioinformatics/Ironmate"],
     )
     monkeypatch.setattr(
@@ -522,7 +517,7 @@ def test_fleet_enforces_on_schedule(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda *args, **kwargs: ("a" * 40, "main"),
     )
     monkeypatch.setattr(
-        "tools.parent_pin_check._list_public_child_repositories",
+        "tools.parent_pin_check._list_fleet_child_repositories",
         lambda *args, **kwargs: ["myon-bioinformatics/Ironmate"],
     )
     monkeypatch.setattr(
@@ -577,8 +572,8 @@ def test_fetch_repository_file_uses_http_404(monkeypatch: pytest.MonkeyPatch) ->
     def boom(*args, **kwargs):
         raise ParentPinError("missing", http_code=404)
 
-    monkeypatch.setattr(module, "_github_json", boom)
-    assert module._fetch_repository_file("myon-bioinformatics/x", "missing.yml", "a" * 40, "t") is None
+    monkeypatch.setattr(module, "_http_get_text", boom)
+    assert module._fetch_repository_file("myon-bioinformatics/x", "missing.yml", "a" * 40, None) is None
 
 
 def _fake_pin_report(*, enforce: bool, stale: bool = True) -> dict:

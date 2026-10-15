@@ -54,6 +54,8 @@ PIN_CONSTANT = re.compile(
     r"(?P<name>(?:VENDOR_SYNC_PIN|PARENT_[A-Z0-9_]*PIN|[A-Z0-9_]*_PARENT_PIN))\s*=\s*['\"](?P<sha>[0-9a-f]{40})['\"]"
 )
 HEX40 = re.compile(r"^[0-9a-f]{40}$")
+ATOM_COMMIT_SHA = re.compile(r"Commit/([0-9a-f]{40})", re.IGNORECASE)
+ATOM_HTML_COMMIT = re.compile(r"/commit/([0-9a-f]{40})", re.IGNORECASE)
 
 
 class ParentPinError(RuntimeError):
@@ -146,85 +148,99 @@ def _is_parent_pr_ref_path(rel: str) -> bool:
     return normalized == PARENT_PR_REF_NAME or normalized.endswith("/" + PARENT_PR_REF_NAME)
 
 
-def _github_request(
+def _main_atom_url(repository: str, branch: str = "main") -> str:
+    return f"https://github.com/{repository}/commits/{quote(branch, safe='')}.atom"
+
+
+def _raw_file_url(repository: str, ref: str, path: str) -> str:
+    return f"https://raw.githubusercontent.com/{repository}/{quote(ref, safe='')}/{path}"
+
+
+def _parse_first_atom_entry_commit(atom_xml: str) -> str:
+    start = atom_xml.find("<entry>")
+    if start < 0:
+        raise ParentPinError("Atom feed has no commit entries.")
+    end = atom_xml.find("</entry>", start)
+    entry = atom_xml[start:end] if end > start else atom_xml[start:]
+    match = ATOM_COMMIT_SHA.search(entry) or ATOM_HTML_COMMIT.search(entry)
+    if not match:
+        raise ParentPinError("Could not parse commit SHA from Atom feed entry.")
+    return match.group(1).lower()
+
+
+def _http_get_bytes(
     url: str,
-    token: str | None,
     *,
+    token: str | None = None,
+    accept: str | None = None,
     timeout: float = 60.0,
-    allow_anonymous_retry: bool = True,
-) -> Any:
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "parent-pin-check",
-    }
+) -> bytes:
+    headers: dict[str, str] = {"User-Agent": "parent-pin-check"}
+    if accept:
+        headers["Accept"] = accept
     if token:
         headers["Authorization"] = "Bearer " + token
     try:
         with urlopen(Request(url, headers=headers), timeout=timeout) as response:
             raw = response.read(MAX_BYTES + 1)
     except HTTPError as error:
-        if allow_anonymous_retry and token and error.code in (401, 403):
-            return _github_request(
-                url, None, timeout=timeout, allow_anonymous_retry=False
-            )
         raise ParentPinError(
-            f"GitHub API request failed ({error.code}); fail-closed.",
+            f"HTTP request failed ({error.code}).",
             http_code=error.code,
         ) from error
     except URLError as error:
-        raise ParentPinError(
-            "GitHub API is unreachable while resolving parent default branch; fail-closed."
-        ) from error
+        raise ParentPinError("HTTP endpoint is unreachable (fail-closed).") from error
     if len(raw) > MAX_BYTES:
-        raise ParentPinError("GitHub API response exceeds size limit.")
-    return json.loads(raw.decode("utf-8"))
+        raise ParentPinError("HTTP response exceeds size limit.")
+    return raw
 
 
-def _github_json(url: str, token: str | None, *, timeout: float = 60.0) -> dict[str, Any]:
-    data = _github_request(url, token, timeout=timeout)
+def _http_get_text(
+    url: str,
+    *,
+    token: str | None = None,
+    accept: str | None = None,
+    timeout: float = 60.0,
+) -> str:
+    return _http_get_bytes(url, token=token, accept=accept, timeout=timeout).decode("utf-8")
+
+
+def _github_json(
+    url: str, token: str | None = None, *, timeout: float = 60.0
+) -> dict[str, Any]:
+    raw = _http_get_bytes(
+        url, token=token, accept="application/vnd.github+json", timeout=timeout
+    )
+    data = json.loads(raw.decode("utf-8"))
     if not isinstance(data, dict):
         raise ParentPinError("GitHub API returned an unexpected payload.")
     return data
 
 
-def _github_json_public_read(
-    url: str, token: str | None, *, timeout: float = 60.0
-) -> dict[str, Any]:
-    """Read public GitHub JSON; retry without token when auth is rejected."""
-    try:
-        return _github_json(url, token, timeout=timeout)
-    except ParentPinError as error:
-        if error.http_code in (401, 403) and token:
-            return _github_json(url, None, timeout=timeout)
-        raise
-
-
-def _github_json_list(url: str, token: str | None, *, timeout: float = 60.0) -> list[Any]:
-    data = _github_request(url, token, timeout=timeout)
+def _github_json_list(
+    url: str, token: str | None = None, *, timeout: float = 60.0
+) -> list[Any]:
+    raw = _http_get_bytes(
+        url, token=token, accept="application/vnd.github+json", timeout=timeout
+    )
+    data = json.loads(raw.decode("utf-8"))
     if not isinstance(data, list):
         raise ParentPinError("GitHub API returned an unexpected list payload.")
     return data
 
 
-def fetch_parent_main_sha(parent_repository: str, token: str | None) -> tuple[str, str]:
-    meta = _github_json_public_read(f"https://api.github.com/repos/{parent_repository}", token)
-    visibility = meta.get("visibility") or ("private" if meta.get("private") else "public")
-    if visibility != "public" or meta.get("private"):
-        raise ParentPinError("Parent repository is not public; refusing to proceed (fail-closed).")
-    if meta.get("archived"):
-        raise ParentPinError("Parent repository is archived; refusing to proceed (fail-closed).")
-    branch = meta.get("default_branch")
-    if not isinstance(branch, str) or not branch:
-        raise ParentPinError("Parent repository default branch is missing from GitHub API response.")
-    ref = _github_json_public_read(
-        f"https://api.github.com/repos/{parent_repository}/git/ref/heads/"
-        + quote(branch, safe=""),
-        token,
+def fetch_parent_main_sha(parent_repository: str, token: str | None = None) -> tuple[str, str]:
+    """Resolve parent default-branch HEAD from public commits/main.atom (no authentication)."""
+    _ = token
+    branch = "main"
+    atom = _http_get_text(
+        _main_atom_url(parent_repository, branch),
+        token=None,
+        accept="application/atom+xml, application/xml, text/xml, */*",
     )
-    object_info = ref.get("object") if isinstance(ref.get("object"), dict) else {}
-    sha = object_info.get("sha")
-    if not isinstance(sha, str) or not HEX40.fullmatch(sha):
-        raise ParentPinError("Could not resolve parent default branch HEAD SHA.")
+    sha = _parse_first_atom_entry_commit(atom)
+    if not HEX40.fullmatch(sha):
+        raise ParentPinError("Could not resolve parent default branch HEAD SHA from Atom feed.")
     return sha, branch
 
 
@@ -243,7 +259,7 @@ def pin_behind_main(parent_repository: str, pin: str, main_sha: str, token: str 
         f"https://api.github.com/repos/{parent_repository}/compare/"
         f"{quote(pin, safe='')}...{quote(main_sha, safe='')}"
     )
-    data = _github_json(url, token)
+    data = _github_json(url, None)
     status = data.get("status")
     stale = False
     if status == "identical":
@@ -463,11 +479,11 @@ def evaluate(
     inconsistent = len(unique) > 1
     stale = False
     stale_shas: list[str] = []
-    if main_sha and unique and token:
+    if main_sha and unique and not inconsistent:
         for sha in unique:
             if sha == main_sha:
                 continue
-            if pin_behind_main(parent_repository, sha, main_sha, token):
+            if pin_behind_main(parent_repository, sha, main_sha, None):
                 stale = True
                 stale_shas.append(sha)
     findings = inconsistent or stale
@@ -547,48 +563,70 @@ def _decode_file_content(data: dict[str, Any]) -> str:
     return raw.decode("utf-8")
 
 
-def _fetch_repository_file(repository: str, path: str, ref: str, token: str) -> str | None:
-    url = (
-        "https://api.github.com/repos/"
-        + repository
-        + "/contents/"
-        + quote(path, safe="/")
-        + "?ref="
-        + quote(ref, safe="")
-    )
+def _fetch_repository_file(
+    repository: str, path: str, ref: str, token: str | None
+) -> str | None:
+    """Fetch a repository file from raw.githubusercontent.com (no authentication)."""
+    _ = token
+    url = _raw_file_url(repository, ref, path)
     try:
-        data = _github_json(url, token)
+        return _http_get_text(url, token=None)
     except ParentPinError as error:
         if error.http_code == 404:
             return None
         raise
-    if not isinstance(data, dict):
-        return None
-    return _decode_file_content(data)
 
 
-def _resolve_default_branch_head(repository: str, token: str) -> tuple[str, str]:
-    meta = _github_json(f"https://api.github.com/repos/{repository}", token)
-    visibility = meta.get("visibility") or ("private" if meta.get("private") else "public")
-    if visibility != "public" or meta.get("private"):
-        raise ParentPinError("repository is not public")
-    if meta.get("archived"):
-        raise ParentPinError("repository is archived")
-    branch = meta.get("default_branch")
-    if not isinstance(branch, str) or not branch:
-        raise ParentPinError("default branch missing")
-    ref = _github_json(
-        f"https://api.github.com/repos/{repository}/git/ref/heads/" + quote(branch, safe=""),
-        token,
-    )
-    object_info = ref.get("object") if isinstance(ref.get("object"), dict) else {}
-    sha = object_info.get("sha")
-    if not isinstance(sha, str) or not HEX40.fullmatch(sha):
+def _resolve_default_branch_head(repository: str, token: str | None) -> tuple[str, str]:
+    """Resolve a public repository default branch HEAD from commits/main.atom."""
+    _ = token
+    branch = "main"
+    try:
+        atom = _http_get_text(
+            _main_atom_url(repository, branch),
+            token=None,
+            accept="application/atom+xml, application/xml, text/xml, */*",
+        )
+    except ParentPinError as error:
+        if error.http_code == 404:
+            raise ParentPinError("repository is not public", http_code=404) from error
+        raise
+    sha = _parse_first_atom_entry_commit(atom)
+    if not HEX40.fullmatch(sha):
         raise ParentPinError("could not resolve default branch head")
     return sha, branch
 
 
-def _list_public_child_repositories(owner: str, parent_repository: str, token: str) -> list[str]:
+def _list_fleet_child_repositories(
+    owner: str,
+    parent_repository: str,
+    token: str | None,
+    child_heads_path: Path | None,
+) -> list[str]:
+    if child_heads_path is not None and child_heads_path.is_file():
+        try:
+            document = json.loads(child_heads_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise ParentPinError(f"could not read child heads registry: {error}") from error
+        heads = document.get("heads") if isinstance(document, dict) else None
+        if not isinstance(heads, dict):
+            raise ParentPinError("child-heads.json is missing a heads object")
+        names = [
+            name
+            for name in heads
+            if isinstance(name, str) and name.casefold() != parent_repository.casefold()
+        ]
+        return sorted(set(names), key=str.casefold)
+    if not token:
+        raise ParentPinError(
+            "child-heads.json is required for fleet audit without GITHUB_TOKEN (fail-closed)."
+        )
+    return _list_public_child_repositories(owner, parent_repository, token)
+
+
+def _list_public_child_repositories(
+    owner: str, parent_repository: str, token: str | None
+) -> list[str]:
     names: list[str] = []
     for kind in ("orgs", "users"):
         page = 1
@@ -631,21 +669,27 @@ def _list_public_child_repositories(owner: str, parent_repository: str, token: s
 
 
 def _remote_scannable_paths(
-    repository: str, ref: str, token: str, patterns: Sequence[str], *, fleet: bool = False
+    repository: str,
+    ref: str,
+    token: str | None,
+    patterns: Sequence[str],
+    *,
+    fleet: bool = False,
 ) -> list[str]:
+    _ = token
     commit = _github_json(
         "https://api.github.com/repos/"
         + repository
         + "/commits/"
         + quote(ref, safe=""),
-        token,
+        None,
     )
     tree_sha = (commit.get("commit") or {}).get("tree", {}).get("sha")
     if not isinstance(tree_sha, str):
         raise ParentPinError("commit tree missing")
     tree = _github_json(
         f"https://api.github.com/repos/{repository}/git/trees/{tree_sha}?recursive=1",
-        token,
+        None,
     )
     if tree.get("truncated"):
         raise ParentPinError("repository tree listing truncated")
@@ -765,15 +809,13 @@ def run_fleet(
     include_default_excludes: bool = True,
     token: str | None = None,
     enforce: bool = False,
+    child_heads: str | Path | None = "child-heads.json",
 ) -> dict[str, Any]:
     if not token:
         token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-    if not token:
-        raise ParentPinError(
-            "GITHUB_TOKEN (or GH_TOKEN) is required for fleet parent-pin audit (fail-closed)."
-        )
-    main_sha, branch = fetch_parent_main_sha(parent_repository, token)
-    children = _list_public_child_repositories(owner, parent_repository, token)
+    heads_path = Path(child_heads) if child_heads else None
+    main_sha, branch = fetch_parent_main_sha(parent_repository, None)
+    children = _list_fleet_child_repositories(owner, parent_repository, token, heads_path)
     failures: list[dict[str, Any]] = []
     audit_errors: list[dict[str, Any]] = []
     fetch_warnings: list[dict[str, Any]] = []
@@ -898,13 +940,7 @@ def run(
     )
     main_sha = None
     if not skip_api:
-        if not token:
-            token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-        if not token:
-            raise ParentPinError(
-                "GITHUB_TOKEN (or GH_TOKEN) is required to resolve parent main SHA (fail-closed)."
-            )
-        main_sha, _branch = fetch_parent_main_sha(parent_repository, token)
+        main_sha, _branch = fetch_parent_main_sha(parent_repository, None)
     report = evaluate(
         pins,
         parent_repository=parent_repository,
@@ -967,6 +1003,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=ORG_OWNER,
         help="GitHub account owner for fleet listing (default: myon-bioinformatics)",
     )
+    parser.add_argument(
+        "--child-heads",
+        default="child-heads.json",
+        help="child-heads.json registry for fleet scope (default: child-heads.json)",
+    )
     args = parser.parse_args(argv)
     if args.warn_only and args.enforce:
         parser.error("--enforce and --warn-only are mutually exclusive")
@@ -984,6 +1025,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 exclude_globs=args.exclude,
                 include_default_excludes=not args.no_default_excludes,
                 enforce=enforce_mode,
+                child_heads=args.child_heads,
             )
         else:
             report = run(
