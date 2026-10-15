@@ -57,12 +57,11 @@ jobs:
           set -euo pipefail
 
           write_fail_open_outputs() {
-            local workflow_changed="$1"
             {
               echo "docs_only=false"
               echo "non_docs_changed=true"
               echo "product_changed=true"
-              echo "workflow_changed=$workflow_changed"
+              echo "workflow_changed=true"
               echo "changed_count=0"
             } >> "$GITHUB_OUTPUT"
           }
@@ -75,13 +74,13 @@ jobs:
             BASE="$PUSH_BEFORE_SHA"
             HEAD="$PUSH_HEAD_SHA"
           else
-            write_fail_open_outputs false
+            write_fail_open_outputs
             echo "No reliable diff base for event '$EVENT_NAME'; heavy jobs remain enabled."
             exit 0
           fi
 
           if [[ "$EVENT_NAME" == "push" && "$PUSH_FORCED" == "true" ]]; then
-            write_fail_open_outputs true
+            write_fail_open_outputs
             echo "Diff base $BASE unavailable (force-push?); heavy jobs remain enabled."
             exit 0
           fi
@@ -90,7 +89,7 @@ jobs:
             git fetch --no-tags --depth=1 origin "$BASE" 2>/dev/null || true
           fi
           if ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
-            write_fail_open_outputs true
+            write_fail_open_outputs
             echo "Diff base $BASE unavailable (force-push?); heavy jobs remain enabled."
             exit 0
           fi
