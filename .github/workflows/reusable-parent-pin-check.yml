@@ -37,27 +37,14 @@ jobs:
         with:
           path: consumer
           persist-credentials: false
-      - name: Resolve parent reusable workflow ref
-        id: parent_tool_ref
-        env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
-        run: |
-          set -euo pipefail
-          ref="${WORKFLOW_REF##*@}"
-          if [[ -z "$ref" || "$ref" == "$WORKFLOW_REF" ]]; then
-            echo "::error::Could not parse parent tool ref from workflow_ref=${WORKFLOW_REF}" >&2
-            exit 1
-          fi
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
-      - name: Checkout parent pin tool at workflow ref
+      - name: Checkout parent pin tool from public main
         uses: actions/checkout@v7
         with:
           repository: ${{ inputs.parent-repository }}
-          ref: ${{ steps.parent_tool_ref.outputs.ref }}
+          ref: main
           path: parent-pin-tool
           sparse-checkout: |
             tools/parent_pin_check.py
-            tools/__init__.py
           sparse-checkout-cone-mode: false
           persist-credentials: false
       - uses: actions/setup-python@v7

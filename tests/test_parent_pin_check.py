@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from tools.parent_pin_check import (
+    PARENT_PIN_TOOL_PATH,
     PARENT_REPOSITORY,
     ParentPinError,
     audit_fleet_child,
@@ -310,27 +311,9 @@ def test_fleet_child_stale_pin(monkeypatch: pytest.MonkeyPatch) -> None:
     assert item["pins"][0]["file"] == ".github/workflows/ci.yml"
 
 
-def test_fleet_child_audit_error_warns_without_enforce(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "tools.parent_pin_check.fetch_parent_main_sha",
-        lambda *args, **kwargs: ("a" * 40, "main"),
-    )
-    monkeypatch.setattr(
-        "tools.parent_pin_check._list_public_child_repositories",
-        lambda *args, **kwargs: ["myon-bioinformatics/Ironmate"],
-    )
-
-    def fail_child(*args, **kwargs):
-        raise ParentPinError("repository is not public", http_code=403)
-
-    monkeypatch.setattr("tools.parent_pin_check.audit_fleet_child", fail_child)
-    report = run_fleet(token="token", enforce=False)
-    assert report["ok"]
-    assert report["audit_error_count"] == 1
-    assert "repository" not in report["audit_errors"][0]
-
-
-def test_fleet_child_audit_error_fails_when_enforced(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fleet_child_private_after_list_is_skipped_silently(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         "tools.parent_pin_check.fetch_parent_main_sha",
         lambda *args, **kwargs: ("a" * 40, "main"),
@@ -345,8 +328,58 @@ def test_fleet_child_audit_error_fails_when_enforced(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr("tools.parent_pin_check.audit_fleet_child", fail_child)
     report = run_fleet(token="token", enforce=True)
-    assert not report["ok"]
+    assert report["ok"]
+    assert report["skipped_repositories"] == 1
+    assert report["audit_error_count"] == 0
+    assert report["fetch_warning_count"] == 0
+
+
+def test_fleet_child_auth_error_warns_even_when_enforced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "tools.parent_pin_check.fetch_parent_main_sha",
+        lambda *args, **kwargs: ("a" * 40, "main"),
+    )
+    monkeypatch.setattr(
+        "tools.parent_pin_check._list_public_child_repositories",
+        lambda *args, **kwargs: ["myon-bioinformatics/Ironmate"],
+    )
+
+    def fail_child(*args, **kwargs):
+        raise ParentPinError("forbidden", http_code=403)
+
+    monkeypatch.setattr("tools.parent_pin_check.audit_fleet_child", fail_child)
+    report = run_fleet(token="token", enforce=True)
+    assert report["ok"]
+    assert report["fetch_warning_count"] == 1
+    assert "403" in report["fetch_warnings"][0]["message"]
+    assert "repository" not in report["fetch_warnings"][0]
+
+
+def test_fleet_child_unclassified_error_fails_when_enforced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "tools.parent_pin_check.fetch_parent_main_sha",
+        lambda *args, **kwargs: ("a" * 40, "main"),
+    )
+    monkeypatch.setattr(
+        "tools.parent_pin_check._list_public_child_repositories",
+        lambda *args, **kwargs: ["myon-bioinformatics/Ironmate"],
+    )
+
+    def fail_child(*args, **kwargs):
+        raise ParentPinError("commit tree missing")
+
+    monkeypatch.setattr("tools.parent_pin_check.audit_fleet_child", fail_child)
+    report = run_fleet(token="token", enforce=False)
+    assert report["ok"]
     assert report["audit_error_count"] == 1
+
+    report_strict = run_fleet(token="token", enforce=True)
+    assert not report_strict["ok"]
+    assert report_strict["audit_error_count"] == 1
 
 
 def test_should_enforce_event_policy() -> None:
@@ -421,6 +454,19 @@ def test_compare_unexpected_status_fail_closed(monkeypatch: pytest.MonkeyPatch) 
     module._COMPARE_CACHE.clear()
     monkeypatch.setattr(module, "_github_json", lambda *args, **kwargs: {"status": "unknown"})
     with pytest.raises(ParentPinError, match="Unexpected GitHub compare status"):
+        pin_behind_main(PARENT_REPOSITORY, "e" * 40, "f" * 40, "token")
+
+
+def test_compare_zero_ahead_behind_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tools.parent_pin_check as module
+
+    module._COMPARE_CACHE.clear()
+    monkeypatch.setattr(
+        module,
+        "_github_json",
+        lambda *args, **kwargs: {"status": "behind", "ahead_by": 0, "behind_by": 0},
+    )
+    with pytest.raises(ParentPinError, match="zero ahead_by and behind_by"):
         pin_behind_main(PARENT_REPOSITORY, "e" * 40, "f" * 40, "token")
 
 
@@ -530,6 +576,10 @@ def test_main_fleet_audit_error_enforces(monkeypatch: pytest.MonkeyPatch) -> Non
     assert main(["--fleet", "--event", "schedule", "--ref", "refs/heads/main"]) == 1
 
 
+def test_parent_pin_tool_path_constant() -> None:
+    assert PARENT_PIN_TOOL_PATH == "tools/parent_pin_check.py"
+
+
 def test_reusable_child_layout_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     consumer = tmp_path / "consumer"
     tool_root = tmp_path / "parent-pin-tool"
@@ -540,9 +590,9 @@ def test_reusable_child_layout_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyP
         f"uses: {PARENT_REPOSITORY}/.github/workflows/reusable-parent-pin-check.yml@{sha}\n",
     )
     tool_root.mkdir()
-    tool_src = Path(__file__).resolve().parents[1] / "tools" / "parent_pin_check.py"
+    tool_src = Path(__file__).resolve().parents[1] / PARENT_PIN_TOOL_PATH
     (tool_root / "tools").mkdir()
-    (tool_root / "tools" / "parent_pin_check.py").write_text(
+    (tool_root / PARENT_PIN_TOOL_PATH).write_text(
         tool_src.read_text(encoding="utf-8"), encoding="utf-8"
     )
     monkeypatch.setattr(

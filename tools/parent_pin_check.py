@@ -16,6 +16,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 PARENT_REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
+PARENT_PIN_TOOL_PATH = "tools/parent_pin_check.py"
 ORG_OWNER = "myon-bioinformatics"
 SCHEMA = "parent-pin-check/1"
 FLEET_SCHEMA = "parent-pin-fleet/1"
@@ -60,9 +61,35 @@ class ParentPinError(RuntimeError):
 
 def _redact_fleet_child_name(error: ParentPinError) -> bool:
     message = str(error).casefold()
-    if error.http_code in (401, 403, 404):
+    if error.http_code == 404:
         return True
-    return "not public" in message or "private" in message
+    return "not public" in message or "private" in message or "archived" in message
+
+
+def _classify_fleet_child_error(error: ParentPinError) -> str:
+    """Classify per-child fleet fetch failures: skip, warn, or fail."""
+    message = str(error).casefold()
+    if error.http_code == 404:
+        return "skip"
+    if "not public" in message or "private" in message or "archived" in message:
+        return "skip"
+    if error.http_code in (401, 403):
+        return "warn"
+    return "fail"
+
+
+def _fleet_auth_warning_message(error: ParentPinError) -> str:
+    if error.http_code == 401:
+        return (
+            "GitHub API returned HTTP 401 while fetching a child repository; "
+            "check GITHUB_TOKEN authentication and permissions."
+        )
+    if error.http_code == 403:
+        return (
+            "GitHub API returned HTTP 403 while fetching a child repository; "
+            "may be rate limiting or insufficient token scope."
+        )
+    return str(error)
 
 
 def should_enforce(
@@ -192,6 +219,11 @@ def pin_behind_main(parent_repository: str, pin: str, main_sha: str, token: str 
     elif status in ("ahead", "behind", "diverged"):
         ahead = int(data.get("ahead_by") or 0)
         behind = int(data.get("behind_by") or 0)
+        if ahead == 0 and behind == 0:
+            raise ParentPinError(
+                "Unexpected GitHub compare result: zero ahead_by and behind_by "
+                f"(status={status!r})."
+            )
         if ahead > 0 and behind == 0:
             stale = True
         elif status == "diverged":
@@ -712,6 +744,8 @@ def run_fleet(
     children = _list_public_child_repositories(owner, parent_repository, token)
     failures: list[dict[str, Any]] = []
     audit_errors: list[dict[str, Any]] = []
+    fetch_warnings: list[dict[str, Any]] = []
+    skipped_repositories = 0
     for name in children:
         try:
             item = audit_fleet_child(
@@ -723,6 +757,13 @@ def run_fleet(
                 include_default_excludes=include_default_excludes,
             )
         except ParentPinError as error:
+            kind = _classify_fleet_child_error(error)
+            if kind == "skip":
+                skipped_repositories += 1
+                continue
+            if kind == "warn":
+                fetch_warnings.append({"message": _fleet_auth_warning_message(error)})
+                continue
             entry: dict[str, Any] = {"message": str(error)}
             if not _redact_fleet_child_name(error):
                 entry["repository"] = name
@@ -730,28 +771,34 @@ def run_fleet(
             continue
         if item is not None:
             failures.append(item)
-    findings = bool(failures or audit_errors)
+    enforce_fail = bool(failures or audit_errors)
     return {
         "schema": FLEET_SCHEMA,
         "parent_repository": parent_repository,
         "parent_main_sha": main_sha,
         "parent_default_branch": branch,
         "checked_repositories": len(children),
+        "skipped_repositories": skipped_repositories,
         "failure_count": len(failures),
         "failures": failures,
         "audit_error_count": len(audit_errors),
         "audit_errors": audit_errors,
+        "fetch_warning_count": len(fetch_warnings),
+        "fetch_warnings": fetch_warnings,
         "enforce": enforce,
-        "ok": not (enforce and findings),
+        "ok": not (enforce and enforce_fail),
     }
 
 
 def render_fleet_text(report: dict[str, Any]) -> str:
+    skipped = int(report.get("skipped_repositories") or 0)
     lines = [
         "parent-pin-fleet: checked "
         f"{report['checked_repositories']} public child repositories; "
+        f"{skipped} skipped; "
         f"{report['failure_count']} pin finding(s); "
-        f"{report.get('audit_error_count', 0)} audit error(s)"
+        f"{report.get('audit_error_count', 0)} audit error(s); "
+        f"{report.get('fetch_warning_count', 0)} fetch warning(s)"
     ]
     lines.append(f"parent main ({report['parent_default_branch']}): {report['parent_main_sha']}")
     for item in report["failures"]:
@@ -766,6 +813,8 @@ def render_fleet_text(report: dict[str, Any]) -> str:
         lines.append(
             f"{level}: at least one public child default branch still pins an old parent commit."
         )
+    for item in report.get("fetch_warnings", []):
+        lines.append(f"WARNING: {item['message']}")
     for item in report.get("audit_errors", []):
         repo = item.get("repository")
         prefix = f"{repo} " if repo else ""
@@ -776,6 +825,8 @@ def render_fleet_text(report: dict[str, Any]) -> str:
 def emit_fleet_annotations(report: dict[str, Any]) -> None:
     main_sha = report["parent_main_sha"]
     level = "error" if report.get("enforce") else "warning"
+    for item in report.get("fetch_warnings", []):
+        print(f"::warning::{item['message']}")
     for item in report.get("audit_errors", []):
         repo = item.get("repository")
         prefix = f"{repo} " if repo else ""
