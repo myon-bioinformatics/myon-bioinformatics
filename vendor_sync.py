@@ -14,7 +14,7 @@ import stat
 import subprocess
 import sys
 import tempfile
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -62,7 +62,9 @@ ORG_OWNER = "myon-bioinformatics"
 CHILD_CI_TEMPLATE = "templates/vendor-child-ci.workflow.yml"
 CHILD_CI_WORKFLOW_PATH = ".github/workflows/vendor-child-ci.yml"
 PUBLIC_GIT_FETCH_ERROR = "public Git fetch/read failed"
+PUBLIC_ACCESS_BLOCKED = "GitHub public access blocked (authentication or rate limit)"
 PIN_NOT_MERGED_ERROR = "pin commit is not merged into source default branch"
+_COMMIT_ATOM_SHA = re.compile(r"Commit/([0-9a-f]{40})")
 BRANCH_DIFF_SCAN_ERROR = "branch diff scan failed"
 AUDIT_SOURCE_ERROR = "source verification failed"
 HTML_IMPORT_LOCK_CANDIDATES = ("tools/html-import/vendor.lock.json",)
@@ -144,6 +146,78 @@ def _get(url):
     if len(data) > MAX_BYTES:
         raise ValueError("download exceeds byte limit")
     return data
+
+
+class PublicGitNotFound(ValueError):
+    """Public GitHub URL returned 404 (skip without naming private repositories)."""
+
+
+class PublicGitAccessBlocked(ValueError):
+    """Public GitHub URL returned 401/403 (authentication or rate limit)."""
+
+
+def _public_http_get(url):
+    headers = {"User-Agent": "vendor-sync/public-github"}
+    try:
+        with urlopen(Request(url, headers=headers), timeout=30) as response:
+            raw = response.read(MAX_BYTES + 1)
+    except HTTPError as error:
+        if error.code == 404:
+            raise PublicGitNotFound("not found") from error
+        if error.code in (401, 403):
+            raise PublicGitAccessBlocked(PUBLIC_ACCESS_BLOCKED) from error
+        raise ValueError(PUBLIC_GIT_FETCH_ERROR) from error
+    except URLError as error:
+        raise ValueError(PUBLIC_GIT_FETCH_ERROR) from error
+    if len(raw) > MAX_BYTES:
+        raise ValueError("download exceeds byte limit")
+    return raw
+
+
+def public_ref_sha(repository, ref="main"):
+    """Resolve a moving branch ref to an immutable commit SHA via the public Atom feed."""
+    repository = _normalize_repository(repository)
+    if not isinstance(ref, str) or not ref or any(ord(c) < 32 for c in ref):
+        raise ValueError("invalid ref")
+    url = "https://github.com/{}/commits/{}.atom".format(repository, quote(ref, safe=""))
+    match = _COMMIT_ATOM_SHA.search(_public_http_get(url).decode("utf-8", "replace"))
+    if not match:
+        raise ValueError("missing commit in atom feed")
+    sha = match.group(1)
+    _hex(sha, 40)
+    return sha
+
+
+def public_raw_bytes(repository, ref, path):
+    """Fetch file bytes from raw.githubusercontent.com; None when the path is absent (404)."""
+    repository = _normalize_repository(repository)
+    _path(path)
+    _hex(ref, 40)
+    url = "https://raw.githubusercontent.com/{}/{}/{}".format(
+        repository, ref, quote(path, safe="/"),
+    )
+    try:
+        return _public_http_get(url)
+    except PublicGitNotFound:
+        return None
+
+
+def _public_repo_is_archived(repository):
+    html = _public_http_get("https://github.com/" + repository).decode("utf-8", "replace")
+    return ("This repository has been archived" in html
+            or '"isArchived":true' in html)
+
+
+def _registry_consumer_is_public_monitored(repository, *, ref="main"):
+    try:
+        public_ref_sha(repository, ref)
+    except PublicGitNotFound:
+        return False
+    except PublicGitAccessBlocked:
+        raise
+    if _public_repo_is_archived(repository):
+        return False
+    return True
 
 
 def _public_git_snapshot(repository, ref, sources, *, remote=None):
@@ -569,10 +643,25 @@ def record_is_public_monitored(record):
 
 
 def monitored_repositories(registry, *, token=None, owner=ORG_OWNER):
-    """Public, non-archived account repositories tracked in child-heads.json."""
-    # Public inventory must also be checked without authentication. Never fall
-    # back to a registry that can contain archived or newly private repositories.
-    return list_org_repositories(owner, token=token)
+    """Locked parent-registry consumers that are public and not archived."""
+    monitored = []
+    excluded = 0
+    for name in _locked_consumer_names(registry):
+        if name.split("/")[0].casefold() != owner.casefold():
+            continue
+        try:
+            if not _registry_consumer_is_public_monitored(name):
+                excluded += 1
+                continue
+        except PublicGitAccessBlocked:
+            raise
+        monitored.append(name)
+    if excluded:
+        print(
+            "vendor-sync: excluded {} non-public or inaccessible registry consumer(s)".format(excluded),
+            file=sys.stderr,
+        )
+    return monitored
 
 
 def _api_token(token=None):
@@ -593,12 +682,14 @@ def _split_extra_heads(head_names, monitored, *, token=None, repo_fetch=None):
     for name in extra:
         try:
             record = fetch_repository_record(name, token, repo_fetch=repo_fetch)
+        except PublicGitAccessBlocked:
+            raise
         except HTTPError as error:
             if error.code in (403, 404):
                 excluded_count += 1
                 continue
             raise
-        except ValueError:
+        except (PublicGitNotFound, ValueError):
             excluded_count += 1
             continue
         if record_is_public_monitored(record):
@@ -730,10 +821,11 @@ def build_expected_child_lock(registry, document, consumer, *, token=None):
     if recorded is None:
         raise ValueError("child-heads missing repository: " + consumer)
     meta = fetch_repository_record(consumer, token)
-    if not record_is_public_monitored(meta):
-        raise ValueError("child is not a public non-archived repository")
-    if _coerce_repository_id(meta["id"]) != recorded["repository_id"]:
-        raise ValueError("child repository id mismatch")
+    if meta.get("id") is not None:
+        if not record_is_public_monitored(meta):
+            raise ValueError("child is not a public non-archived repository")
+        if _coerce_repository_id(meta["id"]) != recorded["repository_id"]:
+            raise ValueError("child repository id mismatch")
     text = _fetch_repo_text(consumer, entry["lock"], recorded["sha"], token)
     if text is None:
         raise ValueError("missing adopted child lock at recorded SHA")
@@ -1146,8 +1238,18 @@ def fetch_repository_record(repository, token=None, repo_fetch=None):
     repository = _normalize_repository(repository)
     if repo_fetch is not None:
         record = repo_fetch(repository)
-    else:
+    elif token:
         record = _github_api("GET", "https://api.github.com/repos/" + repository, token)
+    else:
+        if not _registry_consumer_is_public_monitored(repository):
+            raise PublicGitNotFound("not accessible")
+        record = {
+            "id": None,
+            "full_name": repository,
+            "private": False,
+            "visibility": "public",
+            "archived": False,
+        }
     if not isinstance(record, dict) or "id" not in record:
         raise ValueError("invalid repository response for " + repository)
     return record
@@ -1155,6 +1257,9 @@ def fetch_repository_record(repository, token=None, repo_fetch=None):
 
 def fetch_child_head(repository, ref="main", *, remotes=None):
     repository = _normalize_repository(repository)
+    if remotes is None:
+        branch = "main" if ref in ("main", "master") else ref
+        return public_ref_sha(repository, branch)
     remote = _repository_remote(repository, remotes)
     if ref in ("main", "master"):
         try:
@@ -1166,25 +1271,46 @@ def fetch_child_head(repository, ref="main", *, remotes=None):
     return _git_branch_tip(remote, branch)
 
 
-def fetch_child_head_record(repository, ref="main", *, remotes=None, token=None, repo_fetch=None):
+def fetch_child_head_record(repository, ref="main", *, remotes=None, token=None, repo_fetch=None,
+                            prior_record=None):
     sha = fetch_child_head(repository, ref, remotes=remotes)
-    record = fetch_repository_record(repository, token, repo_fetch=repo_fetch)
-    entry = {"sha": sha, "repository_id": _coerce_repository_id(record["id"])}
+    entry = {"sha": sha}
+    if prior_record is not None and "repository_id" in prior_record:
+        entry["repository_id"] = prior_record["repository_id"]
+        optional = prior_record.get("optional")
+        if isinstance(optional, dict):
+            entry["optional"] = dict(optional)
+    elif token or repo_fetch is not None:
+        record = fetch_repository_record(repository, token, repo_fetch=repo_fetch)
+        if not record_is_public_monitored(record):
+            raise ValueError("child is not a public non-archived repository")
+        entry["repository_id"] = _coerce_repository_id(record["id"])
+        optional = {}
+        if isinstance(record.get("created_at"), str):
+            optional["repository_created_at"] = record["created_at"]
+        if optional:
+            entry["optional"] = optional
+    else:
+        raise ValueError("missing repository_id for " + repository)
     pull_number = _lookup_child_main_pull_number(repository, sha, token)
     if pull_number is not None:
         entry["pull_number"] = pull_number
-    optional = {}
-    if isinstance(record.get("created_at"), str):
-        optional["repository_created_at"] = record["created_at"]
-    if optional:
-        entry["optional"] = optional
     return entry
 
 
 def refresh_child_heads(registry, heads_path, *, ref="main", remotes=None, token=None, repo_fetch=None):
     names = monitored_repositories(registry, token=token)
+    prior_heads = {}
+    heads_path_obj = Path(heads_path)
+    if heads_path_obj.is_file():
+        prior_heads = validate_child_heads(
+            json.loads(heads_path_obj.read_text(encoding="utf-8")),
+        )["heads"]
     heads = {
-        name: fetch_child_head_record(name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch)
+        name: fetch_child_head_record(
+            name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch,
+            prior_record=prior_heads.get(name),
+        )
         for name in names
     }
     document = validate_child_heads({"schema": CHILD_HEADS_SCHEMA, "ref": ref, "heads": heads})
@@ -1403,7 +1529,10 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         if recorded is None:
             missing_heads.append(name)
             continue
-        live = fetch_child_head_record(name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch)
+        live = fetch_child_head_record(
+            name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch,
+            prior_record=recorded,
+        )
         live_heads[name] = live
         if recorded["sha"] != live["sha"]:
             drift.append({
@@ -1466,7 +1595,10 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
     needs_heads_refresh = bool(drift) or bool(missing_heads)
     if autofix and needs_heads_refresh and token:
         proposed_heads = {
-            name: fetch_child_head_record(name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch)
+            name: fetch_child_head_record(
+                name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch,
+                prior_record=document["heads"].get(name),
+            )
             for name in monitored
         }
         drift_candidates = []
@@ -1571,7 +1703,9 @@ def check_child_heads(registry, document, *, remotes=None, token=None, parent_re
         recorded = document["heads"].get(name)
         if recorded is None:
             raise ValueError("child-heads missing repository: " + name)
-        live = fetch_child_head_record(name, ref, remotes=remotes, token=token)
+        live = fetch_child_head_record(
+            name, ref, remotes=remotes, token=token, prior_record=recorded,
+        )
         live_heads[name] = live
         if recorded["sha"] != live["sha"]:
             drift.append({
@@ -1915,29 +2049,14 @@ def _github_json(url, token=None):
 
 
 def _fetch_consumer_revision(repository, ref, token=None):
-    url = "https://api.github.com/repos/" + repository + "/commits/" + quote(ref, safe="")
-    record = _github_json(url, token)
-    if not isinstance(record, dict):
-        raise ValueError("invalid commit response for " + repository)
-    sha = record.get("sha")
-    _hex(sha, 40)
-    return sha
+    branch = "main" if ref in ("main", "master") else ref
+    return public_ref_sha(repository, branch)
 
 
 def _fetch_repo_text(repository, path, ref, token=None):
-    url = ("https://api.github.com/repos/" + repository + "/contents/" +
-           quote(path, safe="/") + "?ref=" + quote(ref, safe=""))
-    try:
-        data = _github_json(url, token)
-    except HTTPError as error:
-        if error.code == 404:
-            return None
-        raise
-    if not isinstance(data, dict) or data.get("type") != "file" or data.get("encoding") != "base64":
-        raise ValueError("invalid GitHub file response: " + repository + ":" + path)
-    raw = base64.b64decode("".join(data["content"].split()), validate=True)
-    if len(raw) > MAX_BYTES:
-        raise ValueError("file exceeds byte limit: " + path)
+    raw = public_raw_bytes(repository, ref, path)
+    if raw is None:
+        return None
     return raw.decode("utf-8")
 
 
@@ -2292,7 +2411,9 @@ def main(argv=None, *, get=_get):
         if args.mode == "run-parent-child-ci":
             registry = json.loads(Path(args.registry).read_text(encoding="utf-8"))
             document = json.loads(Path(args.heads).read_text(encoding="utf-8"))
-            token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+            token = None
+            if args.autofix:
+                token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
             result = run_parent_child_ci(
                 registry,
                 document,
@@ -2382,7 +2503,8 @@ def main(argv=None, *, get=_get):
             result = evidence(args.manifest, args.root, runtime=args.runtime_evidence)
         else:
             result = synchronize(args.manifest, args.root, args.mode, get=get)
-    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, HTTPError) as error:
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, HTTPError,
+            PublicGitAccessBlocked) as error:
         print("vendor-sync: " + str(error), file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False))

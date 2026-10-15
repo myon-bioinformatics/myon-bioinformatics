@@ -14,10 +14,10 @@ python -S vendor_lock_reconcile.py \
   --output reports/vendor-lock-reconciliation.json
 ```
 
-Supply `GH_TOKEN` (or `GITHUB_TOKEN`) for authenticated GitHub API reads.
-Each consumer `main` ref is resolved first to an immutable commit SHA; the
-manifest is fetched at that SHA. GitHub blob identity and manifest SHA-256
-are preserved in `lock_provenance`. The report does **not** fetch/reverify
+Each consumer `main` ref is resolved first to an immutable commit SHA from the
+public Atom feed; the manifest is fetched at that SHA via
+`raw.githubusercontent.com`. Git blob identity and manifest SHA-256 are
+preserved in `lock_provenance`. The report does **not** fetch/reverify
 every vendored source byte: `lock_file_bytes_verified: false`.
 
 Offline usage accepts one `--lock OWNER/REPO=/path/to/vendor.lock.json`

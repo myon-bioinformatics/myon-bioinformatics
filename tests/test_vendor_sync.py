@@ -26,6 +26,18 @@ def lock(tmp_path, entries=None):
     return path, value
 
 
+def test_public_ref_sha_extracts_first_atom_commit(monkeypatch):
+    sha = "a" * 40
+    atom = (
+        '<?xml version="1.0"?><feed>'
+        '<entry><id>tag:github.com,2008:Commit/' + sha + '</id></entry>'
+        '<entry><id>tag:github.com,2008:Commit/' + ("b" * 40) + '</id></entry>'
+        '</feed>'
+    ).encode("utf-8")
+    monkeypatch.setattr(sync, "_public_http_get", lambda url: atom)
+    assert sync.public_ref_sha("owner/repo", "main") == sha
+
+
 def test_materialize_and_offline_check(tmp_path):
     path, value = lock(tmp_path)
     urls = []

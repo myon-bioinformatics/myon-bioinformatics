@@ -877,14 +877,33 @@ def test_missing_monitored_repository_fails_parent_ci(tmp_path, monkeypatch):
 def test_unauthenticated_inventory_still_filters_private_and_archived(monkeypatch):
     monkeypatch.delenv('GH_TOKEN', raising=False)
     monkeypatch.delenv('GITHUB_TOKEN', raising=False)
-    rows = [{'full_name': 'owner/public', 'archived': False, 'private': False, 'visibility': 'public'},
-            {'full_name': 'owner/secret', 'archived': False, 'private': True, 'visibility': 'private'},
-            {'full_name': 'owner/old', 'archived': True, 'private': False, 'visibility': 'public'}]
-    monkeypatch.setattr(sync, '_github_json', lambda *a, **k: rows)
-    assert sync.monitored_repositories(_registry('owner/secret'), owner='owner') == ['owner/public']
-    monkeypatch.setattr(sync, '_github_json', lambda *a, **k: {'message': 'error'})
-    with pytest.raises(ValueError, match='invalid account'):
-        sync.monitored_repositories(_registry('owner/secret'), owner='owner')
+    entry = {
+        "repository": "owner/tool",
+        "source": "tool.py",
+        "destination": "vendor/tool.py",
+    }
+    registry = {
+        "schema": "vendor-consumers/1",
+        "consumers": [
+            {"repository": "owner/public", "state": "locked", "lock": "vendor.lock.json", "entries": [entry]},
+            {"repository": "owner/secret", "state": "locked", "lock": "vendor.lock.json", "entries": [entry]},
+            {"repository": "owner/old", "state": "locked", "lock": "vendor.lock.json", "entries": [entry]},
+        ],
+    }
+
+    def public_only(name, *, ref="main"):
+        if name.endswith("secret") or name.endswith("old"):
+            return False
+        return True
+
+    monkeypatch.setattr(sync, "_registry_consumer_is_public_monitored", public_only)
+    assert sync.monitored_repositories(registry, owner='owner') == ['owner/public']
+    monkeypatch.setattr(
+        sync, "_registry_consumer_is_public_monitored",
+        lambda *a, **k: (_ for _ in ()).throw(sync.PublicGitAccessBlocked("blocked")),
+    )
+    with pytest.raises(sync.PublicGitAccessBlocked):
+        sync.monitored_repositories(registry, owner='owner')
 
 
 @pytest.mark.parametrize('field,value', [('number', 9), ('state', 'closed')])

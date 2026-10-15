@@ -48,8 +48,6 @@ jobs:
           python -m pip install pytest
           python -m pytest -q tests/test_vendor_lock_reconcile.py tests/test_vendor_consumers.py tests/test_vendor_catalog.py tests/test_vendor_fleet_plan.py
       - name: Fetch real consumer locks (read only)
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p reports
           python -S vendor_lock_reconcile.py \

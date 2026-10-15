@@ -7,15 +7,12 @@ separately. Actual remote locks are fetched from immutable consumer commits.
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import json
 import os
 from pathlib import Path
 import sys
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
-from urllib.request import Request, urlopen
 
 import vendor_catalog
 import vendor_consumers
@@ -151,52 +148,32 @@ def reconcile(catalog, registry, locks, *, consumers, metadata=None, evidence=No
             "results": outputs}
 
 
-def _json_api(url, token=None):
-    headers = {"Accept": "application/vnd.github+json",
-               "User-Agent": "vendor-lock-reconciliation"}
-    if token:
-        headers["Authorization"] = "Bearer " + token
-    with urlopen(Request(url, headers=headers), timeout=20) as response:
-        raw = response.read(vendor_sync.MAX_BYTES + 1)
-    if len(raw) > vendor_sync.MAX_BYTES:
-        raise ValueError("GitHub response exceeds byte limit")
-    return json.loads(raw.decode("utf-8"))
-
-
-def fetch_revision(repository, ref, *, token=None):
+def fetch_revision(repository, ref):
     """Resolve moving main to an immutable full SHA before reading the lock."""
     vendor_consumers._repository(repository)
     if not isinstance(ref, str) or not ref or any(ord(c) < 32 for c in ref):
         raise ValueError("invalid consumer ref")
-    url = ("https://api.github.com/repos/" + repository + "/commits/" +
-           quote(ref, safe=""))
-    record = _json_api(url, token)
-    if not isinstance(record, dict):
-        raise ValueError("invalid commit response")
-    sha = record.get("sha")
-    vendor_sync._hex(sha, 40)
-    return sha
+    return vendor_sync.public_ref_sha(repository, ref)
 
 
-def fetch_lock(repository, path, *, ref, token=None):
+def fetch_lock(repository, path, *, ref):
     """Fetch manifest from a pinned commit, validate Git blob and raw-byte hash."""
     vendor_consumers._repository(repository)
     vendor_sync._path(path)
     vendor_sync._hex(ref, 40)
-    url = ("https://api.github.com/repos/" + repository + "/contents/" +
-           quote(path, safe="/") + "?ref=" + quote(ref, safe=""))
-    data = _json_api(url, token)
-    if (not isinstance(data, dict) or data.get("type") != "file"
-            or data.get("encoding") != "base64"
-            or not isinstance(data.get("content"), str)):
-        raise ValueError("invalid GitHub content response: " + repository)
-    raw = base64.b64decode("".join(data["content"].split()), validate=True)
-    if len(raw) > vendor_sync.MAX_BYTES or vendor_sync.git_blob(raw) != data.get("sha"):
-        raise ValueError("GitHub lock blob mismatch or byte limit exceeded")
+    raw = vendor_sync.public_raw_bytes(repository, ref, path)
+    if raw is None:
+        raise ValueError("missing consumer lock at public URL")
+    if len(raw) > vendor_sync.MAX_BYTES:
+        raise ValueError("lock exceeds byte limit")
+    blob_sha = vendor_sync.git_blob(raw)
     lock = json.loads(raw.decode("utf-8"))
     vendor_sync.validate(lock)
+    source_url = "https://raw.githubusercontent.com/{}/{}/{}".format(
+        repository, ref, path,
+    )
     return lock, {"resolution": "pinned_github_commit", "commit": ref,
-                  "source_url": url, "lock_blob_sha": data["sha"],
+                  "source_url": source_url, "lock_blob_sha": blob_sha,
                   "lock_sha256": hashlib.sha256(raw).hexdigest()}
 
 
@@ -242,10 +219,9 @@ def main(argv=None):
                     locks[name] = local[name]
                     metadata[name] = local_provenance[name]
                 else:
-                    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-                    revision = fetch_revision(name, args.ref, token=token)
+                    revision = fetch_revision(name, args.ref)
                     locks[name], metadata[name] = fetch_lock(
-                        name, consumer["lock"], ref=revision, token=token)
+                        name, consumer["lock"], ref=revision)
                     metadata[name]["requested_ref"] = args.ref
         report = reconcile(catalog, validated, locks, consumers=args.consumer,
                            metadata=metadata, evidence=evidence)
@@ -258,8 +234,11 @@ def main(argv=None):
             not r["topology"]["matches"] or r["baseline_mismatches"])
             for r in report["results"])
         return 1 if args.fail_on_drift and drift else 0
+    except vendor_sync.PublicGitAccessBlocked as exc:
+        print("vendor lock reconciliation: " + str(exc), file=sys.stderr)
+        return 2
     except (ValueError, KeyError, TypeError, OSError, HTTPError, URLError,
-            base64.binascii.Error, json.JSONDecodeError) as exc:
+            json.JSONDecodeError) as exc:
         print("vendor lock reconciliation: " + str(exc), file=sys.stderr)
         return 2
 
