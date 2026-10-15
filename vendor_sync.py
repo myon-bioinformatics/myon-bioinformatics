@@ -947,7 +947,8 @@ def _workflow_refresh_block_reason(name, old_sha, new_sha, template_text, *, tok
     if old_text == new_text:
         return None
     if new_text is None:
-        return "workflow_removed"
+        # Child repos may drop vendor-child-ci.yml; do not block heads refresh.
+        return None
     try:
         verify_workflow_template_copy(new_text, template_text)
     except ValueError:
