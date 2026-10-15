@@ -146,7 +146,13 @@ def _is_parent_pr_ref_path(rel: str) -> bool:
     return normalized == PARENT_PR_REF_NAME or normalized.endswith("/" + PARENT_PR_REF_NAME)
 
 
-def _github_request(url: str, token: str | None, *, timeout: float = 60.0) -> Any:
+def _github_request(
+    url: str,
+    token: str | None,
+    *,
+    timeout: float = 60.0,
+    allow_anonymous_retry: bool = True,
+) -> Any:
     headers = {
         "Accept": "application/vnd.github+json",
         "User-Agent": "parent-pin-check",
@@ -157,6 +163,10 @@ def _github_request(url: str, token: str | None, *, timeout: float = 60.0) -> An
         with urlopen(Request(url, headers=headers), timeout=timeout) as response:
             raw = response.read(MAX_BYTES + 1)
     except HTTPError as error:
+        if allow_anonymous_retry and token and error.code in (401, 403):
+            return _github_request(
+                url, None, timeout=timeout, allow_anonymous_retry=False
+            )
         raise ParentPinError(
             f"GitHub API request failed ({error.code}); fail-closed.",
             http_code=error.code,
