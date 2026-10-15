@@ -1241,14 +1241,18 @@ def fetch_repository_record(repository, token=None, repo_fetch=None):
     elif token:
         record = _github_api("GET", "https://api.github.com/repos/" + repository, token)
     else:
-        if not _registry_consumer_is_public_monitored(repository):
-            raise PublicGitNotFound("not accessible")
+        try:
+            public_ref_sha(repository, "main")
+        except PublicGitNotFound:
+            raise PublicGitNotFound("not accessible") from None
+        except PublicGitAccessBlocked:
+            raise
         record = {
             "id": None,
             "full_name": repository,
             "private": False,
             "visibility": "public",
-            "archived": False,
+            "archived": _public_repo_is_archived(repository),
         }
     if not isinstance(record, dict) or "id" not in record:
         raise ValueError("invalid repository response for " + repository)
