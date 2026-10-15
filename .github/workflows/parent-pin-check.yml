@@ -1,0 +1,33 @@
+name: Parent pin check
+
+on:
+  pull_request:
+    paths:
+      - "tools/parent_pin_check.py"
+      - "tests/test_parent_pin_check.py"
+      - ".github/workflows/reusable-parent-pin-check.yml"
+      - ".github/workflows/parent-pin-check.yml"
+      - "templates/**"
+      - ".github/workflows/**"
+      - "docs/**"
+  push:
+    branches: [main]
+    paths:
+      - "tools/parent_pin_check.py"
+      - "tests/test_parent_pin_check.py"
+      - ".github/workflows/reusable-parent-pin-check.yml"
+      - ".github/workflows/parent-pin-check.yml"
+      - "templates/**"
+      - ".github/workflows/**"
+      - "docs/**"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ./.github/workflows/reusable-parent-pin-check.yml
+    with:
+      exclude-globs: |
+        templates/parent-pr.ref.json
+        tests/**

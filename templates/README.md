@@ -11,6 +11,7 @@ Reusable GitHub Actions live in `.github/workflows/`:
 
 - `reusable-actionlint.yml`: workflow syntax validation callable from other repositories. On `pull_request` and `push`, it detects only changed workflow files by default, avoiding failures caused solely by unrelated legacy workflows. `paths` may be supplied explicitly for other events.
 - `reusable-pages-static.yml`: static GitHub Pages deployment callable from other repositories. `artifact_path` is required and deployment is guarded so it only runs for a push to the caller repository's default branch.
+- `reusable-parent-pin-check.yml`: scans the caller checkout for commit pins to `myon-bioinformatics/myon-bioinformatics` (reusable workflow `uses:`, checkout `ref:`, docs, test constants, and JSON `repository`/`commit` pairs). Fails when more than one parent SHA is present; stale pins behind parent `main` warn by default (`fail-on-stale: true` to fail). Fleet observation files such as `child-heads.json` are skipped unless `skip-default-excludes` is set.
 
 ## Calling reusable workflows
 
@@ -27,6 +28,10 @@ jobs:
     uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@v1
     with:
       artifact_path: "dist"
+
+  parent-pins:
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-parent-pin-check.yml@FULL_COMMIT_SHA
+    # Default: stale pins behind parent main emit warnings only. Set fail-on-stale: true to fail CI.
 ```
 
 For `reusable-pages-static.yml`, always pass the actual built/static output directory; do not expose the repository root. Callers must not combine these reusable workflows with `pull_request_target` plus checkout/execution of untrusted fork code.

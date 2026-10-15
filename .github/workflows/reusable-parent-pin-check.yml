@@ -1,0 +1,64 @@
+name: Reusable parent pin check
+
+on:
+  workflow_call:
+    inputs:
+      parent-repository:
+        description: "Parent OWNER/REPO whose commit pins must be unified"
+        type: string
+        default: "myon-bioinformatics/myon-bioinformatics"
+      root:
+        description: "Checkout-relative root to scan"
+        type: string
+        default: "."
+      exclude-globs:
+        description: "Newline-separated extra fnmatch globs to skip"
+        type: string
+        default: ""
+      fail-on-stale:
+        description: "Fail when pins are behind parent default branch (default warns only)"
+        type: boolean
+        default: false
+      skip-default-excludes:
+        description: "Scan fleet observation files such as child-heads.json"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  parent-pin-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Verify parent repository pin consistency
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PARENT_REPOSITORY: ${{ inputs.parent-repository }}
+          CHECK_ROOT: ${{ inputs.root }}
+          EXCLUDE_GLOBS: ${{ inputs.exclude-globs }}
+          FAIL_ON_STALE: ${{ inputs.fail-on-stale }}
+          SKIP_DEFAULT_EXCLUDES: ${{ inputs.skip-default-excludes }}
+        run: |
+          set -euo pipefail
+          args=(--root "$CHECK_ROOT" --parent "$PARENT_REPOSITORY")
+          if [[ "$SKIP_DEFAULT_EXCLUDES" == "true" ]]; then
+            args+=(--no-default-excludes)
+          fi
+          if [[ "$FAIL_ON_STALE" == "true" ]]; then
+            args+=(--fail-on-stale)
+          fi
+          if [[ -n "$EXCLUDE_GLOBS" ]]; then
+            while IFS= read -r pattern; do
+              [[ -z "$pattern" ]] && continue
+              args+=(--exclude "$pattern")
+            done <<< "$EXCLUDE_GLOBS"
+          fi
+          python tools/parent_pin_check.py "${args[@]}"
