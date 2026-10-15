@@ -79,8 +79,12 @@
     },
     {
       "repository": "myon-bioinformatics/convert_img_fmt_to_webp-CUI-",
-      "state": "locked",
-      "lock": "vendor.lock.json",
+      "state": "legacy",
+      "lock": null,
+      "reason": "repository_archived",
+      "legacy_provenance": [
+        "vendor.lock.json"
+      ],
       "entries": [
         {
           "repository": "myon-bioinformatics/xprobe",
@@ -600,6 +604,11 @@
           "repository": "myon-bioinformatics/browser-test-kit",
           "source": "scripts/check_png.py",
           "destination": "tool/python/vendor/check_png.py"
+        },
+        {
+          "repository": "myon-bioinformatics/browser-test-kit",
+          "source": "scripts/image_diff.py",
+          "destination": "tool/python/vendor/image_diff.py"
         },
         {
           "repository": "myon-bioinformatics/gh_identity",

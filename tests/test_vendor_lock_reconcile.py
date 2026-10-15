@@ -1,5 +1,4 @@
 """Offline, deterministic coverage for read-only consumer lock reconciliation."""
-import base64
 import copy
 import hashlib
 import json
@@ -168,40 +167,44 @@ def test_remote_content_is_commit_pinned_and_git_blob_checked(monkeypatch):
     _, _, consumer, lock = fixture()
     payload = json.dumps(lock).encode("utf-8")
     revision = "e" * 40
-    calls = []
-
-    def fake_json(url, token=None):
-        calls.append(url)
-        if "/commits/" in url:
-            return {"sha": revision}
-        return {"type": "file", "encoding": "base64",
-                "content": base64.b64encode(payload).decode("ascii"),
-                "sha": mod.vendor_sync.git_blob(payload)}
-    monkeypatch.setattr(mod, "_json_api", fake_json)
+    monkeypatch.setattr(mod.vendor_sync, "public_ref_sha", lambda *a, **k: revision)
+    monkeypatch.setattr(mod.vendor_sync, "public_raw_bytes", lambda *a, **k: payload)
     assert mod.fetch_revision(consumer, "main") == revision
-    assert mod.fetch_lock(consumer, "vendor.lock.json", ref=revision)[0] == lock
-    assert calls[1].endswith("?ref=" + revision)
-    assert mod.fetch_lock(consumer, "vendor.lock.json", ref=revision)[1]["lock_sha256"]
-    assert mod.fetch_lock(consumer, "vendor.lock.json", ref=revision)[1]["source_url"].endswith(
-        "vendor.lock.json?ref=" + revision)
-    def bad_json(url, token=None):
-        record = fake_json(url, token)
-        record["sha"] = "0" * 40
-        return record
-    monkeypatch.setattr(mod, "_json_api", bad_json)
-    with pytest.raises(ValueError, match="blob mismatch"):
+    fetched, meta = mod.fetch_lock(consumer, "vendor.lock.json", ref=revision)
+    assert fetched == lock
+    assert meta["lock_sha256"] == hashlib.sha256(payload).hexdigest()
+    assert meta["source_url"] == (
+        "https://raw.githubusercontent.com/" + consumer + "/" + revision + "/vendor.lock.json"
+    )
+    monkeypatch.setattr(mod.vendor_sync, "public_raw_bytes", lambda *a, **k: b"not-json")
+    with pytest.raises(json.JSONDecodeError):
         mod.fetch_lock(consumer, "vendor.lock.json", ref=revision)
 
 
-def test_remote_rejects_bad_base64_and_malformed_revision(monkeypatch):
+def test_remote_rejects_malformed_revision_and_missing_lock(monkeypatch):
     _, _, consumer, _ = fixture()
-    monkeypatch.setattr(mod, "_json_api", lambda *a, **k: {"sha": "short"})
-    with pytest.raises(ValueError, match="hex"):
+    monkeypatch.setattr(mod.vendor_sync, "public_ref_sha", lambda *a, **k: (_ for _ in ()).throw(
+        ValueError("missing commit in atom feed")))
+    with pytest.raises(ValueError, match="atom feed"):
         mod.fetch_revision(consumer, "main")
-    monkeypatch.setattr(mod, "_json_api", lambda *a, **k: {
-        "type": "file", "encoding": "base64", "content": "%%%bad%%%!", "sha": "0"*40})
-    with pytest.raises(base64.binascii.Error):
-        mod.fetch_lock(consumer, "vendor.lock.json", ref="f"*40)
+    monkeypatch.setattr(mod.vendor_sync, "public_raw_bytes", lambda *a, **k: None)
+    with pytest.raises(ValueError, match="missing consumer lock"):
+        mod.fetch_lock(consumer, "vendor.lock.json", ref="f" * 40)
+
+
+def test_public_access_blocked_exits_nonzero(monkeypatch, tmp_path):
+    catalog, registry, consumer, lock = fixture()
+    paths = []
+    for name, value in (("catalog.json", catalog), ("registry.json", registry)):
+        file = tmp_path / name
+        file.write_text(json.dumps(value), encoding="utf-8")
+        paths.append(file)
+    monkeypatch.setattr(
+        mod.vendor_sync, "public_ref_sha",
+        lambda *a, **k: (_ for _ in ()).throw(mod.vendor_sync.PublicGitAccessBlocked("blocked")),
+    )
+    assert mod.main(["--catalog", str(paths[0]), "--registry", str(paths[1]),
+                     "--consumer", consumer, "--ref", "main"]) == 2
 
 
 def test_real_review_snapshot_has_no_approved_registration():
@@ -252,5 +255,5 @@ def test_reconcile_workflow_refreshes_on_parent_registry_and_code_changes():
         assert expected in push_section
     assert "  workflow_dispatch:" in workflow
     assert "--fail-on-drift" not in workflow
-    assert "          GH_TOKEN: ${{ github.token }}" in workflow
+    assert "GH_TOKEN" not in workflow
     assert "  contents: read" in workflow

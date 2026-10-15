@@ -67,7 +67,6 @@ jobs:
       - name: Validate child heads and parent vendor baseline
         if: steps.scope.outputs.run == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail

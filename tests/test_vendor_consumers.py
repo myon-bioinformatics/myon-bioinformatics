@@ -175,7 +175,6 @@ def test_checked_in_registry_and_parent_lock():
         "myon-bioinformatics/myon-bioinformatics",
         "myon-bioinformatics/yourself",
         "myon-bioinformatics/nvd_nist_known_vulns",
-        "myon-bioinformatics/convert_img_fmt_to_webp-CUI-",
         "myon-bioinformatics/ascii_artist",
         "myon-bioinformatics/markdown",
         "myon-bioinformatics/mcp-toolcall-lab",
@@ -192,6 +191,7 @@ def test_checked_in_registry_and_parent_lock():
         "myon-bioinformatics/search_seq_including_spaces",
     }
     assert {repo for repo, row in by_repo.items() if row["state"] == "locked"} == expected_locked
+    assert by_repo["myon-bioinformatics/convert_img_fmt_to_webp-CUI-"]["state"] == "legacy"
     assert "myon-bioinformatics/xprobe" not in by_repo
     adopted = by_repo["myon-bioinformatics/search_seq_including_spaces"]
     assert adopted["state"] == "locked"
