@@ -908,3 +908,42 @@ def test_invalid_inventory_json_is_a_safe_parent_pin_error(monkeypatch: pytest.M
     monkeypatch.setattr(module, "_http_get_bytes", lambda *a, **kw: b'{"private-name":')
     with pytest.raises(ParentPinError, match="invalid list payload"):
         module._github_json_list("https://api.github.com/users/owner/repos")
+
+
+@pytest.mark.parametrize("code", [401, 403])
+def test_public_api_auth_failure_retries_anonymously(monkeypatch: pytest.MonkeyPatch, code: int) -> None:
+    import tools.parent_pin_check as module
+
+    calls = []
+    def request(url, *, token, **kwargs):
+        calls.append(token)
+        if token:
+            raise ParentPinError("authentication failed", http_code=code)
+        return b'{"status": "identical"}'
+    monkeypatch.setattr(module, "_http_get_bytes", request)
+    assert module._github_json("https://api.github.com/repos/public/repo", "token") == {"status": "identical"}
+    assert calls == ["token", None]
+
+
+def test_public_api_uses_token_for_head_tree_and_compare(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tools.parent_pin_check as module
+
+    calls = []
+    def request(url, *, token, **kwargs):
+        assert token == "token"
+        calls.append(url)
+        if "/compare/" in url:
+            return b'{"status":"ahead", "ahead_by":1, "behind_by":0}'
+        if "/commits/" in url:
+            return b'{"commit":{"tree":{"sha":"tree"}}}'
+        if "/git/trees/" in url:
+            return b'{"truncated":false,"tree":[]}'
+        return json.dumps(_public_repo("myon-bioinformatics/xprobe")).encode()
+    monkeypatch.setattr(module, "_http_get_bytes", request)
+    monkeypatch.setattr(module, "_http_get_text", lambda *a, **kw: f"<entry><id>Commit/{'a' * 40}</id></entry>")
+    module._COMPARE_CACHE.clear()
+    revision, _ = module._resolve_default_branch_head("myon-bioinformatics/xprobe", "token")
+    assert module._remote_scannable_paths("myon-bioinformatics/xprobe", revision, "token", [], fleet=True) == []
+    pins = [{"commit": "c" * 40, "file": "ci.yml", "line": 1}]
+    assert evaluate(pins, parent_repository=PARENT_REPOSITORY, main_sha="a" * 40, token="token", enforce=True)["stale"]
+    assert len(calls) == 4

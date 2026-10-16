@@ -208,9 +208,16 @@ def _http_get_text(
 def _github_json(
     url: str, token: str | None = None, *, timeout: float = 60.0
 ) -> dict[str, Any]:
-    raw = _http_get_bytes(
-        url, token=token, accept="application/vnd.github+json", timeout=timeout
-    )
+    try:
+        raw = _http_get_bytes(
+            url, token=token, accept="application/vnd.github+json", timeout=timeout
+        )
+    except ParentPinError as error:
+        if not token or error.http_code not in (401, 403):
+            raise
+        raw = _http_get_bytes(
+            url, token=None, accept="application/vnd.github+json", timeout=timeout
+        )
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as error:
@@ -265,7 +272,7 @@ def pin_behind_main(parent_repository: str, pin: str, main_sha: str, token: str 
         f"https://api.github.com/repos/{parent_repository}/compare/"
         f"{quote(pin, safe='')}...{quote(main_sha, safe='')}"
     )
-    data = _github_json(url, None)
+    data = _github_json(url, token)
     status = data.get("status")
     stale = False
     if status == "identical":
@@ -489,7 +496,7 @@ def evaluate(
         for sha in unique:
             if sha == main_sha:
                 continue
-            if pin_behind_main(parent_repository, sha, main_sha, None):
+            if pin_behind_main(parent_repository, sha, main_sha, token):
                 stale = True
                 stale_shas.append(sha)
     findings = inconsistent or stale
@@ -585,8 +592,7 @@ def _fetch_repository_file(
 
 def _resolve_default_branch_head(repository: str, token: str | None) -> tuple[str, str]:
     """Recheck public eligibility, then resolve the actual default branch HEAD."""
-    _ = token
-    metadata = _github_json(f"https://api.github.com/repos/{repository}", None)
+    metadata = _github_json(f"https://api.github.com/repos/{repository}", token)
     if metadata.get("private") is True or metadata.get("visibility") in ("private", "internal"):
         raise ParentPinError("repository is not public")
     if metadata.get("archived") is True:
@@ -723,20 +729,19 @@ def _remote_scannable_paths(
     *,
     fleet: bool = False,
 ) -> list[str]:
-    _ = token
     commit = _github_json(
         "https://api.github.com/repos/"
         + repository
         + "/commits/"
         + quote(ref, safe=""),
-        None,
+        token,
     )
     tree_sha = (commit.get("commit") or {}).get("tree", {}).get("sha")
     if not isinstance(tree_sha, str):
         raise ParentPinError("commit tree missing")
     tree = _github_json(
         f"https://api.github.com/repos/{repository}/git/trees/{tree_sha}?recursive=1",
-        None,
+        token,
     )
     if tree.get("truncated"):
         raise ParentPinError("repository tree listing truncated")
