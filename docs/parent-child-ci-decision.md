@@ -148,12 +148,15 @@ catalog tools; its existing consumer copies are retained.
 
 ## Flutter after removal of the optional child template
 
-Recorded on 2026-10-16 after Flutter #193 and parent #88/#89. Flutter's recorded
-head is `42cb142e1dde78e8194597cca159bfe20f067bba`; its existing
+Updated on 2026-10-16 after Flutter #193 and parent #88/#89. The proposed
+Flutter #189 audit snapshot is `5ade883ced2709b5c6843f46db0a75d8dcae9983`
+(unmerged at preparation); its existing
 `.github/workflows/non-dart.yml` is approved in `vendor-consumers.json` through
 the optional `locked_ci` object (`workflow`, full-file `sha256`). The registry
-and `child-heads.json` already agree on the 14 adopted files and
-`tool/python/vendor.lock.json`; neither topology nor source pins need changing.
+and `child-heads.json` are updated together for the 14 relocated files and
+`python/vendor.lock.json`. Only the `tool/` destination prefix changes; source
+repositories, source paths, commit/ref pins, blob IDs and digests remain identical
+to Flutter main `42cb142e1dde78e8194597cca159bfe20f067bba`.
 No replacement workflow, child updater, parent PR reference, new lock format,
 or duplicate job is introduced.
 
@@ -164,7 +167,7 @@ or duplicate job is introduced.
 | Immutable source pins and upstream provenance | Parent requires `ref=commit`, public source, default first-parent commit, regular source blobs and exact blob/SHA-256 |
 | Actual placed bytes | Parent independently checks child Git blobs; Non-Dart `python-vendor-locked` also runs offline `check` |
 | Reproducible placement | The same Non-Dart job removes placed files, materializes from locked commits, and checks again before metadata regressions |
-| Vendor input changes run the lane | Non-Dart push/PR paths cover `tool/python/**` and its own workflow; the classifier selects Python/workflow changes; manual dispatch selects all |
+| Vendor input changes run the lane | Non-Dart push/PR paths cover `python/**` and its own workflow; the classifier selects Python/workflow changes; manual dispatch selects all |
 | Verification cannot silently disappear | Parent checks the registered workflow's full bytes from a regular Git blob at the recorded SHA against the parent-owned digest |
 
 The approved workflow checks out the parent tools at
@@ -194,6 +197,39 @@ Parent CI still audits recorded revisions, not every live child PR. Its green
 result does not prove a child workflow actually ran, establish required branch
 checks, or prevent child merges. Use a CI run for the selected child SHA as
 separate execution evidence. Child-head drift remains separately reported.
+
+### Coordinated integration of Flutter #189 and parent #90
+
+The approved full-file SHA-256 is `dde7e2ed112eeb9cb92c8c6eefe51f70808f1085510c2d579f97c674088e3d6b`. Both Flutter
+workflows now select PR base `main` only; the temporary
+`feat/image-diff-tool` base and its test expectation have been removed. The
+Non-Dart paths/classifier and check -> remove -> materialize -> check sequence
+use `python/`; pinned parent tooling, failure propagation, metadata regressions
+and artifact preservation are retained.
+
+This parent PR deliberately proposes the exact **unmerged** #189 snapshot for
+read-only audit, with `pull_number: 189`. It does not claim that SHA is current
+Flutter main or that either PR has been approved. The registry lock path, all
+14 destination paths, workflow digest and child-head snapshot form one reviewed
+baseline change. Changing only the digest would break the old recorded snapshot;
+changing only paths would make its adopted lock unreadable. No alternate digest
+or path fallback is accepted.
+
+Integration order (neither merge is automated):
+
+1. Review both final heads and their same-head CI, then merge Flutter #189 first.
+2. Read the actual Flutter main merge SHA. If squash/rebase/merge creates another
+   SHA, update only Flutter's `child-heads.json` record to that full SHA in parent
+   #90, retaining repository ID and PR provenance. Recheck that the workflow and
+   relocated lock bytes match these reviewed fixtures.
+3. Rerun parent pytest and Parent child CI on that final parent head, then review
+   and merge parent #90. Do not merge the parent candidate before the child.
+
+A later child main SHA with the same approved workflow bytes passes the workflow
+refresh gate; different/deleted/disabled workflow bytes or a snapshot SHA mismatch
+still return `locked_ci_mismatch`. The separate source/topology/file audit
+continues to gate baseline refresh. The parent does not automatically approve
+a changed digest or infer a relocation from the child under test.
 
 ## Product CI for rollout-only changes
 

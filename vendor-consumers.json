@@ -548,82 +548,82 @@
     {
       "repository": "myon-bioinformatics/flutter_navigation_basic",
       "state": "locked",
-      "lock": "tool/python/vendor.lock.json",
+      "lock": "python/vendor.lock.json",
       "entries": [
         {
           "repository": "myon-bioinformatics/yourself",
           "source": "yourself.py",
-          "destination": "tool/python/vendor/yourself.py"
+          "destination": "python/vendor/yourself.py"
         },
         {
           "repository": "myon-bioinformatics/xprobe",
           "source": "xprobe.py",
-          "destination": "tool/python/vendor/xprobe.py"
+          "destination": "python/vendor/xprobe.py"
         },
         {
           "repository": "myon-bioinformatics/browser-test-kit",
           "source": "scripts/gh_ops.py",
-          "destination": "tool/python/vendor/gh_ops.py"
+          "destination": "python/vendor/gh_ops.py"
         },
         {
           "repository": "myon-bioinformatics/browser-test-kit",
           "source": "scripts/check_evidence.py",
-          "destination": "tool/python/vendor/check_evidence.py"
+          "destination": "python/vendor/check_evidence.py"
         },
         {
           "repository": "myon-bioinformatics/browser-test-kit",
           "source": "scripts/jsonl_digest.py",
-          "destination": "tool/python/vendor/jsonl_digest.py"
+          "destination": "python/vendor/jsonl_digest.py"
         },
         {
           "repository": "myon-bioinformatics/cli_args",
           "source": "cli_args.py",
-          "destination": "tool/python/vendor/cli_args.py"
+          "destination": "python/vendor/cli_args.py"
         },
         {
           "repository": "myon-bioinformatics/yourself",
           "source": "LICENSE",
-          "destination": "tool/python/vendor/yourself-LICENSE"
+          "destination": "python/vendor/yourself-LICENSE"
         },
         {
           "repository": "myon-bioinformatics/xprobe",
           "source": "LICENSE",
-          "destination": "tool/python/vendor/xprobe-LICENSE"
+          "destination": "python/vendor/xprobe-LICENSE"
         },
         {
           "repository": "myon-bioinformatics/browser-test-kit",
           "source": "LICENSE",
-          "destination": "tool/python/vendor/browser-test-kit-LICENSE"
+          "destination": "python/vendor/browser-test-kit-LICENSE"
         },
         {
           "repository": "myon-bioinformatics/cli_args",
           "source": "LICENSE",
-          "destination": "tool/python/vendor/cli_args-LICENSE"
+          "destination": "python/vendor/cli_args-LICENSE"
         },
         {
           "repository": "myon-bioinformatics/browser-test-kit",
           "source": "scripts/check_png.py",
-          "destination": "tool/python/vendor/check_png.py"
+          "destination": "python/vendor/check_png.py"
         },
         {
           "repository": "myon-bioinformatics/browser-test-kit",
           "source": "scripts/image_diff.py",
-          "destination": "tool/python/vendor/image_diff.py"
+          "destination": "python/vendor/image_diff.py"
         },
         {
           "repository": "myon-bioinformatics/gh_identity",
           "source": "gh_identity.py",
-          "destination": "tool/python/vendor/gh_identity.py"
+          "destination": "python/vendor/gh_identity.py"
         },
         {
           "repository": "myon-bioinformatics/gh_identity",
           "source": "LICENSE",
-          "destination": "tool/python/vendor/gh_identity-LICENSE"
+          "destination": "python/vendor/gh_identity-LICENSE"
         }
       ],
       "locked_ci": {
         "workflow": ".github/workflows/non-dart.yml",
-        "sha256": "ed3f282e0c0c29908ea20921ee404080070b937e631ef78007b444ce30852a96"
+        "sha256": "dde7e2ed112eeb9cb92c8c6eefe51f70808f1085510c2d579f97c674088e3d6b"
       }
     },
     {
