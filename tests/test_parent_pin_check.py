@@ -449,6 +449,7 @@ def test_fleet_child_auth_error_warns_even_when_enforced(
     report = run_fleet(token="token", enforce=True)
     assert report["ok"]
     assert report["fetch_warning_count"] == 1
+    assert not report["complete"] and report["audited_repositories"] == 0
     assert "403" in report["fetch_warnings"][0]["message"]
     assert "repository" not in report["fetch_warnings"][0]
 
@@ -476,6 +477,7 @@ def test_fleet_child_unclassified_error_fails_when_enforced(
     report_strict = run_fleet(token="token", enforce=True)
     assert not report_strict["ok"]
     assert report_strict["audit_error_count"] == 1
+    assert not report_strict["complete"] and report_strict["audited_repositories"] == 0
 
 
 def test_should_enforce_event_policy() -> None:
@@ -707,3 +709,202 @@ def test_reusable_child_layout_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyP
         ]
     )
     assert code == 0
+
+
+def _public_repo(name: str, **changes) -> dict:
+    return {
+        "full_name": name,
+        "private": False,
+        "visibility": "public",
+        "archived": False,
+        "default_branch": "main",
+        **changes,
+    }
+
+
+@pytest.mark.parametrize("finding", ["stale", "mixed"])
+def test_fleet_covers_seventeen_public_children_including_unregistered_xprobe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str], finding: str,
+) -> None:
+    import tools.parent_pin_check as module
+
+    # Reproduce the 16-child registry without tying this regression to future enrollment.
+    names = [f"myon-bioinformatics/known-{n}" for n in range(16)]
+    heads = {name: {"sha": "e" * 40} for name in [PARENT_REPOSITORY, *names]}
+    xprobe = "myon-bioinformatics/xprobe"
+    assert len(names) == 16 and xprobe not in names
+    secret = "myon-bioinformatics/private-baseline"
+    private_sha = "f" * 40
+    heads[secret] = {"sha": private_sha}
+    registry = tmp_path / "child-heads.json"
+    registry.write_text(json.dumps({"heads": heads}), encoding="utf-8")
+
+    def inventory(url, token):
+        if "/orgs/" in url:
+            raise ParentPinError("not an organization", http_code=404)
+        return [
+            _public_repo(name) for name in [PARENT_REPOSITORY, *names, xprobe]
+        ] + [
+            _public_repo(secret, private=True, visibility="private"),
+            _public_repo("myon-bioinformatics/internal", visibility="internal"),
+            _public_repo("myon-bioinformatics/archived", archived=True),
+            _public_repo("another-owner/unrelated"),
+        ]
+
+    audited = []
+    monkeypatch.setattr(module, "_github_json_list", inventory)
+    monkeypatch.setattr(module, "fetch_parent_main_sha", lambda *a: ("a" * 40, "main"))
+    monkeypatch.setattr(module, "_resolve_default_branch_head", lambda *a: ("b" * 40, "main"))
+    monkeypatch.setattr(module, "pin_behind_main", lambda *a, **kw: True)
+
+    def files(repository, revision, token, **kwargs):
+        audited.append(repository)
+        assert revision == "b" * 40  # Audit live HEAD, not the registry baseline.
+        pins = ["a" * 40]
+        if repository == xprobe:
+            pins = ["c" * 40] if finding == "stale" else ["c" * 40, "d" * 40]
+        return {".github/workflows/ci.yml": "\n".join(
+            f"uses: {PARENT_REPOSITORY}/.github/workflows/x.yml@{pin}" for pin in pins
+        )}
+
+    monkeypatch.setattr(module, "fetch_repository_pin_files", files)
+    report = run_fleet(child_heads=registry, token=None, enforce=True)
+    assert len(audited) == len(set(audited)) == report["checked_repositories"] == 17
+    assert set(audited) == {*names, xprobe}
+    assert report["audited_repositories"] == 17 and report["complete"]
+    assert report["registered_repositories"] == 16
+    assert report["registry_missing_repositories"] == [xprobe]
+    assert report["registry_missing_count"] == 1
+    assert report["registry_unmatched_count"] == 1
+    assert report["failures"][0]["repository"] == xprobe
+    assert report["failures"][0]["inconsistent"] == (finding == "mixed")
+    assert report["failures"][0]["stale"] == (finding == "stale")
+    assert not report["ok"]
+    module.emit_fleet_annotations(report)
+    output = capsys.readouterr().out + module.render_fleet_text(report) + json.dumps(report)
+    assert xprobe in output and "missing from child-heads.json" in output
+    for hidden in (secret, private_sha, "myon-bioinformatics/internal", "myon-bioinformatics/archived"):
+        assert hidden not in output
+
+
+@pytest.mark.parametrize("http_code", [401, 403, 404, 500, None])
+@pytest.mark.parametrize("event", ["schedule", "pull_request"])
+def test_inventory_failure_never_falls_back_to_registry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str], http_code: int | None, event: str,
+) -> None:
+    import tools.parent_pin_check as module
+
+    registry = tmp_path / "child-heads.json"
+    registry.write_text(json.dumps({"heads": {"myon-bioinformatics/known": {"sha": "a" * 40}}}))
+    monkeypatch.setattr(module, "fetch_parent_main_sha", lambda *a: ("a" * 40, "main"))
+
+    def unavailable(url, token):
+        if "/orgs/" in url:
+            raise ParentPinError("not an organization", http_code=404)
+        # Server-provided details must not escape through the inventory error.
+        raise ParentPinError("private-name private-sha", http_code=http_code)
+
+    monkeypatch.setattr(module, "_github_json_list", unavailable)
+    monkeypatch.setattr(module, "audit_fleet_child", lambda *a, **kw: pytest.fail("incomplete inventory was audited"))
+    assert main(["--fleet", "--child-heads", str(registry), "--event", event]) == 2
+    output = capsys.readouterr().err
+    assert "incomplete fleet" in output and "private-name" not in output
+
+
+def test_inventory_later_page_failure_does_not_return_partial_fleet(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tools.parent_pin_check as module
+
+    def pages(url, token):
+        if "&page=1" in url:
+            return [_public_repo(f"myon-bioinformatics/repo-{n}") for n in range(100)]
+        raise ParentPinError("page unavailable", http_code=404)
+
+    monkeypatch.setattr(module, "_github_json_list", pages)
+    with pytest.raises(ParentPinError, match="incomplete fleet"):
+        module._list_public_child_repositories("myon-bioinformatics", PARENT_REPOSITORY, None)
+
+
+def test_inventory_includes_later_pages_and_deduplicates_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tools.parent_pin_check as module
+
+    def pages(url, token):
+        if "&page=1" in url:
+            return [_public_repo(f"myon-bioinformatics/repo-{n}") for n in range(100)]
+        return [_public_repo("myon-bioinformatics/REPO-0"), _public_repo("myon-bioinformatics/xprobe")]
+
+    monkeypatch.setattr(module, "_github_json_list", pages)
+    names = module._list_public_child_repositories("myon-bioinformatics", PARENT_REPOSITORY, None)
+    assert len(names) == 101 and "myon-bioinformatics/xprobe" in names
+
+
+def test_inventory_pagination_limit_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tools.parent_pin_check as module
+
+    monkeypatch.setattr(module, "_github_json_list", lambda *a: [_public_repo("myon-bioinformatics/repo")] * 100)
+    with pytest.raises(ParentPinError, match="pagination limit"):
+        module._list_public_child_repositories("myon-bioinformatics", PARENT_REPOSITORY, None)
+
+
+@pytest.mark.parametrize("payload", [[None], [{}], [_public_repo("myon-bioinformatics/x", private=None)]])
+def test_inventory_malformed_metadata_fails_closed(monkeypatch: pytest.MonkeyPatch, payload: list) -> None:
+    import tools.parent_pin_check as module
+
+    monkeypatch.setattr(module, "_github_json_list", lambda *a: payload)
+    with pytest.raises(ParentPinError, match="metadata"):
+        module._list_public_child_repositories("myon-bioinformatics", PARENT_REPOSITORY, None)
+
+
+def test_inventory_auth_retry_reads_complete_public_inventory(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tools.parent_pin_check as module
+
+    calls = []
+    def inventory(url, token):
+        calls.append(token)
+        if token:
+            raise ParentPinError("token scope", http_code=403)
+        return [_public_repo("myon-bioinformatics/xprobe")]
+
+    monkeypatch.setattr(module, "_github_json_list", inventory)
+    assert module._list_public_child_repositories("myon-bioinformatics", PARENT_REPOSITORY, "token") == ["myon-bioinformatics/xprobe"]
+    assert calls == ["token", None]
+
+
+@pytest.mark.parametrize("changes", [{"private": True, "visibility": "private"}, {"archived": True}])
+def test_child_becoming_ineligible_does_not_leak_registry_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changes: dict,
+) -> None:
+    import tools.parent_pin_check as module
+
+    name = "myon-bioinformatics/now-ineligible"
+    registry = tmp_path / "child-heads.json"
+    registry.write_text('{"heads": {}}')
+    monkeypatch.setattr(module, "fetch_parent_main_sha", lambda *a: ("a" * 40, "main"))
+    monkeypatch.setattr(module, "_list_public_child_repositories", lambda *a: [name])
+    monkeypatch.setattr(module, "_github_json", lambda *a: _public_repo(name, **changes))
+    monkeypatch.setattr(module, "_http_get_text", lambda *a, **kw: pytest.fail("excluded repository content was fetched"))
+    report = run_fleet(child_heads=registry, enforce=True)
+    assert report["ok"] and report["skipped_repositories"] == 1
+    assert report["audited_repositories"] == 0 and report["audit_error_count"] == 0
+    assert name not in json.dumps(report) + module.render_fleet_text(report)
+
+
+def test_resolve_uses_actual_default_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tools.parent_pin_check as module
+
+    name = "myon-bioinformatics/xprobe"
+    monkeypatch.setattr(module, "_github_json", lambda *a: _public_repo(name, default_branch="develop"))
+    def atom(url, **kwargs):
+        assert "/commits/develop.atom" in url
+        return f"<feed><entry><id>Commit/{'a' * 40}</id></entry></feed>"
+    monkeypatch.setattr(module, "_http_get_text", atom)
+    assert module._resolve_default_branch_head(name, None) == ("a" * 40, "develop")
+
+
+def test_invalid_inventory_json_is_a_safe_parent_pin_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tools.parent_pin_check as module
+
+    monkeypatch.setattr(module, "_http_get_bytes", lambda *a, **kw: b'{"private-name":')
+    with pytest.raises(ParentPinError, match="invalid list payload"):
+        module._github_json_list("https://api.github.com/users/owner/repos")

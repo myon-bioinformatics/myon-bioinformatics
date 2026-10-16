@@ -211,7 +211,10 @@ def _github_json(
     raw = _http_get_bytes(
         url, token=token, accept="application/vnd.github+json", timeout=timeout
     )
-    data = json.loads(raw.decode("utf-8"))
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise ParentPinError("GitHub API returned an invalid payload.") from error
     if not isinstance(data, dict):
         raise ParentPinError("GitHub API returned an unexpected payload.")
     return data
@@ -223,7 +226,10 @@ def _github_json_list(
     raw = _http_get_bytes(
         url, token=token, accept="application/vnd.github+json", timeout=timeout
     )
-    data = json.loads(raw.decode("utf-8"))
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise ParentPinError("GitHub API returned an invalid list payload.") from error
     if not isinstance(data, list):
         raise ParentPinError("GitHub API returned an unexpected list payload.")
     return data
@@ -578,9 +584,22 @@ def _fetch_repository_file(
 
 
 def _resolve_default_branch_head(repository: str, token: str | None) -> tuple[str, str]:
-    """Resolve a public repository default branch HEAD from commits/main.atom."""
+    """Recheck public eligibility, then resolve the actual default branch HEAD."""
     _ = token
-    branch = "main"
+    metadata = _github_json(f"https://api.github.com/repos/{repository}", None)
+    if metadata.get("private") is True or metadata.get("visibility") in ("private", "internal"):
+        raise ParentPinError("repository is not public")
+    if metadata.get("archived") is True:
+        raise ParentPinError("repository is archived")
+    if (
+        metadata.get("private") is not False
+        or metadata.get("visibility") != "public"
+        or metadata.get("archived") is not False
+    ):
+        raise ParentPinError("repository eligibility metadata is incomplete")
+    branch = metadata.get("default_branch")
+    if not isinstance(branch, str) or not branch:
+        raise ParentPinError("repository default branch missing")
     try:
         atom = _http_get_text(
             _main_atom_url(repository, branch),
@@ -602,32 +621,43 @@ def _list_fleet_child_repositories(
     parent_repository: str,
     token: str | None,
     child_heads_path: Path | None,
+    *,
+    coverage: dict[str, Any] | None = None,
 ) -> list[str]:
+    """Cross-check known HEADs against a mandatory, complete public inventory.
+
+    The registry remains a baseline input, never a ceiling on fleet scope.
+    Names absent from the public inventory are only counted, never disclosed.
+    """
+    heads: dict[str, Any] = {}
     if child_heads_path is not None and child_heads_path.is_file():
         try:
             document = json.loads(child_heads_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as error:
-            raise ParentPinError(f"could not read child heads registry: {error}") from error
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise ParentPinError("could not read child heads registry") from error
         heads = document.get("heads") if isinstance(document, dict) else None
         if not isinstance(heads, dict):
             raise ParentPinError("child-heads.json is missing a heads object")
-        names = [
-            name
-            for name in heads
-            if isinstance(name, str) and name.casefold() != parent_repository.casefold()
-        ]
-        return sorted(set(names), key=str.casefold)
-    if not token:
-        raise ParentPinError(
-            "child-heads.json is required for fleet audit without GITHUB_TOKEN (fail-closed)."
+    children = _list_public_child_repositories(owner, parent_repository, token)
+    known = {name.casefold() for name in heads if isinstance(name, str)}
+    known.discard(parent_repository.casefold())
+    public = {name.casefold() for name in children}
+    if coverage is not None:
+        coverage.update(
+            registry_present=child_heads_path is not None and child_heads_path.is_file(),
+            registered_repositories=len(public & known),
+            registry_missing_repositories=[
+                name for name in children if name.casefold() not in known
+            ],
+            registry_unmatched_count=len(known - public),
         )
-    return _list_public_child_repositories(owner, parent_repository, token)
+    return children
 
 
 def _list_public_child_repositories(
     owner: str, parent_repository: str, token: str | None
 ) -> list[str]:
-    names: list[str] = []
+    names: dict[str, str] = {}
     for kind in ("orgs", "users"):
         page = 1
         while page <= 20:
@@ -637,35 +667,52 @@ def _list_public_child_repositories(
             try:
                 data = _github_json_list(url, token)
             except ParentPinError as error:
-                if kind == "orgs" and error.http_code == 404:
+                if kind == "orgs" and page == 1 and error.http_code == 404:
                     break
-                raise
-            if not data:
-                break
+                if token and error.http_code in (401, 403):
+                    # Public inventory can be read anonymously when a scoped
+                    # Actions token cannot list the account's repositories.
+                    try:
+                        data = _github_json_list(url, None)
+                    except ParentPinError as retry_error:
+                        if kind == "orgs" and page == 1 and retry_error.http_code == 404:
+                            break
+                        raise ParentPinError(
+                            "public repository inventory unavailable (incomplete fleet)",
+                            http_code=retry_error.http_code,
+                        ) from retry_error
+                else:
+                    raise ParentPinError(
+                        "public repository inventory unavailable (incomplete fleet)",
+                        http_code=error.http_code,
+                    ) from error
             for item in data:
                 if not isinstance(item, dict):
+                    raise ParentPinError("public repository inventory contains invalid metadata")
+                if item.get("private") is True or item.get("archived") is True:
                     continue
-                if item.get("private") or item.get("archived"):
+                if item.get("visibility") in ("private", "internal"):
                     continue
-                visibility = item.get("visibility") or (
-                    "private" if item.get("private") else "public"
-                )
-                if visibility != "public":
-                    continue
+                if (
+                    item.get("private") is not False
+                    or item.get("visibility") != "public"
+                    or item.get("archived") is not False
+                ):
+                    raise ParentPinError("public repository inventory eligibility metadata is incomplete")
                 full_name = item.get("full_name")
-                if not isinstance(full_name, str):
-                    continue
+                if not isinstance(full_name, str) or _normalize_repo(full_name) != full_name:
+                    raise ParentPinError("public repository inventory contains an invalid repository name")
                 if full_name.casefold() == parent_repository.casefold():
                     continue
                 if full_name.split("/")[0].casefold() != owner.casefold():
                     continue
-                names.append(full_name)
+                names[full_name.casefold()] = full_name
             if len(data) < 100:
-                break
+                return sorted(names.values(), key=str.casefold)
             page += 1
-        if names:
-            return sorted(set(names), key=str.casefold)
-    return sorted(set(names), key=str.casefold)
+        else:
+            raise ParentPinError("public repository inventory pagination limit reached (incomplete fleet)")
+    raise ParentPinError("public repository inventory unavailable (incomplete fleet)")
 
 
 def _remote_scannable_paths(
@@ -815,11 +862,15 @@ def run_fleet(
         token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     heads_path = Path(child_heads) if child_heads else None
     main_sha, branch = fetch_parent_main_sha(parent_repository, None)
-    children = _list_fleet_child_repositories(owner, parent_repository, token, heads_path)
+    coverage: dict[str, Any] = {}
+    children = _list_fleet_child_repositories(
+        owner, parent_repository, token, heads_path, coverage=coverage
+    )
     failures: list[dict[str, Any]] = []
     audit_errors: list[dict[str, Any]] = []
     fetch_warnings: list[dict[str, Any]] = []
     skipped_repositories = 0
+    audited_names: set[str] = set()
     for name in children:
         try:
             item = audit_fleet_child(
@@ -845,6 +896,15 @@ def run_fleet(
             continue
         if item is not None:
             failures.append(item)
+        audited_names.add(name)
+    # A child may become private between inventory and audit. Do not expose
+    # its name through registry diagnostics after it has been excluded.
+    if "registry_missing_repositories" in coverage:
+        missing = coverage["registry_missing_repositories"]
+        coverage["registry_missing_count"] = len(missing)
+        coverage["registry_missing_repositories"] = [
+            name for name in missing if name in audited_names
+        ]
     enforce_fail = bool(failures or audit_errors)
     return {
         "schema": FLEET_SCHEMA,
@@ -852,6 +912,9 @@ def run_fleet(
         "parent_main_sha": main_sha,
         "parent_default_branch": branch,
         "checked_repositories": len(children),
+        "audited_repositories": len(audited_names),
+        "complete": not (audit_errors or fetch_warnings),
+        **coverage,
         "skipped_repositories": skipped_repositories,
         "failure_count": len(failures),
         "failures": failures,
@@ -875,6 +938,14 @@ def render_fleet_text(report: dict[str, Any]) -> str:
         f"{report.get('fetch_warning_count', 0)} fetch warning(s)"
     ]
     lines.append(f"parent main ({report['parent_default_branch']}): {report['parent_main_sha']}")
+    if report.get("registry_present"):
+        lines.append(
+            f"registry: {report['registered_repositories']} public child HEAD baseline(s); "
+            f"{report['registry_missing_count']} unregistered public child(ren); "
+            f"{report['registry_unmatched_count']} unmatched entry/entries (names withheld)"
+        )
+    if not report.get("complete", True):
+        lines.append("WARNING: fleet audit is incomplete; see fetch warnings and audit errors.")
     for item in report["failures"]:
         lines.append(f"FAIL {item['repository']} @ {item['revision']}")
         for pin in item["pins"]:
@@ -899,6 +970,11 @@ def render_fleet_text(report: dict[str, Any]) -> str:
 def emit_fleet_annotations(report: dict[str, Any]) -> None:
     main_sha = report["parent_main_sha"]
     level = "error" if report.get("enforce") else "warning"
+    if report.get("registry_present") and report.get("registry_missing_repositories"):
+        print(
+            "::warning::public children missing from child-heads.json (included in fleet audit): "
+            + ", ".join(report["registry_missing_repositories"])
+        )
     for item in report.get("fetch_warnings", []):
         print(f"::warning::{item['message']}")
     for item in report.get("audit_errors", []):
@@ -1006,7 +1082,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--child-heads",
         default="child-heads.json",
-        help="child-heads.json registry for fleet scope (default: child-heads.json)",
+        help="Known child HEAD baseline to cross-check against the public fleet (default: child-heads.json)",
     )
     args = parser.parse_args(argv)
     if args.warn_only and args.enforce:
