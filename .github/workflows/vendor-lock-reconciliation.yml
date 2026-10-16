@@ -2,6 +2,8 @@ name: Vendor consumer lock reconciliation
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "30 0 * * 1"  # weekly read-only drift report (Monday 00:30 UTC = 09:30 JST)
   pull_request:
     paths:
       - "vendor-catalog.json"
@@ -12,8 +14,10 @@ on:
       - "vendor_fleet_plan.py"
       - "vendor_sync.py"
       - "vendor_lock_reconcile.py"
+      - "duplicate_files_report.py"
       - "docs/vendor-registration-review.json"
       - "tests/test_vendor_lock_reconcile.py"
+      - "tests/test_duplicate_files_report.py"
       - "tests/test_flutter_vendor_registry_sync.py"
       - ".github/workflows/vendor-lock-reconciliation.yml"
   push:
@@ -27,8 +31,10 @@ on:
       - "vendor_fleet_plan.py"
       - "vendor_sync.py"
       - "vendor_lock_reconcile.py"
+      - "duplicate_files_report.py"
       - "docs/vendor-registration-review.json"
       - "tests/test_vendor_lock_reconcile.py"
+      - "tests/test_duplicate_files_report.py"
       - "tests/test_flutter_vendor_registry_sync.py"
       - ".github/workflows/vendor-lock-reconciliation.yml"
 
@@ -48,7 +54,7 @@ jobs:
       - name: Unit regressions
         run: |
           python -m pip install pytest
-          python -m pytest -q tests/test_vendor_lock_reconcile.py tests/test_vendor_consumers.py tests/test_vendor_catalog.py tests/test_vendor_fleet_plan.py
+          python -m pytest -q tests/test_vendor_lock_reconcile.py tests/test_vendor_consumers.py tests/test_vendor_catalog.py tests/test_vendor_fleet_plan.py tests/test_duplicate_files_report.py
       - name: Fetch real consumer locks (read only)
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -82,5 +88,49 @@ jobs:
         with:
           name: vendor-lock-reconciliation
           path: reports/vendor-lock-reconciliation.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  duplicate-files:
+    name: Cross-repository duplicate files (read only)
+    # PR/push validate the adapter offline; scheduled/manual runs use the verified pin.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Stable first-parent main commit after #60 and #69; complete/errors contract included.
+      GH_IDENTITY_SHA: 1a32ccce18e5278f2c4c0448a45f7f2c9d6c98f5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Fetch pinned gh_identity
+        uses: actions/checkout@v7
+        with:
+          repository: myon-bioinformatics/gh_identity
+          ref: ${{ env.GH_IDENTITY_SHA }}
+          path: .gh-identity
+          persist-credentials: false
+      - name: Verify pin
+        run: test "$(git -C .gh-identity rev-parse HEAD)" = "$GH_IDENTITY_SHA"
+      - name: Duplicate files with vendor-lock provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python -S duplicate_files_report.py \
+            --identity .gh-identity/gh_identity.py \
+            --output reports/duplicate-files.json \
+            --owner myon-bioinformatics
+      - name: Upload duplicate-files report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: duplicate-files
+          path: |
+            reports/duplicate-files.json
+            reports/duplicate-files.md
           if-no-files-found: warn
           retention-days: 14
