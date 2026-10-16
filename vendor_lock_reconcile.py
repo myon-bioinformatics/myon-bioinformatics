@@ -183,7 +183,9 @@ def main(argv=None):
     parser.add_argument("--registry", default="vendor-consumers.json")
     parser.add_argument("--review", help="review evidence JSON; stale/unpinned reviews never approve enrollment")
     parser.add_argument("--consumer", action="append", required=True)
-    parser.add_argument("--lock", action="append", default=[], metavar="OWNER/REPO=FILE",
+    inputs = parser.add_mutually_exclusive_group()
+    inputs.add_argument("--heads", help="parent child-heads.json: fetch selected locks at recorded SHAs")
+    inputs.add_argument("--lock", action="append", default=[], metavar="OWNER/REPO=FILE",
                         help="offline lock input; otherwise retrieve actual lock from GitHub")
     parser.add_argument("--ref", default="main", help="consumer revision to resolve (default: main)")
     parser.add_argument("--output", help="write stable JSON report, otherwise stdout")
@@ -195,6 +197,11 @@ def main(argv=None):
         evidence = (json.loads(Path(args.review).read_text(encoding="utf-8"))
                     if args.review else None)
         validated = vendor_consumers.validate(registry)
+        recorded = (vendor_sync.validate_child_heads(
+            json.loads(Path(args.heads).read_text(encoding="utf-8")))["heads"]
+            if args.heads else None)
+        revisions = ({name.casefold(): entry["sha"] for name, entry in recorded.items()}
+                     if recorded is not None else None)
         if len(set(args.consumer)) != len(args.consumer):
             raise ValueError("duplicate consumer")
         local, local_provenance = {}, {}
@@ -219,10 +226,15 @@ def main(argv=None):
                     locks[name] = local[name]
                     metadata[name] = local_provenance[name]
                 else:
-                    revision = fetch_revision(name, args.ref)
+                    if revisions is not None:
+                        revision = revisions.get(name.casefold())
+                        if revision is None:
+                            raise ValueError("missing recorded consumer revision")
+                    else:
+                        revision = fetch_revision(name, args.ref)
                     locks[name], metadata[name] = fetch_lock(
                         name, consumer["lock"], ref=revision)
-                    metadata[name]["requested_ref"] = args.ref
+                    metadata[name]["requested_ref"] = revision if revisions is not None else args.ref
         report = reconcile(catalog, validated, locks, consumers=args.consumer,
                            metadata=metadata, evidence=evidence)
         encoded = json.dumps(report, indent=2, ensure_ascii=False, sort_keys=True) + "\n"

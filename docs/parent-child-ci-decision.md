@@ -215,6 +215,14 @@ baseline change. Changing only the digest would break the old recorded snapshot;
 changing only paths would make its adopted lock unreadable. No alternate digest
 or path fallback is accepted.
 
+Lock reconciliation uses `--heads child-heads.json` on pull requests so its
+lock path and fetched SHA describe the same proposed parent baseline. Missing
+or malformed recorded revisions fail instead of falling back to live main.
+The CLI fetches actual remote lock bytes at each full SHA; it does not substitute
+an offline fixture. Main push and manual reconciliation still resolve live main.
+`child-heads.json` changes also trigger this report. Parent child CI independently
+checks repository identity, source provenance and placed file bytes as before.
+
 Integration order (neither merge is automated):
 
 1. Review both final heads and their same-head CI, then merge Flutter #189 first.
