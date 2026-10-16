@@ -70,6 +70,187 @@ def test_private_consumer_is_not_fetched(monkeypatch):
     assert report == {'checked': [], 'failures': [], 'failure_count': 0}
 
 
+LOCKED_WORKFLOW = b'''name: Non-Dart checks
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  python-vendor-locked:
+    runs-on: ubuntu-latest
+    steps:
+      - run: python -S vendor_sync.py check --manifest vendor.lock.json
+      - run: python -S vendor_sync.py materialize --manifest vendor.lock.json
+      - run: python -S vendor_sync.py check --manifest vendor.lock.json
+'''
+LOCKED_PATH = '.github/workflows/non-dart.yml'
+
+
+def locked_fixture(monkeypatch, *, data=LOCKED_WORKFLOW, resolved=None):
+    registry, lock, heads = fixture(monkeypatch)
+    registry['consumers'][0]['locked_ci'] = {
+        'workflow': LOCKED_PATH, 'sha256': hashlib.sha256(LOCKED_WORKFLOW).hexdigest(),
+    }
+
+    def snapshot(repo, sha, paths):
+        if LOCKED_PATH in paths:
+            if data is None:
+                raise ValueError(sync.PUBLIC_GIT_FETCH_ERROR)
+            return resolved or sha, {LOCKED_PATH: (sync.git_blob(data), data)}
+        return sha, {p: (sync.git_blob(DATA), DATA) for p in paths}
+
+    monkeypatch.setattr(sync, '_public_git_snapshot', snapshot)
+    monkeypatch.setattr(sync, 'commit_merged_into_default', lambda *a, **k: True)
+    monkeypatch.setattr(sync, '_fetch_repo_text', lambda name, path, sha, token=None:
+                        None if path == sync.CHILD_CI_WORKFLOW_PATH else json.dumps(lock))
+    return registry, lock, heads
+
+
+def test_intentional_template_removal_uses_approved_existing_lane(monkeypatch):
+    registry, _, heads = locked_fixture(monkeypatch)
+    report = sync.audit_child_workflow_templates(registry, heads, TEMPLATE.decode(),
+                                                repository_names=[NAME])
+    assert report['failures'] == report['missing'] == []
+    assert report['locked_ci_checked'][0]['workflow'] == LOCKED_PATH
+    plan = sync.plan_heads_refresh(registry, heads, {NAME: {'sha': NEW, 'repository_id': 42}},
+                                   TEMPLATE.decode())
+    assert plan['heads'][NAME]['sha'] == NEW
+    assert plan['skipped'] == []
+
+
+@pytest.mark.parametrize('data,resolved', [
+    (None, None),  # required replacement workflow removed
+    (LOCKED_WORKFLOW.replace(b'python-vendor-locked:', b'other-job:'), None),
+    (LOCKED_WORKFLOW.replace(b'    runs-on:', b'    if: false\n    runs-on:'), None),
+    (LOCKED_WORKFLOW.replace(b'    runs-on:', b'    continue-on-error: true\n    runs-on:'), None),
+    (LOCKED_WORKFLOW.replace(b'check --manifest', b'update --manifest'), None),
+    (LOCKED_WORKFLOW.replace(b'pull_request, ', b''), None),
+    (LOCKED_WORKFLOW, NEW),  # bytes read from the wrong revision
+])
+def test_missing_or_weakened_locked_ci_fails_and_blocks_refresh(monkeypatch, data, resolved):
+    registry, _, heads = locked_fixture(monkeypatch, data=data, resolved=resolved)
+    report = sync.audit_child_workflow_templates(registry, heads, TEMPLATE.decode(),
+                                                repository_names=[NAME])
+    assert len(report['failures']) == 1
+    assert report['missing'] == report['locked_ci_checked'] == []
+    if resolved is None:  # NEW is the requested revision during refresh.
+        plan = sync.plan_heads_refresh(registry, heads, {NAME: {'sha': NEW, 'repository_id': 42}},
+                                       TEMPLATE.decode())
+        assert plan['heads'][NAME]['sha'] == SHA
+        assert plan['skipped'][0]['reason'] == 'locked_ci_mismatch'
+
+
+def test_unregistered_missing_template_remains_explicitly_unenforced(monkeypatch):
+    registry, _, heads = fixture(monkeypatch)
+    monkeypatch.setattr(sync, '_fetch_repo_text', lambda *a, **k: None)
+    report = sync.audit_child_workflow_templates(registry, heads, TEMPLATE.decode(),
+                                                repository_names=[NAME])
+    assert report['failures'] == []
+    assert len(report['missing']) == 1
+    assert report['locked_ci_checked'] == []
+
+
+def test_approved_lane_does_not_mask_invalid_legacy_template_or_missing_head(monkeypatch):
+    registry, _, heads = locked_fixture(monkeypatch)
+    monkeypatch.setattr(sync, '_fetch_repo_text', lambda *a, **k: 'changed template')
+    report = sync.audit_child_workflow_templates(registry, heads, TEMPLATE.decode(),
+                                                repository_names=[NAME])
+    assert len(report['failures']) == 1
+    heads['heads'].clear()
+    report = sync.audit_child_workflow_templates(registry, heads, TEMPLATE.decode(),
+                                                repository_names=[NAME])
+    assert len(report['failures']) == 1
+    assert report['missing'] == []
+
+
+@pytest.mark.parametrize('fault', [None, 'workflow', 'file', 'topology'])
+def test_parent_contract_runs_both_locked_lane_and_adopted_file_audits(tmp_path, monkeypatch, fault):
+    registry, lock, heads = locked_fixture(monkeypatch,
+                                          data=None if fault == 'workflow' else LOCKED_WORKFLOW)
+    (tmp_path / 'templates').mkdir()
+    (tmp_path / sync.CHILD_CI_TEMPLATE).write_bytes(TEMPLATE)
+    monkeypatch.setattr(sync, 'monitored_repositories', lambda *a, **k: [NAME])
+    monkeypatch.setattr(sync, 'fetch_child_head_record', lambda *a, **k: heads['heads'][NAME])
+    monkeypatch.setattr(sync, '_copy_parent_vendor_baseline', lambda *a: tmp_path)
+    monkeypatch.setattr(sync, '_offline_parent_vendor_check', lambda *a: {})
+    if fault == 'file':
+        lock['files'][0]['sha256'] = '0' * 64
+    elif fault == 'topology':
+        lock['files'][0]['destination'] = 'unregistered.py'
+    report = sync.run_parent_child_ci(registry, heads, parent_root=tmp_path,
+                                      skip_source_diff=True, pr_validation=True)
+    assert report['failure_count'] == report['audit_failure_count'] == (0 if fault is None else 1)
+    assert report['template_missing_count'] == 0
+    assert report['audit_blocked'] == ([] if fault is None else [NAME])
+    if fault is None:
+        summary = tmp_path / 'summary.md'
+        sync._write_child_heads_summary(report, summary)
+        assert 'Approved locked CI workflow:' in summary.read_text()
+        assert 'without copied child CI workflow' not in summary.read_text()
+
+
+@pytest.mark.parametrize('removed', [False, True])
+def test_autofix_accepts_template_removal_but_preserves_head_when_required_lane_is_removed(
+        tmp_path, monkeypatch, removed):
+    registry, _, heads = locked_fixture(monkeypatch)
+    snapshot = sync._public_git_snapshot
+
+    def candidate_snapshot(repo, sha, paths):
+        if removed and sha == NEW and LOCKED_PATH in paths:
+            raise ValueError(sync.PUBLIC_GIT_FETCH_ERROR)
+        return snapshot(repo, sha, paths)
+
+    monkeypatch.setattr(sync, '_public_git_snapshot', candidate_snapshot)
+    (tmp_path / 'templates').mkdir()
+    (tmp_path / sync.CHILD_CI_TEMPLATE).write_bytes(TEMPLATE)
+    monkeypatch.setattr(sync, 'monitored_repositories', lambda *a, **k: [NAME])
+    monkeypatch.setattr(sync, 'fetch_child_head_record', lambda *a, **k:
+                        {'sha': NEW, 'repository_id': 42})
+    monkeypatch.setattr(sync, '_copy_parent_vendor_baseline', lambda *a: tmp_path)
+    monkeypatch.setattr(sync, '_offline_parent_vendor_check', lambda *a: {})
+    written = {}
+
+    def capture(repo, branch, title, body, files, token):
+        written.update(json.loads(files['child-heads.json']))
+        return {'url': 'https://example.invalid/1'}
+
+    monkeypatch.setattr(sync, '_open_or_update_autofix_pr', capture)
+    monkeypatch.setattr(sync, '_dispatch_parent_workflow', lambda *a, **k: None)
+    report = sync.run_parent_child_ci(registry, heads, parent_root=tmp_path,
+                                      skip_source_diff=True, autofix=True, token='fixture')
+    assert written['heads'][NAME]['sha'] == (SHA if removed else NEW)
+    assert bool(report['heads_refresh_skipped']) is removed
+    assert registry['consumers'][0]['locked_ci']['sha256'] == hashlib.sha256(LOCKED_WORKFLOW).hexdigest()
+
+
+@pytest.mark.parametrize('mode', ['regular', 'symlink', 'directory'])
+def test_approved_workflow_must_be_a_regular_git_blob(tmp_path, monkeypatch, mode):
+    repo = tmp_path / 'child'
+    repo.mkdir()
+    _git(repo, 'init', '-b', 'main')
+    _git(repo, 'config', 'user.name', 'Fixture')
+    _git(repo, 'config', 'user.email', 'fixture@example.invalid')
+    path = repo / LOCKED_PATH
+    path.parent.mkdir(parents=True)
+    if mode == 'symlink':
+        (repo / 'actual.yml').write_bytes(LOCKED_WORKFLOW)
+        path.symlink_to('../../actual.yml')
+    elif mode == 'directory':
+        path.mkdir()
+        (path / 'nested.yml').write_bytes(LOCKED_WORKFLOW)
+    else:
+        path.write_bytes(LOCKED_WORKFLOW)
+    _git(repo, 'add', '.')
+    _git(repo, 'commit', '-m', 'workflow')
+    revision = _git(repo, 'rev-parse', 'HEAD')
+    snapshot = sync._public_git_snapshot
+    monkeypatch.setattr(sync, '_public_git_snapshot', lambda name, sha, paths:
+                        snapshot(name, sha, paths, remote=str(repo)))
+    contract = {'workflow': LOCKED_PATH, 'sha256': hashlib.sha256(LOCKED_WORKFLOW).hexdigest()}
+    if mode == 'regular':
+        assert sync._verify_locked_ci(NAME, revision, contract)['workflow'] == LOCKED_PATH
+    else:
+        with pytest.raises(ValueError, match='regular file'):
+            sync._verify_locked_ci(NAME, revision, contract)
+
+
 def test_private_source_repo_name_not_in_audit_failure(monkeypatch):
     registry, lock, heads = fixture(monkeypatch)
     private_source = 'owner/secret-source'

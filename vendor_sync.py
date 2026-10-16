@@ -941,7 +941,24 @@ def audit_adopted_child_files(registry, document, repository_names, *, token=Non
     return {"checked": checked, "failures": failures, "failure_count": len(failures)}
 
 
-def _workflow_refresh_block_reason(name, old_sha, new_sha, template_text, *, token=None):
+def _verify_locked_ci(name, revision, contract):
+    """Read approved workflow bytes from a regular Git blob; never execute them."""
+    path = contract["workflow"]
+    resolved, files = _public_git_snapshot(name, revision, [path])
+    if resolved != revision:
+        raise ValueError("locked CI snapshot SHA mismatch")
+    if hashlib.sha256(files[path][1]).hexdigest() != contract["sha256"]:
+        raise ValueError("locked CI workflow differs from parent-approved bytes")
+    return {"repository": name, "workflow": path, "sha256": contract["sha256"]}
+
+
+def _workflow_refresh_block_reason(name, old_sha, new_sha, template_text, *, token=None,
+                                   locked_ci=None):
+    if locked_ci is not None:
+        try:
+            _verify_locked_ci(name, new_sha, locked_ci)
+        except (ValueError, OSError, subprocess.SubprocessError):
+            return "locked_ci_mismatch"
     old_text = _fetch_repo_text(name, CHILD_CI_WORKFLOW_PATH, old_sha, _api_token(token))
     new_text = _fetch_repo_text(name, CHILD_CI_WORKFLOW_PATH, new_sha, _api_token(token))
     if old_text == new_text:
@@ -985,6 +1002,8 @@ def plan_heads_refresh(registry, document, proposed_heads, template_text, *, tok
             continue
         reason = _workflow_refresh_block_reason(
             name, old["sha"], new["sha"], template_text, token=token,
+            locked_ci=next((row.get("locked_ci") for row in registry["consumers"]
+                            if row["repository"].casefold() == name.casefold()), None),
         )
         if reason is not None:
             skipped.append({"repository": name, "reason": reason})
@@ -1079,21 +1098,40 @@ def run_child_ci(root, parent_ref_path, consumer, *, token=None,
 
 def audit_child_workflow_templates(registry, document, template_text, *, token=None,
                                  repository_names=None):
+    import vendor_consumers
     failures = []
     missing = []
+    locked_ci_checked = []
+    contracts = {row["repository"].casefold(): row["locked_ci"]
+                 for row in registry["consumers"] if "locked_ci" in row}
+    if contracts:
+        vendor_consumers.validate(registry)
     names = repository_names
     if names is None:
         names = monitored_repositories(registry, token=token)
     for name in names:
+        contract = contracts.get(name.casefold())
         entry = document["heads"].get(name)
         if entry is None:
-            missing.append({
+            (failures if contract else missing).append({
                 "repository": name,
                 "message": "monitored repository has no child-heads entry",
             })
             continue
+        if contract:
+            try:
+                locked_ci_checked.append(_verify_locked_ci(name, entry["sha"], contract))
+            except (ValueError, OSError, subprocess.SubprocessError):
+                failures.append({
+                    "repository": name,
+                    "message": "required locked CI workflow missing, changed, or unreadable: "
+                               + contract["workflow"],
+                })
+                continue
         text = _fetch_repo_text(name, CHILD_CI_WORKFLOW_PATH, entry["sha"], _api_token(token))
         if text is None:
+            if contract:
+                continue  # Explicitly approved existing lane replaces the optional template.
             missing.append({
                 "repository": name,
                 "message": "missing copied " + CHILD_CI_WORKFLOW_PATH,
@@ -1103,7 +1141,7 @@ def audit_child_workflow_templates(registry, document, template_text, *, token=N
             verify_workflow_template_copy(text, template_text)
         except ValueError as error:
             failures.append({"repository": name, "message": str(error)})
-    return {"failures": failures, "missing": missing}
+    return {"failures": failures, "missing": missing, "locked_ci_checked": locked_ci_checked}
 
 
 def _dispatch_parent_workflow(parent_repository, workflow_path, ref, token):
@@ -1710,6 +1748,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         "template_failure_count": len(template_failures),
         "template_missing": template_missing,
         "template_missing_count": len(template_missing),
+        "locked_ci_checked": template_report.get("locked_ci_checked", []),
         "source_diff": diff_report,
         "parent_vendor_check": vendor_check,
         "adopted_child_files": child_files,
@@ -2253,6 +2292,11 @@ def _write_child_heads_summary(report, summary_path):
             )
             for row in report.get("template_missing", []):
                 lines.append(f"- `{row.get('repository', '')}`: {row.get('message', '')}")
+            lines.append("")
+        for row in report.get("locked_ci_checked", []):
+            lines.append(f"Approved locked CI workflow: `{row['repository']}` / "
+                         f"`{row['workflow']}` (parent-pinned SHA-256 verified).")
+        if report.get("locked_ci_checked"):
             lines.append("")
         child_files = report.get("adopted_child_files", {})
         lines.append(f"Adopted child/source file audit: {len(child_files.get('checked', []))} consumers checked; "

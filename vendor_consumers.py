@@ -55,7 +55,7 @@ def validate(registry):
     names = set()
     for consumer in result["consumers"]:
         required = {"repository", "state", "lock", "entries"}
-        optional = {"reason", "legacy_provenance"}
+        optional = {"reason", "legacy_provenance", "locked_ci"}
         if (
             not isinstance(consumer, dict)
             or not required <= consumer.keys()
@@ -79,7 +79,17 @@ def validate(registry):
             vendor_sync._path(consumer["lock"])
             if "reason" in consumer or "legacy_provenance" in consumer:
                 raise ValueError("locked consumer cannot declare legacy fields")
+            if "locked_ci" in consumer:
+                ci = consumer["locked_ci"]
+                if not isinstance(ci, dict) or set(ci) != {"workflow", "sha256"}:
+                    raise ValueError("locked_ci requires workflow and sha256")
+                path = vendor_sync._path(ci["workflow"])
+                if not re.fullmatch(r"\.github/workflows/[^/]+\.ya?ml", path):
+                    raise ValueError("locked_ci requires a workflow path")
+                vendor_sync._hex(ci["sha256"], 64)
         else:
+            if "locked_ci" in consumer:
+                raise ValueError("legacy consumer cannot declare locked_ci")
             if consumer["lock"] is not None:
                 raise ValueError("legacy consumer lock must be null")
             if (

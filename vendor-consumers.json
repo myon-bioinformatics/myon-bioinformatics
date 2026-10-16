@@ -620,7 +620,11 @@
           "source": "LICENSE",
           "destination": "tool/python/vendor/gh_identity-LICENSE"
         }
-      ]
+      ],
+      "locked_ci": {
+        "workflow": ".github/workflows/non-dart.yml",
+        "sha256": "ed3f282e0c0c29908ea20921ee404080070b937e631ef78007b444ce30852a96"
+      }
     },
     {
       "repository": "myon-bioinformatics/search_seq_including_spaces",

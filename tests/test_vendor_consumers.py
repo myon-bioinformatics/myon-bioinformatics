@@ -120,6 +120,38 @@ def test_duplicate_destination_is_case_insensitive():
         consumers.validate(doc)
 
 
+def test_locked_ci_is_optional_parent_owned_metadata_without_topology_changes():
+    doc = registry()
+    ci = {"workflow": ".github/workflows/non-dart.yml", "sha256": "a" * 64}
+    doc["consumers"][0]["locked_ci"] = ci
+    assert consumers.validate(doc) == doc
+    assert consumers.compare(doc, lock(), "owner/app")["matches"]
+
+
+@pytest.mark.parametrize("ci", [
+    None, {}, {"workflow": ".github/workflows/non-dart.yml"},
+    {"workflow": "../non-dart.yml", "sha256": "a" * 64},
+    {"workflow": "scripts/check.py", "sha256": "a" * 64},
+    {"workflow": ".github/workflows/sub/check.yml", "sha256": "a" * 64},
+    {"workflow": ".github/workflows/non-dart.yml", "sha256": "a" * 40},
+    {"workflow": ".github/workflows/non-dart.yml", "sha256": "a" * 64, "skip": True},
+])
+def test_invalid_locked_ci_contract(ci):
+    doc = registry()
+    doc["consumers"][0]["locked_ci"] = ci
+    with pytest.raises(ValueError):
+        consumers.validate(doc)
+
+
+def test_legacy_cannot_claim_locked_ci():
+    doc = registry()
+    doc["consumers"][1]["locked_ci"] = {
+        "workflow": ".github/workflows/non-dart.yml", "sha256": "a" * 64,
+    }
+    with pytest.raises(ValueError, match="legacy"):
+        consumers.validate(doc)
+
+
 def test_compare_reports_topology_only():
     doc = registry()
     value = lock()
