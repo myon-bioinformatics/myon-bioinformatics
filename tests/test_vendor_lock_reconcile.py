@@ -257,3 +257,65 @@ def test_reconcile_workflow_refreshes_on_parent_registry_and_code_changes():
     assert "--fail-on-drift" not in workflow
     assert "GH_TOKEN" not in workflow
     assert "  contents: read" in workflow
+
+
+@pytest.mark.parametrize('fault', [None, 'missing', 'invalid'])
+def test_cli_recorded_heads_fetch_exact_revision_without_live_fallback(tmp_path, monkeypatch, fault):
+    catalog, registry, consumer, lock = fixture()
+    revision = 'e' * 40
+    heads = {'schema': mod.vendor_sync.CHILD_HEADS_SCHEMA, 'ref': 'main',
+             'heads': {consumer: {'sha': revision, 'repository_id': 42}}}
+    if fault == 'missing':
+        heads['heads'] = {}
+    elif fault == 'invalid':
+        heads['heads'][consumer]['sha'] = 'main'
+    for name, value in [('catalog', catalog), ('registry', registry), ('heads', heads)]:
+        (tmp_path / (name + '.json')).write_text(json.dumps(value))
+    monkeypatch.setattr(mod, 'fetch_revision', lambda *a, **k: pytest.fail('live fallback'))
+    calls = []
+
+    def fetch(repository, path, *, ref):
+        calls.append((repository, path, ref))
+        return lock, {'resolution': 'pinned_github_commit', 'commit': ref}
+
+    monkeypatch.setattr(mod, 'fetch_lock', fetch)
+    output = tmp_path / 'report.json'
+    args = ['--catalog', str(tmp_path / 'catalog.json'), '--registry', str(tmp_path / 'registry.json'),
+            '--heads', str(tmp_path / 'heads.json'), '--consumer', consumer, '--output', str(output)]
+    assert mod.main(args) == (0 if fault is None else 2)
+    if fault is None:
+        assert calls == [(consumer, 'vendor.lock.json', revision)]
+        provenance = json.loads(output.read_text())['results'][0]['lock_provenance']
+        assert provenance['commit'] == provenance['requested_ref'] == revision
+    else:
+        assert calls == []
+        assert not output.exists()
+
+
+@pytest.mark.parametrize('event', ['pull_request', 'push', 'workflow_dispatch'])
+def test_reconcile_workflow_selects_recorded_heads_only_for_pr(tmp_path, event):
+    import os
+    import shutil
+    import subprocess
+    import textwrap
+
+    bash = shutil.which('bash')
+    if not bash:
+        pytest.skip('workflow requires bash')
+    root = Path(__file__).resolve().parents[1]
+    workflow = (root / '.github/workflows/vendor-lock-reconciliation.yml').read_text()
+    block = workflow.split('      - name: Fetch real consumer locks (read only)\n', 1)[1]
+    script = textwrap.dedent(block.split('        run: |\n', 1)[1].split('      - name:', 1)[0])
+    stub = tmp_path / 'python'
+    stub.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE_ARGS"\n')
+    stub.chmod(0o755)
+    capture = tmp_path / 'args.txt'
+    env = dict(os.environ, EVENT_NAME=event, CAPTURE_ARGS=str(capture),
+               PATH=str(tmp_path) + os.pathsep + os.environ.get('PATH', ''))
+    subprocess.run([bash, '-euo', 'pipefail', '-c', script], cwd=tmp_path, env=env, check=True)
+    args = capture.read_text().splitlines()
+    assert args[:2] == ['-S', 'vendor_lock_reconcile.py']
+    assert ('--heads' in args) == (event == 'pull_request')
+    if event == 'pull_request':
+        assert args[args.index('--heads') + 1] == 'child-heads.json'
+    assert '--fail-on-drift' not in args

@@ -25,6 +25,16 @@ All fleet governance lives in **this parent repository only** (`myon-bioinformat
 
 - Vendor lock `commit` values must lie on each source repository default branch **first-parent** history. **Guaranteed:** squash-merge commits and merge commits on `main` are accepted when on that line; no-fast-forward merge **intermediate** commits (for example github.io #39 / web-ui `77ff511` before merge commit `349b1f5`) are rejected. **Not guaranteed:** GitHub **rebase merge** replays pull-request commits onto `main`, so those intermediate commits can appear on first-parent history and pass this check—pin the squash or merge commit when stricter provenance is required.
 
+Consumers may explicitly register an existing locked verification workflow via
+optional `locked_ci` (`workflow`, full-file `sha256`) in `vendor-consumers/1`.
+Parent CI verifies its regular Git blob at the recorded child SHA, while the
+existing adopted source/file audit remains mandatory. An absent optional child
+template is intentional for that consumer only if the approved workflow is
+present and unchanged. Missing/modified approved workflows fail the audit and
+block autofix; updating the approved digest requires parent review. Other
+consumers retain the optional-template behavior. See the Flutter decision in
+`docs/parent-child-ci-decision.md` for the acceptance conditions and boundaries.
+
 ## Validation and delivery
 
 - Run the smallest relevant checks already supported by the repository.
