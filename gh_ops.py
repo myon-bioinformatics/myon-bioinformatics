@@ -1113,7 +1113,7 @@ def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = Fal
     if compare_failed:
         out["warning"] = f"could not compare {old_label} with {base}"
     elif unmerged_risky:
-        out["warning"] = f"could not compare"
+        out["warning"] = f"{old_label} has {ahead_by} commit(s) not in {base}; they would join the diff"
     if not write:
         out["status"] = "planned"
         out["dry_run"] = True
