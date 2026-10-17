@@ -879,6 +879,18 @@
       ]
     },
     {
+      "repository": "myon-bioinformatics/xprobe",
+      "state": "locked",
+      "lock": "vendor.lock.json",
+      "entries": [
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "LICENSE",
+          "destination": "vendor/myon-bioinformatics-LICENSE"
+        }
+      ]
+    },
+    {
       "repository": "myon-bioinformatics/myon-bioinformatics.github.io",
       "state": "locked",
       "lock": "vendor.lock.json",

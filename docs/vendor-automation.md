@@ -216,7 +216,7 @@ guessing field aliases or overwriting legacy provenance behind their back.
 | Ironmate | vendor modules plus root provenance helper; identity #57 open | Avoid overlap with #57 |
 | browser-test-kit | scripts/git_inspector; migration #36 and bridge #37 open | Wait for source-pin changes to settle |
 | web-ui | tool/vendor grouped metadata provenance + LICENSE | Preserve grouped-source contract |
-| xprobe | No vendored downstream module in current main | Upstream source, no redundant consumer lock |
+| xprobe | Parent LICENSE snapshot only (`vendor/myon-bioinformatics-LICENSE`) | Upstream source of `xprobe.py`; locked consumer of the parent LICENSE only, no self-consumer entry |
 | myon-bioinformatics | Shared inspector/workflow source, no vendor directory | Own public placement/update tool |
 
 The older JUnit report's missing `artifact-pattern` concern is already addressed
