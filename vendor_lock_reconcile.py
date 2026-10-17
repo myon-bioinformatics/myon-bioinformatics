@@ -120,6 +120,7 @@ def reconcile(catalog, registry, locks, *, consumers, metadata=None, evidence=No
         counts = {
             "topology_missing": len(topology["missing"]),
             "topology_unexpected": len(topology["unexpected"]),
+            "topology_bundle_mismatch": len(topology.get("bundle_mismatch", [])),
             "unregistered_candidates": len(candidates),
             "explicit_skips": len(skipped),
             "baseline_mismatches": len(mismatched),

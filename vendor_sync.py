@@ -23,6 +23,7 @@ __all__ = [
     "git_blob",
     "inspect_source",
     "validate",
+    "validate_minpy_bundle",
     "evidence",
     "synchronize",
     "promote",
@@ -55,6 +56,7 @@ AUTOFIX_BRANCH_PREFIX = "vendor/child-heads-sync"
 
 SCHEMA = "vendor-lock/1"
 HTML_IMPORT_SCHEMA = "html-import-vendor/1"
+MINPY_BUNDLE_SCHEMA = "minpy-bundle/1"
 CHILD_HEADS_SCHEMA = "child-heads/1"
 PARENT_PR_RESOLVE_SCHEMA = "parent-pr-resolve/1"
 PARENT_REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
@@ -99,16 +101,63 @@ def _hex(value, length):
         raise ValueError("expected a full lowercase hex digest")
 
 
+def validate_minpy_bundle(value):
+    """Validate optional minpy-bundle/1 metadata carried by a lock or consumer entry."""
+    fields = {
+        "schema",
+        "tool",
+        "tool_version",
+        "entry",
+        "search_paths",
+        "allow",
+        "allow_cycles",
+    }
+    if not isinstance(value, dict) or set(value) != fields:
+        raise ValueError("invalid minpy bundle metadata")
+    if value["schema"] != MINPY_BUNDLE_SCHEMA or value["tool"] != "minpy":
+        raise ValueError("invalid minpy bundle metadata")
+    if not isinstance(value["tool_version"], str) or not re.fullmatch(
+        r"[0-9]+\.[0-9]+\.[0-9]+", value["tool_version"]
+    ):
+        raise ValueError("invalid minpy tool_version")
+    entry = _path(value["entry"])
+    if not entry.endswith(".py"):
+        raise ValueError("minpy bundle entry must be a .py path")
+    paths = value["search_paths"]
+    if not isinstance(paths, list) or not paths:
+        raise ValueError("minpy search_paths must be a nonempty list")
+    seen = set()
+    for path in paths:
+        normalized = "." if path == "." else _path(path)
+        key = normalized.casefold()
+        if key in seen:
+            raise ValueError("duplicate minpy search path")
+        seen.add(key)
+    allow = value["allow"]
+    if not isinstance(allow, list):
+        raise ValueError("minpy allow must be a list")
+    names = []
+    for name in allow:
+        if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+            raise ValueError("invalid minpy allow name")
+        names.append(name)
+    if names != sorted(set(names)):
+        raise ValueError("minpy allow list must be sorted unique names")
+    if type(value["allow_cycles"]) is not bool:
+        raise ValueError("minpy allow_cycles must be boolean")
+    return value
+
+
 def validate(lock):
     if not isinstance(lock, dict) or set(lock) != {"schema", "files"} or lock["schema"] != SCHEMA:
         raise ValueError("expected vendor-lock/1")
     if not isinstance(lock["files"], list) or not lock["files"]:
         raise ValueError("files must be a nonempty list")
+    required = {"repository", "ref", "commit", "source", "destination", "blob_sha", "sha256"}
     destinations = set()
     for item in lock["files"]:
-        if not isinstance(item, dict) or set(item) != {
-            "repository", "ref", "commit", "source", "destination", "blob_sha", "sha256"
-        }:
+        fields = set(item) if isinstance(item, dict) else set()
+        if not isinstance(item, dict) or not required <= fields <= required | {"bundle"}:
             raise ValueError("invalid file fields")
         if not isinstance(item["repository"], str) or not re.fullmatch(
             r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", item["repository"]
@@ -123,6 +172,8 @@ def validate(lock):
         _hex(item["commit"], 40)
         _hex(item["blob_sha"], 40)
         _hex(item["sha256"], 64)
+        if "bundle" in item:
+            validate_minpy_bundle(item["bundle"])
     for destination in destinations:
         if any(destination.startswith(other + "/") for other in destinations if other != destination):
             raise ValueError("overlapping destinations")
@@ -2005,6 +2056,8 @@ def collect_lock_pins(lock, lock_path):
         for item in sources:
             if not isinstance(item, dict):
                 raise ValueError("invalid html-import source in " + lock_path)
+            if "bundle" in item:
+                validate_minpy_bundle(item["bundle"])
             repository = _normalize_repository(item.get("repository"))
             commit = item.get("commit")
             _hex(commit, 40)
