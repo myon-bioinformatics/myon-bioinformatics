@@ -27,7 +27,7 @@ def fixture(tmp_path):
                           sha256=hashlib.sha256(data).hexdigest()))
     (root / 'vendor.lock.json').write_text(json.dumps({'schema': sync.SCHEMA, 'files': files}))
     (root / 'test_use.py').write_text("from pathlib import Path\ndef test_candidate():\n assert Path('vendor/example.py').read_bytes() == b'NEW\\n'\n")
-    catalog = {'schema': 'vendor-catalog/1', 'tools': [dict(repository='owner/example', commit=NEW, reason='reviewed')]}
+    catalog = {'schema': 'vendor-catalog/1', 'tools': [dict(repository='owner/example', commit=NEW, source='example.py', reason='reviewed')]}
     registry = {'schema': 'vendor-consumers/1', 'consumers': [dict(repository='owner/consumer', state='locked', lock='vendor.lock.json',
         entries=[{k: v for k, v in f.items() if k in ('repository', 'source', 'destination')} for f in files])]}
     return root, catalog, registry

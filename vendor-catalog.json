@@ -4,16 +4,19 @@
     {
       "repository": "myon-bioinformatics/gh_identity",
       "commit": "c950ed3882f05668575b7298a67bc811e9cf925a",
+      "source": "gh_identity.py",
       "reason": "Explicitly recommend the parent's installed c950ed3 baseline to include the canonical search API required by gh_ops; newer development heads still require separate review."
     },
     {
       "repository": "myon-bioinformatics/xprobe",
       "commit": "642999cea4185a68bffa7f7ccc46bd78dde03e5a",
+      "source": "xprobe.py",
       "reason": "Initial baseline uses the previously adopted JUnit bridge revision, independently of newer development heads."
     },
     {
       "repository": "myon-bioinformatics/LINENotifyAPI_Template",
       "commit": "287a00696911a64e780ae0c9c238763317204b3f",
+      "source": "LINENotifyAPI_Template.py",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
       "default_enrollment": {
         "enrollment": "skipped",
@@ -177,6 +180,7 @@
     {
       "repository": "myon-bioinformatics/cumlative_usage",
       "commit": "270df7a060b56e9f79784f120ae0d560d44c5ea8",
+      "source": "cumlative_usage.py",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
       "default_enrollment": {
         "enrollment": "skipped",
@@ -186,11 +190,13 @@
     {
       "repository": "myon-bioinformatics/nvd_nist_known_vulns",
       "commit": "a5941b211b225690d44b1187b68788c22582ab3b",
+      "source": "nvd_nist_known_vulns.py",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion."
     },
     {
       "repository": "myon-bioinformatics/oci-cost-analysis",
       "commit": "1d14466b86abc80e7c7ddf318ffc97cfa004337c",
+      "source": "oci-cost-analysis.py",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
       "default_enrollment": {
         "enrollment": "skipped",
@@ -200,6 +206,7 @@
     {
       "repository": "myon-bioinformatics/image_ext_converter_gui",
       "commit": "6b1593358bd842699a7dc759d3ef3f25276c7517",
+      "source": "image_ext_converter_gui.py",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
       "default_enrollment": {
         "enrollment": "skipped",
@@ -209,6 +216,7 @@
     {
       "repository": "myon-bioinformatics/video2audio_gui",
       "commit": "22660a5c5cf74cd5da40cbedbc8ca2df568dda92",
+      "source": "video2audio_gui.py",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
       "default_enrollment": {
         "enrollment": "skipped",
@@ -218,6 +226,7 @@
     {
       "repository": "myon-bioinformatics/audio_any2any_gui",
       "commit": "ebd9dc399114052a0a3d97f386e5839f0e62d04e",
+      "source": "audio_any2any_gui.py",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
       "default_enrollment": {
         "enrollment": "skipped",
@@ -227,6 +236,7 @@
     {
       "repository": "myon-bioinformatics/video_to_image_gui",
       "commit": "655338a5463c352c177f515d6f80f7520b55b760",
+      "source": "video_to_image_gui.py",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
       "default_enrollment": {
         "enrollment": "skipped",
@@ -236,22 +246,58 @@
     {
       "repository": "myon-bioinformatics/markdown",
       "commit": "97fb3bcfe6d655d611b6ceb1fe000a8fb810bf97",
+      "source": "markdown.py",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion."
     },
     {
       "repository": "myon-bioinformatics/ascii_artist",
       "commit": "26e0daff9b7c0cf159bbf2af8dd64f628997f7e6",
+      "source": "ascii_artist.py",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion."
     },
     {
       "repository": "myon-bioinformatics/yourself",
       "commit": "69a77bc339b4c8a1bc780ad4d7ad470379fb6462",
+      "source": "yourself.py",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion."
     },
     {
       "repository": "myon-bioinformatics/cli_args",
       "commit": "d849c17f5e7c18037e2ab2c04bc71eee3e22cd35",
+      "source": "cli_args.py",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion."
+    },
+    {
+      "repository": "myon-bioinformatics/web-ui",
+      "commit": "484ec248cb523ce158abb00741d26fd0da9217e3",
+      "source": "web_ui.py",
+      "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion."
+    },
+    {
+      "repository": "myon-bioinformatics/BlueProbe",
+      "commit": "bf27a17354544519016bbbde87c7f9c8d2aa29cd",
+      "source": "blueprobe.py",
+      "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion."
+    },
+    {
+      "repository": "myon-bioinformatics/QueRyu",
+      "commit": "35a08024dc0040566068ba513074e3d8326897d4",
+      "source": "queryu.py",
+      "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "requires_external_package"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/PythDRagoras",
+      "commit": "12522c890e64313005e2bb3cad07d90365d4cf60",
+      "source": "pythdragoras.py",
+      "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "requires_external_package"
+      }
     }
   ]
 }

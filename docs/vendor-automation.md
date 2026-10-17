@@ -292,11 +292,15 @@ evidence, not candidate compatibility CI or an import-safety assessment.
 ### Contract: vendor-catalog/1
 
 The top-level fields are exactly `schema` and nonempty `tools`. Each tool has
-`repository` (`owner/repository`), `commit` (40 lowercase hex characters), and
-nonempty audit `reason`. Optional `source` overrides the default `<repository>.py`
-for real exceptions; optional `consumers` records per-consumer policy exceptions
-or explicit enroll decisions. Unknown fields and duplicate repository/source
-pairs are rejected. The recommendation unit is an independent source artifact,
+`repository` (`owner/repository`), `commit` (40 lowercase hex characters),
+`source` (relative POSIX path to the recommended file), and nonempty audit
+`reason`. Omitted `source` is rejected; there is no repository-name default.
+Each repository name must normalize to a valid Python identifier by lowercasing
+and replacing `-` and `.` with `_`; two different repositories whose names
+normalize to the same module identity are rejected. Optional `consumers` records
+per-consumer policy exceptions or explicit enroll decisions. Unknown fields and
+duplicate repository/source pairs are rejected. The recommendation unit is an
+independent source artifact,
 identified by repository/source, rather than an entire repository release.
 Different sources from the same repository are intentionally allowed for
 standalone helpers; each carries its own explicit recommended commit. This does

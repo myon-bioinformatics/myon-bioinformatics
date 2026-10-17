@@ -13,6 +13,14 @@ import vendor_sync
 SCHEMA = "vendor-catalog/1"
 
 
+def normalized_module_name(repo_name: str) -> str:
+    """Lowercase repository name and map '-' and '.' to '_' for module identity."""
+    module = repo_name.casefold().replace("-", "_").replace(".", "_")
+    if not module.isidentifier():
+        raise ValueError(f"repository name does not normalize to a valid Python identifier: {repo_name}")
+    return module
+
+
 def validate(catalog):
     """Validate and return a normalized copy, never modifying caller data."""
     if not isinstance(catalog, dict) or set(catalog) != {"schema", "tools"} or catalog["schema"] != SCHEMA:
@@ -21,15 +29,25 @@ def validate(catalog):
         raise ValueError("tools must be a nonempty list")
     result = copy.deepcopy(catalog)
     seen = set()
+    normalized_repos: dict[str, str] = {}
     for tool in result["tools"]:
-        required = {"repository", "commit", "reason"}
-        optional = {"source", "consumers", "default_enrollment"}
+        required = {"repository", "commit", "reason", "source"}
+        optional = {"consumers", "default_enrollment"}
         if not isinstance(tool, dict) or not required <= tool.keys() or tool.keys() - required - optional:
             raise ValueError("invalid tool fields")
         repo = tool["repository"]
         if not isinstance(repo, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo) or any(p in (".", "..") for p in repo.split("/")):
             raise ValueError("expected owner/repository")
-        source = tool.setdefault("source", repo.split("/")[1] + ".py")
+        repo_name = repo.split("/")[1]
+        module = normalized_module_name(repo_name)
+        repo_key = repo.casefold()
+        prior = normalized_repos.get(module)
+        if prior is not None and prior != repo_key:
+            raise ValueError("normalized repository module name collision")
+        normalized_repos[module] = repo_key
+        source = tool["source"]
+        if not isinstance(source, str) or not source.strip():
+            raise ValueError("source required")
         vendor_sync._path(source)
         vendor_sync._hex(tool["commit"], 40)
         if not isinstance(tool["reason"], str) or not tool["reason"].strip():
