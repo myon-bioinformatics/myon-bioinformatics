@@ -1,7 +1,7 @@
 """Regression for the parent-approved Flutter vendor and workflow baseline.
 
 The relocated lock snapshot from #189 is unchanged by merged #194. The reviewed
-workflow snapshot comes from #194 squash merge 31f33f42 on Flutter main.
+workflow snapshot comes from flutter PR #197 head 85dffb68 (coordinates with gh_ops parent vendor).
 """
 import copy
 import hashlib
@@ -90,7 +90,7 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
     heads = load("child-heads.json")
     consumer = vendor_consumers.get_consumer(registry, FLUTTER)
     contract = consumer["locked_ci"]
-    approved = (ROOT / "tests/fixtures/flutter_non_dart_31f33f42.yml").read_bytes()
+    approved = (ROOT / "tests/fixtures/flutter_non_dart_85dffb68.yml").read_bytes()
     assert hashlib.sha256(approved).hexdigest() == contract["sha256"]
     recorded = heads["heads"][FLUTTER]
     assert recorded["repository_id"] == 739348522

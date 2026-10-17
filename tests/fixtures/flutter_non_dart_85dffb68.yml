@@ -1,0 +1,637 @@
+name: Non-Dart checks
+
+# Python stdlib / pytest oracles, Docker-friendly smoke, and change-selected
+# Playwright. Full portable E2E runs automatically only when browser-facing
+# paths change; unrelated Dart/Python changes keep the lightweight lanes. The
+# pattern-boundary job is the exception for Dart changes: it checks Docker/import
+# boundaries without running the full non-Dart suite or booting Flutter.
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "python/**"
+      - "assets/time/**"
+      - "assets/data_processing/**"
+      - "test/fixtures/photo_studio/import_compat/**"
+      - "e2e/**"
+      - "**/requirements.txt"
+      - ".dockerignore"
+      - "lib/**/*.dart"
+      - "test/**/*.dart"
+      - ".github/workflows/non-dart.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "python/**"
+      - "assets/time/**"
+      - "assets/data_processing/**"
+      - "test/fixtures/photo_studio/import_compat/**"
+      - "e2e/**"
+      - "**/requirements.txt"
+      - ".dockerignore"
+      - "lib/**/*.dart"
+      - "test/**/*.dart"
+      - ".github/workflows/non-dart.yml"
+  # Explicit dispatch remains a force-run escape hatch, but no boolean toggle is
+  # required in normal operation; the path classifier owns Playwright selection.
+  workflow_dispatch:
+
+concurrency:
+  group: non-dart-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # Preserve the producer and its JUnit artifacts before downstream collection.
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Path filter
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.filter.outputs.python }}
+      e2e: ${{ steps.filter.outputs.e2e }}
+      workflow: ${{ steps.filter.outputs.workflow }}
+      pattern_boundary: ${{ steps.filter.outputs.pattern_boundary }}
+      playwright: ${{ steps.filter.outputs.playwright }}
+      validation_browser: ${{ steps.filter.outputs.validation_browser }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: filter
+        name: Classify non-Dart paths
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            {
+              echo "python=true"
+              echo "e2e=true"
+              echo "workflow=true"
+              echo "pattern_boundary=true"
+              echo "playwright=true"
+              echo "validation_browser=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            # push: only force-all on the first commit of a branch (before is zeros)
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+            if [[ "$BASE" =~ ^0+$ ]]; then
+              {
+                echo "python=true"
+                echo "e2e=true"
+                echo "workflow=true"
+                echo "pattern_boundary=true"
+                echo "playwright=true"
+                echo "validation_browser=true"
+              } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          mapfile -t files < <(git diff --name-only "$BASE" "$HEAD")
+
+          python=false
+          e2e=false
+          workflow=false
+          pattern_boundary=false
+          playwright=false
+          validation_browser=false
+          for f in "${files[@]}"; do
+            case "$f" in
+              python/*|assets/time/*|assets/data_processing/*|test/fixtures/photo_studio/import_compat/*|lib/features/*_patterns/*)
+                python=true
+                ;;
+              e2e/*)
+                e2e=true
+                playwright=true
+                ;;
+              .github/workflows/non-dart.yml)
+                workflow=true
+                python=true
+                playwright=true
+                ;;
+            esac
+            # Independent classifier: python/* already matches in the
+            # previous case, so these exact files need their own case block.
+            case "$f" in
+              python/multi_test_runner.py|python/test.py)
+                e2e=true
+                ;;
+            esac
+            case "$f" in
+              .dockerignore|lib/*.dart|test/*.dart|python/tests/test_pattern_catalogue_boundary.py|.github/workflows/non-dart.yml)
+                pattern_boundary=true
+                ;;
+            esac
+            # Full browser E2E is selected only for surfaces covered by the
+            # portable suite. Keep broad lib/**/*.dart changes off this lane.
+            case "$f" in
+              lib/main.dart|lib/config/routes.dart|lib/core/navigation/*|lib/features/home/*|lib/features/photo_studio/*|lib/features/clipboard_shelf/*|lib/screens/*)
+                playwright=true
+                ;;
+            esac
+            # Any requirements.txt (including outside python) must hit allowlist.
+            case "$f" in
+              requirements.txt|*/requirements.txt)
+                python=true
+                ;;
+            esac
+            # Chromium contract for the loopback validation page. It does not
+            # boot Flutter, so keep it off the portable five-project suite.
+            case "$f" in
+              python/validation_http.py|python/validation_patterns.py|python/tests/test_validation_http.py|python/tests/test_validation_patterns.py|e2e/tests/validation_http.spec.ts|e2e/playwright.config.ts|.github/workflows/non-dart.yml)
+                validation_browser=true
+                ;;
+            esac
+          done
+
+          {
+            echo "python=$python"
+            echo "e2e=$e2e"
+            echo "workflow=$workflow"
+            echo "pattern_boundary=$pattern_boundary"
+            echo "playwright=$playwright"
+            echo "validation_browser=$validation_browser"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "Changed files (${#files[@]}):"
+            printf '%s\n' "${files[@]}"
+            echo "outputs: python=$python e2e=$e2e workflow=$workflow pattern_boundary=$pattern_boundary playwright=$playwright validation_browser=$validation_browser"
+          }
+
+  # This is the only non-Dart job activated by ordinary Dart-source changes.
+  pattern-boundary:
+    name: Pattern catalogue boundary
+    needs: changes
+    if: needs.changes.outputs.pattern_boundary == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: python/requirements.txt
+
+      - name: Install Python test dependencies
+        run: python -m pip install -r python/requirements.txt
+
+      - name: Check pattern catalogue boundary
+        run: python -m pytest -q python/tests/test_pattern_catalogue_boundary.py
+
+  # Stdlib-only: no pip. Runs in an official Python container (Docker pattern).
+  python-stdlib:
+    name: Python stdlib oracles (Docker)
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || needs.changes.outputs.workflow == 'true'
+    runs-on: ubuntu-latest
+    container: python:3.12-slim
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install IANA timezone data
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          TZ: Etc/UTC
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends tzdata git
+          rm -rf /var/lib/apt/lists/*
+
+      # python:*-slim defaults to sh; keep this step POSIX (no bashisms).
+      - name: Verify pip requirements stay allowlisted
+        shell: sh
+        run: |
+          set -eu
+          count=0
+          # Word-splitting on paths is fine: requirements.txt paths have no spaces.
+          for path in $(git ls-files | grep -E '(^|/)requirements\.txt$' || true); do
+            if [ "$path" != "python/requirements.txt" ]; then
+              echo "::error::Only python/requirements.txt is allowed for pip deps. Found: $path"
+              exit 1
+            fi
+            count=$((count + 1))
+          done
+          echo "allowlist ok ($count requirements.txt file(s))"
+
+      - name: Verify stdlib timezone oracle
+        run: |
+          python python/verify_timezone.py
+          python python/generate_timezone_cases.py --check
+          python python/generate_zone_table.py --check
+
+      - name: Verify photo fixture drift
+        run: python python/generate_photo_import_fixtures.py --check
+
+      - name: Verify generated pattern smoke test
+        run: python python/generate_pattern_smoke_test.py --check
+
+  python-vendor-locked:
+    name: Python vendor locked baseline
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || needs.changes.outputs.workflow == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Fetch pinned shared vendor tool
+        uses: actions/checkout@v7
+        with:
+          repository: myon-bioinformatics/myon-bioinformatics
+          ref: 1eda992aa6fa31a902e2c06428e53ab17e8fe3c1
+          path: .vendor-sync-tools
+          persist-credentials: false
+
+      - name: Verify and recreate locked metadata vendor snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -S .vendor-sync-tools/vendor_sync.py check --manifest python/vendor.lock.json
+          python -S - <<'PY'
+          import json
+          from pathlib import Path
+          lock = json.loads(Path("python/vendor.lock.json").read_text(encoding="utf-8"))
+          for entry in lock["files"]:
+              Path(entry["destination"]).unlink()
+          PY
+          python -S .vendor-sync-tools/vendor_sync.py materialize --manifest python/vendor.lock.json
+          python -S .vendor-sync-tools/vendor_sync.py check --manifest python/vendor.lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: python/requirements.txt
+
+      - name: Install Python test dependencies
+        run: python -m pip install -r python/requirements.txt
+
+      - name: Run locked metadata regressions
+        run: python -m pytest -q python/tests/test_repository_metadata.py
+
+      - name: Stage canonical vendor evidence
+        if: always()
+        shell: bash
+        run: >-
+          python -S .vendor-sync-tools/vendor_stage.py
+          --manifest python/vendor.lock.json --kind locked --output build/vendor-evidence-locked
+      - name: Preserve locked metadata vendor snapshot
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-vendor-locked
+          path: build/vendor-evidence-locked
+          if-no-files-found: error
+          retention-days: 14
+
+  python-pytest:
+    name: Python pytest oracles
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || needs.changes.outputs.workflow == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: python/requirements.txt
+
+      - name: Install Python test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r python/requirements.txt
+
+      - name: Run pytest
+        env:
+          FLUTTER_FAILURE_EVIDENCE: ${{ github.workspace }}/build/controlled-failure
+        run: >-
+          python python/test.py --pytest -- --oracle-mode=local
+          --outcomes-json "$GITHUB_WORKSPACE/build/diagnostics/python-oracle/pytest_outcomes.json"
+          --junitxml="$GITHUB_WORKSPACE/build/test-results/python-3.12.xml"
+
+      - name: Audit repository pattern stubs
+        if: always()
+        run: |
+          mkdir -p build/diagnostics/pattern-stubs
+          python python/pattern_stub_audit.py --json > build/diagnostics/pattern-stubs/baseline.json
+          python -m json.tool build/diagnostics/pattern-stubs/baseline.json
+      - name: Preserve pattern stub baseline
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pattern-stub-baseline
+          path: build/diagnostics/pattern-stubs/baseline.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Preserve junit-python-3.12
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-python-3.12
+          path: build/test-results/python-3.12.xml
+          if-no-files-found: error
+          retention-days: 14
+      - name: Preserve junit-controlled-python-3.12
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-controlled-python-3.12
+          path: build/controlled-failure/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Write local oracle receipt
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          out = Path("build/diagnostics/python-oracle")
+          out.mkdir(parents=True, exist_ok=True)
+          outcomes_path = out / "pytest_outcomes.json"
+          outcomes = {}
+          if outcomes_path.is_file():
+              outcomes = json.loads(outcomes_path.read_text(encoding="utf-8"))
+          receipt = {
+              "job": "python-pytest",
+              "workflow": "Non-Dart checks",
+              "mode": "local",
+              "repository": "${{ github.repository }}",
+              "ref": "${{ github.ref_name }}",
+              "sha": "${{ github.sha }}",
+              "run_id": ${{ github.run_id }},
+              "run_attempt": ${{ github.run_attempt }},
+              "server_url": "${{ github.server_url }}",
+              "outcomes": outcomes.get("counts", {}),
+              "outcomes_total": outcomes.get("total"),
+              "outcomes_ok": outcomes.get("ok"),
+          }
+          (out / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+          print((out / "receipt.json").read_text(encoding="utf-8"))
+          PY
+          python3 -m json.tool build/diagnostics/python-oracle/receipt.json > /dev/null
+
+      - name: Upload python oracle summary artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-oracle-summary
+          path: build/diagnostics/python-oracle/
+          if-no-files-found: error
+          retention-days: 14
+
+  # Lightweight Node check when e2e/ changes — no Flutter boot.
+  playwright-adapter-smoke:
+    name: Playwright browser adapter smoke
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Install and list Playwright browser projects
+        working-directory: e2e
+        run: |
+          npm install
+          npx playwright install --with-deps --only-shell chromium firefox webkit
+          npx playwright test --list --project=chromium --project=firefox --project=webkit --project=mobile-chromium --project=mobile-webkit
+
+      - name: Run real browser through shared Python Playwright adapter
+        run: |
+          python3 python/test.py --external-runner playwright-node \
+            --test-file e2e/tests/runner_adapter_smoke.spec.ts \
+            --test-report build/test-results/playwright-adapter.xml \
+            --test-history build/test-results/playwright-adapter-attempts.json
+          python3 -S python/validate_runner_junit.py build/test-results/playwright-adapter.xml
+
+      - name: Preserve shared Playwright adapter evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-playwright-adapter-smoke
+          path: build/test-results/playwright-adapter.xml
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Preserve shared Playwright attempt history
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-adapter-attempts
+          path: build/test-results/playwright-adapter-attempts.json
+          if-no-files-found: error
+          retention-days: 14
+
+  # Full portable E2E is selected from changed browser-facing paths. It remains
+  # outside Flutter/Pages workflows, so unrelated changes do not pay this cost.
+  playwright:
+    name: Playwright E2E (auto)
+    needs: changes
+    if: needs.changes.outputs.playwright == 'true'
+    runs-on: ubuntu-latest
+    # A healthy portable run completes well below this bound. Avoid holding a
+    # hosted runner for GitHub's 360-minute default when browser installation
+    # or the runner itself becomes stuck.
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.0"
+          cache: true
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Install Flutter deps and build web
+        run: |
+          flutter pub get
+          flutter build web --release -t lib/main.dart --dart-define=E2E=true --base-href "/"
+
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          npm install
+          npx playwright install --with-deps --only-shell chromium firefox webkit
+
+      - name: Serve web build and run Playwright
+        working-directory: e2e
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8080 --directory ../build/web &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:8080" >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          junit_dir="$GITHUB_WORKSPACE/build/test-results"
+          mkdir -p "$junit_dir"
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE="$junit_dir/playwright-portable.xml" \
+            python3 ../python/playwright.py test --project chromium --project firefox --project webkit --project mobile-chromium --project mobile-webkit --grep @portable tests/hub_navigation.spec.ts tests/screen_navigation.spec.ts tests/photo_studio.spec.ts tests/photo_studio_ingress.spec.ts tests/photo_studio_format_matrix.spec.ts tests/shared_header.spec.ts tests/home_discovery_journeys.spec.ts
+          # Later Playwright invocations replace their default output folders.
+          # Preserve the five-browser screenshots and JSON before that happens.
+          mkdir -p ../build/playwright-portable
+          cp -R test-results playwright-report ../build/playwright-portable/
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE="$junit_dir/playwright-interaction-portable.xml" \
+            python3 ../python/playwright.py interaction --project chromium --kind portable
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE="$junit_dir/playwright-interaction-gesture.xml" \
+            python3 ../python/playwright.py interaction --project chromium --kind gesture
+
+      - name: Preserve junit-playwright-e2e
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-playwright-e2e
+          path: build/test-results/playwright-*.xml
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-e2e-report
+          path: |
+            build/playwright-portable/
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # Chromium-only contract for the loopback validation page. The portable
+  # Playwright job boots Flutter web and an allowlisted spec set; this page
+  # is a separate Python server, so it stays on its own producer and JUnit.
+  validation-browser:
+    name: Validation browser contract
+    needs: changes
+    if: needs.changes.outputs.validation_browser == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Install Chromium
+        working-directory: e2e
+        run: |
+          npm install
+          npx playwright install --with-deps --only-shell chromium
+
+      - name: Run validation page browser contract
+        working-directory: e2e
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/build/test-results"
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE="$GITHUB_WORKSPACE/build/test-results/validation-browser.xml" \
+            python3 ../python/playwright.py test --project=chromium tests/validation_http.spec.ts
+
+      - name: Preserve junit-validation-browser
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-validation-browser
+          path: build/test-results/validation-browser.xml
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Preserve validation browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: validation-browser-evidence
+          path: e2e/test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+  # The collector only sees artifacts of THIS workflow run, so the expectation
+  # must follow which producer jobs the path classifier actually selected.
+  junit-plan:
+    name: Plan expected JUnit reports
+    needs: changes
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.plan.outputs.run }}
+      reports: ${{ steps.plan.outputs.reports }}
+    steps:
+      - id: plan
+        env:
+          PYTHON: ${{ needs.changes.outputs.python == 'true' || needs.changes.outputs.workflow == 'true' }}
+          E2E: ${{ needs.changes.outputs.e2e == 'true' }}
+          PLAYWRIGHT: ${{ needs.changes.outputs.playwright == 'true' }}
+          VALIDATION_BROWSER: ${{ needs.changes.outputs.validation_browser == 'true' }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          reports = []
+          if os.environ["E2E"] == "true":
+              reports += ["junit-playwright-adapter-smoke/playwright-adapter.xml"]
+          if os.environ["PYTHON"] == "true":
+              reports += ["junit-python-3.12/python-3.12.xml",
+                          "junit-controlled-python-3.12/junit.xml"]
+          if os.environ["PLAYWRIGHT"] == "true":
+              reports += ["junit-playwright-e2e/playwright-portable.xml",
+                          "junit-playwright-e2e/playwright-interaction-portable.xml",
+                          "junit-playwright-e2e/playwright-interaction-gesture.xml"]
+          if os.environ["VALIDATION_BROWSER"] == "true":
+              reports += ["junit-validation-browser/validation-browser.xml"]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("run=" + ("true" if reports else "false") + "\n")
+              output.write("reports=" + json.dumps(reports) + "\n")
+          PY
+
+  junit-identity:
+    needs: [changes, junit-plan, python-pytest, playwright-adapter-smoke, playwright, validation-browser]
+    if: always() && needs.junit-plan.outputs.run == 'true'
+    permissions:
+      contents: read
+      actions: read
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@1eda992aa6fa31a902e2c06428e53ab17e8fe3c1
+    with:
+      expected-reports: ${{ needs.junit-plan.outputs.reports }}
+      commit-sha: ${{ github.event.pull_request.head.sha || github.sha }}
