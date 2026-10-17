@@ -98,8 +98,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      # Stable first-parent main commit after #60 and #69; complete/errors contract included.
-      GH_IDENTITY_SHA: 1a32ccce18e5278f2c4c0448a45f7f2c9d6c98f5
+      # Pinned gh_identity collector: multi-layout locks + complete/errors contract.
+      GH_IDENTITY_SHA: db1949d67239c39c3bb148af1a7455d1cb303e99
     steps:
       - uses: actions/checkout@v7
         with:
