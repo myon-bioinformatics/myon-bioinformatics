@@ -41,8 +41,9 @@ canonical promotion and compatibility tests.
 
 | Concern | Owner | Examples |
 |--------|--------|----------|
-| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `pr-merge --write` |
+| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `pr-merge --write`, `pr-retarget --write` |
 | Local git writes on an enrolled checkout (explicit paths only) | Parent `gh_ops.py` | `git-commit --message-file msg.txt path/to/file --write` (optional `--push` with `--write`) |
+| Subtree split push from a monorepo to a NEW child branch | Parent `gh_ops.py` | `subtree-push --prefix DIR --remote URL --branch sync/x` (plan), add `--write` to push |
 | GitHub Pages delivery evidence (deploy API + HTTP/bytes/text) | Parent `publish_check.py` | `publish_check.py --site … --repo OWNER/OWNER.github.io` |
 | Search, existence checks, SHA comparison, pure check classification | `gh_identity.py` | Consumer-vendored read-only inventory and checks helpers |
 
@@ -63,3 +64,70 @@ commits. A consumer repin is separate from this parent registry change.
 
 `gh_identity.py` remains read-oriented in child repositories: it does not replace
 `gh_ops.py` for REST writes or local `git add`/`commit`/`push` workflows.
+
+## PR base retarget (`pr-retarget`)
+
+Stacked pull requests often need their base branch moved (for example from a
+feature branch to `main` after the parent PR merged). Planning is the default;
+`--write` PATCHes the base only after preconditions pass.
+
+```text
+python -S gh_ops.py pr-retarget OWNER/REPO 71 --base main
+python -S gh_ops.py pr-retarget OWNER/REPO 71 --base main --write
+```
+
+- Compare uses `NEW_BASE...OLD_BASE` (`ahead_by`): commits on the old base that
+  are not reachable from the new base would join the PR diff, so `--write` is
+  refused unless `--allow-unmerged-commits`. When `ahead_by > 0` but the branch
+  tips share the same tree (typical after a squash merge), the unmerged commit
+  check is skipped. GitHub may still show parent-branch commits in the PR diff
+  (merge-base semantics) even when the trees match; retarget only gates on
+  reachability/tree equality, not on diff display.
+- A compare response without `ahead_by`, with a null or non-numeric `ahead_by`,
+  or with a negative `ahead_by`, is treated like a compare failure (fail-closed).
+- Compare failures (for example a deleted old base) refuse `--write` unless
+  `--allow-compare-failure`.
+- Immediately before PATCH, the PR is re-read: it must still be open with the
+  same `base_ref`, head SHA, and old-base tip SHA as at compare time. Optional
+  `--expect-head-sha` adds a head pin. Any mismatch refuses without PATCH.
+- After PATCH, the PR is read again; `base_ref` must equal `--base` or the
+  command exits 1 (`verification_mismatch`).
+
+## Subtree push (`subtree-push`)
+
+```text
+python -S gh_ops.py subtree-push --root MONOREPO --prefix DIR --remote URL --branch sync/x          # plan only
+python -S gh_ops.py subtree-push --root MONOREPO --prefix DIR --remote URL --branch sync/x --write  # push
+```
+
+The decision logic is ported from gh_identity#77 (`cursor/subtree-stale-split-4489`,
+head `d43ceb5`). Once #77 is merged and `vendor/gh_identity.py` is repinned to it, the
+read-only checks switch to GHI's public functions and only the push stays here.
+
+- The split must have the same tree as `<source>:<prefix>`. `git subtree split` can
+  exit 0 with a stale SHA (git 2.47.3); then a filter-branch split in a temporary clone
+  is used, and it is checked again.
+- The verified SHA is pushed directly as
+  `git push --force-with-lease=refs/heads/<branch>: -- URL <split_sha>:refs/heads/<branch>`.
+  The empty lease means "the branch must still not exist". A branch someone creates
+  after the existence check (even at an ancestor, which a plain push would fast-forward)
+  makes the push fail. There is no `git subtree push` (it re-splits), no `--force` and no `+`.
+- Error messages name the ref involved (`refs/heads/<branch>`, `remote ref <compare>`).
+- Only a NEW branch: main/master, the remote default branch and existing branches are refused.
+- The remote compare ref (`--compare-ref`, default: the remote default branch, then
+  main/master/trunk) must be an ancestor of the split. Paths that exist only on the
+  child are refused unless `--child-only-path GLOB` allows them (none by default).
+- The compare tip is fetched object-only before splitting (`--no-write-fetch-head
+  --no-tags`, no destination ref). After a `--squash` join, `git subtree split` otherwise
+  fails with `could not rev-parse split hash`.
+- With `--write` the tree is checked once more right before the push. Network errors
+  are retried with the `git-commit` loop, and afterwards the remote branch must equal
+  `split_sha`. Any unexpected git result refuses the push (exit 2).
+
+Flow for a child repository that was joined with `git subtree add --squash`:
+
+1. `subtree-push ... --branch sync/x --write` from the monorepo.
+2. Review and merge `sync/x` in the child repository.
+3. In the monorepo: `git subtree pull --prefix=DIR --squash URL main` to re-anchor.
+   The next split then descends from the child's main, so the next push is a fast-forward.
+
