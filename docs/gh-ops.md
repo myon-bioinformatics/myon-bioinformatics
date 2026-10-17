@@ -43,6 +43,7 @@ canonical promotion and compatibility tests.
 |--------|--------|----------|
 | Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `pr-merge --write` |
 | Local git writes on an enrolled checkout (explicit paths only) | Parent `gh_ops.py` | `git-commit --message-file msg.txt path/to/file --write` (optional `--push` with `--write`) |
+| Subtree split push from a monorepo to a NEW child branch | Parent `gh_ops.py` | `subtree-push --prefix DIR --remote URL --branch sync/x` (plan), add `--write` to push |
 | GitHub Pages delivery evidence (deploy API + HTTP/bytes/text) | Parent `publish_check.py` | `publish_check.py --site … --repo OWNER/OWNER.github.io` |
 | Search, existence checks, SHA comparison, pure check classification | `gh_identity.py` | Consumer-vendored read-only inventory and checks helpers |
 
@@ -63,3 +64,38 @@ commits. A consumer repin is separate from this parent registry change.
 
 `gh_identity.py` remains read-oriented in child repositories: it does not replace
 `gh_ops.py` for REST writes or local `git add`/`commit`/`push` workflows.
+
+## Subtree push (`subtree-push`)
+
+```text
+python -S gh_ops.py subtree-push --root MONOREPO --prefix DIR --remote URL --branch sync/x          # plan only
+python -S gh_ops.py subtree-push --root MONOREPO --prefix DIR --remote URL --branch sync/x --write  # push
+```
+
+The decision logic is ported from gh_identity#77 (`cursor/subtree-stale-split-4489`,
+head `d43ceb5`). Once #77 is merged and `vendor/gh_identity.py` is repinned to it, the
+read-only checks switch to GHI's public functions and only the push stays here.
+
+- The split must have the same tree as `<source>:<prefix>`. `git subtree split` can
+  exit 0 with a stale SHA (git 2.47.3); then a filter-branch split in a temporary clone
+  is used, and it is checked again.
+- The verified SHA is pushed directly as `git push -- URL <split_sha>:refs/heads/<branch>`.
+  There is no `git subtree push` (it re-splits), no `--force` and no `+`.
+- Only a NEW branch: main/master, the remote default branch and existing branches are refused.
+- The remote compare ref (`--compare-ref`, default: the remote default branch, then
+  main/master/trunk) must be an ancestor of the split. Paths that exist only on the
+  child are refused unless `--child-only-path GLOB` allows them (none by default).
+- The compare tip is fetched object-only before splitting (`--no-write-fetch-head
+  --no-tags`, no destination ref). After a `--squash` join, `git subtree split` otherwise
+  fails with `could not rev-parse split hash`.
+- With `--write` the tree is checked once more right before the push. Network errors
+  are retried with the `git-commit` loop, and afterwards the remote branch must equal
+  `split_sha`. Any unexpected git result refuses the push (exit 2).
+
+Flow for a child repository that was joined with `git subtree add --squash`:
+
+1. `subtree-push ... --branch sync/x --write` from the monorepo.
+2. Review and merge `sync/x` in the child repository.
+3. In the monorepo: `git subtree pull --prefix=DIR --squash URL main` to re-anchor.
+   The next split then descends from the child's main, so the next push is a fast-forward.
+
