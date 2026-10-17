@@ -1566,6 +1566,71 @@ def test_rejects_bare_importlib_resources_module_reference(tmp_path: Path) -> No
         _bundle(root)
 
 
+def _mathx_add_app(*lines: str) -> str:
+    return "\n".join(lines) + "\n"
+
+
+def test_importlib_util_import_binds_importlib_for_import_module(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "def add(left, right):\n    return left + right\n")
+    app = _mathx_add_app(
+        "import importlib.util",
+        "if __name__ == '__main__':",
+        "    print(importlib.import_module('mathx').add(1, 2))",
+    )
+    _write(root, "app.py", app)
+    original = _run(root / "app.py", [str(root / "app.py")], cwd=root)
+    assert original.returncode == 0, original.stderr
+    assert original.stdout.strip() == "3"
+    text = _bundle(root)
+    out = root / "dist" / "app_min.py"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(text.encode("utf-8"))
+    bundled = _run(out, [str(out)], cwd=out.parent)
+    assert bundled.returncode == 0, bundled.stderr
+    assert bundled.stdout.strip() == "3"
+
+
+def test_importlib_machinery_import_binds_importlib_for_import_module(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "def add(left, right):\n    return left + right\n")
+    app = _mathx_add_app(
+        "import importlib.machinery",
+        "if __name__ == '__main__':",
+        "    print(importlib.import_module('mathx').add(1, 2))",
+    )
+    _write(root, "app.py", app)
+    text = _bundle(root)
+    out = root / "dist" / "app_min.py"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(text.encode("utf-8"))
+    bundled = _run(out, [str(out)], cwd=out.parent)
+    assert bundled.returncode == 0, bundled.stderr
+    assert bundled.stdout.strip() == "3"
+
+
+def test_rejects_bare_importlib_after_importlib_util_import(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "import importlib.util\nm = importlib\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib \(module object"):
+        _bundle(root)
+
+
+def test_rejects_bound_import_module_after_importlib_util_import(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "VALUE = 1\n")
+    _write(root, "app.py", "import importlib.util\nf = importlib.import_module\nf('mathx')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib\.import_module"):
+        _bundle(root)
+
+
+def test_rejects_getattr_resources_after_importlib_util_import(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "import importlib.util\ngetattr(importlib, 'resources').files('p')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib\.resources"):
+        _bundle(root)
+
+
 def test_allows_importlib_submodule_aliases_as_values(tmp_path: Path) -> None:
     root = tmp_path / "src"
     _write(

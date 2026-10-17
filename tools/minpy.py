@@ -557,14 +557,20 @@ class _Scanner(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             self._note_module(alias.name, node.lineno)
-            if alias.name == "pkgutil":
+            if self._import_binds_top_level_name(alias, "pkgutil"):
                 self._pkgutil.add(alias.asname or "pkgutil")
-            if alias.name == "importlib":
+            if self._import_binds_top_level_name(alias, "importlib"):
                 self._importlib_modules.add(alias.asname or "importlib")
-            if alias.name == "pkg_resources":
+            if self._import_binds_top_level_name(alias, "pkg_resources"):
                 self._pkg_resources_modules.add(alias.asname or "pkg_resources")
             self._add_ref(0, alias.name, (), node.lineno)
         self.generic_visit(node)
+
+    @staticmethod
+    def _import_binds_top_level_name(alias: ast.alias, top: str) -> bool:
+        if alias.name == top:
+            return True
+        return alias.asname is None and alias.name.startswith(top + ".")
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         module = node.module or ""
