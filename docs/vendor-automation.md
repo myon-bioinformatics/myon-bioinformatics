@@ -281,6 +281,13 @@ python vendor_catalog.py compare --lock vendor.lock.json --consumer owner/consum
 python vendor_catalog.py verify
 ```
 
+Consumer-held catalog snapshots (for example copied into a child repository) may
+call `validate --allow-legacy-implicit-source` until **2027-04-01** to accept
+omitted `source` fields using the retired `<repository>.py` default; each
+omission emits a `DeprecationWarning`. After that date the flag is ignored and
+omitted `source` is always an error. The parent `vendor-catalog.json` must
+always declare `source` explicitly.
+
 `validate` and `compare` are offline. `verify` reads public Git objects into a
 throwaway bare repository through `vendor_sync.inspect_source`; it requires Git.
 It verifies the full resolved commit, regular-file tree mode and Git blob against
@@ -292,11 +299,18 @@ evidence, not candidate compatibility CI or an import-safety assessment.
 ### Contract: vendor-catalog/1
 
 The top-level fields are exactly `schema` and nonempty `tools`. Each tool has
-`repository` (`owner/repository`), `commit` (40 lowercase hex characters), and
-nonempty audit `reason`. Optional `source` overrides the default `<repository>.py`
-for real exceptions; optional `consumers` records per-consumer policy exceptions
-or explicit enroll decisions. Unknown fields and duplicate repository/source
-pairs are rejected. The recommendation unit is an independent source artifact,
+`repository` (`owner/repository`), `commit` (40 lowercase hex characters),
+`source` (relative POSIX path to the recommended file), and nonempty audit
+`reason`. Omitted `source` is rejected; there is no repository-name default.
+Each repository name must normalize to a valid Python identifier by lowercasing
+and replacing `-` and `.` with `_`, rejecting Python keywords; two different
+repositories (even under different owners) whose names normalize to the same
+module identity are rejected so independent `vendor/<module>.py` paths cannot
+collide. Repository strings that differ only by case refer to the same consumer
+and do not trigger a normalization collision. Optional `consumers` records
+per-consumer policy exceptions or explicit enroll decisions. Unknown fields and
+duplicate repository/source pairs are rejected. The recommendation unit is an
+independent source artifact,
 identified by repository/source, rather than an entire repository release.
 Different sources from the same repository are intentionally allowed for
 standalone helpers; each carries its own explicit recommended commit. This does

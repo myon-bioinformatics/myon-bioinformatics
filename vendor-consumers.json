@@ -672,6 +672,16 @@
           "repository": "myon-bioinformatics/markdown",
           "source": "LICENSE",
           "destination": "vendor/markdown-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/web-ui",
+          "source": "web_ui.py",
+          "destination": "vendor/web_ui.py"
+        },
+        {
+          "repository": "myon-bioinformatics/web-ui",
+          "source": "LICENSE",
+          "destination": "vendor/web-ui-LICENSE"
         }
       ]
     },
