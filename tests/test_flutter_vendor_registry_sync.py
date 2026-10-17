@@ -1,7 +1,7 @@
 """Regression for the parent-approved Flutter vendor and workflow baseline.
 
-Lock and workflow snapshots come from flutter #198 main merge 1dd33afc (gh_ops/LICENSE
-pinned to parent #96 merge 09831b99).
+Lock snapshot comes from Flutter #207 f73c72eb, adopting browser-test-kit #84
+main merge 4be0f0d2. The approved Non-Dart workflow and gh_ops/LICENSE pins are unchanged.
 """
 import copy
 import hashlib
@@ -17,7 +17,7 @@ import vendor_sync
 
 ROOT = Path(__file__).resolve().parents[1]
 FLUTTER = "myon-bioinformatics/flutter_navigation_basic"
-LOCK_FIXTURE = "tests/fixtures/flutter_vendor_lock_1dd33afc.json"
+LOCK_FIXTURE = "tests/fixtures/flutter_vendor_lock_f73c72eb.json"
 WORKFLOW_FIXTURE = "tests/fixtures/flutter_non_dart_1dd33afc.yml"
 GH_OPS_CATALOG_COMMIT = "09831b992dc91d83b15c44861a788e03b1e654c4"
 
@@ -33,7 +33,7 @@ def test_flutter_registry_matches_pinned_post_migration_lock():
     assert result["matches"] is True
     assert result["missing"] == result["unexpected"] == []
     entries = vendor_consumers.get_consumer(registry, FLUTTER)["entries"]
-    assert len(entries) == len(lock["files"]) == 16
+    assert len(entries) == len(lock["files"]) == 17
     assert {x["destination"] for x in entries} == {x["destination"] for x in lock["files"]}
 
 
@@ -60,7 +60,7 @@ def test_regression_detects_removed_or_reintroduced_vendor_source():
     assert result["matches"] is False
     assert len(result["missing"]) == 1
     assert result["unexpected"] == []
-    assert len(lock["files"]) == 16
+    assert len(lock["files"]) == 17
 
 
 def test_gh_ops_matches_catalog_recommendation():
@@ -95,6 +95,8 @@ def test_historical_layout_requires_deliberate_parent_baseline_update():
     registry = load("vendor-consumers.json")
     old_lock = load("tests/fixtures/flutter_vendor_lock_782babef.json")
     assert not vendor_consumers.compare(registry, old_lock, FLUTTER)["matches"]
+    before_handoff = load("tests/fixtures/flutter_vendor_lock_1dd33afc.json")
+    assert not vendor_consumers.compare(registry, before_handoff, FLUTTER)["matches"]
     current = vendor_consumers.get_consumer(registry, FLUTTER)
     assert current["lock"] == "python/vendor.lock.json"
     assert all(
@@ -114,7 +116,7 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
     assert hashlib.sha256(approved).hexdigest() == contract["sha256"]
     recorded = heads["heads"][FLUTTER]
     assert recorded["repository_id"] == 739348522
-    assert recorded["sha"] == "1dd33afcffba437159f894b6a3f6637d751893a0"
+    assert recorded["sha"] == "f73c72eb5b2edbcfbac278d0591aec2cc439a0a5"
     data = approved
     if fault == "removed":
         start = data.index(b"  python-vendor-locked:\n")
@@ -160,3 +162,19 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
         assert plan["skipped"] == [{"repository": FLUTTER, "reason": "locked_ci_mismatch"}]
         assert plan["heads"][FLUTTER] == recorded
     assert registry == before
+
+
+def test_shared_execution_adopts_main_merge_with_existing_helper_and_license():
+    lock = load(LOCK_FIXTURE)
+    catalog = load("vendor-catalog.json")
+    rows = {row["destination"]: row for row in lock["files"]}
+    module = rows["e2e/utils/browser_execution.mjs"]
+    assert module["repository"] == "myon-bioinformatics/browser-test-kit"
+    assert module["ref"] == module["commit"] == "4be0f0d20b4cb6418ae97f64f3ca6aea6a75292c"
+    assert module["source"] == "scripts/browser_execution.mjs"
+    for path in ("e2e/utils/interaction.mjs", "python/vendor/browser-test-kit-LICENSE"):
+        assert rows[path]["repository"] == module["repository"]
+    compared = vendor_catalog.compare(catalog, lock, FLUTTER)["tools"]
+    execution = next(row for row in compared if row["source"] == module["source"])
+    assert execution["enrollment"] == "enrolled"
+    assert execution["comparison"] == "at_recommended"

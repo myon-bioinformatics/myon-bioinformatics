@@ -629,6 +629,11 @@
           "repository": "myon-bioinformatics/gh_identity",
           "source": "LICENSE",
           "destination": "python/vendor/gh_identity-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/browser-test-kit",
+          "source": "scripts/browser_execution.mjs",
+          "destination": "e2e/utils/browser_execution.mjs"
         }
       ],
       "locked_ci": {
