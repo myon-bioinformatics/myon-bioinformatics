@@ -41,7 +41,7 @@ canonical promotion and compatibility tests.
 
 | Concern | Owner | Examples |
 |--------|--------|----------|
-| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `pr-merge --write` |
+| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `pr-merge --write`, `pr-retarget --write` |
 | Local git writes on an enrolled checkout (explicit paths only) | Parent `gh_ops.py` | `git-commit --message-file msg.txt path/to/file --write` (optional `--push` with `--write`) |
 | Subtree split push from a monorepo to a NEW child branch | Parent `gh_ops.py` | `subtree-push --prefix DIR --remote URL --branch sync/x` (plan), add `--write` to push |
 | GitHub Pages delivery evidence (deploy API + HTTP/bytes/text) | Parent `publish_check.py` | `publish_check.py --site … --repo OWNER/OWNER.github.io` |
@@ -64,6 +64,30 @@ commits. A consumer repin is separate from this parent registry change.
 
 `gh_identity.py` remains read-oriented in child repositories: it does not replace
 `gh_ops.py` for REST writes or local `git add`/`commit`/`push` workflows.
+
+## PR base retarget (`pr-retarget`)
+
+Stacked pull requests often need their base branch moved (for example from a
+feature branch to `main` after the parent PR merged). Planning is the default;
+`--write` PATCHes the base only after preconditions pass.
+
+```text
+python -S gh_ops.py pr-retarget OWNER/REPO 71 --base main
+python -S gh_ops.py pr-retarget OWNER/REPO 71 --base main --write
+```
+
+- Compare uses `NEW_BASE...OLD_BASE` (`ahead_by`): commits on the old base that
+  are not reachable from the new base would join the PR diff, so `--write` is
+  refused unless `--allow-unmerged-commits`. When `ahead_by > 0` but the branch
+  tips share the same tree (typical after a squash merge), the unmerged commit
+  check is skipped.
+- Compare failures (for example a deleted old base) refuse `--write` unless
+  `--allow-compare-failure`.
+- Immediately before PATCH, the PR is re-read: it must still be open with the
+  same `base_ref`, head SHA, and old-base tip SHA as at compare time. Optional
+  `--expect-head-sha` adds a head pin. Any mismatch refuses without PATCH.
+- After PATCH, the PR is read again; `base_ref` must equal `--base` or the
+  command exits 1 (`verification_mismatch`).
 
 ## Subtree push (`subtree-push`)
 
