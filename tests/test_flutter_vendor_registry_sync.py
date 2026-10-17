@@ -66,7 +66,12 @@ def test_existing_pins_remain_sole_consumer_authority():
     lock = load("tests/fixtures/flutter_vendor_lock_56fa7e26.json")
     pins = vendor_catalog.compare(catalog, lock, FLUTTER)["tools"]
     assert {r["source"] for r in pins if r["enrollment"] == "enrolled" and
-            r["comparison"] == "different"} == {"gh_identity.py", "xprobe.py", "yourself.py"}
+            r["comparison"] == "different"} == {
+                "gh_identity.py",
+                "gh_ops.py",
+                "xprobe.py",
+                "yourself.py",
+            }
     # Catalog recommendations do not overwrite or retarget the lock.
     assert vendor_consumers.compare(registry, lock, FLUTTER)["matches"]
 

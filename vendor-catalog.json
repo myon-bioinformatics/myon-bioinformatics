@@ -111,8 +111,8 @@
     },
     {
       "repository": "myon-bioinformatics/myon-bioinformatics",
-      "commit": "1eda992aa6fa31a902e2c06428e53ab17e8fe3c1",
-      "reason": "Reviewed gh_identity request/search adapter already locked by Flutter PR #197; git-commit additions in this PR require a later deliberate consumer repin after merge.",
+      "commit": "09831b992dc91d83b15c44861a788e03b1e654c4",
+      "reason": "Parent main merge commit for vendor source ownership (#96); matches Flutter #198 parent gh_ops pin for catalog compare.",
       "source": "gh_ops.py"
     },
     {
