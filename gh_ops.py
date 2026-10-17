@@ -239,25 +239,36 @@ def _base_ref_label(ref: str | None) -> str:
 _BRANCH_NAME_INVALID = re.compile(r"[\000-\037\177 ~^:?*[\]\\]|@{|//")
 
 
+def _validate_branch_segment(segment: str, *, field: str = "base") -> None:
+    if not segment:
+        raise GhOpsError(f"{field} must not contain empty path segments")
+    if segment == "@":
+        raise GhOpsError(f"{field} contains invalid characters for a branch name")
+    if segment.startswith(".") or segment.endswith("."):
+        raise GhOpsError(f"{field} must not start or end with .")
+    if segment.startswith("-"):
+        raise GhOpsError(f"{field} must not start with -")
+    if segment.endswith(".lock"):
+        raise GhOpsError(f"{field} must not end with .lock")
+    if _BRANCH_NAME_INVALID.search(segment):
+        raise GhOpsError(f"{field} contains invalid characters for a branch name")
+
+
 def _validate_branch_name(name: str, *, field: str = "base") -> str:
-    """Validate a single-segment branch name (subset of ``git check-ref-format`` rules)."""
+    """Validate a branch name (subset of ``git check-ref-format`` rules, per ``/`` segment)."""
     branch = name.strip()
     if not branch:
         raise GhOpsError(f"{field} is required")
     if branch.startswith("refs/"):
         raise GhOpsError(f"{field} must be a branch name, not a refs/ path")
-    if branch.startswith("/") or branch.endswith("/"):
-        raise GhOpsError(f"{field} must not start or end with /")
-    if branch.startswith(".") or branch.endswith("."):
-        raise GhOpsError(f"{field} must not start or end with .")
-    if branch.startswith("-"):
-        raise GhOpsError(f"{field} must not start with -")
     if ".." in branch:
         raise GhOpsError(f"{field} must not contain ..")
-    if branch.endswith(".lock"):
-        raise GhOpsError(f"{field} must not end with .lock")
-    if _BRANCH_NAME_INVALID.search(branch):
-        raise GhOpsError(f"{field} contains invalid characters for a branch name")
+    if branch.startswith("/") or branch.endswith("/"):
+        raise GhOpsError(f"{field} must not start or end with /")
+    if "//" in branch:
+        raise GhOpsError(f"{field} must not contain //")
+    for segment in branch.split("/"):
+        _validate_branch_segment(segment, field=field)
     return branch
 
 
@@ -299,9 +310,11 @@ def _branch_tip_tree_match(client: Client, repo: str, base_branch: str, old_bran
 
 
 def _pr_retarget_old_tip_stale(old_before: str | None, old_after: str | None, *, allow_both_missing: bool) -> str:
+    if old_before is None and old_after is None:
+        if allow_both_missing:
+            return ""
+        return "old base tip could not be verified before PATCH"
     if old_before == old_after:
-        return ""
-    if allow_both_missing and old_before is None and old_after is None:
         return ""
     if old_before is None or old_after is None:
         return "old base tip could not be verified consistently before PATCH"
@@ -1063,17 +1076,27 @@ def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = Fal
     ahead_by = 0
     try:
         cmp = client.get(compare_path)
-        if "ahead_by" not in cmp:
+        ahead_raw = cmp.get("ahead_by")
+        if ahead_raw is None:
             compare_failed = True
             out["old_base_unmerged_commits"] = None
             out["old_base_commit_subjects"] = []
-            out["compare_error"] = "missing ahead_by in compare response"
+            out["compare_error"] = ("missing ahead_by in compare response" if "ahead_by" not in cmp
+                                    else "null ahead_by in compare response")
         else:
-            ahead_by = int(cmp["ahead_by"])
-            out["old_base_unmerged_commits"] = ahead_by
-            commits = cmp.get("commits") or []
-            out["old_base_commit_subjects"] = [
-                _commit_message_subject((item.get("commit") or {}).get("message")) for item in commits[:5]]
+            try:
+                ahead_by = int(ahead_raw)
+            except (TypeError, ValueError):
+                compare_failed = True
+                out["old_base_unmerged_commits"] = None
+                out["old_base_commit_subjects"] = []
+                out["compare_error"] = "invalid ahead_by in compare response"
+            else:
+                out["old_base_unmerged_commits"] = ahead_by
+                commits = cmp.get("commits") or []
+                out["old_base_commit_subjects"] = [
+                    _commit_message_subject((item.get("commit") or {}).get("message"))
+                    for item in commits[:5]]
     except GhOpsError as error:
         compare_failed = True
         out["old_base_unmerged_commits"] = None
@@ -1090,7 +1113,7 @@ def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = Fal
     if compare_failed:
         out["warning"] = f"could not compare {old_label} with {base}"
     elif unmerged_risky:
-        out["warning"] = f"{old_label} has {ahead_by} commit(s) not in {base}; they would join the diff"
+        out["warning"] = f"could not compare"
     if not write:
         out["status"] = "planned"
         out["dry_run"] = True

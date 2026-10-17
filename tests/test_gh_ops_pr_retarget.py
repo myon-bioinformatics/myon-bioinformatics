@@ -140,13 +140,41 @@ def test_pr_retarget_old_base_ref_fetch_failure_is_tolerated_for_plan():
     assert out["status"] == "planned"
 
 
+def test_branch_tip_tree_match_rejects_empty_new_base_tree_with_nonempty_old():
+    routes = {
+        ("GET", f"/repos/{REPO}/git/ref/heads/main"): ref_route(MAIN_TIP),
+        ("GET", f"/repos/{REPO}/git/ref/heads/feat%2Fp"): ref_route(OLD_TIP),
+        ("GET", f"/repos/{REPO}/git/commits/{MAIN_TIP}"): commit_tree_route(""),
+        ("GET", f"/repos/{REPO}/git/commits/{OLD_TIP}"): commit_tree_route(TREE_SHA),
+    }
+    client, _ = client_for(routes)
+    info = gh_ops._branch_tip_tree_match(client, REPO, "main", "feat/p")
+    assert info["matched"] is False
+    assert info["new_base_tree_sha"] is None
+    assert info["old_base_tree_sha"] == TREE_SHA
+
+
+def test_pr_retarget_write_refuses_unmerged_when_new_base_tree_empty():
+    routes = retarget_routes("feat/p", {"ahead_by": 2}, pr_reads=[
+        pr_payload(base_ref="feat/p"),
+        pr_payload(base_ref="feat/p"),
+        pr_payload(base_ref="main"),
+    ])
+    routes[("GET", f"/repos/{REPO}/git/commits/{MAIN_TIP}")] = commit_tree_route("")
+    client, stub = client_for(routes)
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", write=True, client=client)
+    assert out["status"] == "refused_unmerged_base" and out["ok"] is False
+    assert "unmerged_commit_tree_match" not in out
+    assert not any(call["method"] == "PATCH" for call in stub.calls)
+
+
 def test_branch_tip_tree_match_returns_false_on_git_errors():
     client, _ = client_for({("GET", f"/repos/{REPO}/git/ref/heads/main"): reply({}, status=404)})
     assert gh_ops._branch_tip_tree_match(client, REPO, "main", "feat/p")["matched"] is False
 
 
 @pytest.mark.parametrize("name", ["-x", "feat/", "a~1", "a:b", "a^", "a?", "a*", "a[b", "a@{1", "/a", "a//b",
-                                  ".a", "a\\b"])
+                                  ".a", "a\\b", "a.", "a/.b", "a.lock/b", "@", "a\tb", "a\x7fb"])
 def test_validate_branch_name_rejects_git_invalid_names(name):
     with pytest.raises(gh_ops.GhOpsError):
         gh_ops._validate_branch_name(name)
@@ -394,13 +422,20 @@ def test_pr_retarget_allow_flags_are_not_interchangeable(capsys):
     out = gh_ops.pr_retarget(REPO, NUMBER, "main", write=True, allow_unmerged_commits=True, client=client)
     assert out["status"] == "refused_compare_failure" and out["ok"] is False
 
-    client, _ = client_for(retarget_routes("feat/p", {"ahead_by": 2}, pr_reads=[pr_payload(base_ref="feat/p")]))
-    assert gh_ops.main(["pr-retarget", REPO, str(NUMBER), "--write", "--allow-compare-failure"],
+    client, stub = client_for(retarget_routes("feat/p", {"ahead_by": 2}, pr_reads=[pr_payload(base_ref="feat/p")]))
+    assert gh_ops.main(["--json", "pr-retarget", REPO, str(NUMBER), "--write", "--allow-compare-failure"],
                          client=client) == 1
-    client, _ = client_for(retarget_routes("gone", {}, compare_status=404, old_ref_missing=True,
-                                           pr_reads=[pr_payload(base_ref="gone")]))
-    assert gh_ops.main(["pr-retarget", REPO, str(NUMBER), "--write", "--allow-unmerged-commits"],
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "refused_unmerged_base"
+    assert not any(call["method"] == "PATCH" for call in stub.calls)
+
+    client, stub = client_for(retarget_routes("gone", {}, compare_status=404, old_ref_missing=True,
+                                              pr_reads=[pr_payload(base_ref="gone")]))
+    assert gh_ops.main(["--json", "pr-retarget", REPO, str(NUMBER), "--write", "--allow-unmerged-commits"],
                          client=client) == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "refused_compare_failure"
+    assert not any(call["method"] == "PATCH" for call in stub.calls)
 
 
 def test_pr_retarget_refused_compare_failure_ok_false_and_cli_exit_one():
@@ -436,6 +471,109 @@ def test_pr_retarget_stale_merged_before_patch():
     client, stub = client_for(retarget_routes("feat/parent", {"ahead_by": 0}, pr_reads=[before, merged]))
     out = gh_ops.pr_retarget(REPO, NUMBER, "main", write=True, client=client)
     assert out["status"] == "refused_stale_pr" and out["reason"] == "merged"
+    assert not any(call["method"] == "PATCH" for call in stub.calls)
+
+
+def test_pr_retarget_old_tip_stale_matrix():
+    sha = OLD_TIP
+    assert gh_ops._pr_retarget_old_tip_stale(sha, sha, allow_both_missing=False) == ""
+    assert gh_ops._pr_retarget_old_tip_stale(None, None, allow_both_missing=False) == (
+        "old base tip could not be verified before PATCH")
+    assert gh_ops._pr_retarget_old_tip_stale(None, None, allow_both_missing=True) == ""
+    assert "consistently" in gh_ops._pr_retarget_old_tip_stale(None, sha, allow_both_missing=True)
+
+
+def test_pr_retarget_compare_ok_allow_compare_failure_alone_does_not_bypass_missing_tips():
+    routes = retarget_routes("feat/p", {"ahead_by": 0}, pr_reads=[
+        pr_payload(base_ref="feat/p"),
+        pr_payload(base_ref="feat/p"),
+    ])
+    routes[("GET", f"/repos/{REPO}/git/ref/heads/feat%2Fp")] = [
+        reply({"message": "missing"}, status=404),
+        reply({"message": "missing"}, status=404),
+    ]
+    client, stub = client_for(routes)
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", write=True, allow_compare_failure=True, client=client)
+    assert out["status"] == "refused_stale_pr"
+    assert out["ok"] is False
+    assert not any(call["method"] == "PATCH" for call in stub.calls)
+
+
+def test_pr_retarget_compare_ok_both_tips_missing_without_allow_refuses_patch():
+    routes = retarget_routes("feat/p", {"ahead_by": 0}, pr_reads=[
+        pr_payload(base_ref="feat/p"),
+        pr_payload(base_ref="feat/p"),
+    ])
+    routes[("GET", f"/repos/{REPO}/git/ref/heads/feat%2Fp")] = [
+        reply({"message": "missing"}, status=404),
+        reply({"message": "missing"}, status=404),
+    ]
+    client, stub = client_for(routes)
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", write=True, client=client)
+    assert out["status"] == "refused_stale_pr"
+    assert out["ok"] is False
+    assert "old base tip could not be verified before PATCH" in out["reason"]
+    assert not any(call["method"] == "PATCH" for call in stub.calls)
+
+
+def test_git_ref_tip_sha_raises_when_object_has_no_sha():
+    client, _ = client_for({("GET", f"/repos/{REPO}/git/ref/heads/main"): reply({"object": {}})})
+    with pytest.raises(gh_ops.GhOpsError, match="returned no SHA"):
+        gh_ops._git_ref_tip_sha(client, REPO, "main")
+
+
+def test_pr_retarget_tip_stale_refusal_ok_false_and_cli_exit_one(capsys):
+    routes = retarget_routes("feat/p", {"ahead_by": 0}, pr_reads=[pr_payload(base_ref="feat/p"), pr_payload(base_ref="feat/p")])
+    routes[("GET", f"/repos/{REPO}/git/ref/heads/feat%2Fp")] = [
+        reply({"message": "missing"}, status=404),
+        ref_route(OLD_TIP),
+    ]
+    client, _ = client_for(routes)
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", write=True, client=client)
+    assert out["status"] == "refused_stale_pr" and out["ok"] is False
+    routes_cli = retarget_routes("feat/p", {"ahead_by": 0}, pr_reads=[pr_payload(base_ref="feat/p"), pr_payload(base_ref="feat/p")])
+    routes_cli[("GET", f"/repos/{REPO}/git/ref/heads/feat%2Fp")] = [
+        reply({"message": "missing"}, status=404),
+        ref_route(OLD_TIP),
+    ]
+    client, stub = client_for(routes_cli)
+    assert gh_ops.main(["--json", "pr-retarget", REPO, str(NUMBER), "--write"], client=client) == 1
+    assert json.loads(capsys.readouterr().out)["status"] == "refused_stale_pr"
+    assert not any(call["method"] == "PATCH" for call in stub.calls)
+
+
+def test_pr_retarget_null_ahead_by_is_compare_failure():
+    client, _ = client_for(retarget_routes("feat/p", {"ahead_by": None}, pr_reads=[pr_payload(base_ref="feat/p")]))
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", write=True, client=client)
+    assert out["status"] == "refused_compare_failure"
+    assert out["compare_error"] == "null ahead_by in compare response"
+
+
+def test_pr_retarget_tree_match_requires_nonempty_trees_on_each_side():
+    routes = retarget_routes("feat/p", {"ahead_by": 2}, pr_reads=[pr_payload(base_ref="feat/p")])
+    routes[("GET", f"/repos/{REPO}/git/commits/{MAIN_TIP}")] = commit_tree_route("")
+    routes[("GET", f"/repos/{REPO}/git/commits/{OLD_TIP}")] = commit_tree_route(TREE_SHA)
+    client, _ = client_for(routes)
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", client=client)
+    assert "unmerged_commit_tree_match" not in out
+
+    routes = retarget_routes("feat/p", {"ahead_by": 2}, pr_reads=[pr_payload(base_ref="feat/p")])
+    routes[("GET", f"/repos/{REPO}/git/commits/{MAIN_TIP}")] = commit_tree_route(TREE_SHA)
+    routes[("GET", f"/repos/{REPO}/git/commits/{OLD_TIP}")] = commit_tree_route("")
+    client, _ = client_for(routes)
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", client=client)
+    assert "unmerged_commit_tree_match" not in out
+
+
+def test_pr_retarget_unknown_old_base_with_ahead_by_still_refuses_unmerged():
+    routes = {("GET", f"/repos/{REPO}/pulls/{NUMBER}"): reply(
+        {"state": "open", "merged": False, "html_url": f"https://github.com/{REPO}/pull/{NUMBER}",
+         "base": {}, "head": {"ref": "feat/x", "sha": HEAD_SHA}}),
+        ("GET", f"/repos/{REPO}/compare/main..."): reply({"ahead_by": 2, "commits": []})}
+    client, stub = client_for(routes)
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", write=True, client=client)
+    assert out["status"] == "refused_unmerged_base" and out["ok"] is False
+    assert "tree_compare" not in out
     assert not any(call["method"] == "PATCH" for call in stub.calls)
 
 
