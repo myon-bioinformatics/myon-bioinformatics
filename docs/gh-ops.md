@@ -41,7 +41,7 @@ canonical promotion and compatibility tests.
 
 | Concern | Owner | Examples |
 |--------|--------|----------|
-| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `pr-merge --write`, `pr-retarget --write` |
+| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `commit-files --write`, `pr-merge --write`, `pr-retarget --write` |
 | Local git writes on an enrolled checkout (explicit paths only) | Parent `gh_ops.py` | `git-commit --message-file msg.txt path/to/file --write` (optional `--push` with `--write`) |
 | Subtree split push from a monorepo to a NEW child branch | Parent `gh_ops.py` | `subtree-push --prefix DIR --remote URL --branch sync/x` (plan), add `--write` to push |
 | GitHub Pages delivery evidence (deploy API + HTTP/bytes/text) | Parent `publish_check.py` | `publish_check.py --site … --repo OWNER/OWNER.github.io` |
@@ -136,3 +136,19 @@ Flow for a child repository that was joined with `git subtree add --squash`:
 3. In the monorepo: `git subtree pull --prefix=DIR --squash URL main` to re-anchor.
    The next split then descends from the child's main, so the next push is a fast-forward.
 
+## Several files in one commit without a clone (`commit-files`)
+
+```sh
+python -S gh_ops.py commit-files OWNER/REPO --branch my-branch --file docs/a.md --file src/x.py=/tmp/x.py --delete old.txt --message "msg"
+python -S gh_ops.py commit-files OWNER/REPO --branch my-branch --file docs/a.md --message "msg" --expect-head 1a2b3c4 --write
+```
+
+The same blobs/tree/commit/ref sequence as a connector `create_tree` call, but planned
+first: each path is listed as `new`, `changed`, `unchanged`, `delete` or `absent` with
+its size and Git blob SHA, and a dry run issues no write. Like `file-put`, the default
+branch is refused unless `--allow-default-branch`. `--write` uploads only changed blobs,
+creates one commit on the current head and moves the branch fast-forward only
+(`force: false`); `--expect-head` refuses if the branch moved. Verification re-reads
+the branch and the new tree and compares every blob SHA with the local bytes. A
+refused ref update leaves an unreferenced commit, which is harmless; re-plan and retry.
+At most 100 paths and 10 MiB per file. `file-put` remains the one-file contents-API path.

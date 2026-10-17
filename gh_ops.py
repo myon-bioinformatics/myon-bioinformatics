@@ -23,6 +23,7 @@ is a thin adapter over them::
     python -S gh_ops.py pr-retarget OWNER/REPO 71 --base main --write --allow-unmerged-commits
     python -S gh_ops.py pr-retarget OWNER/REPO 71 --base main --write --allow-compare-failure
     python -S gh_ops.py file-put OWNER/REPO docs/x.md --from x.md --branch docs --message "add x" --write
+    python -S gh_ops.py commit-files OWNER/REPO --branch docs --file a.md --file b.py=/tmp/b.py --delete old.md --message "m"
     python -S gh_ops.py git-commit --message-file msg.txt a.py --write
     python -S gh_ops.py git-commit --message-file msg.txt a.py --write --push
     python -S gh_ops.py subtree-push --prefix pythdragoras --remote https://github.com/OWNER/CHILD --branch sync/x
@@ -1266,6 +1267,117 @@ def file_put(repo: str, path: str, *, content: bytes, branch: str, message: str,
             "commit_sha": commit_sha}
 
 
+_COMMIT_FILES_MAX = 100
+_COMMIT_FILE_BYTES = 10 * 1024 * 1024
+
+
+def _git_blob_sha(data: bytes) -> str:
+    import hashlib
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+def _commit_files_path(path: Any) -> str:
+    if (not isinstance(path, str) or not path or path.startswith("/") or "\\" in path
+            or any(part in ("", ".", "..", ".git") for part in path.split("/"))):
+        raise GhOpsError(f"invalid repository path: {path!r}")
+    return path
+
+
+def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: tuple[str, ...] = (),
+                 expect_head: str | None = None, write: bool = False, allow_default_branch: bool = False,
+                 client: Client | None = None) -> dict:
+    """Commit several files to ``branch`` in ONE commit through the Git Data API (no clone).
+
+    The blobs -> tree -> commit -> ref sequence of a connector ``create_tree``
+    call, planned first. A dry run lists each path as ``new``, ``changed``,
+    ``unchanged``, ``delete`` or ``absent`` with its size and Git blob SHA, and
+    issues no write. Like ``file-put`` it refuses the default branch unless
+    ``allow_default_branch``. ``expect_head`` refuses if the branch moved; the
+    ref update is fast-forward only (``force: false``), and unchanged blobs are
+    not uploaded. After writing it re-reads the branch and the new tree and
+    compares every blob SHA with the local bytes.
+    """
+    client, repo = _client(client), _repo(repo)
+    branch = _validate_branch_name(branch, field="branch")
+    if not isinstance(message, str) or not message.strip():
+        raise GhOpsError("commit message is required")
+    files = {_commit_files_path(path): data for path, data in dict(files).items()}
+    deletes = tuple(_commit_files_path(path) for path in deletes)
+    if not files and not deletes:
+        raise GhOpsError("nothing to commit")
+    if len(files) + len(deletes) > _COMMIT_FILES_MAX:
+        raise GhOpsError(f"at most {_COMMIT_FILES_MAX} paths per commit")
+    if set(files) & set(deletes):
+        raise GhOpsError("a path cannot be both written and deleted")
+    for path, data in files.items():
+        if not isinstance(data, bytes):
+            raise GhOpsError(f"{path}: content must be bytes")
+        if len(data) > _COMMIT_FILE_BYTES:
+            raise GhOpsError(f"{path}: larger than {_COMMIT_FILE_BYTES} bytes")
+    default_branch = client.get(f"/repos/{repo}")["default_branch"]
+    out: dict = {"ok": False, "dry_run": not write, "repository": repo, "branch": branch}
+    if branch == default_branch and not allow_default_branch:
+        return {**out, "reason": f"refusing to write to the default branch {default_branch!r} "
+                                 "without --allow-default-branch"}
+    head = _git_ref_tip_sha(client, repo, branch)
+    out["head"] = head
+    if expect_head and not head.startswith(_sha(expect_head)):
+        return {**out, "reason": f"branch moved: head is {head[:12]}, expected {expect_head}"}
+    base_tree = _git_commit_tree_sha(client, repo, head)
+    tree = client.get(f"/repos/{repo}/git/trees/{base_tree}", params={"recursive": "1"})
+    existing = None if tree.get("truncated") else {
+        entry["path"]: entry for entry in tree.get("tree") or [] if entry.get("type") == "blob"}
+    plan = []
+    for path, data in sorted(files.items()):
+        sha = _git_blob_sha(data)
+        before = None if existing is None else existing.get(path)
+        change = ("unknown" if existing is None else "new" if before is None
+                  else "unchanged" if before.get("sha") == sha else "changed")
+        plan.append({"path": path, "bytes": len(data), "blob_sha": sha, "change": change,
+                     "mode": (before or {}).get("mode", "100644")})
+    for path in sorted(deletes):
+        plan.append({"path": path, "delete": True,
+                     "change": "unknown" if existing is None else "delete" if path in existing else "absent"})
+    out["plan"] = plan
+    if all(item["change"] in ("unchanged", "absent") for item in plan):
+        return {**out, "ok": True, "changed": False, "reason": "unchanged"}
+    if not write:
+        return {**out, "ok": True, "changed": False}
+    elements = []
+    for item in plan:
+        if item.get("delete"):
+            if item["change"] != "absent":
+                elements.append({"path": item["path"], "mode": "100644", "type": "blob", "sha": None})
+            continue
+        if item["change"] == "unchanged":
+            continue
+        blob = client.request("POST", f"/repos/{repo}/git/blobs",
+                              {"content": base64.b64encode(files[item["path"]]).decode("ascii"),
+                               "encoding": "base64"}, expect=(201,)).data
+        if (blob or {}).get("sha") != item["blob_sha"]:
+            return {**out, "reason": f"blob SHA mismatch for {item['path']}"}
+        elements.append({"path": item["path"], "mode": item["mode"], "type": "blob", "sha": item["blob_sha"]})
+    new_tree = client.request("POST", f"/repos/{repo}/git/trees", {"base_tree": base_tree, "tree": elements},
+                              expect=(201,)).data["sha"]
+    commit = client.request("POST", f"/repos/{repo}/git/commits",
+                            {"message": message, "tree": new_tree, "parents": [head]}, expect=(201,)).data["sha"]
+    out["commit_sha"] = commit
+    try:
+        client.request("PATCH", f"/repos/{repo}/git/refs/heads/{urllib.parse.quote(branch, safe='')}",
+                       {"sha": commit, "force": False})
+    except GhOpsError as error:
+        return {**out, "reason": f"ref update refused ({error}); the branch probably moved. The new commit is "
+                                 "unreferenced and harmless: re-plan and retry"}
+    after = _git_ref_tip_sha(client, repo, branch)
+    check = client.get(f"/repos/{repo}/git/trees/{new_tree}", params={"recursive": "1"})
+    entries = {entry["path"]: entry.get("sha") for entry in check.get("tree") or [] if entry.get("type") == "blob"}
+    verified = (after == commit
+                and all(entries.get(item["path"]) == item["blob_sha"] for item in plan if not item.get("delete"))
+                and all(item["path"] not in entries for item in plan if item.get("delete")))
+    return {**out, "ok": verified, "changed": True, "verified": verified,
+            **({} if verified else {"reason": "branch or tree does not match after the write"})}
+
+
 _GIT_COMMIT_NETWORK_HINTS = (
     "could not resolve host", "connection timed out", "connection refused", "network is unreachable",
     "temporary failure in name resolution", "could not read from remote repository",
@@ -2018,6 +2130,15 @@ def _render(command: str, result: dict) -> str:
                 if result.get("state") == "pushed" else
                 f"dry run subtree-push: would run {' '.join(result['command'])}")
         return head + f"\nsplit={result['split_method']}{compare}\n{result['provenance']['trailer']}"
+    if command == "commit-files":
+        head = (f"{'OK' if result['ok'] else 'NG'} commit-files {result['repository']}@{result['branch']} "
+                f"({'dry run' if result.get('dry_run') else 'applied'}) head {(result.get('head') or '?')[:7]}"
+                + (f" -> {result['commit_sha'][:7]}" if result.get("commit_sha") else "")
+                + (f": {result['reason']}" if result.get("reason") else ""))
+        rows = [f"  {item['change']:9} {item['path']}"
+                + ("" if item.get("delete") else f" ({item['bytes']} bytes, blob {item['blob_sha'][:7]})")
+                for item in result.get("plan") or []]
+        return "\n".join([head, *rows])
     if command == "pr-retarget":
         extra = f" ({result['warning']})" if result.get("warning") else ""
         return (f"{result['status']} {result['repository']}#{result['number']} "
@@ -2177,6 +2298,18 @@ def build_parser() -> argparse.ArgumentParser:
                    help="permit writing directly to the repository's default branch")
     p.add_argument("--write", action="store_true")
 
+    p = sub.add_parser("commit-files", help="ONE commit of several files via the Git Data API, no clone "
+                                             "(planned unless --write; fast-forward only; verified)")
+    p.add_argument("repo"); p.add_argument("--branch", required=True)
+    p.add_argument("--file", action="append", default=[], metavar="PATH[=LOCAL]",
+                   help="repository path, optionally =local file to read (default: the same path)")
+    p.add_argument("--delete", action="append", default=[], metavar="PATH")
+    p.add_argument("--message", required=True, help="commit message")
+    p.add_argument("--expect-head", help="refuse unless the branch tip starts with this SHA")
+    p.add_argument("--allow-default-branch", action="store_true",
+                   help="permit writing directly to the repository's default branch")
+    p.add_argument("--write", action="store_true")
+
     p = sub.add_parser("url", help="build a github.com / api.github.com URL for something; no network access")
     url_sub = p.add_subparsers(dest="url_kind", required=True)
 
@@ -2272,6 +2405,14 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
                            allow_unmerged_commits=args.allow_unmerged_commits,
                            allow_compare_failure=args.allow_compare_failure,
                            expect_head_sha=args.expect_head_sha, client=client)
+    if command == "commit-files":
+        files = {}
+        for spec in args.file:
+            path, _, local = spec.partition("=")
+            files[path] = Path(local or path).read_bytes()
+        return commit_files(args.repo, args.branch, files, args.message, deletes=tuple(args.delete),
+                            expect_head=args.expect_head, write=args.write,
+                            allow_default_branch=args.allow_default_branch, client=client)
     if command == "file-put":
         return file_put(args.repo, args.path, content=Path(args.from_path).read_bytes(), branch=args.branch,
                         message=args.message, write=args.write, allow_default_branch=args.allow_default_branch,
