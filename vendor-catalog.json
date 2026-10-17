@@ -439,7 +439,7 @@
     },
     {
       "repository": "myon-bioinformatics/myon-bioinformatics",
-      "commit": "8fff8e567527072d75ff2f4b9bfb9b54eafd7f78",
+      "commit": "bbfb65ac2714e72a0b04f85671f95d9850cbcb00",
       "reason": "Parent-owned pytest matrix helper migrated from browser-test-kit; no fleet-wide enrollment yet.",
       "source": "py_matrix.py",
       "default_enrollment": {
@@ -449,7 +449,7 @@
     },
     {
       "repository": "myon-bioinformatics/myon-bioinformatics",
-      "commit": "8fff8e567527072d75ff2f4b9bfb9b54eafd7f78",
+      "commit": "bbfb65ac2714e72a0b04f85671f95d9850cbcb00",
       "reason": "Parent-owned pytest brief runner migrated from browser-test-kit; no fleet-wide enrollment yet.",
       "source": "pytest_brief.py",
       "default_enrollment": {
@@ -459,7 +459,7 @@
     },
     {
       "repository": "myon-bioinformatics/myon-bioinformatics",
-      "commit": "0000000000000000000000000000000000000000",
+      "commit": "bbfb65ac2714e72a0b04f85671f95d9850cbcb00",
       "reason": "GitHub Pages publish/delivery checks migrated from browser-test-kit; no consumer enrollment yet.",
       "source": "publish_check.py",
       "default_enrollment": {
