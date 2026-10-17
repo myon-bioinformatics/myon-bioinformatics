@@ -519,9 +519,9 @@
     },
     {
       "repository": "myon-bioinformatics/browser-test-kit",
-      "commit": "4be0f0d20b4cb6418ae97f64f3ca6aea6a75292c",
+      "commit": "8d8512fefea38993e5b3695c0706075cf05071ad",
       "source": "scripts/browser_execution.mjs",
-      "reason": "Shared browser worker budget and seeded page exploration extracted from Flutter #206 into browser-test-kit #84. Explicitly adopt its reviewed default-branch merge; helper interaction.mjs and MIT license are already enrolled in Flutter.",
+      "reason": "Shared browser worker budget and seeded exploration from Flutter #206; updated to reviewed browser-test-kit #85 default-branch merge to bound disappearing-candidate state checks and retain failure receipts. Enrolled only for Flutter #207; interaction.mjs and MIT license remain independently pinned.",
       "consumers": {
         "myon-bioinformatics/flutter_navigation_basic": {
           "enrollment": "enrolled",
