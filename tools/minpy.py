@@ -168,12 +168,21 @@ class MinpyError(ValueError):
 
 
 class _Module:
-    def __init__(self, name: str, path: Path, relative: str, is_package: bool, source: str) -> None:
+    def __init__(
+        self,
+        name: str,
+        path: Path,
+        relative: str,
+        is_package: bool,
+        source: str,
+        import_module_names: frozenset[str] = frozenset(),
+    ) -> None:
         self.name = name
         self.path = path
         self.relative = relative
         self.is_package = is_package
         self.source = source
+        self.import_module_names = import_module_names
 
 
 class _Ref:
@@ -450,6 +459,7 @@ class _Scanner(ast.NodeVisitor):
         self._get_data_names: set[str] = set()
         self._importlib_modules: set[str] = set()
         self._resources_modules: set[str] = set()
+        self._import_module_names: set[str] = set()
         self._stack: list[str] = ["library"]
         self.defined: set[str] = set()
         self.loads: dict[str, set[str]] = {}
@@ -553,27 +563,33 @@ class _Scanner(ast.NodeVisitor):
         module = node.module or ""
         names = tuple(alias.name for alias in node.names)
         self._note_module("." * node.level + module, node.lineno)
-        if node.module == "pkgutil" and "get_data" in names:
-            self.problems.append("line " + str(node.lineno) + ": pkgutil.get_data (data files are not bundled)")
         if node.module == "pkg_resources" or module.startswith("pkg_resources."):
-            self.problems.append("line " + str(node.lineno) + ": pkg_resources (data files are not bundled)")
+            self._reject_data_dotted(node.lineno or 0, "pkg_resources")
         if node.module == "importlib":
             for alias in node.names:
                 if alias.name == "resources":
-                    self.problems.append(
-                        "line " + str(node.lineno) + ": importlib.resources (data files are not bundled)"
-                    )
+                    self._reject_data_dotted(node.lineno or 0, "importlib.resources")
                     self._resources_modules.add(alias.asname or "resources")
                 if alias.name == "importlib":
                     self._importlib_modules.add(alias.asname or "importlib")
+                if alias.name == "import_module":
+                    self._import_module_names.add(alias.asname or "import_module")
         self._add_ref(node.level, module, names, node.lineno)
         for alias in node.names:
             if node.module == "pkgutil" and alias.name == "pkgutil":
                 self._pkgutil.add(alias.asname or alias.name)
             if node.module == "pkgutil" and alias.name == "get_data":
                 self._get_data_names.add(alias.asname or "get_data")
+                self._reject_data_dotted(node.lineno or 0, "pkgutil.get_data")
         if node.module == "pkgutil":
             self._pkgutil.add("pkgutil")
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if isinstance(node.ctx, ast.Load):
+            dotted = _attribute_dotted_name(node)
+            if dotted:
+                self._reject_data_dotted(node.lineno or 0, dotted)
         self.generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> None:
@@ -591,16 +607,17 @@ class _Scanner(ast.NodeVisitor):
                     "line " + str(node.lineno) + ": dynamic " + function.id + " is not bundled"
                 )
             elif function.id in self._get_data_names:
-                self.problems.append(
-                    "line " + str(node.lineno) + ": pkgutil.get_data (data files are not bundled)"
-                )
+                self._reject_data_dotted(node.lineno or 0, "pkgutil.get_data")
+            elif function.id in self._import_module_names:
+                self._visit_import_module_call(node)
+            elif function.id == "getattr" and len(node.args) >= 2:
+                self._visit_getattr_call(node)
         elif isinstance(function, ast.Attribute):
-            self._check_call_data_hooks(function, node.lineno or 0)
+            dotted = _attribute_dotted_name(function)
+            if dotted:
+                self._reject_data_dotted(node.lineno or 0, dotted)
             if function.attr == "import_module":
-                literal = _literal_module(node)
-                if literal is not None:
-                    self._note_module(literal, node.lineno or 0)
-                    self._add_ref(0, literal, (), node.lineno or 0)
+                self._visit_import_module_call(node)
             elif function.attr in {
                 "__import__",
                 "spec_from_file_location",
@@ -608,39 +625,53 @@ class _Scanner(ast.NodeVisitor):
                 self.problems.append(
                     "line " + str(node.lineno) + ": dynamic " + function.attr + " is not bundled"
                 )
-            elif function.attr == "get_data":
-                owner = function.value
-                if isinstance(owner, ast.Name) and (
-                    owner.id in self._pkgutil or owner.id == "pkgutil" or owner.id in self._get_data_names
-                ):
-                    self.problems.append(
-                        "line " + str(node.lineno) + ": pkgutil.get_data (data files are not bundled)"
-                    )
         self.generic_visit(node)
 
-    def _check_call_data_hooks(self, function: ast.Attribute, lineno: int) -> None:
-        target = _attribute_dotted_name(function)
-        if not target:
+    def _visit_import_module_call(self, node: ast.Call) -> None:
+        literal = _literal_module(node)
+        if literal is None:
             return
-        root = target.split(".")[0]
-        if target.endswith(".get_data") or target == "get_data":
-            if root in self._pkgutil or root in self._get_data_names or root == "pkgutil":
-                self.problems.append(
-                    "line " + str(lineno) + ": pkgutil.get_data (data files are not bundled)"
-                )
-        if target == "importlib.resources" or target.startswith("importlib.resources."):
-            self.problems.append(
-                "line " + str(lineno) + ": importlib.resources (data files are not bundled)"
-            )
-        parts = target.split(".")
-        if len(parts) >= 3 and parts[0] in self._importlib_modules and parts[1] == "resources":
-            self.problems.append(
-                "line " + str(lineno) + ": importlib.resources (data files are not bundled)"
-            )
+        self._note_module(literal, node.lineno or 0)
+        self._add_ref(0, literal, (), node.lineno or 0)
+
+    def _visit_getattr_call(self, node: ast.Call) -> None:
+        owner = node.args[0]
+        attribute = _literal_string(node.args[1])
+        if attribute is None:
+            return
+        if attribute == "resources" and isinstance(owner, ast.Name) and owner.id in self._importlib_modules:
+            self._reject_data_dotted(node.lineno or 0, "importlib.resources")
+        if attribute == "get_data" and isinstance(owner, ast.Name) and (
+            owner.id in self._pkgutil or owner.id == "pkgutil"
+        ):
+            self._reject_data_dotted(node.lineno or 0, "pkgutil.get_data")
+
+    def _reject_data_dotted(self, lineno: int, dotted: str) -> None:
+        parts = dotted.split(".")
+        root = parts[0]
         if root in self._resources_modules:
-            self.problems.append(
-                "line " + str(lineno) + ": importlib.resources (data files are not bundled)"
-            )
+            self._data_file_problem(lineno, "importlib.resources")
+            return
+        if dotted == "importlib.resources" or dotted.startswith("importlib.resources."):
+            self._data_file_problem(lineno, "importlib.resources")
+            return
+        if len(parts) >= 3 and parts[0] in self._importlib_modules and parts[1] == "resources":
+            self._data_file_problem(lineno, "importlib.resources")
+            return
+        if dotted == "pkg_resources" or dotted.startswith("pkg_resources."):
+            self._data_file_problem(lineno, "pkg_resources")
+            return
+        if dotted.endswith(".get_data") or dotted == "get_data":
+            if root in self._pkgutil or root in self._get_data_names or root == "pkgutil":
+                self._data_file_problem(lineno, "pkgutil.get_data")
+
+    def _data_file_problem(self, lineno: int, kind: str) -> None:
+        message = {
+            "importlib.resources": "importlib.resources (data files are not bundled)",
+            "pkg_resources": "pkg_resources (data files are not bundled)",
+            "pkgutil.get_data": "pkgutil.get_data (data files are not bundled)",
+        }[kind]
+        self.problems.append("line " + str(lineno) + ": " + message)
 
     def _add_ref(self, level: int, module: str, names: tuple[str, ...], lineno: int) -> None:
         self.refs.append(
@@ -695,9 +726,9 @@ class _Scanner(ast.NodeVisitor):
     def _note_module(self, module: str, lineno: int) -> None:
         dotted = module.lstrip(".")
         if dotted == "importlib.resources" or dotted.startswith("importlib.resources."):
-            self.problems.append("line " + str(lineno) + ": importlib.resources (data files are not bundled)")
-        if dotted == "pkg_resources" or dotted.startswith("pkg_resources."):
-            self.problems.append("line " + str(lineno) + ": pkg_resources (data files are not bundled)")
+            self._reject_data_dotted(lineno, dotted)
+        elif dotted == "pkg_resources" or dotted.startswith("pkg_resources."):
+            self._reject_data_dotted(lineno, dotted)
 
 
 def _is_type_checking(node: ast.AST) -> bool:
@@ -740,9 +771,12 @@ def _constant_strings(value: ast.AST) -> set[str] | None:
 def _literal_module(node: ast.Call) -> str | None:
     if not node.args:
         return None
-    argument = node.args[0]
-    if isinstance(argument, ast.Constant) and isinstance(argument.value, str) and argument.value:
-        return argument.value
+    return _literal_string(node.args[0])
+
+
+def _literal_string(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value:
+        return node.value
     return None
 
 
@@ -942,7 +976,14 @@ def _collect(
             continue
         for problem in scanner.problems:
             graph.problems.append(display + ": " + problem)
-        graph.modules[name] = _Module(name, path, display, is_package, source)
+        graph.modules[name] = _Module(
+            name,
+            path,
+            display,
+            is_package,
+            source,
+            frozenset(scanner._import_module_names),
+        )
         package = _package_name(name, is_package)
         script_functions = scanner.script_only_functions()
         for ref in scanner.refs:
@@ -1060,6 +1101,7 @@ def _rewrite_source(
     script_external: set[str],
     prefix: str,
     entry_file: str,
+    import_module_names: frozenset[str] = frozenset(),
 ) -> str:
     try:
         tree = ast.parse(source, filename=display)
@@ -1112,7 +1154,13 @@ def _rewrite_source(
         fitted = _fit_import_span(rendered, end - start + 1)
         body = "\n".join((indent + part) if part else "" for part in fitted) + "\n"
         lines[start - 1:end] = [body]
-    return _rewrite_import_module_calls("".join(lines), modules, prefix, display)
+    return _rewrite_import_module_calls(
+        "".join(lines),
+        modules,
+        prefix,
+        display,
+        import_module_names=import_module_names,
+    )
 
 
 def _fit_import_span(rendered: str, span_len: int) -> list[str]:
@@ -1127,18 +1175,32 @@ def _fit_import_span(rendered: str, span_len: int) -> list[str]:
     return pieces
 
 
-def _rewrite_import_module_calls(source: str, modules: set[str], prefix: str, display: str) -> str:
+def _rewrite_import_module_calls(
+    source: str,
+    modules: set[str],
+    prefix: str,
+    display: str,
+    *,
+    import_module_names: frozenset[str] = frozenset(),
+) -> str:
     """Point literal import_module calls at the prefixed module object."""
     try:
         tree = ast.parse(source, filename=display)
     except SyntaxError as error:
         raise MinpyError("syntax error in " + display + ": " + str(error.msg)) from error  # minpy: uncovered
+    allowed_names = set(import_module_names) | {"import_module"}
     replacements: list[tuple[int, int, int, int, str]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not node.args:
             continue
         function = node.func
-        if not isinstance(function, ast.Attribute) or function.attr != "import_module":
+        if isinstance(function, ast.Attribute):
+            if function.attr != "import_module":
+                continue
+        elif isinstance(function, ast.Name):
+            if function.id not in allowed_names:
+                continue
+        else:
             continue
         argument = node.args[0]
         if not isinstance(argument, ast.Constant) or not isinstance(argument.value, str):
@@ -1694,6 +1756,7 @@ def bundle(
             script_external,
             prefix,
             entry_file,
+            module.import_module_names,
         )
         for name, module in modules.items()
     }

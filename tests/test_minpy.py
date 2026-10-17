@@ -1333,42 +1333,92 @@ def test_rejects_reserved_import_prefix(tmp_path: Path) -> None:
         _bundle(root)
 
 
-def test_rejects_from_importlib_import_resources(tmp_path: Path) -> None:
+def test_rejects_importlib_alias_resources_access(tmp_path: Path) -> None:
     root = tmp_path / "src"
-    _write(root, "app.py", "from importlib import resources\nresources.files('pkg')\n")
-    with pytest.raises(minpy.MinpyError, match="importlib.resources"):
+    _write(root, "app.py", "import importlib as il\nil.resources.files('pkg')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib\.resources"):
         _bundle(root)
 
 
-def test_rejects_from_importlib_import_resources_alias(tmp_path: Path) -> None:
+def test_rejects_bound_importlib_resources_module(tmp_path: Path) -> None:
     root = tmp_path / "src"
-    _write(root, "app.py", "from importlib import resources as res\nres.files('pkg')\n")
-    with pytest.raises(minpy.MinpyError, match="importlib.resources"):
+    _write(root, "app.py", "import importlib\nr = importlib.resources\nr.files('p')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib\.resources"):
         _bundle(root)
 
 
-def test_rejects_importlib_resources_attribute_access(tmp_path: Path) -> None:
+def test_rejects_bound_importlib_resources_files_callable(tmp_path: Path) -> None:
     root = tmp_path / "src"
-    _write(root, "app.py", "import importlib\nimportlib.resources.files('pkg')\n")
-    with pytest.raises(minpy.MinpyError, match="importlib.resources"):
+    _write(root, "app.py", "import importlib\nf = importlib.resources.files\nf('p')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib\.resources"):
+        _bundle(root)
+
+
+def test_rejects_bound_pkgutil_get_data_callable(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "import pkgutil\ng = pkgutil.get_data\ng('x', 'y')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: pkgutil\.get_data"):
+        _bundle(root)
+
+
+def test_rejects_getattr_importlib_resources_literal(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "import importlib\ngetattr(importlib, 'resources').files('p')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib\.resources"):
+        _bundle(root)
+
+
+def test_from_import_import_module_inlines_literal(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "VALUE = 7\n")
+    _write(root, "app.py", "from importlib import import_module\nVALUE = import_module('mathx').VALUE\n")
+    text = _bundle(root)
+    out = tmp_path / "dist" / "app_min.py"
+    out.parent.mkdir()
+    out.write_bytes(text.encode("utf-8"))
+    loaded = _load_expr(out, "module.VALUE")
+    assert loaded.returncode == 0, loaded.stderr
+    assert loaded.stdout.strip() == "7"
+
+
+def test_from_import_import_module_alias_inlines_literal(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "VALUE = 8\n")
+    _write(root, "app.py", "from importlib import import_module as im\nVALUE = im('mathx').VALUE\n")
+    text = _bundle(root)
+    out = tmp_path / "dist" / "app_min.py"
+    out.parent.mkdir()
+    out.write_bytes(text.encode("utf-8"))
+    loaded = _load_expr(out, "module.VALUE")
+    assert loaded.returncode == 0, loaded.stderr
+    assert loaded.stdout.strip() == "8"
+
+
+def test_rejects_import_module_literal_importlib_resources(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "from importlib import import_module\nimport_module('importlib.resources')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib\.resources"):
         _bundle(root)
 
 
 @pytest.mark.parametrize(
-    ("source", "needle"),
+    ("source", "line", "needle"),
     [
-        ("import pkgutil\npkgutil.get_data('x', 'y')\n", "pkgutil.get_data"),
-        ("from pkgutil import get_data\nget_data('x', 'y')\n", "pkgutil.get_data"),
-        ("from pkgutil import get_data as load_pkg\nload_pkg('x', 'y')\n", "pkgutil.get_data"),
-        ("import importlib.resources\n", "importlib.resources"),
-        ("import pkg_resources\n", "pkg_resources"),
-        ("from pkg_resources import resource_filename\nresource_filename('pkg', 'x')\n", "pkg_resources"),
+        ("import pkgutil\npkgutil.get_data('x', 'y')\n", 2, r"pkgutil\.get_data"),
+        ("from pkgutil import get_data\nget_data('x', 'y')\n", 2, r"pkgutil\.get_data"),
+        ("from pkgutil import get_data as load_pkg\nload_pkg('x', 'y')\n", 2, r"pkgutil\.get_data"),
+        ("import importlib.resources\n", 1, r"importlib\.resources"),
+        ("import pkg_resources\n", 1, r"pkg_resources"),
+        ("from pkg_resources import resource_filename\nresource_filename('pkg', 'x')\n", 1, r"pkg_resources"),
+        ("from importlib import resources\npass\n", 1, r"importlib\.resources"),
+        ("from importlib import resources as res\nres.files('pkg')\n", 2, r"importlib\.resources"),
+        ("import importlib\nimportlib.resources.files('pkg')\n", 2, r"importlib\.resources"),
     ],
 )
-def test_rejects_data_file_import_hooks(tmp_path: Path, source: str, needle: str) -> None:
+def test_rejects_data_file_import_hooks(tmp_path: Path, source: str, line: int, needle: str) -> None:
     root = tmp_path / "src"
     _write(root, "app.py", source)
-    with pytest.raises(minpy.MinpyError, match=needle):
+    with pytest.raises(minpy.MinpyError, match=rf"line {line}: {needle}"):
         _bundle(root)
 
 

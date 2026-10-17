@@ -10,9 +10,9 @@
 - リポジトリ内の通常のパッケージ（`__init__.py` があるもの）とモジュールは取り込みます。絶対 import と相対 import の両方を扱います。
 - サードパーティは、明示した allowlist のトップレベル名だけで、かつ `--third-party-root` にある純 Python のソースだけを取り込みます。allowlist で取り込んだ成果物は標準ライブラリ専用ではないので、カタログの `<name>_min.py` には載せません。
 - ライブラリとして必要な非標準ライブラリ（モジュール直下や、スクリプト入口以外から使う関数の中）はエラーです。同じリポジトリのモジュールがあっても、標準ライブラリだけの `<name>_min.py` は作りません。
-- 文字列リテラルの `importlib.import_module("名前")` は通常の import として辿り、呼び出し先は接頭辞付きの名前に書き換えます。引数が変数の `import_module(name)` はプラグイン読み込みとして残し、バンドル内モジュールは元の名前では読みません。finder は自分の接頭辞の名前にしか答えません。
+- 文字列リテラルの `importlib.import_module("名前")` と `from importlib import import_module` のあとの `import_module("名前")`（別名 import も同様）は通常の import として辿り、呼び出し先は接頭辞付きの名前に書き換えます。引数が変数の `import_module(name)` はプラグイン読み込みとして残し、バンドル内モジュールは元の名前では読みません。finder は自分の接頭辞の名前にしか答えません。
 - `__import__`、`exec`、`eval`、`spec_from_file_location` は拒否します。
-- `__file__` は、`if __name__ == "__main__":` の直下だけ許します。それ以外はデータファイル同梱とみなして拒否します。`importlib.resources`、`pkgutil.get_data`、`pkg_resources` も拒否します。
+- `__file__` は、`if __name__ == "__main__":` の直下だけ許します。それ以外はデータファイル同梱とみなして拒否します。`importlib.resources`、`pkgutil.get_data`、`pkg_resources` への import・属性アクセス・呼び出し（別名や `getattr(importlib, "resources")` の文字列リテラル形を含む）も拒否します。変数に束ねたあとの `getattr(module, name)` や、実行時に組み立てた属性名は静的解析では拒否できない場合があります。
 - スクリプト入口（その `if` と、そこからしか呼ばれない関数）の中だけにある外部 import は、min ファイルでは `ImportError` に置き換えます。メッセージは、元のファイルと伴走ツールを使うよう案内します。import しただけでは走りません。`__all__` に載っている名前、または中身を静的に読めない `__all__` があるモジュールの関数は、ライブラリ側として扱います。カタログでは、本当にスクリプト専用のときだけ元ファイルを `requires_companion_tool` で skip し、`<name>_min.py` を別エントリにします。
 - 子モジュールから親パッケージへの import（`from . import helpers` や `from pkg import helpers`）は、パッケージの初期化に伴う依存なので循環には数えません。兄弟どうしの循環は既定で失敗します。親への参照を循環に数えないため、`__init__` が終わる前に親の名前を使う不具合は検出しません。その失敗は元のコードと同じく実行時に起きます。
 - 次も壊れたファイルを出さず、終了コード 1 で止まります。
