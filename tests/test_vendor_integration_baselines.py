@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 @pytest.mark.parametrize("consumer,fixture,repository,source,destination,license_path,commit", [
     ("Aoi", "aoi_vendor_lock_85243d6d.json", "web-ui", "web_ui.py", "vendor/web_ui.py",
      "vendor/web-ui-LICENSE", "573b4ca07a916c4a44695dbd5739da36b902d8f2"),
-    ("flutter_navigation_basic", "flutter_vendor_lock_f73c72eb.json", "myon-bioinformatics",
+    ("flutter_navigation_basic", "flutter_vendor_lock_207_bounded.json", "myon-bioinformatics",
      "gh_ops.py", "python/vendor/gh_ops.py", "python/vendor/myon-bioinformatics-LICENSE",
      "09831b992dc91d83b15c44861a788e03b1e654c4"),
 ])
