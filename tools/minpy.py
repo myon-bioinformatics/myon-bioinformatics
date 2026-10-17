@@ -557,11 +557,11 @@ class _Scanner(ast.NodeVisitor):
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
             self._note_module(alias.name, node.lineno)
-            if alias.name == "pkgutil" or alias.name.startswith("pkgutil."):
-                self._pkgutil.add(alias.asname or alias.name.split(".")[0])
-            if alias.name == "importlib" or alias.name.startswith("importlib."):
+            if alias.name == "pkgutil":
+                self._pkgutil.add(alias.asname or "pkgutil")
+            if alias.name == "importlib":
                 self._importlib_modules.add(alias.asname or "importlib")
-            if alias.name == "pkg_resources" or alias.name.startswith("pkg_resources."):
+            if alias.name == "pkg_resources":
                 self._pkg_resources_modules.add(alias.asname or "pkg_resources")
             self._add_ref(0, alias.name, (), node.lineno)
         self.generic_visit(node)
@@ -595,10 +595,6 @@ class _Scanner(ast.NodeVisitor):
                 self._pkgutil.add(alias.asname or alias.name)
             if node.module == "pkgutil" and alias.name == "get_data":
                 self._get_data_names.add(alias.asname or "get_data")
-        if node.module == "pkgutil":
-            self._pkgutil.add("pkgutil")
-        if node.module == "pkg_resources":
-            self._pkg_resources_modules.add("pkg_resources")
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:

@@ -125,4 +125,4 @@ python tools/minpy.py check \
 - 1 行に import と別の文が混在するものは拒否します。
 - `open("data.txt")` のようなカレントディレクトリ相対の読み取りは、元のスクリプトと同じく実行時のカレントに依存します。パッケージデータの同梱はしません。
 - 変数引数の `importlib.import_module(name)` は、バンドル内のモジュールを元の名前では読みません。プラグインは通常の import 経路に任せます。
-- 関数の仮引数が import した名前と同じ場合、仮引数より内側の参照と import を区別できません。
+- 関数の仮引数が import した名前と同じ場合、仮引数より内側の参照と import を区別できません。ファイルや別の関数にある `import pkgutil` / `import importlib` があると、無関係な関数内の同名ローカル変数（`pkgutil = 'x'` や `return pkgutil` など）も拒否されることがあります（スコープは見ません）。

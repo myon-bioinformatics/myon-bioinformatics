@@ -1566,6 +1566,77 @@ def test_rejects_bare_importlib_resources_module_reference(tmp_path: Path) -> No
         _bundle(root)
 
 
+def test_allows_importlib_submodule_aliases_as_values(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(
+        root,
+        "app.py",
+        "import importlib.metadata as md\n"
+        "import importlib.util as u\n"
+        "def take(value):\n"
+        "    return value\n"
+        "def version(mod):\n"
+        "    return getattr(mod, 'version')\n"
+        "VALUE = (take(md), version(md), take(u))\n",
+    )
+    text = _bundle(root)
+    assert "importlib.metadata" in text
+    assert "VALUE" in text
+
+
+def test_rejects_bare_importlib_after_attribute_in_same_expression(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "VALUE = 1\n")
+    _write(root, "app.py", "import importlib\nx = (importlib.util, importlib)\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib \(module object"):
+        _bundle(root)
+
+
+def test_rejects_bare_importlib_in_call_after_attribute_argument(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "VALUE = 1\n")
+    _write(
+        root,
+        "app.py",
+        "import importlib\n"
+        "def pair(first, second):\n"
+        "    return second\n"
+        "holder = pair(importlib.__name__, importlib)\n"
+        "holder.import_module('mathx')\n",
+    )
+    with pytest.raises(minpy.MinpyError, match=r"line 4: importlib \(module object"):
+        _bundle(root)
+
+
+def test_allows_pkgutil_local_shadow_after_from_import(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(
+        root,
+        "app.py",
+        "from pkgutil import iter_modules\n"
+        "def labels():\n"
+        "    pkgutil = 'x'\n"
+        "    return pkgutil\n"
+        "VALUE = labels()\n",
+    )
+    text = _bundle(root)
+    assert "VALUE" in text
+
+
+def test_module_import_shadows_unrelated_function_local(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(
+        root,
+        "app.py",
+        "import pkgutil\n"
+        "def other():\n"
+        "    pkgutil = 'x'\n"
+        "    return pkgutil\n",
+    )
+    with pytest.raises(minpy.MinpyError, match=r"line 4: pkgutil \(module object"):
+        _bundle(root)
+
+
 def test_allows_importlib_metadata_attribute_access(tmp_path: Path) -> None:
     root = tmp_path / "src"
     _write(root, "app.py", "import importlib\nVALUE = importlib.metadata\n")
