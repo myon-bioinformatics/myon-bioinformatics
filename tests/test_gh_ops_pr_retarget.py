@@ -604,3 +604,260 @@ def test_subprocess_cli_without_injected_client():
                           capture_output=True, text=True, cwd=ROOT)
     assert proc.returncode == 2
     assert "repository must look like" in proc.stderr
+
+
+OTHER_TIP = "e" * 40
+OTHER_HEAD = "f" * 40
+
+
+def _matrix_cells():
+    """Decision-table cells for pr-retarget. Each cell is one observable outcome.
+
+    Axes (fail-closed; --write is the only path that may PATCH):
+    PR state open/closed/merged; base match/mismatch; missing base ref;
+    compare ok/404/500; ahead_by 0/>0/null/missing/invalid;
+    old-base tip same/both missing/first missing/second missing/SHA changed/no SHA;
+    tree equal/different/empty new/empty old/empty both;
+    allow-unmerged and allow-compare each on/off; --write on/off;
+    pre-PATCH PR same/closed/merged/base changed/head changed;
+    --expect-head-sha absent/match/mismatch; post-PATCH base match/mismatch.
+    """
+    rows = []
+
+    def add(name, **overrides):
+        cell = {"state": "open", "merged": False, "old": "feat/p", "new": "main", "write": True,
+                "allow_u": False, "allow_c": False, "compare": "ok", "ahead": 0, "tips": "same",
+                "trees": "differ", "fresh": "same", "expect": None, "after": "new", "ncommits": 0}
+        cell.update(overrides)
+        cell["id"] = name
+        rows.append(cell)
+
+    for write in (False, True):
+        add(f"closed-write-{int(write)}", state="closed", write=write)
+        add(f"merged-write-{int(write)}", state="closed", merged=True, write=write)
+        add(f"already-write-{int(write)}", old="main", new="main", write=write)
+    for compare, ahead in (("ok", 0), ("ok", 2), ("404", 0), ("500", 0), ("ok", None), ("ok", "missing"), ("ok", "bad")):
+        add(f"dry-{compare}-{ahead}", write=False, compare=compare, ahead=ahead, tips="same")
+    add("dry-risky-allows-expect", write=False, ahead=2, allow_u=True, allow_c=True, expect="match", ncommits=6)
+    for ahead in (0, 2):
+        add(f"write-ok-{ahead}", ahead=ahead, trees="differ")
+    for compare in ("404", "500"):
+        add(f"write-{compare}", compare=compare, tips="both_missing")
+    add("write-null-ahead", ahead=None)
+    add("write-missing-ahead", ahead="missing")
+    add("write-bad-ahead", ahead="bad")
+    for allow_u, allow_c in ((True, False), (False, True), (True, True)):
+        add(f"unmerged-flags-u{int(allow_u)}-c{int(allow_c)}", ahead=2, allow_u=allow_u, allow_c=allow_c)
+    for allow_u, allow_c in ((False, False), (True, False), (False, True), (True, True)):
+        add(f"compare404-flags-u{int(allow_u)}-c{int(allow_c)}", compare="404", tips="both_missing",
+            allow_u=allow_u, allow_c=allow_c)
+    add("compare404-ref-still-present", compare="404", tips="same", allow_c=True)
+    for tips in ("same", "both_missing", "first_missing", "second_missing", "changed", "both_nosha"):
+        add(f"tips-{tips}", ahead=0, tips=tips)
+    add("tips-both-missing-allow-compare-ignored", ahead=0, tips="both_missing", allow_c=True)
+    for trees in ("differ", "equal", "empty_new", "empty_old", "empty_both"):
+        add(f"tree-{trees}", ahead=2, trees=trees, tips="same")
+    add("tree-equal-allow-unmerged", ahead=2, trees="equal", allow_u=True)
+    for fresh in ("closed", "merged", "base_changed", "head_changed"):
+        add(f"fresh-{fresh}", ahead=0, fresh=fresh)
+    add("expect-match", expect="match")
+    add("expect-mismatch", expect="mismatch")
+    add("verify-mismatch", after="old")
+    add("missing-old-base-ahead", old=None, ahead=2)
+    add("missing-old-base-zero", old=None, ahead=0)
+    add("missing-old-base-compare-404-allow", old=None, compare="404", allow_c=True)
+    add("subjects-truncated", ahead=0, ncommits=6, write=False)
+    return rows
+
+
+def _retarget_spec(cell):
+    """Fail-closed expected outcome. PATCH only when every write guard passes."""
+    if cell["state"] != "open":
+        return {"status": "not_open", "ok": False, "exit": 1, "patches": 0}
+    if cell["old"] == cell["new"]:
+        return {"status": "already_satisfied", "ok": True, "exit": 0, "patches": 0}
+    compare_failed = cell["compare"] != "ok" or not isinstance(cell["ahead"], int)
+    ahead = cell["ahead"] if isinstance(cell["ahead"], int) else 0
+    risky = (not compare_failed) and ahead > 0
+    if risky and cell["old"]:
+        tips_ok = cell["tips"] in ("same", "changed", "second_missing")
+        if tips_ok and cell["trees"] == "equal":
+            risky = False
+    if not cell["write"]:
+        return {"status": "planned", "ok": True, "exit": 0, "patches": 0}
+    if compare_failed and not cell["allow_c"]:
+        return {"status": "refused_compare_failure", "ok": False, "exit": 1, "patches": 0}
+    if risky and not cell["allow_u"]:
+        return {"status": "refused_unmerged_base", "ok": False, "exit": 1, "patches": 0}
+    tip = cell["tips"] if cell["old"] else "both_missing"
+    allow_both = compare_failed and cell["allow_c"]
+    if tip in ("both_missing", "both_nosha"):
+        if not allow_both:
+            return {"status": "refused_stale_pr", "ok": False, "exit": 1, "patches": 0}
+    elif tip != "same":
+        return {"status": "refused_stale_pr", "ok": False, "exit": 1, "patches": 0}
+    if cell["fresh"] != "same" or cell["expect"] == "mismatch":
+        return {"status": "refused_stale_pr", "ok": False, "exit": 1, "patches": 0}
+    if cell["after"] == "old":
+        return {"status": "verification_mismatch", "ok": False, "exit": 1, "patches": 1}
+    return {"status": "verified", "ok": True, "exit": 0, "patches": 1}
+
+
+def _matrix_pr(cell, *, base_ref, state, merged, head_sha):
+    if base_ref is None:
+        return {"state": state, "merged": merged, "html_url": f"https://github.com/{REPO}/pull/{NUMBER}",
+                "base": {}, "head": {"ref": "feat/x", "sha": head_sha}}
+    return pr_payload(base_ref=base_ref, state=state, merged=merged, head_sha=head_sha)
+
+
+def _matrix_routes(cell):
+    old, new = cell["old"], cell["new"]
+    initial = _matrix_pr(cell, base_ref=old, state=cell["state"], merged=cell["merged"], head_sha=HEAD_SHA)
+    fresh_state, fresh_merged, fresh_base, fresh_head = cell["state"], cell["merged"], old, HEAD_SHA
+    if cell["fresh"] == "closed":
+        fresh_state, fresh_merged = "closed", False
+    elif cell["fresh"] == "merged":
+        fresh_state, fresh_merged = "closed", True
+    elif cell["fresh"] == "base_changed":
+        fresh_base = "other"
+    elif cell["fresh"] == "head_changed":
+        fresh_head = OTHER_HEAD
+    fresh = _matrix_pr(cell, base_ref=fresh_base, state=fresh_state, merged=fresh_merged, head_sha=fresh_head)
+    after_base = new if cell["after"] == "new" else old
+    after = _matrix_pr(cell, base_ref=after_base, state="open", merged=False, head_sha=HEAD_SHA)
+    routes = {
+        ("GET", f"/repos/{REPO}/pulls/{NUMBER}"): [reply(initial), reply(fresh), reply(after)],
+        ("PATCH", f"/repos/{REPO}/pulls/{NUMBER}"): reply({}),
+    }
+    compare_old = old or ""
+    compare_key = ("GET", compare_path(compare_old, new))
+    if cell["compare"] == "404":
+        routes[compare_key] = reply({"message": "missing"}, status=404)
+    elif cell["compare"] == "500":
+        routes[compare_key] = reply({"message": "boom"}, status=500)
+    elif cell["ahead"] == "missing":
+        routes[compare_key] = reply({"commits": []})
+    elif cell["ahead"] == "bad":
+        routes[compare_key] = reply({"ahead_by": "nope", "commits": []})
+    elif cell["ahead"] is None:
+        routes[compare_key] = reply({"ahead_by": None, "commits": []})
+    else:
+        commits = [{"commit": {"message": ("  padded subject  " if index == 0 else f"subject {index}")}}
+                   for index in range(cell["ncommits"])]
+        routes[compare_key] = reply({"ahead_by": cell["ahead"], "commits": commits})
+    compare_failed = cell["compare"] != "ok" or not isinstance(cell["ahead"], int)
+    will_tree = (not compare_failed) and cell["ahead"] > 0 and bool(old)
+    present, changed = ref_route(OLD_TIP), ref_route(OTHER_TIP)
+    missing, nosha = reply({"message": "missing"}, status=404), reply({"object": {}})
+    tip_rows = {
+        "same": (present, present, present),
+        "both_missing": (missing, missing, missing),
+        "first_missing": (missing, missing, present),
+        "second_missing": (present, present, missing),
+        "changed": (present, present, changed),
+        "both_nosha": (nosha, nosha, nosha),
+    }
+    if old:
+        first, tree_tip, fresh_tip = tip_rows[cell["tips"]]
+        script = [first, tree_tip, fresh_tip] if will_tree else [first, fresh_tip]
+        routes[("GET", f"/repos/{REPO}/git/ref/heads/{urllib.parse.quote(old, safe='')}")] = script
+    if will_tree:
+        routes[("GET", f"/repos/{REPO}/git/ref/heads/{urllib.parse.quote(new, safe='')}")] = ref_route(MAIN_TIP)
+        trees = {
+            "differ": (TREE_SHA, "u" * 40),
+            "equal": (TREE_SHA, TREE_SHA),
+            "empty_new": ("", TREE_SHA),
+            "empty_old": (TREE_SHA, ""),
+            "empty_both": ("", ""),
+        }
+        base_tree, old_tree = trees[cell["trees"]]
+        routes[("GET", f"/repos/{REPO}/git/commits/{MAIN_TIP}")] = commit_tree_route(base_tree)
+        routes[("GET", f"/repos/{REPO}/git/commits/{OLD_TIP}")] = commit_tree_route(old_tree)
+    return routes
+
+
+def _matrix_argv(cell):
+    argv = ["--json", "pr-retarget", REPO, str(NUMBER), "--base", cell["new"]]
+    if cell["write"]:
+        argv.append("--write")
+    if cell["allow_u"]:
+        argv.append("--allow-unmerged-commits")
+    if cell["allow_c"]:
+        argv.append("--allow-compare-failure")
+    if cell["expect"] == "match":
+        argv.extend(["--expect-head-sha", HEAD_SHA])
+    elif cell["expect"] == "mismatch":
+        argv.extend(["--expect-head-sha", "a" * 40])
+    return argv
+
+
+@pytest.mark.parametrize("cell", _matrix_cells(), ids=lambda cell: cell["id"])
+def test_pr_retarget_decision_matrix(cell, capsys):
+    expected = _retarget_spec(cell)
+    client, stub = client_for(_matrix_routes(cell))
+    code = gh_ops.main(_matrix_argv(cell), client=client)
+    payload = json.loads(capsys.readouterr().out)
+    patches = sum(1 for call in stub.calls if call["method"] == "PATCH")
+    assert payload["status"] == expected["status"]
+    assert payload["ok"] is expected["ok"]
+    assert code == expected["exit"]
+    assert patches == expected["patches"]
+    if cell["id"] == "subjects-truncated":
+        assert len(payload["old_base_commit_subjects"]) == 5
+        assert payload["old_base_commit_subjects"][0] == "padded subject"
+    if cell["compare"] == "500" and cell["write"]:
+        assert payload["compare_error"] != "not_found"
+        assert "500" in payload["compare_error"]
+    if cell["id"] == "fresh-head_changed":
+        assert HEAD_SHA[:12] in payload["reason"] and OTHER_HEAD[:12] in payload["reason"]
+    if cell["id"] == "expect-mismatch":
+        assert "does not match" in payload["reason"]
+    if cell["id"] == "fresh-base_changed":
+        assert "base_ref changed" in payload["reason"]
+
+
+@pytest.mark.parametrize("name,message", [
+    ("-x", "must not start with -"),
+    ("feat/", "must not start or end with /"),
+    ("/a", "must not start or end with /"),
+    ("a//b", "must not contain //"),
+    ("a.", "must not start or end with ."),
+    (".a", "must not start or end with ."),
+    ("a.lock", "must not end with .lock"),
+    ("a/.b", "must not start or end with ."),
+    ("a.lock/b", "must not end with .lock"),
+    ("@", "invalid characters"),
+    ("a~1", "invalid characters"),
+    ("a:b", "invalid characters"),
+    ("a^1", "invalid characters"),
+    ("a?b", "invalid characters"),
+    ("a*b", "invalid characters"),
+    ("a[b", "invalid characters"),
+    ("a@{1", "invalid characters"),
+    ("a\\b", "invalid characters"),
+    ("a\tb", "invalid characters"),
+    ("a\x7fb", "invalid characters"),
+    ("a\nb", "invalid characters"),
+    ("refs/heads/x", "not a refs/ path"),
+    ("a..b", "must not contain .."),
+    ("  ", "is required"),
+    ("", "is required"),
+])
+def test_pr_retarget_invalid_branch_exits_2_without_patch(name, message, capsys):
+    client, stub = client_for({})
+    code = gh_ops.main(["--json", "pr-retarget", REPO, str(NUMBER), f"--base={name}", "--write"], client=client)
+    assert code == 2
+    assert message in capsys.readouterr().err
+    assert stub.calls == []
+
+
+def test_other_commands_do_not_take_pr_retarget_dispatch():
+    """Cover the command-dispatch arms that are not pr-retarget (branch coverage)."""
+    assert gh_ops.main(["url", "compare", REPO, "main", "feature"]) == 0
+    rendered = gh_ops._render("pr-edit", {"ok": True, "dry_run": True, "reason": ""})
+    assert rendered.startswith("OK pr-edit")
+
+
+def test_validate_branch_segment_rejects_empty_segment():
+    with pytest.raises(gh_ops.GhOpsError, match="must not contain empty path segments"):
+        gh_ops._validate_branch_segment("", field="base")
