@@ -18,6 +18,10 @@ is a thin adapter over them::
     python -c "from gh_ops import pr_merge; print(pr_merge('OWNER/REPO', 11, sha='ecfd0ba'))"
     python -S gh_ops.py pr-body-set OWNER/REPO 11 --file body.md --write
     python -S gh_ops.py pr-edit OWNER/REPO 11 --base develop --write
+    python -S gh_ops.py pr-retarget OWNER/REPO 71 --base main            # plan
+    python -S gh_ops.py pr-retarget OWNER/REPO 71 --base main --write    # apply, then read back
+    python -S gh_ops.py pr-retarget OWNER/REPO 71 --base main --write --allow-unmerged-commits
+    python -S gh_ops.py pr-retarget OWNER/REPO 71 --base main --write --allow-compare-failure
     python -S gh_ops.py file-put OWNER/REPO docs/x.md --from x.md --branch docs --message "add x" --write
     python -S gh_ops.py git-commit --message-file msg.txt a.py --write
     python -S gh_ops.py git-commit --message-file msg.txt a.py --write --push
@@ -35,6 +39,7 @@ import contextlib
 import importlib.util
 import base64
 import difflib
+from datetime import datetime, timezone
 import fnmatch
 import json
 import os
@@ -81,6 +86,10 @@ _HTTP_HINTS = {
 
 class GhOpsError(Exception):
     """Input or communication error (exit code 2)."""
+
+    def __init__(self, message: str, *, http_status: int | None = None):
+        super().__init__(message)
+        self.http_status = http_status
 
 
 @dataclass
@@ -157,7 +166,7 @@ class Client:
             text = f"{method} {urllib.parse.urlsplit(url).path} -> HTTP {response.status}"
             text += f": {message}" if message else ""
             text += f" [{hint}]" if hint else ""
-            raise GhOpsError(scrub(text, (self._token,)))
+            raise GhOpsError(scrub(text, (self._token,)), http_status=response.status)
         return response
 
     def get(self, path: str, *, params: dict | None = None) -> Any:
@@ -217,6 +226,111 @@ def _client(client: Client | None) -> Client:
 def _preview(text: str, limit: int) -> str:
     flat = " ".join(text.split())
     return flat if len(flat) <= limit else flat[: max(limit - 1, 0)] + "…"
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _base_ref_label(ref: str | None) -> str:
+    return ref if ref else "(unknown)"
+
+
+_BRANCH_NAME_INVALID = re.compile(r"[\000-\037\177 ~^:?*[\]\\]|@{|//")
+
+
+def _validate_branch_segment(segment: str, *, field: str = "base") -> None:
+    if not segment:
+        raise GhOpsError(f"{field} must not contain empty path segments")
+    if segment == "@":
+        raise GhOpsError(f"{field} contains invalid characters for a branch name")
+    if segment.startswith(".") or segment.endswith("."):
+        raise GhOpsError(f"{field} must not start or end with .")
+    if segment.startswith("-"):
+        raise GhOpsError(f"{field} must not start with -")
+    if segment.endswith(".lock"):
+        raise GhOpsError(f"{field} must not end with .lock")
+    if _BRANCH_NAME_INVALID.search(segment):
+        raise GhOpsError(f"{field} contains invalid characters for a branch name")
+
+
+def _validate_branch_name(name: str, *, field: str = "base") -> str:
+    """Validate a branch name (subset of ``git check-ref-format`` rules, per ``/`` segment)."""
+    branch = name.strip()
+    if not branch:
+        raise GhOpsError(f"{field} is required")
+    if branch.startswith("refs/"):
+        raise GhOpsError(f"{field} must be a branch name, not a refs/ path")
+    if ".." in branch:
+        raise GhOpsError(f"{field} must not contain ..")
+    if branch.startswith("/") or branch.endswith("/"):
+        raise GhOpsError(f"{field} must not start or end with /")
+    if "//" in branch:
+        raise GhOpsError(f"{field} must not contain //")
+    for segment in branch.split("/"):
+        _validate_branch_segment(segment, field=field)
+    return branch
+
+
+def _git_ref_tip_sha(client: Client, repo: str, branch: str) -> str:
+    path = f"/repos/{repo}/git/ref/heads/{urllib.parse.quote(branch, safe='')}"
+    payload = client.get(path)
+    sha = (payload.get("object") or {}).get("sha") or ""
+    if not sha:
+        raise GhOpsError(f"ref heads/{branch} returned no SHA")
+    return sha
+
+
+def _git_ref_tip_sha_optional(client: Client, repo: str, branch: str) -> str | None:
+    try:
+        return _git_ref_tip_sha(client, repo, branch)
+    except GhOpsError:
+        return None
+
+
+def _git_commit_tree_sha(client: Client, repo: str, commit_sha: str) -> str:
+    payload = client.get(f"/repos/{repo}/git/commits/{commit_sha}")
+    return (payload.get("tree") or {}).get("sha") or ""
+
+
+def _branch_tip_tree_match(client: Client, repo: str, base_branch: str, old_branch: str) -> dict:
+    """Compare branch tips by tree SHA; empty trees never count as a match."""
+    empty = {"matched": False, "new_base_tip_sha": None, "old_base_tip_sha": None,
+             "new_base_tree_sha": None, "old_base_tree_sha": None}
+    try:
+        base_tip = _git_ref_tip_sha(client, repo, base_branch)
+        old_tip = _git_ref_tip_sha(client, repo, old_branch)
+        base_tree = _git_commit_tree_sha(client, repo, base_tip)
+        old_tree = _git_commit_tree_sha(client, repo, old_tip)
+        matched = bool(base_tree) and bool(old_tree) and base_tree == old_tree
+        return {"matched": matched, "new_base_tip_sha": base_tip, "old_base_tip_sha": old_tip,
+                "new_base_tree_sha": base_tree or None, "old_base_tree_sha": old_tree or None}
+    except GhOpsError:
+        return empty
+
+
+def _pr_retarget_old_tip_stale(old_before: str | None, old_after: str | None, *, allow_both_missing: bool) -> str:
+    if old_before is None and old_after is None:
+        if allow_both_missing:
+            return ""
+        return "old base tip could not be verified before PATCH"
+    if old_before == old_after:
+        return ""
+    if old_before is None or old_after is None:
+        return "old base tip could not be verified consistently before PATCH"
+    return (f"old base tip SHA changed from {old_before[:12]} to {old_after[:12]} "
+            "before PATCH")
+
+
+def _commit_message_subject(message: str | None, *, limit: int = 100) -> str:
+    """First non-empty line of a commit message, or a fixed label when absent or whitespace-only."""
+    if message is None:
+        return "(empty commit message)"
+    for line in message.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped[:limit]
+    return "(empty commit message)"
 
 
 def _login(comment: dict) -> str:
@@ -885,6 +999,165 @@ def pr_edit(repo: str, number: int, *, title: str | None = None, base: str | Non
     verified = all(now[key] == value for key, value in fields.items())
     return {"ok": verified, "dry_run": False, "changed": True, "fields": report, "verified": verified,
             "reason": "" if verified else "PR fields do not match the requested values after the update"}
+
+
+def _pr_retarget_snapshot(pr: dict) -> dict:
+    base = pr.get("base") or {}
+    head = pr.get("head") or {}
+    return {"state": pr.get("state"), "merged": bool(pr.get("merged")),
+            "base_ref": base.get("ref"), "base_sha": base.get("sha"), "head_sha": head.get("sha"),
+            "url": pr.get("html_url")}
+
+
+def _pr_retarget_stale_reason(before: dict, after: dict, *, expect_head_sha: str | None) -> str:
+    if after.get("state") != "open":
+        return "merged" if after.get("merged") else f"PR is {after.get('state')}"
+    if after.get("base_ref") != before.get("base_ref"):
+        return (f"base_ref changed from {before.get('base_ref')!r} to {after.get('base_ref')!r} "
+                "before PATCH")
+    if after.get("head_sha") != before.get("head_sha"):
+        return (f"head SHA changed from {(before.get('head_sha') or '')[:12]} "
+                f"to {(after.get('head_sha') or '')[:12]} before PATCH")
+    if expect_head_sha is not None:
+        prefix = _sha(expect_head_sha)
+        head = (after.get("head_sha") or "").lower()
+        if not head.startswith(prefix):
+            return f"head SHA {head[:12]} does not match --expect-head-sha {expect_head_sha}"
+    return ""
+
+
+def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = False,
+                allow_unmerged_commits: bool = False, allow_compare_failure: bool = False,
+                expect_head_sha: str | None = None, client: Client | None = None) -> dict:
+    """Change a PR's base branch (for example a stacked PR onto main after its parent merged).
+
+    Dry-run by default. Compares the old base with the new one: commits on the old
+    base that are not in the new base would join the PR diff, so ``--write`` is
+    refused unless ``--allow-unmerged-commits``. A compare failure (for example a
+    deleted old base) needs ``--allow-compare-failure``. Immediately before PATCH,
+    the PR and old-base tip SHAs are re-read and must still match the compare-time
+    snapshot. Verifies by re-reading the PR after PATCH.
+    """
+    if int(number) < 1:
+        raise GhOpsError("PR number must be a positive integer")
+    if not isinstance(base, str):
+        raise GhOpsError("base is required")
+    base = _validate_branch_name(base)
+    if expect_head_sha is not None:
+        _sha(expect_head_sha)
+    client = _client(client)
+    repo = _repo(repo)
+    number = int(number)
+    path = f"/repos/{repo}/pulls/{number}"
+
+    def pull_snapshot() -> dict:
+        return _pr_retarget_snapshot(client.get(path))
+
+    head = pull_snapshot()
+    old = head["base_ref"]
+    out: dict[str, Any] = {"ok": True, "schema": "gh-ops-pr-retarget/1", "repository": repo, "number": number,
+                           "from": old, "to": base, "write": bool(write), "url": head.get("url"),
+                           "observed_at": _utc_now_iso()}
+    if head["state"] != "open":
+        out["status"] = "not_open"
+        out["ok"] = False
+        out["reason"] = "merged" if head["merged"] else f"PR is {head['state']}"
+        return out
+    if old == base:
+        out["status"] = "already_satisfied"
+        out["reason"] = "base already matches"
+        return out
+    old_tip_sha = _git_ref_tip_sha_optional(client, repo, old) if old else None
+    if old:
+        out["old_base_tip_sha"] = old_tip_sha
+    compare_path = (f"/repos/{repo}/compare/{urllib.parse.quote(base, safe='')}"
+                    f"...{urllib.parse.quote(old or '', safe='')}")
+    compare_failed = False
+    ahead_by = 0
+    try:
+        cmp = client.get(compare_path)
+        ahead_raw = cmp.get("ahead_by")
+        if ahead_raw is None:
+            compare_failed = True
+            out["old_base_unmerged_commits"] = None
+            out["old_base_commit_subjects"] = []
+            out["compare_error"] = ("missing ahead_by in compare response" if "ahead_by" not in cmp
+                                    else "null ahead_by in compare response")
+        else:
+            try:
+                ahead_by = int(ahead_raw)
+            except (TypeError, ValueError):
+                compare_failed = True
+                out["old_base_unmerged_commits"] = None
+                out["old_base_commit_subjects"] = []
+                out["compare_error"] = "invalid ahead_by in compare response"
+            else:
+                if ahead_by < 0:
+                    compare_failed = True
+                    out["old_base_unmerged_commits"] = None
+                    out["old_base_commit_subjects"] = []
+                    out["compare_error"] = "negative ahead_by in compare response"
+                else:
+                    out["old_base_unmerged_commits"] = ahead_by
+                    commits = cmp.get("commits") or []
+                    out["old_base_commit_subjects"] = [
+                        _commit_message_subject((item.get("commit") or {}).get("message"))
+                        for item in commits[:5]]
+    except GhOpsError as error:
+        compare_failed = True
+        out["old_base_unmerged_commits"] = None
+        out["old_base_commit_subjects"] = []
+        out["compare_error"] = "not_found" if error.http_status == 404 else str(error)
+    unmerged_risky = ahead_by > 0
+    if unmerged_risky and old:
+        tree_info = _branch_tip_tree_match(client, repo, base, old)
+        out["tree_compare"] = tree_info
+        if tree_info["matched"]:
+            unmerged_risky = False
+            out["unmerged_commit_tree_match"] = True
+    old_label = _base_ref_label(old)
+    if compare_failed:
+        out["warning"] = f"could not compare {old_label} with {base}"
+    elif unmerged_risky:
+        out["warning"] = f"{old_label} has {ahead_by} commit(s) not in {base}; they would join the diff"
+    if not write:
+        out["status"] = "planned"
+        out["dry_run"] = True
+        return out
+    if compare_failed and not allow_compare_failure:
+        out["status"] = "refused_compare_failure"
+        out["ok"] = False
+        out["reason"] = out["warning"]
+        return out
+    if unmerged_risky and not allow_unmerged_commits:
+        out["status"] = "refused_unmerged_base"
+        out["ok"] = False
+        out["reason"] = out.get("warning", "")
+        return out
+    fresh = pull_snapshot()
+    old_tip_fresh = _git_ref_tip_sha_optional(client, repo, old) if old else None
+    allow_missing_tips = compare_failed and allow_compare_failure
+    tip_stale = _pr_retarget_old_tip_stale(old_tip_sha, old_tip_fresh, allow_both_missing=allow_missing_tips)
+    if tip_stale:
+        out["status"] = "refused_stale_pr"
+        out["ok"] = False
+        out["reason"] = tip_stale
+        return out
+    stale = _pr_retarget_stale_reason(head, fresh, expect_head_sha=expect_head_sha)
+    if stale:
+        out["status"] = "refused_stale_pr"
+        out["ok"] = False
+        out["reason"] = stale
+        return out
+    client.request("PATCH", path, {"base": base})
+    after = pull_snapshot()
+    verified = after["base_ref"] == base
+    out["status"] = "verified" if verified else "verification_mismatch"
+    out["ok"] = verified
+    out["dry_run"] = False
+    if not verified:
+        out["reason"] = f"base is {after['base_ref']!r} after PATCH, expected {base!r}"
+    return out
 
 
 def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: str = "squash",
@@ -1741,6 +2014,10 @@ def _render(command: str, result: dict) -> str:
                 if result.get("state") == "pushed" else
                 f"dry run subtree-push: would run {' '.join(result['command'])}")
         return head + f"\nsplit={result['split_method']}{compare}\n{result['provenance']['trailer']}"
+    if command == "pr-retarget":
+        extra = f" ({result['warning']})" if result.get("warning") else ""
+        return (f"{result['status']} {result['repository']}#{result['number']} "
+                f"base {_base_ref_label(result.get('from'))} -> {result['to']}{extra}")
     reason = result.get("reason") or "; ".join(result.get("failures", []))
     status = "OK" if result["ok"] else "NG"
     mode = "dry run" if result.get("dry_run") else "applied"
@@ -1876,6 +2153,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--state", choices=_PR_EDIT_STATES)
     p.add_argument("--write", action="store_true")
 
+    p = sub.add_parser("pr-retarget", help="change a stacked PR's base (planned unless --write)")
+    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("--base", default="main", help="new base branch name (default: main)")
+    p.add_argument("--allow-unmerged-commits", action="store_true",
+                   help="allow --write when the old base has commits not in the new base (ahead_by > 0)")
+    p.add_argument("--allow-compare-failure", action="store_true",
+                   help="allow --write when compare with the old base failed (for example branch deleted)")
+    p.add_argument("--expect-head-sha", metavar="SHA",
+                   help="optional: refuse --write unless the PR head still matches this SHA before PATCH")
+    p.add_argument("--write", action="store_true")
+
     p = sub.add_parser("file-put", help="create or update one file via the contents API (needs --write)")
     p.add_argument("repo"); p.add_argument("path", help="path of the file inside the repository")
     p.add_argument("--from", dest="from_path", required=True, help="local file to read the new content from")
@@ -1975,6 +2263,11 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
     if command == "pr-edit":
         return pr_edit(args.repo, args.number, title=args.title, base=args.base, state=args.state,
                        write=args.write, client=client)
+    if command == "pr-retarget":
+        return pr_retarget(args.repo, args.number, args.base, write=args.write,
+                           allow_unmerged_commits=args.allow_unmerged_commits,
+                           allow_compare_failure=args.allow_compare_failure,
+                           expect_head_sha=args.expect_head_sha, client=client)
     if command == "file-put":
         return file_put(args.repo, args.path, content=Path(args.from_path).read_bytes(), branch=args.branch,
                         message=args.message, write=args.write, allow_default_branch=args.allow_default_branch,
