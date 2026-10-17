@@ -20,13 +20,17 @@ def run(identity, output, summary=None, owner="myon-bioinformatics", timeout=900
     output.parent.mkdir(parents=True, exist_ok=True)
     problems = []
     collector_status = 1
-    with output.open("w", encoding="utf-8") as destination:
+    with output.open("w", encoding="utf-8") as destination, \
+            output.with_suffix(".stderr.log").open("w", encoding="utf-8") as diagnostics:
         try:
             collector_status = subprocess.run(
                 [sys.executable, "-S", str(identity), "--timeout", str(timeout),
                  "duplicate-files", "--owner", owner],
-                stdout=destination, check=False,
+                stdout=destination, stderr=diagnostics, check=False, timeout=timeout,
             ).returncode
+        except subprocess.TimeoutExpired:
+            collector_status = 124
+            problems.append(f"Collector exceeded wall-clock timeout ({timeout} seconds)")
         except OSError as exc:
             problems.append(f"Collector could not start: {exc}")
 
@@ -111,8 +115,11 @@ def main(argv=None):
     parser.add_argument("--output", default="reports/duplicate-files.json")
     parser.add_argument("--summary", default=os.environ.get("GITHUB_STEP_SUMMARY"))
     parser.add_argument("--owner", default="myon-bioinformatics")
-    parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument("--timeout", type=int, default=900,
+                        help="Collector operation budget and wall-clock limit in seconds (default: 900)")
     ns = parser.parse_args(argv)
+    if ns.timeout <= 0:
+        parser.error("--timeout must be greater than zero")
     return run(ns.identity, ns.output, ns.summary, ns.owner, ns.timeout)
 
 

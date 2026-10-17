@@ -53,7 +53,7 @@ jobs:
           python-version: "3.12"
       - name: Unit regressions
         run: |
-          python -m pip install pytest
+          python -m pip install -r tests/requirements.txt
           python -m pytest -q tests/test_vendor_lock_reconcile.py tests/test_vendor_consumers.py tests/test_vendor_catalog.py tests/test_vendor_fleet_plan.py tests/test_duplicate_files_report.py
       - name: Fetch real consumer locks (read only)
         env:
@@ -123,6 +123,7 @@ jobs:
           python -S duplicate_files_report.py \
             --identity .gh-identity/gh_identity.py \
             --output reports/duplicate-files.json \
+            --timeout 900 \
             --owner myon-bioinformatics
       - name: Upload duplicate-files report
         if: always()
@@ -132,5 +133,6 @@ jobs:
           path: |
             reports/duplicate-files.json
             reports/duplicate-files.md
+            reports/duplicate-files.stderr.log
           if-no-files-found: warn
           retention-days: 14
