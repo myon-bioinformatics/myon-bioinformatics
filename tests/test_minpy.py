@@ -1333,13 +1333,36 @@ def test_rejects_reserved_import_prefix(tmp_path: Path) -> None:
         _bundle(root)
 
 
+def test_rejects_from_importlib_import_resources(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "from importlib import resources\nresources.files('pkg')\n")
+    with pytest.raises(minpy.MinpyError, match="importlib.resources"):
+        _bundle(root)
+
+
+def test_rejects_from_importlib_import_resources_alias(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "from importlib import resources as res\nres.files('pkg')\n")
+    with pytest.raises(minpy.MinpyError, match="importlib.resources"):
+        _bundle(root)
+
+
+def test_rejects_importlib_resources_attribute_access(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "import importlib\nimportlib.resources.files('pkg')\n")
+    with pytest.raises(minpy.MinpyError, match="importlib.resources"):
+        _bundle(root)
+
+
 @pytest.mark.parametrize(
     ("source", "needle"),
     [
         ("import pkgutil\npkgutil.get_data('x', 'y')\n", "pkgutil.get_data"),
         ("from pkgutil import get_data\nget_data('x', 'y')\n", "pkgutil.get_data"),
+        ("from pkgutil import get_data as load_pkg\nload_pkg('x', 'y')\n", "pkgutil.get_data"),
         ("import importlib.resources\n", "importlib.resources"),
         ("import pkg_resources\n", "pkg_resources"),
+        ("from pkg_resources import resource_filename\nresource_filename('pkg', 'x')\n", "pkg_resources"),
     ],
 )
 def test_rejects_data_file_import_hooks(tmp_path: Path, source: str, needle: str) -> None:
@@ -1367,6 +1390,22 @@ def test_rejects_tampered_bundle_header(tmp_path: Path) -> None:
     doubled = "\n".join(doubled_lines) + "\n"
     with pytest.raises(minpy.MinpyError, match="exactly one content-sha256"):
         minpy.content_sha256(doubled)
+
+
+def test_rejects_wrong_bundle_prefix_in_header(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "VALUE = 1\n")
+    text = _bundle(root)
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith("# prefix: "):
+            lines[index] = "# prefix: _minpy_0123456789abcdef"
+            break
+    else:
+        raise AssertionError("bundle header missing prefix field")
+    tampered = "\n".join(lines) + "\n"
+    with pytest.raises(minpy.MinpyError, match="prefix does not match"):
+        minpy.parse_header(tampered)
 
 
 def test_lock_schema_and_metadata_checks(tmp_path: Path) -> None:

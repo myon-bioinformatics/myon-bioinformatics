@@ -429,12 +429,27 @@ def _shadows(top: str, roots: list[Path]) -> bool:
         return True
 
 
+def _attribute_dotted_name(node: ast.AST) -> str | None:
+    parts: list[str] = []
+    current = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if isinstance(current, ast.Name):
+        parts.append(current.id)
+        return ".".join(reversed(parts))
+    return None
+
+
 class _Scanner(ast.NodeVisitor):
     def __init__(self) -> None:
         self.refs: list[_Ref] = []
         self.problems: list[str] = []
         self._optional = False
         self._pkgutil: set[str] = set()
+        self._get_data_names: set[str] = set()
+        self._importlib_modules: set[str] = set()
+        self._resources_modules: set[str] = set()
         self._stack: list[str] = ["library"]
         self.defined: set[str] = set()
         self.loads: dict[str, set[str]] = {}
@@ -529,6 +544,8 @@ class _Scanner(ast.NodeVisitor):
             self._note_module(alias.name, node.lineno)
             if alias.name == "pkgutil" or alias.name.startswith("pkgutil."):
                 self._pkgutil.add(alias.asname or alias.name.split(".")[0])
+            if alias.name == "importlib" or alias.name.startswith("importlib."):
+                self._importlib_modules.add(alias.asname or "importlib")
             self._add_ref(0, alias.name, (), node.lineno)
         self.generic_visit(node)
 
@@ -538,10 +555,23 @@ class _Scanner(ast.NodeVisitor):
         self._note_module("." * node.level + module, node.lineno)
         if node.module == "pkgutil" and "get_data" in names:
             self.problems.append("line " + str(node.lineno) + ": pkgutil.get_data (data files are not bundled)")
+        if node.module == "pkg_resources" or module.startswith("pkg_resources."):
+            self.problems.append("line " + str(node.lineno) + ": pkg_resources (data files are not bundled)")
+        if node.module == "importlib":
+            for alias in node.names:
+                if alias.name == "resources":
+                    self.problems.append(
+                        "line " + str(node.lineno) + ": importlib.resources (data files are not bundled)"
+                    )
+                    self._resources_modules.add(alias.asname or "resources")
+                if alias.name == "importlib":
+                    self._importlib_modules.add(alias.asname or "importlib")
         self._add_ref(node.level, module, names, node.lineno)
         for alias in node.names:
             if node.module == "pkgutil" and alias.name == "pkgutil":
                 self._pkgutil.add(alias.asname or alias.name)
+            if node.module == "pkgutil" and alias.name == "get_data":
+                self._get_data_names.add(alias.asname or "get_data")
         if node.module == "pkgutil":
             self._pkgutil.add("pkgutil")
         self.generic_visit(node)
@@ -555,29 +585,62 @@ class _Scanner(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         function = node.func
-        if isinstance(function, ast.Name) and function.id in {"__import__", "exec", "eval"}:
-            self.problems.append(  # minpy: uncovered
-                "line " + str(node.lineno) + ": dynamic " + function.id + " is not bundled"
-            )
-        elif isinstance(function, ast.Attribute) and function.attr == "import_module":
-            literal = _literal_module(node)
-            if literal is not None:
-                self._note_module(literal, node.lineno or 0)
-                self._add_ref(0, literal, (), node.lineno or 0)
-        elif isinstance(function, ast.Attribute) and function.attr in {
-            "__import__",
-            "spec_from_file_location",
-        }:
-            self.problems.append(
-                "line " + str(node.lineno) + ": dynamic " + function.attr + " is not bundled"
-            )
-        elif isinstance(function, ast.Attribute) and function.attr == "get_data":
-            owner = function.value
-            if isinstance(owner, ast.Name) and (owner.id in self._pkgutil or owner.id == "pkgutil"):
+        if isinstance(function, ast.Name):
+            if function.id in {"__import__", "exec", "eval"}:
+                self.problems.append(  # minpy: uncovered
+                    "line " + str(node.lineno) + ": dynamic " + function.id + " is not bundled"
+                )
+            elif function.id in self._get_data_names:
                 self.problems.append(
                     "line " + str(node.lineno) + ": pkgutil.get_data (data files are not bundled)"
                 )
+        elif isinstance(function, ast.Attribute):
+            self._check_call_data_hooks(function, node.lineno or 0)
+            if function.attr == "import_module":
+                literal = _literal_module(node)
+                if literal is not None:
+                    self._note_module(literal, node.lineno or 0)
+                    self._add_ref(0, literal, (), node.lineno or 0)
+            elif function.attr in {
+                "__import__",
+                "spec_from_file_location",
+            }:
+                self.problems.append(
+                    "line " + str(node.lineno) + ": dynamic " + function.attr + " is not bundled"
+                )
+            elif function.attr == "get_data":
+                owner = function.value
+                if isinstance(owner, ast.Name) and (
+                    owner.id in self._pkgutil or owner.id == "pkgutil" or owner.id in self._get_data_names
+                ):
+                    self.problems.append(
+                        "line " + str(node.lineno) + ": pkgutil.get_data (data files are not bundled)"
+                    )
         self.generic_visit(node)
+
+    def _check_call_data_hooks(self, function: ast.Attribute, lineno: int) -> None:
+        target = _attribute_dotted_name(function)
+        if not target:
+            return
+        root = target.split(".")[0]
+        if target.endswith(".get_data") or target == "get_data":
+            if root in self._pkgutil or root in self._get_data_names or root == "pkgutil":
+                self.problems.append(
+                    "line " + str(lineno) + ": pkgutil.get_data (data files are not bundled)"
+                )
+        if target == "importlib.resources" or target.startswith("importlib.resources."):
+            self.problems.append(
+                "line " + str(lineno) + ": importlib.resources (data files are not bundled)"
+            )
+        parts = target.split(".")
+        if len(parts) >= 3 and parts[0] in self._importlib_modules and parts[1] == "resources":
+            self.problems.append(
+                "line " + str(lineno) + ": importlib.resources (data files are not bundled)"
+            )
+        if root in self._resources_modules:
+            self.problems.append(
+                "line " + str(lineno) + ": importlib.resources (data files are not bundled)"
+            )
 
     def _add_ref(self, level: int, module: str, names: tuple[str, ...], lineno: int) -> None:
         self.refs.append(
@@ -1332,7 +1395,7 @@ def parse_header(text: str) -> dict[str, object]:
     if not re.fullmatch(r"_minpy_[0-9a-f]{16}", prefix):
         raise MinpyError("bundle prefix is invalid")  # minpy: uncovered
     if prefix != bundle_prefix(repository, entry, commit):
-        raise MinpyError("bundle prefix does not match repository, entry, and commit")  # minpy: uncovered
+        raise MinpyError("bundle prefix does not match repository, entry, and commit")
     digest = field(14, "content-sha256")
     if not _HEX64.fullmatch(digest):
         raise MinpyError("bundle content-sha256 is invalid")  # minpy: uncovered
