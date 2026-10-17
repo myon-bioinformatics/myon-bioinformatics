@@ -1,7 +1,7 @@
 """Regression for the parent-approved Flutter vendor and workflow baseline.
 
-Lock snapshot comes from Flutter #207 f73c72eb, adopting browser-test-kit #84
-main merge 4be0f0d2. The approved Non-Dart workflow adds same-run Python/Node build observations; gh_ops/LICENSE pins are unchanged.
+Lock snapshot comes from Flutter #207 bounded-candidate repair, adopting browser-test-kit #85
+main merge 8d8512fe. The approved Non-Dart workflow adds same-run Python/Node build observations; gh_ops/LICENSE pins are unchanged.
 """
 import copy
 import hashlib
@@ -17,7 +17,7 @@ import vendor_sync
 
 ROOT = Path(__file__).resolve().parents[1]
 FLUTTER = "myon-bioinformatics/flutter_navigation_basic"
-LOCK_FIXTURE = "tests/fixtures/flutter_vendor_lock_f73c72eb.json"
+LOCK_FIXTURE = "tests/fixtures/flutter_vendor_lock_207_bounded.json"
 WORKFLOW_FIXTURE = "tests/fixtures/flutter_non_dart_build_companions.yml"
 GH_OPS_CATALOG_COMMIT = "09831b992dc91d83b15c44861a788e03b1e654c4"
 
@@ -95,6 +95,8 @@ def test_historical_layout_requires_deliberate_parent_baseline_update():
     registry = load("vendor-consumers.json")
     old_lock = load("tests/fixtures/flutter_vendor_lock_782babef.json")
     assert not vendor_consumers.compare(registry, old_lock, FLUTTER)["matches"]
+    old_shared = load("tests/fixtures/flutter_vendor_lock_f73c72eb.json")
+    assert not vendor_consumers.compare(registry, old_shared, FLUTTER)["matches"]
     before_handoff = load("tests/fixtures/flutter_vendor_lock_1dd33afc.json")
     assert not vendor_consumers.compare(registry, before_handoff, FLUTTER)["matches"]
     current = vendor_consumers.get_consumer(registry, FLUTTER)
@@ -116,7 +118,7 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
     assert hashlib.sha256(approved).hexdigest() == contract["sha256"]
     recorded = heads["heads"][FLUTTER]
     assert recorded["repository_id"] == 739348522
-    assert recorded["sha"] == "f3e230a2501d74245fcbec62183dc7c688092543"
+    assert recorded["sha"] == "d984acd57440f59d5a0774a1b89742cf21107ee2"
     data = approved
     if fault == "removed":
         start = data.index(b"  python-vendor-locked:\n")
@@ -170,7 +172,7 @@ def test_shared_execution_adopts_main_merge_with_existing_helper_and_license():
     rows = {row["destination"]: row for row in lock["files"]}
     module = rows["e2e/utils/browser_execution.mjs"]
     assert module["repository"] == "myon-bioinformatics/browser-test-kit"
-    assert module["ref"] == module["commit"] == "4be0f0d20b4cb6418ae97f64f3ca6aea6a75292c"
+    assert module["ref"] == module["commit"] == "8d8512fefea38993e5b3695c0706075cf05071ad"
     assert module["source"] == "scripts/browser_execution.mjs"
     for path in ("e2e/utils/interaction.mjs", "python/vendor/browser-test-kit-LICENSE"):
         assert rows[path]["repository"] == module["repository"]
