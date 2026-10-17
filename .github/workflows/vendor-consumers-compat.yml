@@ -3,6 +3,17 @@ name: Pinned vendor consumer compatibility
 on:
   pull_request:
     paths:
+      - "vendor_sync.py"
+      - "vendor.lock.json"
+      - "vendor_consumers.py"
+      - "vendor-consumers.json"
+      - "tests/test_vendor_consumers_compat.py"
+      - ".github/workflows/vendor-consumers-compat.yml"
+  push:
+    branches: [main]
+    paths:
+      - "vendor_sync.py"
+      - "vendor.lock.json"
       - "vendor_consumers.py"
       - "vendor-consumers.json"
       - "tests/test_vendor_consumers_compat.py"
