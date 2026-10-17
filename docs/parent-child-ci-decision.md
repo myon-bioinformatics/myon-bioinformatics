@@ -257,7 +257,7 @@ Recorded on 2026-10-17. Flutter #194 was squash-merged as
 `31f33f421e856727bc226d9e3f0cf61b9a7517c5`. The parent candidate updates its
 recorded Flutter head and PR provenance together with the approved workflow
 SHA-256 to `7bc2d362256aea48a6e002d7d9e0c415ad174d3ec89c2e042bbe89f43792bb12`. The workflow differs from the previous
-reviewed snapshot only by four `--only-shell` additions to Chromium installation
+reviewed snapshot only by three `--only-shell` additions to Chromium installation
 commands. The 14 vendor entries, adopted lock bytes, parent tool pins, triggers,
 job conditions and locked check/materialize/check lane are unchanged.
 
