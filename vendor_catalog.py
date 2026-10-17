@@ -3,36 +3,59 @@ from __future__ import annotations
 
 import argparse
 import copy
+import datetime
 import json
+import keyword
 from pathlib import Path
 import re
 import sys
+import warnings
 
 import vendor_sync
 
 SCHEMA = "vendor-catalog/1"
+# Consumer-held catalog snapshots (for example Ironmate) may omit source until this date.
+LEGACY_IMPLICIT_SOURCE_DEADLINE = datetime.date(2027, 4, 1)
+
+
+def legacy_implicit_source_allowed(allow_flag: bool) -> bool:
+    if datetime.date.today() > LEGACY_IMPLICIT_SOURCE_DEADLINE:
+        return False
+    return allow_flag
 
 
 def normalized_module_name(repo_name: str) -> str:
     """Lowercase repository name and map '-' and '.' to '_' for module identity."""
     module = repo_name.casefold().replace("-", "_").replace(".", "_")
-    if not module.isidentifier():
+    if not module.isidentifier() or keyword.iskeyword(module):
         raise ValueError(f"repository name does not normalize to a valid Python identifier: {repo_name}")
     return module
 
 
-def validate(catalog):
+def _legacy_implicit_source(repo: str) -> str:
+    return repo.split("/")[1] + ".py"
+
+
+def _validate_source(source) -> str:
+    if not isinstance(source, str) or not source or source != source.strip():
+        raise ValueError("source required")
+    vendor_sync._path(source)
+    return source
+
+
+def validate(catalog, *, allow_legacy_implicit_source: bool = False):
     """Validate and return a normalized copy, never modifying caller data."""
     if not isinstance(catalog, dict) or set(catalog) != {"schema", "tools"} or catalog["schema"] != SCHEMA:
         raise ValueError("expected vendor-catalog/1")
     if not isinstance(catalog["tools"], list) or not catalog["tools"]:
         raise ValueError("tools must be a nonempty list")
+    legacy_ok = legacy_implicit_source_allowed(allow_legacy_implicit_source)
     result = copy.deepcopy(catalog)
     seen = set()
     normalized_repos: dict[str, str] = {}
     for tool in result["tools"]:
-        required = {"repository", "commit", "reason", "source"}
-        optional = {"consumers", "default_enrollment"}
+        required = {"repository", "commit", "reason"}
+        optional = {"consumers", "default_enrollment", "source"}
         if not isinstance(tool, dict) or not required <= tool.keys() or tool.keys() - required - optional:
             raise ValueError("invalid tool fields")
         repo = tool["repository"]
@@ -45,10 +68,19 @@ def validate(catalog):
         if prior is not None and prior != repo_key:
             raise ValueError("normalized repository module name collision")
         normalized_repos[module] = repo_key
-        source = tool["source"]
-        if not isinstance(source, str) or not source.strip():
+        if "source" in tool:
+            source = _validate_source(tool["source"])
+        elif legacy_ok:
+            source = _legacy_implicit_source(repo)
+            tool["source"] = source
+            warnings.warn(
+                f"implicit source for {repo} is deprecated; set source explicitly "
+                f"(required after {LEGACY_IMPLICIT_SOURCE_DEADLINE.isoformat()})",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        else:
             raise ValueError("source required")
-        vendor_sync._path(source)
         vendor_sync._hex(tool["commit"], 40)
         if not isinstance(tool["reason"], str) or not tool["reason"].strip():
             raise ValueError("recommendation reason required")
@@ -108,9 +140,18 @@ def main(argv=None):
     parser.add_argument("--catalog", default="vendor-catalog.json")
     parser.add_argument("--lock")
     parser.add_argument("--consumer")
+    parser.add_argument(
+        "--allow-legacy-implicit-source",
+        action="store_true",
+        help="accept omitted source using the retired <repository>.py default (consumer snapshots until "
+        f"{LEGACY_IMPLICIT_SOURCE_DEADLINE.isoformat()})",
+    )
     args = parser.parse_args(argv)
     try:
-        catalog = validate(json.loads(Path(args.catalog).read_text(encoding="utf-8")))
+        catalog = validate(
+            json.loads(Path(args.catalog).read_text(encoding="utf-8")),
+            allow_legacy_implicit_source=args.allow_legacy_implicit_source,
+        )
         if args.mode == "compare":
             if not args.lock or not args.consumer:
                 raise ValueError("compare requires --lock and --consumer")

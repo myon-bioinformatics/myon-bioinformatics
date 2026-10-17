@@ -86,7 +86,7 @@ def git_blob(data):
 
 
 def _path(value):
-    if not isinstance(value, str) or not value or "\\" in value or ":" in value:
+    if not isinstance(value, str) or not value or value != value.strip() or "\\" in value or ":" in value:
         raise ValueError("expected a relative POSIX path")
     parts = value.split("/")
     if any(p in ("", ".", "..", ".git") for p in parts) or any(ord(c) < 32 for c in value):

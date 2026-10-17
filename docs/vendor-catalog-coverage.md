@@ -18,8 +18,14 @@ name collisions between different repositories fail validation.
 
 The catalog expands coverage to yourself, cli_args, markdown, ascii_artist,
 nvd_nist_known_vulns, web-ui (`web_ui.py`), BlueProbe (`blueprobe.py`), and the
-parent's shared tools. QueRyu (`queryu.py`) and PythDRagoras (`pythdragoras.py`)
-are registered with `skipped(requires_external_package)`. Existing
+parent's shared tools. `web_ui.py` uses `skipped(pending_explicit_enrollment)`
+by default; only consumers with an existing locked copy (Aoi and github.io) are
+`enrolled` explicitly. `blueprobe.py` uses `skipped(requires_sibling_module)`;
+Aoi is additionally `skipped(subtree_child)` because subtree sync owns that
+layout. QueRyu (`queryu.py`) and PythDRagoras (`pythdragoras.py`) use
+`skipped(requires_external_package)`. A warn-only check for legacy implicit
+`source` defaults in child snapshots is deferred; use
+`validate --allow-legacy-implicit-source` until 2027-04-01 instead. Existing
 gh_identity/xprobe recommended pins remain unchanged. Newly added entries select
 an exact inspected default-branch SHA explicitly; this is not automatic
 development-head promotion.

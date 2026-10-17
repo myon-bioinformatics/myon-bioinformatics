@@ -271,13 +271,37 @@
       "repository": "myon-bioinformatics/web-ui",
       "commit": "484ec248cb523ce158abb00741d26fd0da9217e3",
       "source": "web_ui.py",
-      "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion."
+      "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "pending_explicit_enrollment"
+      },
+      "consumers": {
+        "myon-bioinformatics/Aoi": {
+          "enrollment": "enrolled",
+          "reason": "locked_vendor_copy"
+        },
+        "myon-bioinformatics/myon-bioinformatics.github.io": {
+          "enrollment": "enrolled",
+          "reason": "locked_vendor_copy"
+        }
+      }
     },
     {
       "repository": "myon-bioinformatics/BlueProbe",
       "commit": "bf27a17354544519016bbbde87c7f9c8d2aa29cd",
       "source": "blueprobe.py",
-      "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion."
+      "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "requires_sibling_module"
+      },
+      "consumers": {
+        "myon-bioinformatics/Aoi": {
+          "enrollment": "skipped",
+          "reason": "subtree_child"
+        }
+      }
     },
     {
       "repository": "myon-bioinformatics/QueRyu",

@@ -1,9 +1,11 @@
 import copy
+import datetime
 import hashlib
 import json
 from pathlib import Path
 import subprocess
 import sys
+import warnings
 
 import pytest
 import vendor_catalog as catalog
@@ -33,20 +35,66 @@ def test_explicit_source_and_no_mutation():
     value['tools'][0]['source'] = 'helpers/other.py'
     assert catalog.validate(value)['tools'][0]['source'] == 'helpers/other.py'
     del value['tools'][0]['source']
-    with pytest.raises(ValueError, match='invalid tool fields'):
+    with pytest.raises(ValueError, match='source required'):
         catalog.validate(value)
 
 
-def test_normalized_repository_module_collision():
+def test_normalized_repository_module_collision_across_owners():
     doc = {
         'schema': catalog.SCHEMA,
         'tools': [
-            {'repository': 'owner/web-ui', 'commit': NEW, 'source': 'web_ui.py', 'reason': 'Reviewed baseline'},
-            {'repository': 'owner/web_ui', 'commit': NEW, 'source': 'web_ui.py', 'reason': 'Reviewed baseline'},
+            {'repository': 'owner-a/web-ui', 'commit': NEW, 'source': 'web_ui.py', 'reason': 'Reviewed baseline'},
+            {'repository': 'owner-b/web_ui', 'commit': NEW, 'source': 'web_ui.py', 'reason': 'Reviewed baseline'},
         ],
     }
     with pytest.raises(ValueError, match='collision'):
         catalog.validate(doc)
+
+
+def test_repository_casefold_does_not_trigger_normalization_collision():
+    doc = {
+        'schema': catalog.SCHEMA,
+        'tools': [
+            {'repository': 'owner/Web-UI', 'commit': NEW, 'source': 'Web_UI.py', 'reason': 'Reviewed baseline'},
+            {'repository': 'owner/web-ui', 'commit': NEW, 'source': 'web_ui.py', 'reason': 'Reviewed baseline'},
+        ],
+    }
+    catalog.validate(doc)
+
+
+@pytest.mark.parametrize('source', ['', '   ', 0, None, ' example.py', 'example.py '])
+def test_invalid_source_values(source):
+    doc = manifest()
+    doc['tools'][0]['source'] = source
+    with pytest.raises(ValueError, match='source required|invalid tool fields|expected a relative POSIX path'):
+        catalog.validate(doc)
+
+
+def test_repository_keyword_name_rejected():
+    doc = manifest()
+    doc['tools'][0]['repository'] = 'owner/class'
+    with pytest.raises(ValueError, match='valid Python identifier'):
+        catalog.validate(doc)
+
+
+def test_legacy_implicit_source_for_consumer_snapshots():
+    doc = manifest()
+    del doc['tools'][0]['source']
+    with pytest.raises(ValueError, match='source required'):
+        catalog.validate(doc)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        result = catalog.validate(doc, allow_legacy_implicit_source=True)
+    assert result['tools'][0]['source'] == 'example.py'
+    assert any('implicit source' in str(item.message) for item in caught)
+
+
+def test_legacy_implicit_source_disabled_after_deadline(monkeypatch):
+    doc = manifest()
+    del doc['tools'][0]['source']
+    monkeypatch.setattr(catalog, 'LEGACY_IMPLICIT_SOURCE_DEADLINE', datetime.date(2000, 1, 1))
+    with pytest.raises(ValueError, match='source required'):
+        catalog.validate(doc, allow_legacy_implicit_source=True)
 
 
 def test_repository_name_must_normalize_to_identifier():
