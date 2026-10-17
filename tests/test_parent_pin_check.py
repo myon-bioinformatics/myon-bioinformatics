@@ -6,6 +6,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+import yaml
 
 from tools.parent_pin_check import (
     PARENT_PIN_TOOL_PATH,
@@ -676,6 +677,65 @@ def test_main_fleet_audit_error_enforces(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_parent_pin_tool_path_constant() -> None:
     assert PARENT_PIN_TOOL_PATH == "tools/parent_pin_check.py"
+
+
+@pytest.mark.parametrize("findings,complete,expected", [(16, True, 1), (0, False, 1), (0, True, 0)])
+def test_manual_readiness_preserves_failed_reports_and_requires_completeness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, findings: int, complete: bool, expected: int,
+) -> None:
+    failures = [{"repository": f"myon-bioinformatics/child-{i}", "revision": "b" * 40, "pins": []}
+                for i in range(findings)]
+    report = {
+        "schema": "parent-pin-fleet/1", "parent_repository": PARENT_REPOSITORY,
+        "parent_main_sha": "a" * 40, "parent_default_branch": "main",
+        "checked_repositories": 17, "audited_repositories": 17 if complete else 0,
+        "complete": complete, "failure_count": findings, "failures": failures,
+        "audit_error_count": 0, "audit_errors": [],
+        "fetch_warning_count": 0 if complete else 1,
+        "fetch_warnings": [] if complete else [{"message": "HTTP 403"}],
+        "enforce": True, "ok": findings == 0,
+    }
+
+    def fake_fleet(*_args, enforce=False, **_kwargs):
+        assert enforce is True
+        return report
+
+    monkeypatch.setattr("tools.parent_pin_check.run_fleet", fake_fleet)
+    output = tmp_path / "reports" / "readiness.json"
+    assert main(["--fleet", "--event", "workflow_dispatch", "--enforce",
+                 "--require-complete", "--output", str(output)]) == expected
+    assert json.loads(output.read_text(encoding="utf-8")) == report
+
+
+def test_require_complete_is_only_valid_for_fleet():
+    with pytest.raises(SystemExit) as error:
+        main(["--require-complete", "--skip-api"])
+    assert error.value.code == 2
+
+
+def test_automatic_fleet_enforcement_waits_for_parent_owned_rollout():
+    root = Path(__file__).resolve().parents[1]
+    workflow = yaml.load((root / ".github/workflows/vendor-parent-child-ci.yml").read_text(), Loader=yaml.BaseLoader)
+    assert "push" not in workflow["on"]  # The new main-push fleet gate is not activated by #91.
+    assert workflow["on"]["schedule"] == [{"cron": "0 7 * * *"}]  # Existing vendor checks remain scheduled.
+    option = workflow["on"]["workflow_dispatch"]["inputs"]["strict-pin-readiness"]
+    assert option["type"] == "boolean" and option["default"] == "false"
+    job = workflow["jobs"]["child-parent-pin-freshness"]
+    assert job["if"] == "github.event_name == 'workflow_dispatch' && inputs.strict-pin-readiness"
+    assert "continue-on-error" not in job and "permissions" not in job
+    assert workflow["permissions"] == {"contents": "read"}
+    check = next(step for step in job["steps"] if "--fleet" in step.get("run", ""))
+    assert "--enforce --require-complete --output" in check["run"]
+    assert "set -euo pipefail" in check["run"] and "| tee" in check["run"]
+    assert "continue-on-error" not in check and "--warn-only" not in check["run"]
+    for step in job["steps"]:
+        if step.get("uses", "").startswith("actions/checkout@"):
+            assert step["with"]["persist-credentials"] == "false"
+    upload = job["steps"][-1]
+    assert upload["if"] == "always()" and upload["with"]["retention-days"] == "14"
+    assert "reports/parent-pin-readiness.json" in upload["with"]["path"]
+    assert "!inputs.strict-pin-readiness" in workflow["jobs"]["autofix"]["if"]
+    assert "!inputs.strict-pin-readiness" in workflow["jobs"]["validate"]["if"]
 
 
 def test_reusable_child_layout_smoke(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

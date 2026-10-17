@@ -1,6 +1,7 @@
-"""Regression: parent Flutter registry equals the proposed Flutter #189 consumer lock.
+"""Regression for the parent-approved Flutter vendor and workflow baseline.
 
-Offline snapshots of the unmerged #189 candidate; not evidence of a main merge.
+The relocated lock snapshot from #189 is unchanged by merged #194. The reviewed
+workflow snapshot comes from #194 squash merge 31f33f42 on Flutter main.
 """
 import copy
 import hashlib
@@ -86,7 +87,7 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
     heads = load("child-heads.json")
     consumer = vendor_consumers.get_consumer(registry, FLUTTER)
     contract = consumer["locked_ci"]
-    approved = (ROOT / "tests/fixtures/flutter_non_dart_5ade883c.yml").read_bytes()
+    approved = (ROOT / "tests/fixtures/flutter_non_dart_31f33f42.yml").read_bytes()
     assert hashlib.sha256(approved).hexdigest() == contract["sha256"]
     recorded = heads["heads"][FLUTTER]
     assert recorded["repository_id"] == 739348522

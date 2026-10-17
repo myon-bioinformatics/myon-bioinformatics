@@ -4,8 +4,11 @@ on:
   schedule:
     - cron: "0 7 * * *"
   workflow_dispatch:
-  push:
-    branches: [main]
+    inputs:
+      strict-pin-readiness:
+        description: "Read-only strict fleet readiness audit (findings fail; no autofix)"
+        type: boolean
+        default: false
   pull_request:
     branches: [main]
     paths:
@@ -31,7 +34,7 @@ permissions:
 
 jobs:
   validate:
-    if: github.event_name != 'push'
+    if: github.event_name != 'workflow_dispatch' || !inputs.strict-pin-readiness
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -88,6 +91,10 @@ jobs:
           python -m pytest -q tests/test_vendor_child_heads.py tests/test_vendor_child_bootstrap.py tests/test_vendor_parent_evidence.py
 
   child-parent-pin-freshness:
+    name: Strict parent pin rollout readiness (manual)
+    # Automatic enforcement is a later parent-owned rollout, tracked in #56.
+    # This explicit readiness run stays strict; findings are never made green.
+    if: github.event_name == 'workflow_dispatch' && inputs.strict-pin-readiness
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -97,17 +104,43 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Check public child main branches for stale parent pins
+      - name: Require a complete fleet with no stale or mixed parent pins
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
-          python tools/parent_pin_check.py --fleet --child-heads child-heads.json --event "$GITHUB_EVENT_NAME" --ref "$GITHUB_REF"
+          mkdir -p reports
+          python tools/parent_pin_check.py --fleet --child-heads child-heads.json \
+            --enforce --require-complete --output reports/parent-pin-readiness.json \
+            2>&1 | tee reports/parent-pin-readiness.log
+      - name: Summarize strict readiness even after failure
+        if: always()
+        run: |
+          {
+            echo '## Strict parent pin rollout readiness (manual)'
+            echo 'Automatic fleet enforcement is not enabled; follow-up is tracked in parent issue #56.'
+            echo 'A successful ordinary PR/schedule run is not a clean-fleet approval.'
+            echo '```text'
+            if [[ -f reports/parent-pin-readiness.log ]]; then
+              cat reports/parent-pin-readiness.log
+            else
+              echo 'INCOMPLETE: readiness audit did not produce a log.'
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Preserve strict readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: parent-pin-readiness
+          path: |
+            reports/parent-pin-readiness.json
+            reports/parent-pin-readiness.log
+          if-no-files-found: warn
+          retention-days: 14
 
   autofix:
-    if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    if: ${{ always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.strict-pin-readiness)) }}
     needs: validate
     runs-on: ubuntu-latest
     permissions:

@@ -27,7 +27,40 @@ include successful audit counts and `complete: false` for audit errors or
 authentication/rate-limit warnings. Existing per-child 401/403 warning policy
 is unchanged; an unavailable fleet inventory is always fatal.
 
-Stale/mixed pin enforcement is unchanged: schedule and push to main fail,
+The command's event policy is unchanged: schedule and push to main enforce,
 while pull requests and other branches warn. Coverage warnings do not suppress
-pin findings. A green warning-only PR job does not establish fresh pins or
-independent review approval.
+pin findings. This is distinct from enabling an automatic workflow gate.
+
+## Staged rollout in PR #91
+
+Automatic fleet enforcement is **not enabled** by #91. The prior live audit
+found 16 stale/mixed child pins; a green ordinary PR/schedule run is not proof
+that those pins were corrected. The existing scheduled vendor-baseline audit
+and its permissions remain in place. Follow-up distribution and gate activation
+are tracked in parent issue [#56](https://github.com/myon-bioinformatics/myon-bioinformatics/issues/56).
+The parent remains the only source of the shared workflow/tool policy; no child,
+including gh_identity, receives an exception.
+
+To run the strict, read-only readiness audit, dispatch
+`vendor-parent-child-ci.yml` with `strict-pin-readiness=true`. That mode skips
+the unrelated validation/autofix jobs and runs:
+
+```sh
+python tools/parent_pin_check.py --fleet --child-heads child-heads.json \
+  --enforce --require-complete --output reports/parent-pin-readiness.json
+```
+
+Findings still exit 1. `--require-complete` additionally rejects incomplete
+audits (including authentication warnings); API/configuration failures exit 2.
+The JSON report is preserved without changing its finding counts or `ok`/
+`complete` fields, including on exit 1. A pre-report fatal error can leave only
+the diagnostic log. The workflow appends the log to its summary and always
+attempts 14-day artifact retention. It does not turn strict failures into
+successful checks.
+
+Before enabling a default main/schedule fleet gate, distribute the reviewed
+parent workflow through the same process to every public child, review any
+changed adopted workflow baselines in the parent, and require a complete strict
+audit with zero findings. The follow-up must also define the update window:
+every new parent main commit makes exact old main pins stale, so a one-off pin
+sweep alone does not establish a sustainable strict default gate.

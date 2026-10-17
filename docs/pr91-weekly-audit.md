@@ -80,13 +80,23 @@ checked 17 public child repositories; 0 skipped; 16 pin finding(s);
 0 audit error(s); 0 fetch warning(s)
 ```
 
-`xprobe` was included despite being absent from `child-heads.json`. PR events
-make these findings warnings. The unchanged policy enforces them for main
-pushes and the daily parent-child schedule, so merging #91 with the observed
-child state would fail that separate lane. The duplicate-files job remains
-independent. Do not hide this by weakening enforcement or calling PR success
-a successful live audit. Child rollout and baseline changes require the
-existing parent-owned distribution/review process.
+`xprobe` was included despite being absent from `child-heads.json`. The original
+version made these findings warnings in PRs but enforced them after a main push
+or on the daily parent-child schedule. That was the reported Blocking: merging
+would activate a known-failing default gate. The revised #91 separates
+**automatic gate activation** from the reporting/tool implementation. It does
+not add the new main-push fleet trigger, and the fleet job only runs when
+explicitly dispatched with `strict-pin-readiness=true`. In that mode it remains
+strict (`--enforce --require-complete`), preserves its failed JSON/log and cannot
+run autofix. Existing scheduled vendor-baseline validation remains unchanged.
+The duplicate-files job remains independent.
+
+The 16 findings have **not** been resolved by this staging change. Automatic
+fleet enforcement and uniform parent-owned child rollout are tracked in parent
+[#56](https://github.com/myon-bioinformatics/myon-bioinformatics/issues/56).
+See [parent-pin-fleet.md](parent-pin-fleet.md) for activation conditions,
+including the update window needed when parent main advances. A green ordinary
+PR/main/schedule workflow is not a clean-fleet or rollout approval.
 
 Before release, verify:
 
@@ -97,8 +107,9 @@ Before release, verify:
    summary, artifact and raw `complete`/`errors`/`scanned` fields. Match the
    scanned set to the eligible public inventory, and inspect reconciliation
    separately. Green CI alone is insufficient.
-4. Resolution or an explicit operational decision for the known strict
-   parent-pin failures before main integration. Preserve original source
+4. Confirm the staged boundary: the known pin failures remain visible and
+   strict manual readiness stays red until resolved; automated fleet gate
+   activation is deferred, with acceptance conditions in parent #56. Preserve original source
    histories with a merge commit if integrating this multi-parent PR; do not
    replace the final upstream merge SHA with an intermediate feature SHA.
 

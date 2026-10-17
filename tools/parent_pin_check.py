@@ -1069,6 +1069,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="GitHub ref for default enforce policy (else GITHUB_REF)",
     )
     parser.add_argument("--json", action="store_true", help="Print JSON report on stdout")
+    parser.add_argument("--output", type=Path, help="Also save the unmodified JSON report, including failed audits")
+    parser.add_argument(
+        "--require-complete", action="store_true",
+        help="Fail an incomplete fleet audit, including per-child authentication warnings",
+    )
     parser.add_argument(
         "--skip-api",
         action="store_true",
@@ -1092,6 +1097,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.warn_only and args.enforce:
         parser.error("--enforce and --warn-only are mutually exclusive")
+    if args.require_complete and not args.fleet:
+        parser.error("--require-complete requires --fleet")
     if args.warn_only:
         enforce_mode = False
     elif args.enforce:
@@ -1121,6 +1128,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"::error::{error}", file=sys.stderr)
         print(str(error), file=sys.stderr)
         return 2
+    if args.output is not None:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if args.fleet:
         emit_fleet_annotations(report)
         if args.json:
@@ -1133,7 +1143,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(report, indent=2, sort_keys=True))
         else:
             sys.stdout.write(render_text(report))
-    if not report["ok"]:
+    if not report["ok"] or (args.require_complete and report.get("complete") is not True):
         return 1
     return 0
 
