@@ -42,9 +42,13 @@ def test_explicit_source_validation_keeps_network_pin_verification(monkeypatch):
         "reason": "reviewed fixture",
     }]}
     checked = []
-    monkeypatch.setattr(vendor_sync, "public_commit_exists", lambda *pair: checked.append(pair))
+    monkeypatch.setattr(
+        vendor_sync,
+        "public_commit_exists",
+        lambda repo, commit, **kwargs: checked.append((repo, commit, kwargs.get("entry_label"))),
+    )
     vendor_catalog.validate(document, verify_pins=True, allow_legacy_implicit_source=False)
-    assert checked == [("owner/tool", "a" * 40)]
+    assert checked == [("owner/tool", "a" * 40, "tool.py@" + ("a" * 40)[:7])]
     document["tools"][0].pop("source")
     with pytest.raises(ValueError, match="source required"):
         vendor_catalog.validate(document, verify_pins=True)

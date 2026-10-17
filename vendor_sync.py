@@ -167,6 +167,11 @@ class PublicGitAccessBlocked(ValueError):
 
 def _public_http_get(url):
     headers = {"User-Agent": "vendor-sync/public-github"}
+    if "api.github.com/" in url:
+        headers["Accept"] = "application/vnd.github+json"
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = "Bearer " + token
     try:
         with urlopen(Request(url, headers=headers), timeout=30) as response:
             raw = response.read(MAX_BYTES + 1)
@@ -197,20 +202,38 @@ def public_ref_sha(repository, ref="main"):
     return sha
 
 
-def public_commit_exists(repository, commit):
-    """Fail closed when a catalog/lock pin SHA is absent from the public remote.
+def _public_repo_default_branch(repository):
+    repository = _normalize_repository(repository)
+    url = "https://api.github.com/repos/{}".format(repository)
+    payload = json.loads(_public_http_get(url).decode("utf-8"))
+    branch = payload.get("default_branch")
+    if not isinstance(branch, str) or not branch:
+        raise ValueError(PUBLIC_GIT_FETCH_ERROR)
+    return branch
 
-    Uses the public GitHub REST commit endpoint. ``404`` is classified as a missing
-    pin; ``401``/``403`` raise :class:`PublicGitAccessBlocked`; other HTTP failures
-    use :data:`PUBLIC_GIT_FETCH_ERROR`.
+
+def public_commit_exists(repository, commit, *, entry_label=None):
+    """Fail closed unless the pin commit is reachable from the public default branch.
+
+    Uses the compare API (``default...commit``). Only ``behind`` and ``identical``
+    mean the pin is delivered from the default branch; ``ahead``/``diverged`` are
+    rejected even when the commit object exists on a side branch. ``404`` is a
+    missing pin; ``401``/``403`` raise :class:`PublicGitAccessBlocked`.
     """
     repository = _normalize_repository(repository)
     _hex(commit, 40)
-    url = "https://api.github.com/repos/{}/commits/{}".format(repository, commit)
+    label = entry_label if isinstance(entry_label, str) and entry_label else commit[:7]
     try:
-        _public_http_get(url)
+        branch = _public_repo_default_branch(repository)
+        url = "https://api.github.com/repos/{}/compare/{}...{}".format(
+            repository, quote(branch, safe=""), commit,
+        )
+        payload = json.loads(_public_http_get(url).decode("utf-8"))
     except PublicGitNotFound as error:
-        raise ValueError("catalog pin commit not found: {}@{}".format(repository, commit[:7])) from error
+        raise ValueError("catalog pin commit not found: " + label) from error
+    status = payload.get("status")
+    if status not in ("behind", "identical"):
+        raise ValueError("catalog pin commit not reachable from default branch: " + label)
     return commit
 
 
@@ -2597,8 +2620,7 @@ def main(argv=None, *, get=_get):
             result = evidence(args.manifest, args.root, runtime=args.runtime_evidence)
         else:
             result = synchronize(args.manifest, args.root, args.mode, get=get)
-    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, HTTPError,
-            PublicGitAccessBlocked) as error:
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, HTTPError) as error:
         print("vendor-sync: " + str(error), file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False))

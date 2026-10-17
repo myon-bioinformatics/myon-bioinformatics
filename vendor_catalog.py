@@ -51,7 +51,8 @@ def validate_pin_commits(normalized_catalog):
         if key in seen:
             continue
         seen.add(key)
-        vendor_sync.public_commit_exists(tool["repository"], tool["commit"])
+        entry = "{}@{}".format(tool["source"], tool["commit"][:7])
+        vendor_sync.public_commit_exists(tool["repository"], tool["commit"], entry_label=entry)
     return normalized_catalog
 
 
@@ -177,9 +178,6 @@ def main(argv=None):
             result = catalog
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
-    except vendor_sync.PublicGitAccessBlocked as error:
-        print(str(error), file=sys.stderr)
-        return 2
     except (ValueError, OSError) as error:
         print(str(error), file=sys.stderr)
         return 2
