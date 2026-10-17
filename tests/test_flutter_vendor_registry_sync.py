@@ -45,7 +45,7 @@ def test_retired_git_inspector_is_explicit_skip_not_new_registration():
     assert retired[0]["action"] == "skipped"
     assert retired[0]["reason"] == "retired_after_gh_identity_migration"
     assert result["counts"]["needs_registration"] == 6
-    assert result["counts"]["skipped"] == 20
+    assert result["counts"]["skipped"] == 24
 
 
 def test_regression_detects_removed_or_reintroduced_vendor_source():
