@@ -101,10 +101,10 @@ operational side effects remain separate considerations.
 | `yourself.py` | Already registered | Scoped CI trial | Confirm environment diagnostics intent |
 | `cli_args.py` | Already registered | Scoped CI trial | Confirm CLI wrapper intent |
 
-The recommended parent `gh_ops.py` and Flutter's pinned
-browser-test-kit `scripts/gh_ops.py` share Git blob
-`6e5470e1e9395f9f3dd0908d3ce5190e0294e807` at the compared
-revisions; the lab's existing pin has blob
+The canonical parent `gh_ops.py` on `main` is blob
+`73c34b26c0f0cfa1be544e7885dcfae0e518c985`. Flutter's registry
+now points consumers at the parent source directly (not
+browser-test-kit re-export). The lab's existing pin has blob
 `e4bd079300087a275c4fe577399e3230e5cd5b54`.
 The same-name path must **not** be overwritten or enrolled twice merely
 because the catalog lists an additional upstream identity.

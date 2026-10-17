@@ -30,7 +30,7 @@ def test_flutter_registry_matches_pinned_post_migration_lock():
     assert result["matches"] is True
     assert result["missing"] == result["unexpected"] == []
     entries = vendor_consumers.get_consumer(registry, FLUTTER)["entries"]
-    assert len(entries) == len(lock["files"]) == 14
+    assert len(entries) == len(lock["files"]) == 16
     assert {x["destination"] for x in entries} == {x["destination"] for x in lock["files"]}
 
 
@@ -44,8 +44,8 @@ def test_retired_git_inspector_is_explicit_skip_not_new_registration():
     assert len(retired) == 1
     assert retired[0]["action"] == "skipped"
     assert retired[0]["reason"] == "retired_after_gh_identity_migration"
-    assert result["counts"]["needs_registration"] == 6
-    assert result["counts"]["skipped"] == 24
+    assert result["counts"]["needs_registration"] == 5
+    assert result["counts"]["skipped"] == 26
 
 
 def test_regression_detects_removed_or_reintroduced_vendor_source():
@@ -57,7 +57,7 @@ def test_regression_detects_removed_or_reintroduced_vendor_source():
     assert result["matches"] is False
     assert len(result["missing"]) == 1
     assert result["unexpected"] == []
-    assert len(lock["files"]) == 14
+    assert len(lock["files"]) == 16
 
 
 def test_existing_pins_remain_sole_consumer_authority():
@@ -66,7 +66,7 @@ def test_existing_pins_remain_sole_consumer_authority():
     lock = load("tests/fixtures/flutter_vendor_lock_5ade883c.json")
     pins = vendor_catalog.compare(catalog, lock, FLUTTER)["tools"]
     assert {r["source"] for r in pins if r["enrollment"] == "enrolled" and
-            r["comparison"] == "different"} == {"gh_identity.py", "xprobe.py", "yourself.py"}
+            r["comparison"] == "different"} == {"gh_identity.py", "gh_ops.py", "xprobe.py", "yourself.py"}
     # Catalog recommendations do not overwrite or retarget the lock.
     assert vendor_consumers.compare(registry, lock, FLUTTER)["matches"]
 
@@ -77,7 +77,10 @@ def test_historical_layout_requires_deliberate_parent_baseline_update():
     assert not vendor_consumers.compare(registry, old_lock, FLUTTER)["matches"]
     current = vendor_consumers.get_consumer(registry, FLUTTER)
     assert current["lock"] == "python/vendor.lock.json"
-    assert all(row["destination"].startswith("python/vendor/") for row in current["entries"])
+    assert all(
+        row["destination"].startswith("python/vendor/") or row["destination"].startswith("e2e/")
+        for row in current["entries"]
+    )
 
 
 @pytest.mark.parametrize("fault", [None, "removed", "disabled", "ignored", "command",

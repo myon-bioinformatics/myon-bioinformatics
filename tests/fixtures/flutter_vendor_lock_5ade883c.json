@@ -20,13 +20,13 @@
       "sha256": "018d6cfba4fa230a98511224fbd95ae70887d82e0447de115337185dcc4c7f50"
     },
     {
-      "repository": "myon-bioinformatics/browser-test-kit",
-      "ref": "0f73f07530040461914af53cc469b893d4b4cbdd",
-      "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
-      "source": "scripts/gh_ops.py",
+      "repository": "myon-bioinformatics/myon-bioinformatics",
+      "ref": "d89db9b8542f8744eb03605c89c9b4e79b376992",
+      "commit": "d89db9b8542f8744eb03605c89c9b4e79b376992",
+      "source": "gh_ops.py",
       "destination": "python/vendor/gh_ops.py",
-      "blob_sha": "6e5470e1e9395f9f3dd0908d3ce5190e0294e807",
-      "sha256": "c1c9f415ea0171205fced19b9a0eda33cde9cc3ef53cef53e89362dd873d06f4"
+      "blob_sha": "73c34b26c0f0cfa1be544e7885dcfae0e518c985",
+      "sha256": "f9508a5a662225d3a2243b93c203b5a57664381c7e2315cc20b7480ca85f8749"
     },
     {
       "repository": "myon-bioinformatics/browser-test-kit",
@@ -126,6 +126,24 @@
       "destination": "python/vendor/image_diff.py",
       "blob_sha": "7c3a44314eda81a81b80f08fe060dc6581fffa22",
       "sha256": "7efc94609644eced61f13e9af3c7a47061e4c9ba03bf0664c2266a58d1302191"
+    },
+    {
+      "repository": "myon-bioinformatics/browser-test-kit",
+      "ref": "61872b2df6da908152bc8f965832da79dd97d6b9",
+      "commit": "61872b2df6da908152bc8f965832da79dd97d6b9",
+      "source": "scripts/interaction.mjs",
+      "destination": "e2e/utils/interaction.mjs",
+      "blob_sha": "b737dd6322731bd802a7cd97f8b9a239b0075fc0",
+      "sha256": "b23b62113dfb5db0028e71305efbd33f7a3924510cb808e051e3221bd7b5cfbe"
+    },
+    {
+      "repository": "myon-bioinformatics/myon-bioinformatics",
+      "ref": "d89db9b8542f8744eb03605c89c9b4e79b376992",
+      "commit": "d89db9b8542f8744eb03605c89c9b4e79b376992",
+      "source": "LICENSE",
+      "destination": "python/vendor/myon-bioinformatics-LICENSE",
+      "blob_sha": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
+      "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
     }
   ]
 }

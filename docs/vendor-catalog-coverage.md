@@ -45,3 +45,8 @@ the most consumers registered in `vendor-consumers.json`. They use
 `default_enrollment: skipped(explicit_consumer_only)` with explicit `enrolled`
 overrides for the repositories that already lock them, so no new registration is
 requested from other consumers.
+
+2026-10-17 btk ownership (parent registry): `image_diff.py` is catalogued under
+browser-test-kit with `skipped(requires_external_package)` and flutter-only
+enrollment; parent-owned `py_matrix.py` and `pytest_brief.py` are registered
+with explicit sources and `skipped(explicit_consumer_only)`.

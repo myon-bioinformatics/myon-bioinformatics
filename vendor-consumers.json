@@ -561,8 +561,8 @@
           "destination": "python/vendor/xprobe.py"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
-          "source": "scripts/gh_ops.py",
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "gh_ops.py",
           "destination": "python/vendor/gh_ops.py"
         },
         {
@@ -609,6 +609,16 @@
           "repository": "myon-bioinformatics/browser-test-kit",
           "source": "scripts/image_diff.py",
           "destination": "python/vendor/image_diff.py"
+        },
+        {
+          "repository": "myon-bioinformatics/browser-test-kit",
+          "source": "scripts/interaction.mjs",
+          "destination": "e2e/utils/interaction.mjs"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "LICENSE",
+          "destination": "python/vendor/myon-bioinformatics-LICENSE"
         },
         {
           "repository": "myon-bioinformatics/gh_identity",
