@@ -96,7 +96,16 @@ def test_historical_layout_requires_deliberate_parent_baseline_update():
     old_lock = load("tests/fixtures/flutter_vendor_lock_782babef.json")
     assert not vendor_consumers.compare(registry, old_lock, FLUTTER)["matches"]
     old_shared = load("tests/fixtures/flutter_vendor_lock_f73c72eb.json")
-    assert not vendor_consumers.compare(registry, old_shared, FLUTTER)["matches"]
+    # The parent registry compares file topology, while exact source revisions
+    # belong to each lock. Both generations intentionally keep 17 entries.
+    assert vendor_consumers.compare(registry, old_shared, FLUTTER)["matches"]
+    current_lock = load(LOCK_FIXTURE)
+    old_pin = next(row for row in old_shared["files"]
+                   if row["source"] == "scripts/browser_execution.mjs")
+    new_pin = next(row for row in current_lock["files"]
+                   if row["source"] == "scripts/browser_execution.mjs")
+    assert old_pin["commit"] == "4be0f0d20b4cb6418ae97f64f3ca6aea6a75292c"
+    assert new_pin["commit"] != old_pin["commit"]
     before_handoff = load("tests/fixtures/flutter_vendor_lock_1dd33afc.json")
     assert not vendor_consumers.compare(registry, before_handoff, FLUTTER)["matches"]
     current = vendor_consumers.get_consumer(registry, FLUTTER)
