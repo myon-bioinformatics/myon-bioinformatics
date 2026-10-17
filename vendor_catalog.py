@@ -13,7 +13,19 @@ import vendor_sync
 SCHEMA = "vendor-catalog/1"
 
 
-def validate(catalog):
+def validate_pin_commits(normalized_catalog):
+    """Require every distinct catalog pin to resolve on the public GitHub remote."""
+    seen: set[tuple[str, str]] = set()
+    for tool in normalized_catalog["tools"]:
+        key = (tool["repository"].casefold(), tool["commit"])
+        if key in seen:
+            continue
+        seen.add(key)
+        vendor_sync.public_commit_exists(tool["repository"], tool["commit"])
+    return normalized_catalog
+
+
+def validate(catalog, *, verify_pins: bool = False):
     """Validate and return a normalized copy, never modifying caller data."""
     if not isinstance(catalog, dict) or set(catalog) != {"schema", "tools"} or catalog["schema"] != SCHEMA:
         raise ValueError("expected vendor-catalog/1")
@@ -54,6 +66,8 @@ def validate(catalog):
                 raise ValueError("expected enrolled or skipped with reason")
             if not isinstance(decision["reason"], str) or not re.fullmatch(r"[a-z][a-z0-9_]*", decision["reason"]):
                 raise ValueError("expected machine-readable enrollment reason")
+    if verify_pins:
+        validate_pin_commits(result)
     return result
 
 
@@ -92,7 +106,8 @@ def main(argv=None):
     parser.add_argument("--consumer")
     args = parser.parse_args(argv)
     try:
-        catalog = validate(json.loads(Path(args.catalog).read_text(encoding="utf-8")))
+        raw = json.loads(Path(args.catalog).read_text(encoding="utf-8"))
+        catalog = validate(raw, verify_pins=(args.mode == "validate"))
         if args.mode == "compare":
             if not args.lock or not args.consumer:
                 raise ValueError("compare requires --lock and --consumer")
@@ -103,6 +118,9 @@ def main(argv=None):
             result = catalog
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
+    except vendor_sync.PublicGitAccessBlocked as error:
+        print(str(error), file=sys.stderr)
+        return 2
     except (ValueError, OSError) as error:
         print(str(error), file=sys.stderr)
         return 2

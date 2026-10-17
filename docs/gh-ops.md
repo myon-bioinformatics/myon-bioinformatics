@@ -51,5 +51,18 @@ repository. After `gh_ops.py` changes land on the parent default branch, each
 consumer lock that pins `gh_ops.py` must be refreshed to the new commit/blob
 (for example `flutter_navigation_basic`).
 
+### Catalog baseline vs consumer locks
+
+`vendor-catalog.json` recommends `gh_ops.py` at parent commit
+`7f7482bcace57ce42feb78b6847d62f81957c9a3` (git-commit integration). That SHA
+is the reviewed baseline on this PR branch; after merge to `main`, the catalog
+pin should be updated to the squash/merge commit on `main` with the same blob.
+
+Flutter (`flutter_navigation_basic`) currently locks `gh_ops.py` from an older
+parent pin (for example `1eda992a…` on PR #197). **Re-pin to the parent `main`
+commit that contains the merged `gh_ops.py` after this parent PR merges**; the
+flutter lock update is a separate consumer PR after merge, not part of this
+parent registry-only change.
+
 `gh_identity.py` remains read-oriented in child repositories: it does not replace
 `gh_ops.py` for REST writes or local `git add`/`commit`/`push` workflows.

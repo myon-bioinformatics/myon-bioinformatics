@@ -108,8 +108,8 @@
     },
     {
       "repository": "myon-bioinformatics/myon-bioinformatics",
-      "commit": "380d877cd85837f36cf6030d626ee8bb7dfa28cb",
-      "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
+      "commit": "7f7482bcace57ce42feb78b6847d62f81957c9a3",
+      "reason": "Canonical gh_ops baseline including git-commit subcommand (browser-test-kit git_commit.py fold); consumers must re-pin after parent merge.",
       "source": "gh_ops.py"
     },
     {
