@@ -1092,11 +1092,17 @@ def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = Fal
                 out["old_base_commit_subjects"] = []
                 out["compare_error"] = "invalid ahead_by in compare response"
             else:
-                out["old_base_unmerged_commits"] = ahead_by
-                commits = cmp.get("commits") or []
-                out["old_base_commit_subjects"] = [
-                    _commit_message_subject((item.get("commit") or {}).get("message"))
-                    for item in commits[:5]]
+                if ahead_by < 0:
+                    compare_failed = True
+                    out["old_base_unmerged_commits"] = None
+                    out["old_base_commit_subjects"] = []
+                    out["compare_error"] = "negative ahead_by in compare response"
+                else:
+                    out["old_base_unmerged_commits"] = ahead_by
+                    commits = cmp.get("commits") or []
+                    out["old_base_commit_subjects"] = [
+                        _commit_message_subject((item.get("commit") or {}).get("message"))
+                        for item in commits[:5]]
     except GhOpsError as error:
         compare_failed = True
         out["old_base_unmerged_commits"] = None

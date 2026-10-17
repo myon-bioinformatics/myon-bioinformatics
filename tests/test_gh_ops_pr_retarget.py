@@ -542,6 +542,30 @@ def test_pr_retarget_tip_stale_refusal_ok_false_and_cli_exit_one(capsys):
     assert not any(call["method"] == "PATCH" for call in stub.calls)
 
 
+def test_pr_retarget_negative_ahead_by_is_compare_failure():
+    client, stub = client_for(retarget_routes("feat/p", {"ahead_by": -1}, pr_reads=[pr_payload(base_ref="feat/p")]))
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", write=True, client=client)
+    assert out["status"] == "refused_compare_failure"
+    assert out["compare_error"] == "negative ahead_by in compare response"
+    assert not any(call["method"] == "PATCH" for call in stub.calls)
+
+    client, stub = client_for(retarget_routes("feat/p", {"ahead_by": -1}, pr_reads=[
+        pr_payload(base_ref="feat/p"),
+        pr_payload(base_ref="feat/p"),
+        pr_payload(base_ref="main"),
+    ]))
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", write=True, allow_compare_failure=True, client=client)
+    assert out["status"] == "verified"
+    assert any(call["method"] == "PATCH" for call in stub.calls)
+
+
+def test_pr_retarget_invalid_ahead_by_string_is_compare_failure():
+    client, _ = client_for(retarget_routes("feat/p", {"ahead_by": "nope"}, pr_reads=[pr_payload(base_ref="feat/p")]))
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", write=True, client=client)
+    assert out["status"] == "refused_compare_failure"
+    assert out["compare_error"] == "invalid ahead_by in compare response"
+
+
 def test_pr_retarget_null_ahead_by_is_compare_failure():
     client, _ = client_for(retarget_routes("feat/p", {"ahead_by": None}, pr_reads=[pr_payload(base_ref="feat/p")]))
     out = gh_ops.pr_retarget(REPO, NUMBER, "main", write=True, client=client)
@@ -615,7 +639,7 @@ def _matrix_cells():
 
     Axes (fail-closed; --write is the only path that may PATCH):
     PR state open/closed/merged; base match/mismatch; missing base ref;
-    compare ok/404/500; ahead_by 0/>0/null/missing/invalid;
+    compare ok/404/500; ahead_by 0/>0/null/missing/invalid/negative;
     old-base tip same/both missing/first missing/second missing/SHA changed/no SHA;
     tree equal/different/empty new/empty old/empty both;
     allow-unmerged and allow-compare each on/off; --write on/off;
@@ -636,7 +660,8 @@ def _matrix_cells():
         add(f"closed-write-{int(write)}", state="closed", write=write)
         add(f"merged-write-{int(write)}", state="closed", merged=True, write=write)
         add(f"already-write-{int(write)}", old="main", new="main", write=write)
-    for compare, ahead in (("ok", 0), ("ok", 2), ("404", 0), ("500", 0), ("ok", None), ("ok", "missing"), ("ok", "bad")):
+    for compare, ahead in (("ok", 0), ("ok", 2), ("404", 0), ("500", 0), ("ok", None), ("ok", "missing"),
+                           ("ok", "bad"), ("ok", -1)):
         add(f"dry-{compare}-{ahead}", write=False, compare=compare, ahead=ahead, tips="same")
     add("dry-risky-allows-expect", write=False, ahead=2, allow_u=True, allow_c=True, expect="match", ncommits=6)
     for ahead in (0, 2):
@@ -646,6 +671,8 @@ def _matrix_cells():
     add("write-null-ahead", ahead=None)
     add("write-missing-ahead", ahead="missing")
     add("write-bad-ahead", ahead="bad")
+    add("write-negative-ahead", ahead=-1)
+    add("write-negative-ahead-allow", ahead=-1, allow_c=True)
     for allow_u, allow_c in ((True, False), (False, True), (True, True)):
         add(f"unmerged-flags-u{int(allow_u)}-c{int(allow_c)}", ahead=2, allow_u=allow_u, allow_c=allow_c)
     for allow_u, allow_c in ((False, False), (True, False), (False, True), (True, True)):
@@ -670,14 +697,38 @@ def _matrix_cells():
     return rows
 
 
+def _matrix_compare_failed(cell) -> bool:
+    if cell["compare"] != "ok":
+        return True
+    ahead = cell["ahead"]
+    if ahead is None or ahead in ("missing", "bad"):
+        return True
+    if isinstance(ahead, int) and ahead < 0:
+        return True
+    return not isinstance(ahead, int)
+
+
+def _matrix_compare_error(cell) -> str | None:
+    ahead = cell["ahead"]
+    if ahead == "bad":
+        return "invalid ahead_by in compare response"
+    if ahead is None:
+        return "null ahead_by in compare response"
+    if ahead == "missing":
+        return "missing ahead_by in compare response"
+    if isinstance(ahead, int) and ahead < 0:
+        return "negative ahead_by in compare response"
+    return None
+
+
 def _retarget_spec(cell):
     """Fail-closed expected outcome. PATCH only when every write guard passes."""
     if cell["state"] != "open":
         return {"status": "not_open", "ok": False, "exit": 1, "patches": 0}
     if cell["old"] == cell["new"]:
         return {"status": "already_satisfied", "ok": True, "exit": 0, "patches": 0}
-    compare_failed = cell["compare"] != "ok" or not isinstance(cell["ahead"], int)
-    ahead = cell["ahead"] if isinstance(cell["ahead"], int) else 0
+    compare_failed = _matrix_compare_failed(cell)
+    ahead = cell["ahead"] if isinstance(cell["ahead"], int) and cell["ahead"] >= 0 else 0
     risky = (not compare_failed) and ahead > 0
     if risky and cell["old"]:
         tips_ok = cell["tips"] in ("same", "changed", "second_missing")
@@ -745,8 +796,9 @@ def _matrix_routes(cell):
         commits = [{"commit": {"message": ("  padded subject  " if index == 0 else f"subject {index}")}}
                    for index in range(cell["ncommits"])]
         routes[compare_key] = reply({"ahead_by": cell["ahead"], "commits": commits})
-    compare_failed = cell["compare"] != "ok" or not isinstance(cell["ahead"], int)
-    will_tree = (not compare_failed) and cell["ahead"] > 0 and bool(old)
+    compare_failed = _matrix_compare_failed(cell)
+    ahead_for_tree = cell["ahead"] if isinstance(cell["ahead"], int) else 0
+    will_tree = (not compare_failed) and ahead_for_tree > 0 and bool(old)
     present, changed = ref_route(OLD_TIP), ref_route(OTHER_TIP)
     missing, nosha = reply({"message": "missing"}, status=404), reply({"object": {}})
     tip_rows = {
@@ -814,6 +866,9 @@ def test_pr_retarget_decision_matrix(cell, capsys):
         assert "does not match" in payload["reason"]
     if cell["id"] == "fresh-base_changed":
         assert "base_ref changed" in payload["reason"]
+    expected_compare_error = _matrix_compare_error(cell)
+    if expected_compare_error is not None:
+        assert payload["compare_error"] == expected_compare_error
 
 
 @pytest.mark.parametrize("name,message", [
@@ -856,6 +911,16 @@ def test_other_commands_do_not_take_pr_retarget_dispatch():
     assert gh_ops.main(["url", "compare", REPO, "main", "feature"]) == 0
     rendered = gh_ops._render("pr-edit", {"ok": True, "dry_run": True, "reason": ""})
     assert rendered.startswith("OK pr-edit")
+    warning = "feat/p has 1 commit(s) not in main; they would join the diff"
+    warned = gh_ops._render("pr-retarget", {
+        "status": "planned", "repository": REPO, "number": NUMBER,
+        "from": "feat/p", "to": "main", "warning": warning,
+    })
+    assert warned == f"planned {REPO}#{NUMBER} base feat/p -> main ({warning})"
+    assert gh_ops._render("pr-retarget", {
+        "status": "planned", "repository": REPO, "number": NUMBER,
+        "from": None, "to": "main",
+    }) == f"planned {REPO}#{NUMBER} base (unknown) -> main"
 
 
 def test_validate_branch_segment_rejects_empty_segment():

@@ -83,8 +83,8 @@ python -S gh_ops.py pr-retarget OWNER/REPO 71 --base main --write
   check is skipped. GitHub may still show parent-branch commits in the PR diff
   (merge-base semantics) even when the trees match; retarget only gates on
   reachability/tree equality, not on diff display.
-- A compare response without `ahead_by` is treated like a compare failure
-  (fail-closed).
+- A compare response without `ahead_by`, with a null or non-numeric `ahead_by`,
+  or with a negative `ahead_by`, is treated like a compare failure (fail-closed).
 - Compare failures (for example a deleted old base) refuse `--write` unless
   `--allow-compare-failure`.
 - Immediately before PATCH, the PR is re-read: it must still be open with the
