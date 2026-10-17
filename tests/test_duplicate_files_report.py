@@ -138,7 +138,7 @@ def test_status_inconsistency_is_error(execute):
 def test_workflow_runs_offline_regressions_and_uploads_even_on_failure():
     workflow = WORKFLOW.read_text(encoding="utf-8")
     assert "tests/test_duplicate_files_report.py" in workflow
-    assert 'GH_IDENTITY_SHA: db1949d67239c39c3bb148af1a7455d1cb303e99' in workflow
+    assert 'GH_IDENTITY_SHA: a85022b88ca808dec7ef497ead1e3469906010a4' in workflow
     job = workflow.split("\n  duplicate-files:\n", 1)[1]
     assert "duplicate_files_report.py" in job
     assert "if: always()" in job.split("- name: Upload duplicate-files report", 1)[1]
