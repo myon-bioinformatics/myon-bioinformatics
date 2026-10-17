@@ -1,0 +1,59 @@
+name: Pinned vendor consumer compatibility
+
+on:
+  pull_request:
+    paths:
+      - "vendor_consumers.py"
+      - "vendor-consumers.json"
+      - "tests/test_vendor_consumers_compat.py"
+      - ".github/workflows/vendor-consumers-compat.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  old-new-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VENDOR_LEGACY_ROOT: .compat/parent-old
+      IRONMATE_COMPAT_ROOT: .compat/ironmate
+    steps:
+      - name: Checkout proposed parent version
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Checkout historical tool and registry as one unit
+        uses: actions/checkout@v7
+        with:
+          repository: myon-bioinformatics/myon-bioinformatics
+          ref: 1eda992aa6fa31a902e2c06428e53ab17e8fe3c1
+          path: .compat/parent-old
+          persist-credentials: false
+      - name: Checkout current audited Ironmate snapshot
+        uses: actions/checkout@v7
+        with:
+          repository: myon-bioinformatics/Ironmate
+          ref: 77cd700f961f2a97051da96b9c13a6c7a64258df
+          path: .compat/ironmate
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Check the original Ironmate lock and file bytes with both verifiers
+        run: |
+          python -S .compat/parent-old/vendor_sync.py check --root .compat/ironmate --manifest vendor.lock.json
+          python -S vendor_sync.py check --root .compat/ironmate --manifest vendor.lock.json
+      - name: Exercise all four tool/registry combinations and Ironmate compare
+        run: |
+          python -m pip install pytest
+          python -m pytest -q tests/test_vendor_consumers_compat.py --junitxml=reports/vendor-consumers-compat.xml
+      - name: Preserve compatibility results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vendor-consumers-compat
+          path: reports/vendor-consumers-compat.xml
+          if-no-files-found: warn
+          retention-days: 14
