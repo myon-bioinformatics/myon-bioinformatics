@@ -176,6 +176,7 @@ class _Module:
         is_package: bool,
         source: str,
         import_module_names: frozenset[str] = frozenset(),
+        importlib_module_names: frozenset[str] = frozenset(),
     ) -> None:
         self.name = name
         self.path = path
@@ -183,6 +184,7 @@ class _Module:
         self.is_package = is_package
         self.source = source
         self.import_module_names = import_module_names
+        self.importlib_module_names = importlib_module_names
 
 
 class _Ref:
@@ -563,8 +565,10 @@ class _Scanner(ast.NodeVisitor):
         module = node.module or ""
         names = tuple(alias.name for alias in node.names)
         self._note_module("." * node.level + module, node.lineno)
-        if node.module == "pkg_resources" or module.startswith("pkg_resources."):
-            self._reject_data_dotted(node.lineno or 0, "pkg_resources")
+        if node.module == "importlib" and any(alias.name == "*" for alias in node.names):
+            self.problems.append(
+                "line " + str(node.lineno) + ": importlib star-import is not bundled"
+            )
         if node.module == "importlib":
             for alias in node.names:
                 if alias.name == "resources":
@@ -580,7 +584,6 @@ class _Scanner(ast.NodeVisitor):
                 self._pkgutil.add(alias.asname or alias.name)
             if node.module == "pkgutil" and alias.name == "get_data":
                 self._get_data_names.add(alias.asname or "get_data")
-                self._reject_data_dotted(node.lineno or 0, "pkgutil.get_data")
         if node.module == "pkgutil":
             self._pkgutil.add("pkgutil")
         self.generic_visit(node)
@@ -595,6 +598,8 @@ class _Scanner(ast.NodeVisitor):
     def visit_Name(self, node: ast.Name) -> None:
         if node.id == "__file__" and "script" not in self._stack:
             self.problems.append("line " + str(node.lineno) + ": __file__ (data files are not bundled)")
+        if isinstance(node.ctx, ast.Load) and node.id in self._get_data_names:
+            self._reject_data_dotted(node.lineno or 0, "pkgutil.get_data")
         if isinstance(node.ctx, ast.Load):
             self.loads.setdefault(self._stack[-1], set()).add(node.id)
         self.generic_visit(node)
@@ -616,7 +621,7 @@ class _Scanner(ast.NodeVisitor):
             dotted = _attribute_dotted_name(function)
             if dotted:
                 self._reject_data_dotted(node.lineno or 0, dotted)
-            if function.attr == "import_module":
+            if function.attr == "import_module" and self._import_module_owner_is_importlib(function):
                 self._visit_import_module_call(node)
             elif function.attr in {
                 "__import__",
@@ -626,6 +631,10 @@ class _Scanner(ast.NodeVisitor):
                     "line " + str(node.lineno) + ": dynamic " + function.attr + " is not bundled"
                 )
         self.generic_visit(node)
+
+    def _import_module_owner_is_importlib(self, function: ast.Attribute) -> bool:
+        owner = function.value
+        return isinstance(owner, ast.Name) and owner.id in self._importlib_modules
 
     def _visit_import_module_call(self, node: ast.Call) -> None:
         literal = _literal_module(node)
@@ -983,6 +992,7 @@ def _collect(
             is_package,
             source,
             frozenset(scanner._import_module_names),
+            frozenset(scanner._importlib_modules),
         )
         package = _package_name(name, is_package)
         script_functions = scanner.script_only_functions()
@@ -1102,6 +1112,7 @@ def _rewrite_source(
     prefix: str,
     entry_file: str,
     import_module_names: frozenset[str] = frozenset(),
+    importlib_module_names: frozenset[str] = frozenset(),
 ) -> str:
     try:
         tree = ast.parse(source, filename=display)
@@ -1160,6 +1171,7 @@ def _rewrite_source(
         prefix,
         display,
         import_module_names=import_module_names,
+        importlib_module_names=importlib_module_names,
     )
 
 
@@ -1175,6 +1187,20 @@ def _fit_import_span(rendered: str, span_len: int) -> list[str]:
     return pieces
 
 
+def _import_module_call_from_importlib(
+    function: ast.AST,
+    *,
+    import_module_names: frozenset[str],
+    importlib_module_names: frozenset[str],
+) -> bool:
+    if isinstance(function, ast.Name):
+        return function.id in import_module_names
+    if isinstance(function, ast.Attribute) and function.attr == "import_module":
+        owner = function.value
+        return isinstance(owner, ast.Name) and owner.id in importlib_module_names
+    return False
+
+
 def _rewrite_import_module_calls(
     source: str,
     modules: set[str],
@@ -1182,25 +1208,23 @@ def _rewrite_import_module_calls(
     display: str,
     *,
     import_module_names: frozenset[str] = frozenset(),
+    importlib_module_names: frozenset[str] = frozenset(),
 ) -> str:
     """Point literal import_module calls at the prefixed module object."""
     try:
         tree = ast.parse(source, filename=display)
     except SyntaxError as error:
         raise MinpyError("syntax error in " + display + ": " + str(error.msg)) from error  # minpy: uncovered
-    allowed_names = set(import_module_names) | {"import_module"}
     replacements: list[tuple[int, int, int, int, str]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not node.args:
             continue
         function = node.func
-        if isinstance(function, ast.Attribute):
-            if function.attr != "import_module":
-                continue
-        elif isinstance(function, ast.Name):
-            if function.id not in allowed_names:
-                continue
-        else:
+        if not _import_module_call_from_importlib(
+            function,
+            import_module_names=import_module_names,
+            importlib_module_names=importlib_module_names,
+        ):
             continue
         argument = node.args[0]
         if not isinstance(argument, ast.Constant) or not isinstance(argument.value, str):
@@ -1757,6 +1781,7 @@ def bundle(
             prefix,
             entry_file,
             module.import_module_names,
+            module.importlib_module_names,
         )
         for name, module in modules.items()
     }

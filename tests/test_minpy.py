@@ -1401,6 +1401,56 @@ def test_rejects_import_module_literal_importlib_resources(tmp_path: Path) -> No
         _bundle(root)
 
 
+def test_user_defined_import_module_call_is_not_rewritten(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(
+        root,
+        "app.py",
+        "def import_module(name):\n    return name\nVALUE = import_module('mathx')\n",
+    )
+    text = _bundle(root)
+    prefix = minpy.bundle_prefix(REPO, "app.py", COMMIT)
+    assert "import_module('mathx')" in text
+    assert prefix + ".mathx" not in text
+
+
+def test_foreign_loader_import_module_call_is_not_rewritten(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(
+        root,
+        "app.py",
+        "class Loader:\n"
+        "    def import_module(self, name):\n"
+        "        return name\n"
+        "VALUE = Loader().import_module('mathx')\n",
+    )
+    text = _bundle(root)
+    prefix = minpy.bundle_prefix(REPO, "app.py", COMMIT)
+    assert "import_module('mathx')" in text
+    assert prefix + ".mathx" not in text
+
+
+def test_rejects_getattr_pkgutil_get_data_literal(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "import pkgutil\ngetattr(pkgutil, 'get_data')('x', 'y')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: pkgutil\.get_data"):
+        _bundle(root)
+
+
+def test_rejects_bound_get_data_name_reference(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "from pkgutil import get_data\ng = get_data\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: pkgutil\.get_data"):
+        _bundle(root)
+
+
+def test_rejects_importlib_star_import(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "from importlib import *\nimport_module('mathx')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 1: importlib star-import"):
+        _bundle(root)
+
+
 @pytest.mark.parametrize(
     ("source", "line", "needle"),
     [
