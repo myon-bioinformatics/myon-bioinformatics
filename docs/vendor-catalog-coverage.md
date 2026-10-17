@@ -33,3 +33,24 @@ already locked files. Consumer enrollment/promotion remains an explicit operatio
 This PR registers organization-wide targets. It does not claim that every consumer
 has already adopted them. Ironmate's separate test-only xprobe checkout remains
 valid until an explicit locked enrollment change is made.
+
+2026-10-17 gap fill: files that consumers already lock but that were absent from
+the catalog are now listed with explicit `source` values, because the default
+`<repository>.py` guess does not match them (web-ui `web_ui.py`, xprobe
+`scripts/xprobe_pytest.py`, browser-test-kit `scripts/check_evidence.py`,
+`scripts/jsonl_digest.py`, `scripts/check_png.py`, mcp-toolcall-lab
+`src/mcp_toolcall_lab/github_public_resolver.py` and
+`src/mcp_toolcall_lab/adapters/html_snapshot.py`). Each pin is the commit locked by
+the most consumers registered in `vendor-consumers.json`. They use
+`default_enrollment: skipped(explicit_consumer_only)` with explicit `enrolled`
+overrides for the repositories that already lock them, so no new registration is
+requested from other consumers.
+
+2026-10-17 btk ownership (parent registry): `image_diff.py` and
+`scripts/interaction.mjs` are catalogued under browser-test-kit with explicit
+sources (image_diff: `skipped(requires_external_package)`, flutter only;
+interaction.mjs: `skipped(explicit_consumer_only)`, flutter only). The new parent-owned tools are staged as described below; no fleet-wide enrollment is requested.
+
+### Staged acceptance of the new parent tools
+
+PR #96 introduces `py_matrix.py`, `pytest_brief.py`, and `publish_check.py` without recommending an unmerged intermediate commit. PR #95 adds their catalog entries only after #96 merges, using its full first-parent main merge SHA. None has registered consumers yet. Flutter #197 keeps its reviewed parent `gh_ops.py` pin `1eda992aa6fa31a902e2c06428e53ab17e8fe3c1`; a later adoption of the new git-commit implementation must verify and materialize the accepted parent merge commit, never the PR head.

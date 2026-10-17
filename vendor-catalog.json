@@ -108,8 +108,8 @@
     },
     {
       "repository": "myon-bioinformatics/myon-bioinformatics",
-      "commit": "380d877cd85837f36cf6030d626ee8bb7dfa28cb",
-      "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
+      "commit": "1eda992aa6fa31a902e2c06428e53ab17e8fe3c1",
+      "reason": "Reviewed gh_identity request/search adapter already locked by Flutter PR #197; git-commit additions in this PR require a later deliberate consumer repin after merge.",
       "source": "gh_ops.py"
     },
     {
@@ -252,6 +252,190 @@
       "repository": "myon-bioinformatics/cli_args",
       "commit": "d849c17f5e7c18037e2ab2c04bc71eee3e22cd35",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion."
+    },
+    {
+      "repository": "myon-bioinformatics/web-ui",
+      "commit": "349b1f57c7fcbb4697197ed6dfb96c51d33e970b",
+      "reason": "Catalog gap: already locked by consumers but previously uncatalogued; pinned to the commit locked by the most consumers registered in vendor-consumers.json. Not an automatic promotion.",
+      "source": "web_ui.py",
+      "consumers": {
+        "myon-bioinformatics/Aoi": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        },
+        "myon-bioinformatics/myon-bioinformatics.github.io": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        }
+      },
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/xprobe",
+      "commit": "326acd667e13b21bf53ccc1590af960edf8cbf6c",
+      "reason": "Catalog gap: already locked by consumers but previously uncatalogued; pinned to the commit locked by the most consumers registered in vendor-consumers.json. Not an automatic promotion.",
+      "source": "scripts/xprobe_pytest.py",
+      "consumers": {
+        "myon-bioinformatics/nvd_nist_known_vulns": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        },
+        "myon-bioinformatics/search_seq_including_spaces": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        },
+        "myon-bioinformatics/yourself": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        }
+      },
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/browser-test-kit",
+      "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
+      "reason": "Catalog gap: already locked by consumers but previously uncatalogued; pinned to the commit locked by the most consumers registered in vendor-consumers.json. Not an automatic promotion.",
+      "source": "scripts/check_evidence.py",
+      "consumers": {
+        "myon-bioinformatics/BlueProbe": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        },
+        "myon-bioinformatics/Err-o-RoadRunner": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        },
+        "myon-bioinformatics/flutter_navigation_basic": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        }
+      },
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/browser-test-kit",
+      "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
+      "reason": "Catalog gap: already locked by consumers but previously uncatalogued; pinned to the commit locked by the most consumers registered in vendor-consumers.json. Not an automatic promotion.",
+      "source": "scripts/jsonl_digest.py",
+      "consumers": {
+        "myon-bioinformatics/BlueProbe": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        },
+        "myon-bioinformatics/Err-o-RoadRunner": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        },
+        "myon-bioinformatics/flutter_navigation_basic": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        }
+      },
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/browser-test-kit",
+      "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
+      "reason": "Catalog gap: already locked by consumers but previously uncatalogued; pinned to the commit locked by the most consumers registered in vendor-consumers.json. Not an automatic promotion.",
+      "source": "scripts/check_png.py",
+      "consumers": {
+        "myon-bioinformatics/Err-o-RoadRunner": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        },
+        "myon-bioinformatics/flutter_navigation_basic": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        }
+      },
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/mcp-toolcall-lab",
+      "commit": "30121e7f713fb689a9a3d0f0b7a4d3444831864e",
+      "reason": "Catalog gap: already locked by consumers but previously uncatalogued; pinned to the commit locked by the most consumers registered in vendor-consumers.json. Not an automatic promotion.",
+      "source": "src/mcp_toolcall_lab/github_public_resolver.py",
+      "consumers": {
+        "myon-bioinformatics/BlueProbe": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        },
+        "myon-bioinformatics/ascii_artist": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        },
+        "myon-bioinformatics/markdown": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        }
+      },
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/mcp-toolcall-lab",
+      "commit": "56982948ba79c070664cf9efe87a3d753e417acf",
+      "reason": "Catalog gap: already locked by consumers but previously uncatalogued; pinned to the commit locked by the most consumers registered in vendor-consumers.json. Not an automatic promotion.",
+      "source": "src/mcp_toolcall_lab/adapters/html_snapshot.py",
+      "consumers": {
+        "myon-bioinformatics/myon-bioinformatics.github.io": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        }
+      },
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/browser-test-kit",
+      "commit": "725f35900021f2fa8beecafe850cd5f7062b1ae5",
+      "reason": "Pillow-backed image diff for browser evidence; enrolled only where the dependency is already accepted.",
+      "source": "scripts/image_diff.py",
+      "consumers": {
+        "myon-bioinformatics/flutter_navigation_basic": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        }
+      },
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "requires_external_package"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/browser-test-kit",
+      "commit": "61872b2df6da908152bc8f965832da79dd97d6b9",
+      "reason": "Playwright interaction helpers vendored into flutter e2e; explicit consumer enrollment only.",
+      "source": "scripts/interaction.mjs",
+      "consumers": {
+        "myon-bioinformatics/flutter_navigation_basic": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        }
+      },
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
     }
   ]
 }

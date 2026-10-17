@@ -197,6 +197,23 @@ def public_ref_sha(repository, ref="main"):
     return sha
 
 
+def public_commit_exists(repository, commit):
+    """Fail closed when a catalog/lock pin SHA is absent from the public remote.
+
+    Uses the public GitHub REST commit endpoint. ``404`` is classified as a missing
+    pin; ``401``/``403`` raise :class:`PublicGitAccessBlocked`; other HTTP failures
+    use :data:`PUBLIC_GIT_FETCH_ERROR`.
+    """
+    repository = _normalize_repository(repository)
+    _hex(commit, 40)
+    url = "https://api.github.com/repos/{}/commits/{}".format(repository, commit)
+    try:
+        _public_http_get(url)
+    except PublicGitNotFound as error:
+        raise ValueError("catalog pin commit not found: {}@{}".format(repository, commit[:7])) from error
+    return commit
+
+
 def public_raw_bytes(repository, ref, path):
     """Fetch file bytes from raw.githubusercontent.com; None when the path is absent (404)."""
     repository = _normalize_repository(repository)
