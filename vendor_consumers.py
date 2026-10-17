@@ -107,7 +107,10 @@ def validate(registry):
         # Expand before all existing topology/duplicate checks; lock verification is unchanged.
         expanded = []
         for entry in consumer["entries"]:
-            if isinstance(entry, dict) and "license" in entry:
+            if not isinstance(entry, dict):
+                expanded.append(entry)
+                continue
+            if "license" in entry:
                 if entry.get("source") == "LICENSE":
                     raise ValueError("LICENSE entry cannot declare another license")
                 destination = vendor_sync._path(entry.pop("license"))

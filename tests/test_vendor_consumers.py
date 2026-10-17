@@ -310,6 +310,26 @@ def test_compact_license_has_identical_topology_without_mutating_input():
     assert result['missing'] == [old['consumers'][0]['entries'][1]]
 
 
+@pytest.mark.parametrize("entry", ["license", ["license", "vendor/x-LICENSE"]])
+def test_non_dict_entry_containing_license_rejects_without_traceback(entry, tmp_path):
+    doc = registry()
+    doc["consumers"][0]["entries"].insert(0, entry)
+    with pytest.raises(ValueError, match="invalid consumer entry fields"):
+        consumers.validate(doc)
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps(doc), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-S", str(Path(consumers.__file__)), "validate", "--registry", str(registry_path)],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr == "vendor-consumers: invalid consumer entry fields\n"
+    assert "Traceback" not in result.stderr
+
+
 @pytest.mark.parametrize('path', [None, {}, [], '', '../LICENSE', '/LICENSE', 'vendor/../LICENSE'])
 def test_compact_license_rejects_invalid_paths(path):
     doc = registry()
