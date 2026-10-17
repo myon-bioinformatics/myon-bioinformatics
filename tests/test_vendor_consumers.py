@@ -219,12 +219,16 @@ def test_checked_in_registry_and_parent_lock():
         "myon-bioinformatics/Err-o-RoadRunner",
         "myon-bioinformatics/cli_args",
         "myon-bioinformatics/gh_identity",
+        "myon-bioinformatics/xprobe",
         "myon-bioinformatics/myon-bioinformatics.github.io",
         "myon-bioinformatics/search_seq_including_spaces",
     }
     assert {repo for repo, row in by_repo.items() if row["state"] == "locked"} == expected_locked
     assert by_repo["myon-bioinformatics/convert_img_fmt_to_webp-CUI-"]["state"] == "legacy"
-    assert "myon-bioinformatics/xprobe" not in by_repo
+    # xprobe consumes only the parent LICENSE; it never self-enrolls xprobe.py.
+    assert {
+        entry["repository"] for entry in by_repo["myon-bioinformatics/xprobe"]["entries"]
+    } == {"myon-bioinformatics/myon-bioinformatics"}
     adopted = by_repo["myon-bioinformatics/search_seq_including_spaces"]
     assert adopted["state"] == "locked"
     assert adopted["lock"] == "vendor.lock.json"
