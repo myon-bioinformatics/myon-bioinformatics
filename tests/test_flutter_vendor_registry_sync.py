@@ -116,7 +116,7 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
     assert hashlib.sha256(approved).hexdigest() == contract["sha256"]
     recorded = heads["heads"][FLUTTER]
     assert recorded["repository_id"] == 739348522
-    assert recorded["sha"] == "8f4946a21435b1779a48b29b0f1d084de20b48ac"
+    assert recorded["sha"] == "f3e230a2501d74245fcbec62183dc7c688092543"
     data = approved
     if fault == "removed":
         start = data.index(b"  python-vendor-locked:\n")
