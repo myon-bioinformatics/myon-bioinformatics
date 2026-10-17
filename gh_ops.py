@@ -1690,7 +1690,7 @@ def _subtree_push_guards(cwd: Any, split_sha: str, compare: dict | None, *, chil
     default empty, i.e. identical to #77) can explicitly allow known child-only files.
     """
     if not compare:
-        return {"compare_ref": None, "compare_sha": None, "child_only_paths": []}
+        raise SubtreePushError("compare_ref_unavailable", "remote comparison ref is required for ancestor validation")
     ref, tip = compare["ref"], compare["sha"]
     if not _subtree_is_ancestor(cwd, tip, split_sha, run=run, timeout=timeout):
         raise ValueError(f"remote ref {ref} is not an ancestor of the split commit")
@@ -1722,7 +1722,7 @@ def subtree_push_plan(prefix: str, remote: str, branch: str, *, source: str = "H
                       run: Callable[..., Any] = subprocess.run, timeout: float = 600.0) -> dict:
     """Read-only plan for pushing the verified split of ``prefix`` to a NEW ``branch`` on ``remote``.
 
-    Order: validate input; HEAD/source and prefix tree; git subtree available; one
+    Order: validate input; HEAD/source and prefix tree; git subtree available;
     ``ls-remote`` (remote default, target branch, compare refs); refuse main/master, the
     remote default branch and an existing branch; fetch the compare tip object-only;
     tree-validated split; ancestor + child-only path guards. Local refs never move.
@@ -1771,10 +1771,11 @@ def subtree_push_plan(prefix: str, remote: str, branch: str, *, source: str = "H
         if tip:
             compare = {"ref": candidate, "sha": tip}
             break
-    fetched = False
-    if compare:
-        fetched = _subtree_fetch_compare_tip(cwd, remote, f"refs/heads/{compare['ref']}", compare["sha"],
-                                             run=run, timeout=timeout)
+    if compare is None:
+        raise SubtreePushError("compare_ref_unavailable",
+                               "could not resolve remote comparison ref; specify an existing --compare-ref")
+    fetched = _subtree_fetch_compare_tip(cwd, remote, f"refs/heads/{compare['ref']}", compare["sha"],
+                                         run=run, timeout=timeout)
 
     split = subtree_split_verified(prefix, source=source_sha, cwd=cwd, run=run, timeout=timeout)
     if split["reason"]:

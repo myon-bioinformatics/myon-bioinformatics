@@ -291,3 +291,42 @@ def test_compare_cli_fails_closed_with_json_evidence(tmp_path, drift):
     assert evidence["matches"] is False
     assert len(evidence[drift]) == 1
     assert not result.stderr
+
+
+def test_compact_license_has_identical_topology_without_mutating_input():
+    old = registry()
+    compact = copy.deepcopy(old)
+    entries = compact['consumers'][0]['entries']
+    entries[0]['license'] = entries.pop()['destination']
+    before = copy.deepcopy(compact)
+    assert consumers.validate(compact) == consumers.validate(old)
+    assert consumers.validate(consumers.validate(compact)) == consumers.validate(old)
+    assert compact == before
+    assert consumers.compare(compact, lock(), 'owner/app') == consumers.compare(old, lock(), 'owner/app')
+    missing = lock()
+    missing['files'].pop()
+    result = consumers.compare(compact, missing, 'owner/app')
+    assert not result['matches']
+    assert result['missing'] == [old['consumers'][0]['entries'][1]]
+
+
+@pytest.mark.parametrize('path', [None, {}, [], '', '../LICENSE', '/LICENSE', 'vendor/../LICENSE'])
+def test_compact_license_rejects_invalid_paths(path):
+    doc = registry()
+    doc['consumers'][0]['entries'][0]['license'] = path
+    with pytest.raises(ValueError):
+        consumers.validate(doc)
+
+
+def test_compact_license_preserves_duplicate_destination_rejection():
+    doc = registry()
+    doc['consumers'][0]['entries'][0]['license'] = 'VENDOR/TOOL-LICENSE'
+    with pytest.raises(ValueError, match='duplicate consumer destination'):
+        consumers.validate(doc)
+
+
+def test_license_cannot_chain_another_license():
+    doc = registry()
+    doc['consumers'][0]['entries'][1]['license'] = 'vendor/extra-LICENSE'
+    with pytest.raises(ValueError, match='another license'):
+        consumers.validate(doc)

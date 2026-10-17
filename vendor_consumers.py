@@ -103,6 +103,19 @@ def validate(registry):
 
         if not isinstance(consumer["entries"], list) or not consumer["entries"]:
             raise ValueError("consumer entries must be a nonempty list")
+        # A short local path stands for the same separately locked upstream LICENSE.
+        # Expand before all existing topology/duplicate checks; lock verification is unchanged.
+        expanded = []
+        for entry in consumer["entries"]:
+            if isinstance(entry, dict) and "license" in entry:
+                if entry.get("source") == "LICENSE":
+                    raise ValueError("LICENSE entry cannot declare another license")
+                destination = vendor_sync._path(entry.pop("license"))
+                expanded.extend([entry, {"repository": entry.get("repository"),
+                                         "source": "LICENSE", "destination": destination}])
+            else:
+                expanded.append(entry)
+        consumer["entries"] = expanded
         destinations = set()
         identities = set()
         for entry in consumer["entries"]:
