@@ -561,3 +561,28 @@ def test_cli_plan_prints_command(world):
                         "--prefix", "sub", "--remote", str(world["child"]), "--branch", "main"],
                        capture_output=True, text=True, env=ENV)
     assert r.returncode == 2 and not r.stdout and "main/master" in r.stderr
+
+@needs_subtree
+@pytest.mark.parametrize("default", ["trunk", "develop"])
+@pytest.mark.parametrize("write", [False, True])
+def test_explicit_missing_compare_ref_fails_closed(world, default, write):
+    split = _split(world["mono"])
+    _git(world["mono"], "push", "-q", str(world["child"]), f"{split}:refs/heads/{default}")
+    _git(world["child"], "symbolic-ref", "HEAD", f"refs/heads/{default}")
+    before = _refs(world["child"])
+    spy = Spy()
+    with pytest.raises(g.SubtreePushError, match="remote ref missing does not exist") as exc:
+        g.subtree_push("sub", str(world["child"]), "sync/missing",
+                       compare_ref="missing", write=write, cwd=str(world["mono"]), run=spy)
+    assert exc.value.code == "compare_ref_not_found"
+    assert not spy.pushes()
+    assert _refs(world["child"]) == before
+
+@needs_subtree
+def test_explicit_existing_compare_ref_overrides_default(world):
+    split = _seed_child(world)
+    _git(world["child"], "update-ref", "refs/heads/custom", split)
+    out = g.subtree_push_plan("sub", str(world["child"]), "sync/custom",
+                              compare_ref="custom", cwd=str(world["mono"]))
+    assert out["push_guard"]["compare_ref"] == "custom"
+    assert out["push_guard"]["compare_sha"] == split

@@ -1749,7 +1749,7 @@ def subtree_push_plan(prefix: str, remote: str, branch: str, *, source: str = "H
     if not _subtree_available(cwd, run=run, timeout=timeout):
         raise SubtreePushError("subtree_unavailable")
 
-    candidates = list(dict.fromkeys([c for c in (compare_ref,) if c] + list(_SUBTREE_COMPARE_FALLBACKS)))
+    candidates = [compare_ref] if compare_ref is not None else list(_SUBTREE_COMPARE_FALLBACKS)
     refs = [f"refs/heads/{branch}"] + [f"refs/heads/{c}" for c in candidates if c != branch]
     default, tips = _subtree_ls_remote(cwd, remote, refs, run=run, timeout=timeout)
     if default and default != branch and default not in candidates:
@@ -1761,6 +1761,9 @@ def subtree_push_plan(prefix: str, remote: str, branch: str, *, source: str = "H
         raise ValueError(f"refusing to push to the remote default branch {branch}; use a new branch")
     if tips.get(f"refs/heads/{branch}") is not None:
         raise ValueError(f"remote branch refs/heads/{branch} already exists; push creates a new branch only")
+
+    if compare_ref is not None and not tips.get(f"refs/heads/{compare_ref}"):
+        raise SubtreePushError("compare_ref_not_found", f"remote ref {compare_ref} does not exist")
 
     compare = None
     for candidate in candidates:
