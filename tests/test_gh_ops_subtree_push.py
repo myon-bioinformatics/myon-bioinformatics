@@ -146,7 +146,8 @@ def test_push_plan_changes_nothing(world):
     spy = Spy()
     out = g.subtree_push("sub", str(world["child"]), "sync/one", cwd=str(world["mono"]), run=spy)
     assert out["state"] == "planned" and out["write"] is False and out["dry_run"]
-    assert out["command"] == ["git", "push", "--", str(world["child"]), f"{out['split_sha']}:refs/heads/sync/one"]
+    assert out["command"] == ["git", "push", "--force-with-lease=refs/heads/sync/one:", "--", str(world["child"]),
+                              f"{out['split_sha']}:refs/heads/sync/one"]
     assert out["provenance"]["trailer"] == f"Subtree-Split: {out['source']} {out['split_sha']} sub"
     assert not spy.pushes()
     assert _refs(world["mono"]) == before_mono and _refs(world["child"]) == before_child
@@ -164,18 +165,22 @@ def test_push_write_creates_new_branch_and_verifies(world):
     assert _git(world["child"], "rev-parse", "refs/heads/sync/one^{tree}") == _git(world["mono"], "rev-parse",
                                                                                   "HEAD:sub")
     (push,) = spy.pushes()
-    assert push == ["git", "push", "--", str(world["child"]), f"{out['split_sha']}:refs/heads/sync/one"]
-    assert not any(a in ("-f", "--force", "--force-with-lease", "--mirror") or a.startswith("+") for a in push)
+    assert push == ["git", "push", "--force-with-lease=refs/heads/sync/one:", "--", str(world["child"]),
+                    f"{out['split_sha']}:refs/heads/sync/one"]
+    # The only force-family option is the empty lease (branch must not exist); nothing else.
+    assert not any(a in ("-f", "--force", "--force-with-lease", "--mirror", "--force-if-includes")
+                   or a.startswith("+") or (a.startswith("--force") and a != "--force-with-lease=refs/heads/sync/one:")
+                   for a in push)
     assert _refs(world["mono"]) == before_mono
     assert not (_git_dir(world["mono"]) / "subtree-cache").exists()
-    with pytest.raises(ValueError, match="already exists"):
+    with pytest.raises(ValueError, match="refs/heads/sync/one already exists"):
         g.subtree_push("sub", str(world["child"]), "sync/one", cwd=str(world["mono"]))
 
 
 @needs_subtree
 def test_push_refuses_remote_default_branch(world):
     _seed_child(world)
-    with pytest.raises(ValueError, match="default branch"):
+    with pytest.raises(ValueError, match="default branch trunk"):
         g.subtree_push("sub", str(world["child"]), "trunk", write=True, cwd=str(world["mono"]))
 
 
@@ -204,7 +209,7 @@ def _child_ahead(world, files):
 def test_push_blocked_when_child_trunk_not_ancestor(world):
     _child_ahead(world, {"ahead-on-child.py": "x\n"})
     spy = Spy()
-    with pytest.raises(ValueError, match="not an ancestor"):
+    with pytest.raises(ValueError, match="remote ref trunk is not an ancestor"):
         g.subtree_push("sub", str(world["child"]), "sync/new", compare_ref="trunk", write=True,
                        cwd=str(world["mono"]), run=spy)
     assert not spy.pushes()
@@ -217,7 +222,7 @@ def test_push_guard_lists_child_only_paths(world, monkeypatch):
     monkeypatch.setattr(g, "_subtree_tree_paths",
                         lambda cwd, t, **k: {"a.py"} if t == "split-tree" else {"a.py", "only-on-child.txt"})
     compare = {"ref": "trunk", "sha": "1" * 40}
-    with pytest.raises(ValueError, match="child-only paths not present in split: only-on-child.txt"):
+    with pytest.raises(ValueError, match=r"only-on-child\.txt \(remote ref trunk\)"):
         g._subtree_push_guards(str(world["mono"]), split, compare, run=subprocess.run, timeout=30)
     out = g._subtree_push_guards(str(world["mono"]), split, compare, child_only_paths=("only-on-*",),
                                  run=subprocess.run, timeout=30)
@@ -231,7 +236,7 @@ def test_child_only_paths_refused_by_default_allowed_by_glob(world):
     _git(world["mono"], "rm", "-q", "sub/b.py")
     _git(world["mono"], "commit", "-q", "-m", "drop b")
     spy = Spy()
-    with pytest.raises(ValueError, match="child-only paths not present in split: b.py"):
+    with pytest.raises(ValueError, match=r"child-only paths not present in split: b\.py \(remote ref trunk\)"):
         g.subtree_push("sub", str(world["child"]), "sync/p", write=True, cwd=str(world["mono"]), run=spy)
     assert not spy.pushes()
     out = g.subtree_push("sub", str(world["child"]), "sync/p", child_only_paths=("b.*",), write=True,
@@ -326,7 +331,8 @@ def test_push_uses_validated_split_not_subtree_push(stale_mono):
     out = g.subtree_push("sub", str(child), "sync/x", write=True, cwd=str(root), run=spy)
     assert out["verified"]["ok"] and out["split_sha"] == good != stale
     assert _git(child, "rev-parse", "refs/heads/sync/x") == good
-    assert spy.pushes() == [["git", "push", "--", str(child), f"{good}:refs/heads/sync/x"]]
+    assert spy.pushes() == [["git", "push", "--force-with-lease=refs/heads/sync/x:", "--", str(child),
+                             f"{good}:refs/heads/sync/x"]]
 
 
 @needs_subtree
@@ -388,7 +394,58 @@ def test_post_push_mismatch_is_reported(world):
 
     with pytest.raises(g.SubtreePushError) as err:
         g.subtree_push("sub", str(child), "sync/v", write=True, cwd=str(mono), run=Spy(override))
-    assert err.value.code == "post_write_verification_failed"
+    assert err.value.code == "post_write_verification_failed" and "refs/heads/sync/v" in str(err.value)
+
+
+@needs_subtree
+def test_branch_created_between_plan_and_push_is_not_fast_forwarded(world):
+    """Race: someone creates the target branch at an ancestor of the split after the
+    ls-remote check. A plain push would fast-forward it; the empty lease rejects it."""
+    mono, child = world["mono"], world["child"]
+    seeded = _seed_child(world)
+    _commit(mono, {"sub/c.py": "c = 3\n"}, "three")
+
+    def override(argv, kwargs):
+        if argv[:2] == ["git", "push"]:
+            _git(child, "update-ref", "refs/heads/sync/race", seeded)
+        return None
+
+    spy = Spy(override)
+    with pytest.raises(g.SubtreePushError) as err:
+        g.subtree_push("sub", str(child), "sync/race", write=True, cwd=str(mono), run=spy, sleep=lambda s: None)
+    assert err.value.code == "subtree_push_failed" and "refs/heads/sync/race" in str(err.value)
+    assert len(spy.pushes()) == 1  # rejected, not a network error: no retry
+    assert _git(child, "rev-parse", "refs/heads/sync/race") == seeded
+
+
+@needs_subtree
+def test_child_only_path_added_on_child_real_repos(tmp_path):
+    """Non-mocked: child adds LICENSE, monorepo pulls it (subtree add/pull) then drops it."""
+    child = tmp_path / "child.git"
+    _git(tmp_path, "init", "-q", "--bare", "-b", "trunk", str(child))
+    work = tmp_path / "work"
+    _git(tmp_path, "clone", "-q", str(child), str(work))
+    _git(work, "checkout", "-q", "-b", "trunk")
+    _commit(work, {"a.py": "a = 1\n"}, "child one")
+    _git(work, "push", "-q", "origin", "HEAD:trunk")
+    mono = tmp_path / "mono"
+    mono.mkdir()
+    _git(mono, "init", "-q", "-b", "main")
+    _commit(mono, {"top.py": "x = 1\n"}, "mono one")
+    _git(mono, "subtree", "add", "-q", "--prefix=sub", str(child), "trunk")
+    _commit(work, {"LICENSE": "x\n"}, "child adds LICENSE")
+    _git(work, "push", "-q", "origin", "HEAD:trunk")
+    tip = _git(work, "rev-parse", "HEAD")
+    _git(mono, "subtree", "pull", "-q", "--prefix=sub", "-m", "take child", str(child), "trunk")
+    _git(mono, "rm", "-q", "sub/LICENSE")
+    _git(mono, "commit", "-q", "-m", "monorepo does not ship LICENSE")
+    spy = Spy()
+    with pytest.raises(ValueError, match=r"child-only paths not present in split: LICENSE \(remote ref trunk\)"):
+        g.subtree_push("sub", str(child), "sync/lic", write=True, cwd=str(mono), run=spy)
+    assert not spy.pushes() and _git(child, "for-each-ref", "--format=%(refname)") == "refs/heads/trunk"
+    out = g.subtree_push("sub", str(child), "sync/lic", child_only_paths=("LICENSE",), write=True, cwd=str(mono))
+    assert out["push_guard"] == {"compare_ref": "trunk", "compare_sha": tip, "child_only_paths": ["LICENSE"]}
+    assert _git(child, "rev-parse", "refs/heads/sync/lic") == out["split_sha"]
 
 
 @needs_subtree
@@ -498,7 +555,7 @@ def test_cli_plan_prints_command(world):
                        capture_output=True, text=True, env=ENV)
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)
-    assert out["state"] == "planned" and out["command"][:3] == ["git", "push", "--"]
+    assert out["state"] == "planned" and out["command"][:4] == ["git", "push", "--force-with-lease=refs/heads/sync/x:", "--"]
     assert _refs(world["child"]) == ""
     r = subprocess.run([sys.executable, "-S", str(SCRIPT), "subtree-push", "--root", str(world["mono"]),
                         "--prefix", "sub", "--remote", str(world["child"]), "--branch", "main"],

@@ -1424,13 +1424,14 @@ def _subtree_push_guards(cwd: Any, split_sha: str, compare: dict | None, *, chil
     split_tree = _subtree_oid(cwd, f"{split_sha}^{{tree}}", run=run, timeout=timeout)
     child_tree = _subtree_oid(cwd, f"{tip}^{{tree}}", run=run, timeout=timeout)
     if not split_tree or not child_tree:
-        raise ValueError("could not resolve trees for push guard")
+        raise ValueError(f"could not resolve trees for push guard (remote ref {ref})")
     only_child = sorted(_subtree_tree_paths(cwd, child_tree, run=run, timeout=timeout)
                         - _subtree_tree_paths(cwd, split_tree, run=run, timeout=timeout))
     allowed = [p for p in only_child if any(fnmatch.fnmatchcase(p, g) for g in child_only_paths)]
     refused = [p for p in only_child if p not in allowed]
     if refused:
-        raise ValueError("child-only paths not present in split: " + ", ".join(refused))
+        raise ValueError("child-only paths not present in split: " + ", ".join(refused)
+                         + f" (remote ref {ref})")
     return {"compare_ref": ref, "compare_sha": tip, "child_only_paths": allowed}
 
 
@@ -1484,9 +1485,9 @@ def subtree_push_plan(prefix: str, remote: str, branch: str, *, source: str = "H
     if compare_ref is None and default:
         candidates = list(dict.fromkeys([default] + candidates))
     if branch == default:
-        raise ValueError("refusing to push to the remote default branch; use a new branch")
+        raise ValueError(f"refusing to push to the remote default branch {branch}; use a new branch")
     if tips.get(f"refs/heads/{branch}") is not None:
-        raise ValueError("remote branch already exists; push creates a new branch only")
+        raise ValueError(f"remote branch refs/heads/{branch} already exists; push creates a new branch only")
 
     compare = None
     for candidate in candidates:
@@ -1508,7 +1509,7 @@ def subtree_push_plan(prefix: str, remote: str, branch: str, *, source: str = "H
             "source": source_sha, "remote_default_branch": default, "split_sha": split["sha"],
             "split_method": split["method"], "split_warning": split["warning"],
             "compare_tip_fetched": fetched, "push_guard": guard,
-            "command": ["git", "push", "--", remote, refspec],
+            "command": ["git", "push", f"--force-with-lease=refs/heads/{branch}:", "--", remote, refspec],
             "provenance": {"trailer": f"{_SUBTREE_TRAILER}: {source_sha} {split['sha']} {prefix}",
                            "monorepo_sha": source_sha, "split_sha": split["sha"]}}
 
@@ -1519,7 +1520,8 @@ def subtree_push(prefix: str, remote: str, branch: str, *, source: str = "HEAD",
                  delays: tuple[float, ...] = _GIT_COMMIT_PUSH_DELAYS, timeout: float = 600.0) -> dict:
     """Plan (default) or push the verified split SHA as ``<sha>:refs/heads/<branch>``.
 
-    No ``--force``, no ``+`` refspec, never ``git subtree push``. With ``write`` the split
+    No ``--force``, no ``+`` refspec, never ``git subtree push``; the only lease is
+    ``--force-with-lease=refs/heads/<branch>:`` (the branch must still not exist). With ``write`` the split
     tree is re-checked once right before the push, the push reuses the git-commit retry
     loop (network errors only), and the remote branch must then equal the split SHA.
     """
@@ -1532,15 +1534,20 @@ def subtree_push(prefix: str, remote: str, branch: str, *, source: str = "HEAD",
     split_sha, remote, branch = plan["split_sha"], plan["remote"], plan["branch"]
     gate = _subtree_push_split_tree_gate(cwd, plan["source"], plan["prefix"], split_sha, run=run, timeout=timeout)
     plan = {**plan, "write": True, "prefix_tree": gate["prefix_tree"], "split_tree": gate["split_tree"]}
+    # Empty lease value: the push is accepted only while refs/heads/<branch> does not exist on
+    # the remote, so a branch created after the ls-remote check (even at an ancestor of the
+    # split, which a plain push would fast-forward) makes the push fail instead.
+    target = f"refs/heads/{branch}"
     ok, output = git_commit_push_with_retry(cwd=cwd, run=run, sleep=sleep, delays=delays,
-                                            push_args=("--", remote, f"{split_sha}:refs/heads/{branch}"))
+                                            push_args=(f"--force-with-lease={target}:", "--", remote,
+                                                       f"{split_sha}:{target}"))
     if not ok:
-        raise SubtreePushError("subtree_push_failed", output.strip()[-300:])
+        raise SubtreePushError("subtree_push_failed", f"{target}: " + output.strip()[-300:])
     _, tips = _subtree_ls_remote(cwd, remote, [f"refs/heads/{branch}"], run=run, timeout=timeout)
     pushed = tips.get(f"refs/heads/{branch}")
     if pushed != split_sha:
         raise SubtreePushError("post_write_verification_failed",
-                               f"remote {branch} is {pushed or 'missing'}, expected {split_sha}")
+                               f"remote refs/heads/{branch} is {pushed or 'missing'}, expected {split_sha}")
     return {**plan, "state": "pushed", "verified": {"remote_branch_sha": pushed, "ok": True}}
 
 

@@ -79,8 +79,12 @@ read-only checks switch to GHI's public functions and only the push stays here.
 - The split must have the same tree as `<source>:<prefix>`. `git subtree split` can
   exit 0 with a stale SHA (git 2.47.3); then a filter-branch split in a temporary clone
   is used, and it is checked again.
-- The verified SHA is pushed directly as `git push -- URL <split_sha>:refs/heads/<branch>`.
-  There is no `git subtree push` (it re-splits), no `--force` and no `+`.
+- The verified SHA is pushed directly as
+  `git push --force-with-lease=refs/heads/<branch>: -- URL <split_sha>:refs/heads/<branch>`.
+  The empty lease means "the branch must still not exist". A branch someone creates
+  after the existence check (even at an ancestor, which a plain push would fast-forward)
+  makes the push fail. There is no `git subtree push` (it re-splits), no `--force` and no `+`.
+- Error messages name the ref involved (`refs/heads/<branch>`, `remote ref <compare>`).
 - Only a NEW branch: main/master, the remote default branch and existing branches are refused.
 - The remote compare ref (`--compare-ref`, default: the remote default branch, then
   main/master/trunk) must be an ancestor of the split. Paths that exist only on the
