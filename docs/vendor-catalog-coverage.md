@@ -46,7 +46,9 @@ the most consumers registered in `vendor-consumers.json`. They use
 overrides for the repositories that already lock them, so no new registration is
 requested from other consumers.
 
-2026-10-17 btk ownership (parent registry): `image_diff.py` is catalogued under
-browser-test-kit with `skipped(requires_external_package)` and flutter-only
-enrollment; parent-owned `py_matrix.py` and `pytest_brief.py` are registered
-with explicit sources and `skipped(explicit_consumer_only)`.
+2026-10-17 btk ownership (parent registry): `image_diff.py` and
+`scripts/interaction.mjs` are catalogued under browser-test-kit with explicit
+sources (image_diff: `skipped(requires_external_package)`, flutter only;
+interaction.mjs: `skipped(explicit_consumer_only)`, flutter only). Parent-owned
+`py_matrix.py`, `pytest_brief.py`, and `publish_check.py` use
+`skipped(explicit_consumer_only)` with no fleet-wide enrollment.

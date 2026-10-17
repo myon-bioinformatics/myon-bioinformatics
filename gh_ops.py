@@ -19,6 +19,8 @@ is a thin adapter over them::
     python -S gh_ops.py pr-body-set OWNER/REPO 11 --file body.md --write
     python -S gh_ops.py pr-edit OWNER/REPO 11 --base develop --write
     python -S gh_ops.py file-put OWNER/REPO docs/x.md --from x.md --branch docs --message "add x" --write
+    python -S gh_ops.py git-commit --message-file msg.txt a.py --write
+    python -S gh_ops.py git-commit --message-file msg.txt a.py --write --push
     python -S gh_ops.py url compare OWNER/REPO main feature   # no network; prints web + api URLs
 
 Exit codes: 0 = OK, 1 = a checked condition was not met, 2 = input or
@@ -985,6 +987,112 @@ def file_put(repo: str, path: str, *, content: bytes, branch: str, message: str,
             "commit_sha": commit_sha}
 
 
+_GIT_COMMIT_NETWORK_HINTS = (
+    "could not resolve host", "connection timed out", "connection refused", "network is unreachable",
+    "temporary failure in name resolution", "could not read from remote repository",
+    "the remote end hung up unexpectedly", "early eof", "rpc failed", "failed to connect",
+    "operation timed out", "connection reset", "ssl_read", "no route to host", "socket is not connected",
+)
+_GIT_COMMIT_PUSH_DELAYS: tuple[float, ...] = (2.0, 4.0, 8.0, 16.0)
+
+
+def _git_commit_normalize(path: str) -> str:
+    if os.path.isabs(path):
+        path = os.path.relpath(path)
+    return Path(os.path.normpath(path)).as_posix()
+
+
+def git_commit_staged_files(*, cwd: str = ".", run: Callable[..., Any] = subprocess.run) -> list[str]:
+    done = run(["git", "diff", "--cached", "--name-only"], cwd=cwd, capture_output=True, text=True)
+    return [line for line in done.stdout.splitlines() if line]
+
+
+def git_commit_read_message(path: Path) -> str:
+    return path.read_text(encoding="utf-8").rstrip("\n")
+
+
+def git_commit_build_message(base: str, trailers: list[str]) -> str:
+    body = base.rstrip("\n")
+    seen = {line.strip() for line in body.splitlines()}
+    to_add = []
+    for trailer in trailers:
+        key = trailer.strip()
+        if key in seen:
+            continue
+        to_add.append(trailer)
+        seen.add(key)
+    if not to_add:
+        return body + "\n"
+    return body + "\n\n" + "\n".join(to_add) + "\n"
+
+
+def _git_commit_looks_like_network_error(text: str) -> bool:
+    lowered = text.lower()
+    return any(hint in lowered for hint in _GIT_COMMIT_NETWORK_HINTS)
+
+
+def git_commit_push_with_retry(*, cwd: str = ".", delays: tuple[float, ...] = _GIT_COMMIT_PUSH_DELAYS,
+                               run: Callable[..., Any] = subprocess.run,
+                               sleep: Callable[[float], None] = time.sleep) -> tuple[bool, str]:
+    remaining = list(delays)
+    while True:
+        done = run(["git", "push", "origin", "HEAD"], cwd=cwd, capture_output=True, text=True)
+        output = done.stdout + done.stderr
+        if done.returncode == 0:
+            return True, output
+        if not remaining or not _git_commit_looks_like_network_error(output):
+            return False, output
+        sleep(remaining.pop(0))
+
+
+def git_commit(message_file: str, files: list[str], *, trailers: list[str] | None = None,
+               allow_staged: bool = False, push: bool = False, write: bool = False, cwd: str = ".",
+               run: Callable[..., Any] = subprocess.run,
+               sleep: Callable[[float], None] = time.sleep) -> dict:
+    """Stage an explicit file list and commit (local git; migrated from browser-test-kit git_commit.py)."""
+    trailers = list(trailers or [])
+    message_path = Path(message_file)
+    if not message_path.is_file():
+        raise GhOpsError(f"message file not found: {message_file}")
+    base_message = git_commit_read_message(message_path)
+    if not base_message.strip():
+        raise GhOpsError(f"message file is empty: {message_file}")
+
+    wanted = {_git_commit_normalize(path) for path in files}
+    if not allow_staged:
+        unexpected = sorted(path for path in git_commit_staged_files(cwd=cwd, run=run)
+                            if _git_commit_normalize(path) not in wanted)
+        if unexpected:
+            raise GhOpsError("files other than FILE... are already staged (use --allow-staged): "
+                             + ", ".join(unexpected))
+
+    if not write:
+        return {"ok": True, "dry_run": True, "files": list(files), "push": push, "message_file": message_file}
+
+    added = run(["git", "add", "--", *files], cwd=cwd, capture_output=True, text=True)
+    if added.returncode != 0:
+        return {"ok": False, "reason": (added.stdout + added.stderr).strip() or "git add failed"}
+
+    transcript = run(["git", "status", "--short"], cwd=cwd, capture_output=True, text=True).stdout
+    transcript += run(["git", "diff", "--cached", "--stat"], cwd=cwd, capture_output=True, text=True).stdout
+
+    message = git_commit_build_message(base_message, trailers)
+    commit = run(["git", "commit", "--file", "-"], cwd=cwd, capture_output=True, text=True, input=message)
+    if commit.returncode != 0:
+        return {"ok": False, "reason": (commit.stdout + commit.stderr).strip() or "git commit failed"}
+
+    sha = run(["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True).stdout.strip()
+    transcript += sha + "\n"
+    pushed = False
+    if push:
+        ok, output = git_commit_push_with_retry(cwd=cwd, run=run, sleep=sleep)
+        transcript += output
+        if not ok:
+            return {"ok": False, "sha": sha, "transcript": transcript, "reason": "git push failed"}
+        pushed = True
+    return {"ok": True, "sha": sha, "pushed": pushed, "transcript": transcript}
+
+
 def sync_main(*, base: str = "main", remote: str = "origin", write: bool = False, push: bool = False,
               cwd: str = ".", run: Callable[..., Any] = subprocess.run) -> dict:
     """Merge ``remote/base`` into the checked-out PR branch (git, no REST).
@@ -1204,6 +1312,13 @@ def _render(command: str, result: dict) -> str:
         if result.get("api"):
             lines.append(f"api: {result['api']}")
         return "\n".join(lines)
+    if command == "git-commit":
+        if result.get("transcript"):
+            return result["transcript"].rstrip("\n")
+        if result.get("dry_run"):
+            return f"dry run git-commit: would stage {len(result.get('files', []))} file(s)"
+        reason = result.get("reason") or ""
+        return f"{'OK' if result['ok'] else 'NG'} git-commit" + (f": {reason}" if reason else "")
     reason = result.get("reason") or "; ".join(result.get("failures", []))
     status = "OK" if result["ok"] else "NG"
     mode = "dry run" if result.get("dry_run") else "applied"
@@ -1300,6 +1415,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--method", choices=MERGE_METHODS, default="squash")
     p.add_argument("--title")
     p.add_argument("--message-file")
+    p.add_argument("--write", action="store_true")
+
+    p = sub.add_parser("git-commit", help="git add FILE... and commit from --message-file (needs --write)")
+    p.add_argument("--message-file", required=True, metavar="FILE", help="path to the commit message")
+    p.add_argument("files", nargs="+", metavar="FILE", help="paths to stage and commit")
+    p.add_argument("--trailer", action="append", default=[], metavar="KEY: VALUE",
+                   help="trailer line to append if not already present (repeatable)")
+    p.add_argument("--allow-staged", action="store_true",
+                   help="allow files other than FILE... to already be staged")
+    p.add_argument("--push", action="store_true", help="git push origin HEAD after committing (needs --write)")
     p.add_argument("--write", action="store_true")
 
     p = sub.add_parser("sync-main", help="merge origin/main into the checked-out PR branch (needs --write)")
@@ -1400,6 +1525,11 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
         message = _read_text(args.message_file) if args.message_file else None
         return pr_merge(args.repo, args.number, sha=args.sha, min_checks=args.min_checks, method=args.method,
                         title=args.title, message=message, write=args.write, client=client)
+    if command == "git-commit":
+        if args.push and not args.write:
+            raise GhOpsError("--push requires --write")
+        return git_commit(args.message_file, list(args.files), trailers=list(args.trailer),
+                          allow_staged=args.allow_staged, push=args.push, write=args.write)
     if command == "sync-main":
         return sync_main(base=args.base, remote=args.remote, write=args.write, push=args.push)
     if command == "pr-body-set":
