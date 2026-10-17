@@ -255,7 +255,9 @@ def test_reconcile_workflow_refreshes_on_parent_registry_and_code_changes():
         assert expected in push_section
     assert "  workflow_dispatch:" in workflow
     assert "--fail-on-drift" not in workflow
-    assert "GH_TOKEN" not in workflow
+    # Reconciliation stays anonymous; only the separate live scan uses a job-local token.
+    reconciliation = workflow.split("\n  duplicate-files:\n", 1)[0]
+    assert "GH_TOKEN" not in reconciliation
     assert "  contents: read" in workflow
 
 
