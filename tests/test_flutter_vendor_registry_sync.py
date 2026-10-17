@@ -1,7 +1,7 @@
 """Regression for the parent-approved Flutter vendor and workflow baseline.
 
-The relocated lock snapshot from #189 is unchanged by merged #194. The reviewed
-workflow snapshot comes from flutter PR #197 head 56fa7e26 (coordinates with gh_ops parent vendor).
+Lock and workflow snapshots come from flutter #198 main merge 1dd33afc (gh_ops/LICENSE
+pinned to parent #96 merge 09831b99).
 """
 import copy
 import hashlib
@@ -17,6 +17,9 @@ import vendor_sync
 
 ROOT = Path(__file__).resolve().parents[1]
 FLUTTER = "myon-bioinformatics/flutter_navigation_basic"
+LOCK_FIXTURE = "tests/fixtures/flutter_vendor_lock_1dd33afc.json"
+WORKFLOW_FIXTURE = "tests/fixtures/flutter_non_dart_1dd33afc.yml"
+GH_OPS_CATALOG_COMMIT = "09831b992dc91d83b15c44861a788e03b1e654c4"
 
 
 def load(filename):
@@ -25,7 +28,7 @@ def load(filename):
 
 def test_flutter_registry_matches_pinned_post_migration_lock():
     registry = load("vendor-consumers.json")
-    lock = load("tests/fixtures/flutter_vendor_lock_56fa7e26.json")
+    lock = load(LOCK_FIXTURE)
     result = vendor_consumers.compare(registry, lock, FLUTTER)
     assert result["matches"] is True
     assert result["missing"] == result["unexpected"] == []
@@ -50,7 +53,7 @@ def test_retired_git_inspector_is_explicit_skip_not_new_registration():
 
 def test_regression_detects_removed_or_reintroduced_vendor_source():
     registry = load("vendor-consumers.json")
-    lock = load("tests/fixtures/flutter_vendor_lock_56fa7e26.json")
+    lock = load(LOCK_FIXTURE)
     tampered = copy.deepcopy(lock)
     tampered["files"].pop()
     result = vendor_consumers.compare(registry, tampered, FLUTTER)
@@ -60,14 +63,31 @@ def test_regression_detects_removed_or_reintroduced_vendor_source():
     assert len(lock["files"]) == 16
 
 
+def test_gh_ops_matches_catalog_recommendation():
+    catalog = load("vendor-catalog.json")
+    lock = load(LOCK_FIXTURE)
+    pins = {row["source"]: row for row in vendor_catalog.compare(catalog, lock, FLUTTER)["tools"]}
+    gh_ops = pins["gh_ops.py"]
+    assert gh_ops["enrollment"] == "enrolled"
+    assert gh_ops["comparison"] == "at_recommended"
+    license_row = next(
+        row for row in lock["files"]
+        if row["destination"] == "python/vendor/myon-bioinformatics-LICENSE"
+    )
+    assert license_row["commit"] == GH_OPS_CATALOG_COMMIT
+
+
 def test_existing_pins_remain_sole_consumer_authority():
     registry = load("vendor-consumers.json")
     catalog = load("vendor-catalog.json")
-    lock = load("tests/fixtures/flutter_vendor_lock_56fa7e26.json")
+    lock = load(LOCK_FIXTURE)
     pins = vendor_catalog.compare(catalog, lock, FLUTTER)["tools"]
     assert {r["source"] for r in pins if r["enrollment"] == "enrolled" and
-            r["comparison"] == "different"} == {"gh_identity.py", "xprobe.py", "yourself.py"}
-    # Catalog recommendations do not overwrite or retarget the lock.
+            r["comparison"] == "different"} == {
+                "gh_identity.py",
+                "xprobe.py",
+                "yourself.py",
+            }
     assert vendor_consumers.compare(registry, lock, FLUTTER)["matches"]
 
 
@@ -90,10 +110,11 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
     heads = load("child-heads.json")
     consumer = vendor_consumers.get_consumer(registry, FLUTTER)
     contract = consumer["locked_ci"]
-    approved = (ROOT / "tests/fixtures/flutter_non_dart_56fa7e26.yml").read_bytes()
+    approved = (ROOT / WORKFLOW_FIXTURE).read_bytes()
     assert hashlib.sha256(approved).hexdigest() == contract["sha256"]
     recorded = heads["heads"][FLUTTER]
     assert recorded["repository_id"] == 739348522
+    assert recorded["sha"] == "1dd33afcffba437159f894b6a3f6637d751893a0"
     data = approved
     if fault == "removed":
         start = data.index(b"  python-vendor-locked:\n")
@@ -129,7 +150,6 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
     report = vendor_sync.audit_child_workflow_templates(
         registry, heads, "template", repository_names=[FLUTTER])
     assert bool(report["failures"]) == (fault is not None)
-    # Model a future main merge with identical reviewed bytes and a different SHA.
     proposed = {FLUTTER: dict(recorded, sha="b" * 40)}
     plan = vendor_sync.plan_heads_refresh(registry, heads, proposed, "template")
     if fault is None:
@@ -139,4 +159,4 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
     else:
         assert plan["skipped"] == [{"repository": FLUTTER, "reason": "locked_ci_mismatch"}]
         assert plan["heads"][FLUTTER] == recorded
-    assert registry == before  # Refresh cannot approve a new digest itself.
+    assert registry == before

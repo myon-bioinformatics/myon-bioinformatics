@@ -13,6 +13,13 @@ candidate commit. Unrelated upstream commits with unchanged selected bytes do
 not churn existing pins. Group coupled contract/generator files under the same
 repository/ref. Include every imported upstream sibling explicitly.
 
+An optional `bundle` object (`minpy-bundle/1`) may be added to a file entry
+without changing existing entries. It records that `source` is a single-file
+bundle produced by `tools/minpy.py`: `tool`, `tool_version`, `entry`,
+`search_paths`, `allow`, and `allow_cycles`. `vendor_sync.py check` still
+verifies the locked bytes. `python tools/minpy.py check` regenerates the
+bundle from the entry at the locked commit and compares it. See `docs/minpy.md`.
+
 ```json
 {
   "schema": "vendor-lock/1",
@@ -56,8 +63,12 @@ The registry uses `vendor-consumers/1`:
 - `state: legacy`: a known checked-in vendor relationship predates
   `vendor-lock/1`; `lock` is null and a machine-readable `reason` plus the
   existing `legacy_provenance` paths are recorded until migration.
-- `entries`: only `repository`, `source`, and `destination`. Exact
-  commit/ref/blob/SHA-256 values stay in each consumer lock.
+- `entries`: `repository`, `source`, and `destination`, plus an optional
+  `bundle` object when the source is a minpy bundle (same `minpy-bundle/1`
+  shape as the lock; no commit or digest). Exact commit/ref/blob/SHA-256
+  values stay in each consumer lock. A bundle metadata mismatch is
+  `bundle_mismatch` and fails comparison. `html-import-vendor/1` sources may
+  carry the same optional `bundle` object; sources without it are unchanged.
 - Duplicate consumers or destinations, unsafe paths, and self-vendor entries are
   rejected.
 
@@ -307,10 +318,12 @@ and replacing `-` and `.` with `_`, rejecting Python keywords; two different
 repositories (even under different owners) whose names normalize to the same
 module identity are rejected so independent `vendor/<module>.py` paths cannot
 collide. Repository strings that differ only by case refer to the same consumer
-and do not trigger a normalization collision. Optional `consumers` records
-per-consumer policy exceptions or explicit enroll decisions. Unknown fields and
-duplicate repository/source pairs are rejected. The recommendation unit is an
-independent source artifact,
+and do not trigger a normalization collision. A stdlib min artifact is a second
+tool on the same repository, with `source` `<stem>_min.py`, not a second
+repository (normalized repository module names therefore do not collide).
+Optional `consumers` records per-consumer policy exceptions or explicit enroll
+decisions. Unknown fields and duplicate repository/source pairs are rejected.
+The recommendation unit is an independent source artifact,
 identified by repository/source, rather than an entire repository release.
 Different sources from the same repository are intentionally allowed for
 standalone helpers; each carries its own explicit recommended commit. This does
