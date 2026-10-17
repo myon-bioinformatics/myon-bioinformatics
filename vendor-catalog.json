@@ -108,8 +108,8 @@
     },
     {
       "repository": "myon-bioinformatics/myon-bioinformatics",
-      "commit": "7f7482bcace57ce42feb78b6847d62f81957c9a3",
-      "reason": "Canonical gh_ops baseline including git-commit subcommand (browser-test-kit git_commit.py fold); consumers must re-pin after parent merge.",
+      "commit": "1eda992aa6fa31a902e2c06428e53ab17e8fe3c1",
+      "reason": "Reviewed gh_identity request/search adapter already locked by Flutter PR #197; git-commit additions in this PR require a later deliberate consumer repin after merge.",
       "source": "gh_ops.py"
     },
     {
@@ -432,36 +432,6 @@
           "reason": "already_locked_by_consumer"
         }
       },
-      "default_enrollment": {
-        "enrollment": "skipped",
-        "reason": "explicit_consumer_only"
-      }
-    },
-    {
-      "repository": "myon-bioinformatics/myon-bioinformatics",
-      "commit": "7f7482bcace57ce42feb78b6847d62f81957c9a3",
-      "reason": "Parent-owned pytest matrix helper migrated from browser-test-kit; no fleet-wide enrollment yet.",
-      "source": "py_matrix.py",
-      "default_enrollment": {
-        "enrollment": "skipped",
-        "reason": "explicit_consumer_only"
-      }
-    },
-    {
-      "repository": "myon-bioinformatics/myon-bioinformatics",
-      "commit": "7f7482bcace57ce42feb78b6847d62f81957c9a3",
-      "reason": "Parent-owned pytest brief runner migrated from browser-test-kit; no fleet-wide enrollment yet.",
-      "source": "pytest_brief.py",
-      "default_enrollment": {
-        "enrollment": "skipped",
-        "reason": "explicit_consumer_only"
-      }
-    },
-    {
-      "repository": "myon-bioinformatics/myon-bioinformatics",
-      "commit": "7f7482bcace57ce42feb78b6847d62f81957c9a3",
-      "reason": "GitHub Pages publish/delivery checks migrated from browser-test-kit; no consumer enrollment yet.",
-      "source": "publish_check.py",
       "default_enrollment": {
         "enrollment": "skipped",
         "reason": "explicit_consumer_only"
