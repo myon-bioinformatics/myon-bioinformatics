@@ -56,7 +56,8 @@ def pr_payload(**over):
     return data
 
 
-def retarget_routes(old_base, compare, *, after_base="main", pr_over=None, compare_raises=False):
+def retarget_routes(old_base, compare, *, after_base="main", pr_over=None, compare_raises=False,
+                    compare_error_message=None):
     pr_over = pr_over or {}
     gets = [reply(pr_payload(base_ref=old_base, **pr_over)),
             reply(pr_payload(base_ref=after_base, **pr_over))]
@@ -64,8 +65,10 @@ def retarget_routes(old_base, compare, *, after_base="main", pr_over=None, compa
     compare_path = (f"/repos/{REPO}/compare/{urllib.parse.quote('main', safe='')}"
                     f"...{urllib.parse.quote(old_base, safe='')}")
     if compare_raises:
+        message = compare_error_message or "GET /repos/octo/demo/compare/main...gone -> HTTP 404: not found"
+
         def _missing(_parts, _body):
-            raise gh_ops.GhOpsError("GET /repos/octo/demo/compare/main...gone -> HTTP 404: not found")
+            raise gh_ops.GhOpsError(message)
         routes[("GET", compare_path)] = _missing
     else:
         routes[("GET", compare_path)] = reply(compare)
@@ -113,6 +116,46 @@ def test_pr_retarget_empty_compare_commit_messages_do_not_crash():
     client, _ = client_for(retarget_routes("feat/parent", compare))
     out = gh_ops.pr_retarget(REPO, NUMBER, "main", client=client)
     assert out["old_base_commit_subjects"] == ["(empty commit message)", "(empty commit message)", "real subject"]
+
+
+def test_pr_retarget_not_open_merged_reason():
+    client, _ = client_for({("GET", f"/repos/{REPO}/pulls/{NUMBER}"): reply(
+        pr_payload(state="closed", merged=True, base_ref="feat/x"))})
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", client=client)
+    assert out["status"] == "not_open" and out["ok"] is False and out["reason"] == "merged"
+
+
+def test_pr_retarget_compare_non_404_error_is_not_labeled_not_found():
+    client, _ = client_for(retarget_routes(
+        "feat/p", {"ahead_by": 1}, compare_raises=True,
+        compare_error_message="GET /repos/octo/demo/compare/main...feat%2Fp -> HTTP 500: server error"))
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", client=client)
+    assert out["compare_error"] != "not_found"
+    assert "HTTP 500" in out["compare_error"]
+
+
+def test_pr_retarget_old_base_commit_subjects_limited_to_five():
+    commits = [{"commit": {"message": f"subject-{index}"}} for index in range(6)]
+    client, _ = client_for(retarget_routes("feat/p", {"ahead_by": 6, "commits": commits}))
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", client=client)
+    assert out["old_base_commit_subjects"] == [f"subject-{index}" for index in range(5)]
+    assert "subject-5" not in out["old_base_commit_subjects"]
+
+
+def test_pr_retarget_render_unknown_old_base(capsys):
+    routes = {("GET", f"/repos/{REPO}/pulls/{NUMBER}"): reply(
+        {"state": "open", "merged": False, "html_url": f"https://github.com/{REPO}/pull/{NUMBER}",
+         "base": {}, "head": {"ref": "feat/x"}}),
+        ("GET", f"/repos/{REPO}/compare/main..."): reply({"ahead_by": 0, "commits": []})}
+    client, _ = client_for(routes)
+    gh_ops.main(["pr-retarget", REPO, str(NUMBER)], client=client)
+    assert capsys.readouterr().out.startswith(f"planned {REPO}#{NUMBER} base (unknown) -> main")
+
+
+def test_pr_retarget_includes_observed_at():
+    client, _ = client_for(retarget_routes("feat/parent", {"ahead_by": 0}))
+    out = gh_ops.pr_retarget(REPO, NUMBER, "main", client=client)
+    assert isinstance(out.get("observed_at"), str) and "T" in out["observed_at"]
 
 
 def test_pr_retarget_noops_and_validation():

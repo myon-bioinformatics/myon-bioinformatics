@@ -37,6 +37,7 @@ import contextlib
 import importlib.util
 import base64
 import difflib
+from datetime import datetime, timezone
 import fnmatch
 import json
 import os
@@ -219,6 +220,14 @@ def _client(client: Client | None) -> Client:
 def _preview(text: str, limit: int) -> str:
     flat = " ".join(text.split())
     return flat if len(flat) <= limit else flat[: max(limit - 1, 0)] + "…"
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _base_ref_label(ref: str | None) -> str:
+    return ref if ref else "(unknown)"
 
 
 def _commit_message_subject(message: str | None, *, limit: int = 100) -> str:
@@ -927,7 +936,8 @@ def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = Fal
     head = pull_fields()
     old = head["base_ref"]
     out: dict[str, Any] = {"ok": True, "schema": "gh-ops-pr-retarget/1", "repository": repo, "number": number,
-                           "from": old, "to": base, "write": bool(write), "url": head.get("url")}
+                           "from": old, "to": base, "write": bool(write), "url": head.get("url"),
+                           "observed_at": _utc_now_iso()}
     if head["state"] != "open":
         out["status"] = "not_open"
         out["ok"] = False
@@ -953,8 +963,9 @@ def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = Fal
     risky = out["old_base_unmerged_commits"] != 0
     if risky:
         count = out["old_base_unmerged_commits"]
-        out["warning"] = (f"{old} has {count} commit(s) not in {base}; they would join the diff" if count
-                          else f"could not compare {old} with {base}")
+        old_label = _base_ref_label(old)
+        out["warning"] = (f"{old_label} has {count} commit(s) not in {base}; they would join the diff" if count
+                          else f"could not compare {old_label} with {base}")
     if not write:
         out["status"] = "planned"
         out["dry_run"] = True
@@ -1831,8 +1842,8 @@ def _render(command: str, result: dict) -> str:
         return head + f"\nsplit={result['split_method']}{compare}\n{result['provenance']['trailer']}"
     if command == "pr-retarget":
         extra = f" ({result['warning']})" if result.get("warning") else ""
-        return (f"{result['status']} {result['repository']}#{result['number']} base {result['from']} -> {result['to']}"
-                f"{extra}")
+        return (f"{result['status']} {result['repository']}#{result['number']} "
+                f"base {_base_ref_label(result.get('from'))} -> {result['to']}{extra}")
     reason = result.get("reason") or "; ".join(result.get("failures", []))
     status = "OK" if result["ok"] else "NG"
     mode = "dry run" if result.get("dry_run") else "applied"
