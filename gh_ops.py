@@ -236,26 +236,45 @@ def _base_ref_label(ref: str | None) -> str:
     return ref if ref else "(unknown)"
 
 
+_BRANCH_NAME_INVALID = re.compile(r"[\000-\037\177 ~^:?*[\]\\]|@{|//")
+
+
 def _validate_branch_name(name: str, *, field: str = "base") -> str:
-    """Validate a git branch name (not a full ``refs/`` path)."""
+    """Validate a single-segment branch name (subset of ``git check-ref-format`` rules)."""
     branch = name.strip()
     if not branch:
         raise GhOpsError(f"{field} is required")
     if branch.startswith("refs/"):
         raise GhOpsError(f"{field} must be a branch name, not a refs/ path")
+    if branch.startswith("/") or branch.endswith("/"):
+        raise GhOpsError(f"{field} must not start or end with /")
+    if branch.startswith(".") or branch.endswith("."):
+        raise GhOpsError(f"{field} must not start or end with .")
+    if branch.startswith("-"):
+        raise GhOpsError(f"{field} must not start with -")
     if ".." in branch:
         raise GhOpsError(f"{field} must not contain ..")
-    if any(character.isspace() for character in branch):
-        raise GhOpsError(f"{field} must not contain whitespace")
     if branch.endswith(".lock"):
         raise GhOpsError(f"{field} must not end with .lock")
+    if _BRANCH_NAME_INVALID.search(branch):
+        raise GhOpsError(f"{field} contains invalid characters for a branch name")
     return branch
 
 
 def _git_ref_tip_sha(client: Client, repo: str, branch: str) -> str:
     path = f"/repos/{repo}/git/ref/heads/{urllib.parse.quote(branch, safe='')}"
     payload = client.get(path)
-    return (payload.get("object") or {}).get("sha") or ""
+    sha = (payload.get("object") or {}).get("sha") or ""
+    if not sha:
+        raise GhOpsError(f"ref heads/{branch} returned no SHA")
+    return sha
+
+
+def _git_ref_tip_sha_optional(client: Client, repo: str, branch: str) -> str | None:
+    try:
+        return _git_ref_tip_sha(client, repo, branch)
+    except GhOpsError:
+        return None
 
 
 def _git_commit_tree_sha(client: Client, repo: str, commit_sha: str) -> str:
@@ -263,13 +282,31 @@ def _git_commit_tree_sha(client: Client, repo: str, commit_sha: str) -> str:
     return (payload.get("tree") or {}).get("sha") or ""
 
 
-def _branch_tip_trees_match(client: Client, repo: str, base_branch: str, old_branch: str) -> bool:
+def _branch_tip_tree_match(client: Client, repo: str, base_branch: str, old_branch: str) -> dict:
+    """Compare branch tips by tree SHA; empty trees never count as a match."""
+    empty = {"matched": False, "new_base_tip_sha": None, "old_base_tip_sha": None,
+             "new_base_tree_sha": None, "old_base_tree_sha": None}
     try:
-        base_tree = _git_commit_tree_sha(client, repo, _git_ref_tip_sha(client, repo, base_branch))
-        old_tree = _git_commit_tree_sha(client, repo, _git_ref_tip_sha(client, repo, old_branch))
-        return bool(base_tree) and base_tree == old_tree
+        base_tip = _git_ref_tip_sha(client, repo, base_branch)
+        old_tip = _git_ref_tip_sha(client, repo, old_branch)
+        base_tree = _git_commit_tree_sha(client, repo, base_tip)
+        old_tree = _git_commit_tree_sha(client, repo, old_tip)
+        matched = bool(base_tree) and bool(old_tree) and base_tree == old_tree
+        return {"matched": matched, "new_base_tip_sha": base_tip, "old_base_tip_sha": old_tip,
+                "new_base_tree_sha": base_tree or None, "old_base_tree_sha": old_tree or None}
     except GhOpsError:
-        return False
+        return empty
+
+
+def _pr_retarget_old_tip_stale(old_before: str | None, old_after: str | None, *, allow_both_missing: bool) -> str:
+    if old_before == old_after:
+        return ""
+    if allow_both_missing and old_before is None and old_after is None:
+        return ""
+    if old_before is None or old_after is None:
+        return "old base tip could not be verified consistently before PATCH"
+    return (f"old base tip SHA changed from {old_before[:12]} to {old_after[:12]} "
+            "before PATCH")
 
 
 def _commit_message_subject(message: str | None, *, limit: int = 100) -> str:
@@ -959,8 +996,7 @@ def _pr_retarget_snapshot(pr: dict) -> dict:
             "url": pr.get("html_url")}
 
 
-def _pr_retarget_stale_reason(before: dict, after: dict, old_tip_before: str | None, old_tip_after: str | None,
-                              *, expect_head_sha: str | None) -> str:
+def _pr_retarget_stale_reason(before: dict, after: dict, *, expect_head_sha: str | None) -> str:
     if after.get("state") != "open":
         return "merged" if after.get("merged") else f"PR is {after.get('state')}"
     if after.get("base_ref") != before.get("base_ref"):
@@ -969,9 +1005,6 @@ def _pr_retarget_stale_reason(before: dict, after: dict, old_tip_before: str | N
     if after.get("head_sha") != before.get("head_sha"):
         return (f"head SHA changed from {(before.get('head_sha') or '')[:12]} "
                 f"to {(after.get('head_sha') or '')[:12]} before PATCH")
-    if old_tip_before and old_tip_after != old_tip_before:
-        return (f"old base tip SHA changed from {old_tip_before[:12]} to {(old_tip_after or '')[:12]} "
-                "before PATCH")
     if expect_head_sha is not None:
         prefix = _sha(expect_head_sha)
         head = (after.get("head_sha") or "").lower()
@@ -1021,32 +1054,38 @@ def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = Fal
         out["status"] = "already_satisfied"
         out["reason"] = "base already matches"
         return out
-    old_tip_sha: str | None = None
+    old_tip_sha = _git_ref_tip_sha_optional(client, repo, old) if old else None
     if old:
-        try:
-            old_tip_sha = _git_ref_tip_sha(client, repo, old)
-        except GhOpsError:
-            old_tip_sha = None
+        out["old_base_tip_sha"] = old_tip_sha
     compare_path = (f"/repos/{repo}/compare/{urllib.parse.quote(base, safe='')}"
                     f"...{urllib.parse.quote(old or '', safe='')}")
     compare_failed = False
     ahead_by = 0
     try:
         cmp = client.get(compare_path)
-        ahead_by = int(cmp.get("ahead_by") or 0)
-        out["old_base_unmerged_commits"] = ahead_by
-        commits = cmp.get("commits") or []
-        out["old_base_commit_subjects"] = [
-            _commit_message_subject((item.get("commit") or {}).get("message")) for item in commits[:5]]
+        if "ahead_by" not in cmp:
+            compare_failed = True
+            out["old_base_unmerged_commits"] = None
+            out["old_base_commit_subjects"] = []
+            out["compare_error"] = "missing ahead_by in compare response"
+        else:
+            ahead_by = int(cmp["ahead_by"])
+            out["old_base_unmerged_commits"] = ahead_by
+            commits = cmp.get("commits") or []
+            out["old_base_commit_subjects"] = [
+                _commit_message_subject((item.get("commit") or {}).get("message")) for item in commits[:5]]
     except GhOpsError as error:
         compare_failed = True
         out["old_base_unmerged_commits"] = None
         out["old_base_commit_subjects"] = []
         out["compare_error"] = "not_found" if error.http_status == 404 else str(error)
     unmerged_risky = ahead_by > 0
-    if unmerged_risky and old and _branch_tip_trees_match(client, repo, base, old):
-        unmerged_risky = False
-        out["unmerged_commit_tree_match"] = True
+    if unmerged_risky and old:
+        tree_info = _branch_tip_tree_match(client, repo, base, old)
+        out["tree_compare"] = tree_info
+        if tree_info["matched"]:
+            unmerged_risky = False
+            out["unmerged_commit_tree_match"] = True
     old_label = _base_ref_label(old)
     if compare_failed:
         out["warning"] = f"could not compare {old_label} with {base}"
@@ -1067,8 +1106,15 @@ def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = Fal
         out["reason"] = out.get("warning", "")
         return out
     fresh = pull_snapshot()
-    old_tip_fresh = _git_ref_tip_sha(client, repo, old) if old else None
-    stale = _pr_retarget_stale_reason(head, fresh, old_tip_sha, old_tip_fresh, expect_head_sha=expect_head_sha)
+    old_tip_fresh = _git_ref_tip_sha_optional(client, repo, old) if old else None
+    allow_missing_tips = compare_failed and allow_compare_failure
+    tip_stale = _pr_retarget_old_tip_stale(old_tip_sha, old_tip_fresh, allow_both_missing=allow_missing_tips)
+    if tip_stale:
+        out["status"] = "refused_stale_pr"
+        out["ok"] = False
+        out["reason"] = tip_stale
+        return out
+    stale = _pr_retarget_stale_reason(head, fresh, expect_head_sha=expect_head_sha)
     if stale:
         out["status"] = "refused_stale_pr"
         out["ok"] = False
