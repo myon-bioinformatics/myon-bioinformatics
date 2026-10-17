@@ -1682,7 +1682,7 @@ def _subtree_fetch_compare_tip(cwd: Any, remote: str, ref: str, tip: str, *, run
     return True
 
 
-def _subtree_push_guards(cwd: Any, split_sha: str, compare: dict | None, *, child_only_paths: tuple[str, ...] = (),
+def _subtree_push_guards(cwd: str, split_sha: str, compare: dict | None, *, child_only_paths: tuple[str, ...] = (),
                          run: Callable[..., Any], timeout: float) -> dict:
     """Refuse when the remote compare tip is not an ancestor of split_sha or has paths the split lacks.
 
@@ -1752,7 +1752,7 @@ def subtree_push_plan(prefix: str, remote: str, branch: str, *, source: str = "H
     candidates = [compare_ref] if compare_ref is not None else list(_SUBTREE_COMPARE_FALLBACKS)
     refs = [f"refs/heads/{branch}"] + [f"refs/heads/{c}" for c in candidates if c != branch]
     default, tips = _subtree_ls_remote(cwd, remote, refs, run=run, timeout=timeout)
-    if default and default != branch and default not in candidates:
+    if compare_ref is None and default and default != branch and default not in candidates:
         _, extra = _subtree_ls_remote(cwd, remote, [f"refs/heads/{default}"], run=run, timeout=timeout)
         tips.update(extra)
     if compare_ref is None and default:
@@ -2012,8 +2012,8 @@ def _render(command: str, result: dict) -> str:
         reason = result.get("reason") or ""
         return f"{'OK' if result['ok'] else 'NG'} git-commit" + (f": {reason}" if reason else "")
     if command == "subtree-push":
-        guard = result.get("push_guard") or {}
-        compare = f" compare={guard['compare_ref']}@{guard['compare_sha'][:12]}" if guard.get("compare_ref") else ""
+        guard = result["push_guard"]
+        compare = f" compare={guard['compare_ref']}@{guard['compare_sha'][:12]}"
         head = (f"OK subtree-push pushed {result['split_sha']} -> {result['remote']} {result['branch']}"
                 if result.get("state") == "pushed" else
                 f"dry run subtree-push: would run {' '.join(result['command'])}")

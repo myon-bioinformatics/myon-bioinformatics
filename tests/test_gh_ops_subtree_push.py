@@ -605,6 +605,95 @@ def test_explicit_existing_compare_ref_overrides_default(world):
     assert out["push_guard"]["compare_sha"] == split
 
 
+@needs_subtree
+def test_explicit_compare_ref_does_not_reorder_behind_remote_default(world):
+    seeded = _seed_child(world)
+    _commit(world["mono"], {"sub/c.py": "c = 3\n"}, "three")
+    newer = _split(world["mono"])
+    _git(world["mono"], "push", "-q", str(world["child"]), f"{newer}:refs/heads/trunk")
+    _git(world["child"], "update-ref", "refs/heads/custom", seeded)
+    out = g.subtree_push_plan("sub", str(world["child"]), "sync/custom-only",
+                              compare_ref="custom", cwd=str(world["mono"]))
+    assert out["push_guard"] == {"compare_ref": "custom", "compare_sha": seeded, "child_only_paths": []}
+
+
+@needs_subtree
+def test_default_branch_lookup_when_not_in_fallback_candidates(world):
+    split = _split(world["mono"])
+    child = world["child"]
+    _git(child, "update-ref", "-d", "refs/heads/trunk")
+    _git(world["mono"], "push", "-q", str(child), f"{split}:refs/heads/develop")
+    _git(child, "symbolic-ref", "HEAD", "refs/heads/develop")
+    spy = Spy()
+    out = g.subtree_push_plan("sub", str(child), "sync/develop-default", cwd=str(world["mono"]), run=spy)
+    assert out["push_guard"] == {"compare_ref": "develop", "compare_sha": split, "child_only_paths": []}
+    assert len([c for c in spy.calls if "ls-remote" in c]) == 2
+
+
+@needs_subtree
+def test_explicit_compare_ref_skips_default_branch_ls_remote(world):
+    split = _seed_child(world)
+    _git(world["child"], "update-ref", "refs/heads/custom", split)
+    spy = Spy()
+    g.subtree_push_plan("sub", str(world["child"]), "sync/skip-lookup",
+                        compare_ref="custom", cwd=str(world["mono"]), run=spy)
+    ls_remote = [c for c in spy.calls if "ls-remote" in c]
+    assert len(ls_remote) == 1
+
+
+@needs_subtree
+def test_compare_fallback_to_master_when_default_unresolvable(world):
+    split = _split(world["mono"])
+    child = world["child"]
+    _git(child, "update-ref", "-d", "refs/heads/trunk")
+    _git(world["mono"], "push", "-q", str(child), f"{split}:refs/heads/master")
+    _git(child, "symbolic-ref", "HEAD", "refs/heads/develop")
+    out = g.subtree_push_plan("sub", str(child), "sync/master-fallback", cwd=str(world["mono"]))
+    assert out["push_guard"] == {"compare_ref": "master", "compare_sha": split, "child_only_paths": []}
+
+
+@needs_subtree
+def test_compare_fallback_to_trunk_when_trunk_is_not_default(world):
+    split = _split(world["mono"])
+    child = world["child"]
+    _git(child, "update-ref", "-d", "refs/heads/trunk")
+    _git(child, "symbolic-ref", "HEAD", "refs/heads/main")
+    _git(world["mono"], "push", "-q", str(child), f"{split}:refs/heads/trunk")
+    out = g.subtree_push_plan("sub", str(child), "sync/trunk-fallback", cwd=str(world["mono"]))
+    assert out["push_guard"] == {"compare_ref": "trunk", "compare_sha": split, "child_only_paths": []}
+
+
+def test_push_guard_without_compare_reports_exact_message(world):
+    split = _split(world["mono"])
+    with pytest.raises(g.SubtreePushError) as exc:
+        g._subtree_push_guards(str(world["mono"]), split, None, run=subprocess.run, timeout=30)
+    assert exc.value.code == "compare_ref_unavailable"
+    assert str(exc.value) == "compare_ref_unavailable: remote comparison ref is required for ancestor validation"
+
+
+@needs_subtree
+def test_unresolvable_compare_reports_exact_message(world):
+    spy = Spy()
+    with pytest.raises(g.SubtreePushError) as exc:
+        g.subtree_push_plan("sub", str(world["child"]), "sync/no-tip", cwd=str(world["mono"]), run=spy)
+    assert exc.value.code == "compare_ref_unavailable"
+    assert str(exc.value) == (
+        "compare_ref_unavailable: could not resolve remote comparison ref; "
+        "specify an existing --compare-ref"
+    )
+
+
+@needs_subtree
+def test_subtree_push_render_includes_compare_line(world):
+    _seed_child(world)
+    out = g.subtree_push("sub", str(world["child"]), "sync/render", cwd=str(world["mono"]))
+    guard = out["push_guard"]
+    rendered = g._render("subtree-push", out)
+    assert rendered.startswith("dry run subtree-push: would run git push")
+    assert f" compare={guard['compare_ref']}@{guard['compare_sha'][:12]}" in rendered
+    assert rendered.endswith(out["provenance"]["trailer"])
+
+
 # --- comparison is mandatory; exercise actual Git failures, not canned git output --------
 
 def _readonly_state(world):
