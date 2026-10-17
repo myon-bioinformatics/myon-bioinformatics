@@ -250,3 +250,25 @@ exclusions. Empty diffs and manual runs enable product tests; diff failures fail
 the classification job. Consumers may adopt this output only while retaining
 independent Vendor child CI and actionlint. This does not weaken vendor auditing
 or change the existing docs-as-test-input override contract.
+
+## Chromium installation update after Flutter #194
+
+Recorded on 2026-10-17. Flutter #194 was squash-merged as
+`31f33f421e856727bc226d9e3f0cf61b9a7517c5`. The parent candidate updates its
+recorded Flutter head and PR provenance together with the approved workflow
+SHA-256 to `7bc2d362256aea48a6e002d7d9e0c415ad174d3ec89c2e042bbe89f43792bb12`. The workflow differs from the previous
+reviewed snapshot only by four `--only-shell` additions to Chromium installation
+commands. The 14 vendor entries, adopted lock bytes, parent tool pins, triggers,
+job conditions and locked check/materialize/check lane are unchanged.
+
+Review evidence: the same #194 head passed all five PR workflows. Portable E2E
+completed 189 tests with six intentional skips across five browser profiles;
+diagnostics completed Chromium, Firefox, WebKit and mobile-WebKit captures.
+The local headed Docker environment retains full Chromium. The existing
+workflow rejection tests use the new snapshot; modified, missing or disabled
+verification still fails and cannot silently refresh the parent baseline.
+
+This is a deliberate parent approval update, not an automatic digest adoption
+or another child workflow. Until this parent candidate is reviewed and merged,
+parent main retains the old recorded head and digest; its refresh gate
+intentionally rejects Flutter #194 as `locked_ci_mismatch`.
