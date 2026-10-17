@@ -47,3 +47,15 @@ already locked files. Consumer enrollment/promotion remains an explicit operatio
 This PR registers organization-wide targets. It does not claim that every consumer
 has already adopted them. Ironmate's separate test-only xprobe checkout remains
 valid until an explicit locked enrollment change is made.
+
+2026-10-17 gap fill: files that consumers already lock but that were absent from
+the catalog are now listed with explicit `source` values, because the default
+`<repository>.py` guess does not match them (web-ui `web_ui.py`, xprobe
+`scripts/xprobe_pytest.py`, browser-test-kit `scripts/check_evidence.py`,
+`scripts/jsonl_digest.py`, `scripts/check_png.py`, mcp-toolcall-lab
+`src/mcp_toolcall_lab/github_public_resolver.py` and
+`src/mcp_toolcall_lab/adapters/html_snapshot.py`). Each pin is the commit locked by
+the most consumers registered in `vendor-consumers.json`. They use
+`default_enrollment: skipped(explicit_consumer_only)` with explicit `enrolled`
+overrides for the repositories that already lock them, so no new registration is
+requested from other consumers.
