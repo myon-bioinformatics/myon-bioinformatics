@@ -142,6 +142,7 @@ def test_missing_subtree_is_clear_error(world, monkeypatch):
 
 @needs_subtree
 def test_push_plan_changes_nothing(world):
+    _seed_child(world)
     before_mono, before_child = _refs(world["mono"]), _refs(world["child"])
     spy = Spy()
     out = g.subtree_push("sub", str(world["child"]), "sync/one", cwd=str(world["mono"]), run=spy)
@@ -157,6 +158,7 @@ def test_push_plan_changes_nothing(world):
 
 @needs_subtree
 def test_push_write_creates_new_branch_and_verifies(world):
+    _seed_child(world)
     before_mono = _refs(world["mono"])
     spy = Spy()
     out = g.subtree_push("sub", str(world["child"]), "sync/one", write=True, cwd=str(world["mono"]), run=spy)
@@ -206,13 +208,17 @@ def _child_ahead(world, files):
 
 
 @needs_subtree
-def test_push_blocked_when_child_trunk_not_ancestor(world):
+@pytest.mark.parametrize("write", [False, True])
+@pytest.mark.parametrize("compare_ref", [None, "trunk"])
+def test_push_blocked_when_child_trunk_not_ancestor(world, write, compare_ref):
     _child_ahead(world, {"ahead-on-child.py": "x\n"})
+    before = _readonly_state(world)
     spy = Spy()
     with pytest.raises(ValueError, match="remote ref trunk is not an ancestor"):
-        g.subtree_push("sub", str(world["child"]), "sync/new", compare_ref="trunk", write=True,
+        g.subtree_push("sub", str(world["child"]), "sync/new", compare_ref=compare_ref, write=write,
                        cwd=str(world["mono"]), run=spy)
     assert not spy.pushes()
+    assert _readonly_state(world) == before
 
 
 def test_push_guard_lists_child_only_paths(world, monkeypatch):
@@ -292,12 +298,14 @@ def test_tree_check_mutation_breaks_stale_detection(stale_mono, monkeypatch):
 @needs_subtree
 def test_stale_split_without_fallback_fails_closed(stale_mono, monkeypatch):
     root, stale, child = stale_mono
+    _git(root, "push", "-q", str(child), f"{stale}:refs/heads/trunk")
+    before_child = _refs(child)
     monkeypatch.setattr(g, "_subtree_split_filter_branch", lambda *a, **k: None)
     spy = Spy(_stale_split_override(stale))
     with pytest.raises(g.SubtreePushError) as err:
         g.subtree_push("sub", str(child), "sync/stale", write=True, cwd=str(root), run=spy)
     assert err.value.code == "stale_subtree_split"
-    assert not spy.pushes() and _refs(child) == ""
+    assert not spy.pushes() and _refs(child) == before_child
 
 
 @needs_subtree
@@ -311,9 +319,10 @@ def test_fallback_result_is_revalidated(stale_mono, monkeypatch):
 
 @needs_subtree
 def test_push_write_refuses_stale_split(world, monkeypatch):
+    split = _seed_child(world)
     mono, child = world["mono"], world["child"]
     monkeypatch.setattr(g, "subtree_split_verified", lambda prefix, **kw: {
-        "sha": "0" * 40, "reason": None, "method": "subtree", "warning": None})
+        "sha": split, "reason": None, "method": "subtree", "warning": None})
     monkeypatch.setattr(g, "_subtree_split_matches_prefix_tree",
                         lambda *a, **k: {"prefix_tree": "a" * 40, "split_tree": "b" * 40, "trees_match": False})
     spy = Spy()
@@ -326,6 +335,7 @@ def test_push_write_refuses_stale_split(world, monkeypatch):
 @needs_subtree
 def test_push_uses_validated_split_not_subtree_push(stale_mono):
     root, stale, child = stale_mono
+    _git(root, "push", "-q", str(child), f"{stale}:refs/heads/trunk")
     good = g.subtree_split_verified("sub", cwd=str(root))["sha"]
     spy = Spy(_stale_split_override(stale))
     out = g.subtree_push("sub", str(child), "sync/x", write=True, cwd=str(root), run=spy)
@@ -338,7 +348,9 @@ def test_push_uses_validated_split_not_subtree_push(stale_mono):
 @needs_subtree
 def test_push_revalidates_after_planning_and_never_writes_on_mismatch(world, monkeypatch):
     """Planning passes; only the gate immediately before push sees the mismatch."""
+    _seed_child(world)
     mono, child = world["mono"], world["child"]
+    before_child = _refs(child)
     real_check, real_guard = g._subtree_split_matches_prefix_tree, g._subtree_push_guards
     planning_done, checks = False, []
 
@@ -360,11 +372,12 @@ def test_push_revalidates_after_planning_and_never_writes_on_mismatch(world, mon
         g.subtree_push("sub", str(child), "sync/revalidate", write=True, cwd=str(mono), run=spy)
     assert err.value.code == "stale_subtree_split"
     assert False in checks and checks[-1] is True
-    assert not spy.pushes() and _refs(child) == ""
+    assert not spy.pushes() and _refs(child) == before_child
 
 
 @needs_subtree
 def test_push_tree_gate_called_once_per_write(world, monkeypatch):
+    _seed_child(world)
     calls = []
     real = g._subtree_push_split_tree_gate
 
@@ -381,6 +394,7 @@ def test_push_tree_gate_called_once_per_write(world, monkeypatch):
 
 @needs_subtree
 def test_post_push_mismatch_is_reported(world):
+    _seed_child(world)
     mono, child = world["mono"], world["child"]
     state = {"pushed": False}
 
@@ -457,6 +471,7 @@ def test_remote_unavailable_fails_closed(world, tmp_path):
 
 @needs_subtree
 def test_push_retries_only_network_errors(world):
+    _seed_child(world)
     attempts = []
 
     def override(argv, kwargs):
@@ -550,20 +565,22 @@ def test_push_with_retry_default_args_unchanged():
 
 @needs_subtree
 def test_cli_plan_prints_command(world):
+    _seed_child(world)
+    before_child = _refs(world["child"])
     r = subprocess.run([sys.executable, "-S", str(SCRIPT), "--json", "subtree-push", "--root", str(world["mono"]),
                         "--prefix", "sub", "--remote", str(world["child"]), "--branch", "sync/x"],
                        capture_output=True, text=True, env=ENV)
     assert r.returncode == 0, r.stderr
     out = json.loads(r.stdout)
     assert out["state"] == "planned" and out["command"][:4] == ["git", "push", "--force-with-lease=refs/heads/sync/x:", "--"]
-    assert _refs(world["child"]) == ""
+    assert _refs(world["child"]) == before_child
     r = subprocess.run([sys.executable, "-S", str(SCRIPT), "subtree-push", "--root", str(world["mono"]),
                         "--prefix", "sub", "--remote", str(world["child"]), "--branch", "main"],
                        capture_output=True, text=True, env=ENV)
     assert r.returncode == 2 and not r.stdout and "main/master" in r.stderr
 
 @needs_subtree
-@pytest.mark.parametrize("default", ["trunk", "develop"])
+@pytest.mark.parametrize("default", ["main", "trunk", "develop"])
 @pytest.mark.parametrize("write", [False, True])
 def test_explicit_missing_compare_ref_fails_closed(world, default, write):
     split = _split(world["mono"])
@@ -586,3 +603,122 @@ def test_explicit_existing_compare_ref_overrides_default(world):
                               compare_ref="custom", cwd=str(world["mono"]))
     assert out["push_guard"]["compare_ref"] == "custom"
     assert out["push_guard"]["compare_sha"] == split
+
+
+# --- comparison is mandatory; exercise actual Git failures, not canned git output --------
+
+def _readonly_state(world):
+    mono, child = world["mono"], world["child"]
+    fetch_head = _git_dir(mono) / "FETCH_HEAD"
+    return (_refs(mono), _refs(child), fetch_head.read_bytes() if fetch_head.exists() else None)
+
+
+@needs_subtree
+@pytest.mark.parametrize("write", [False, True])
+@pytest.mark.parametrize("populated", [False, True])
+def test_unresolvable_compare_fails_before_split(world, write, populated):
+    if populated:
+        split = _split(world["mono"])
+        _git(world["mono"], "push", "-q", str(world["child"]), f"{split}:refs/heads/custom")
+    # HEAD points to an unborn trunk; neither the default nor fallback refs exist.
+    (_git_dir(world["mono"]) / "FETCH_HEAD").write_bytes(b"keep existing fetch state\n")
+    before = _readonly_state(world)
+    spy = Spy()
+    with pytest.raises(g.SubtreePushError) as exc:
+        g.subtree_push("sub", str(world["child"]), "sync/no-compare", write=write,
+                       cwd=str(world["mono"]), run=spy)
+    assert exc.value.code == "compare_ref_unavailable"
+    assert not spy.pushes()
+    assert not any(c[1:3] == ["subtree", "split"] or c[1:2] == ["fetch"] for c in spy.calls)
+    assert _readonly_state(world) == before
+
+
+@needs_subtree
+def test_push_guard_without_comparison_fails_closed(world):
+    split = _split(world["mono"])
+    with pytest.raises(g.SubtreePushError) as exc:
+        g._subtree_push_guards(str(world["mono"]), split, None, run=subprocess.run, timeout=30)
+    assert exc.value.code == "compare_ref_unavailable"
+
+
+@needs_subtree
+@pytest.mark.parametrize("write", [False, True])
+def test_develop_default_is_selected_and_checked(world, write):
+    split = _split(world["mono"])
+    _git(world["mono"], "push", "-q", str(world["child"]), f"{split}:refs/heads/develop")
+    _git(world["child"], "symbolic-ref", "HEAD", "refs/heads/develop")
+    _commit(world["mono"], {"sub/c.py": "c = 3\n"}, "advance split")
+    before_mono = _refs(world["mono"])
+    out = g.subtree_push("sub", str(world["child"]), "sync/develop", write=write, cwd=str(world["mono"]))
+    assert out["push_guard"] == {"compare_ref": "develop", "compare_sha": split, "child_only_paths": []}
+    assert out["state"] == ("pushed" if write else "planned")
+    assert _refs(world["mono"]) == before_mono
+    assert not (_git_dir(world["mono"]) / "FETCH_HEAD").exists()
+
+
+@needs_subtree
+def test_known_fallback_is_used_if_remote_head_is_unborn(world):
+    split = _split(world["mono"])
+    _git(world["mono"], "push", "-q", str(world["child"]), f"{split}:refs/heads/main")
+    out = g.subtree_push_plan("sub", str(world["child"]), "sync/fallback", cwd=str(world["mono"]))
+    assert out["push_guard"] == {"compare_ref": "main", "compare_sha": split, "child_only_paths": []}
+
+
+@needs_subtree
+@pytest.mark.parametrize("write", [False, True])
+def test_actual_compare_fetch_failure_never_pushes_or_changes_refs(tmp_path, write):
+    world = _squash_world(tmp_path)
+    mono, child = world["mono"], world["child"]
+    tip = _git(child, "rev-parse", "main")
+    assert subprocess.run(["git", "-C", str(mono), "cat-file", "-e", tip],
+                          env=ENV, capture_output=True).returncode != 0
+    fetch_head = _git_dir(mono) / "FETCH_HEAD"
+    fetch_head.write_bytes(b"preserve me\n")
+    before = _readonly_state(world)
+    hidden = tmp_path / "unavailable.git"
+
+    def hide_before_fetch(argv, kwargs):
+        if argv[1:2] == ["fetch"]:
+            child.rename(hidden)  # git itself now reports a real transport/repository error
+        return None
+
+    spy = Spy(hide_before_fetch)
+    try:
+        with pytest.raises(g.SubtreePushError) as exc:
+            g.subtree_push("sub", str(child), "sync/fetch-fails", write=write, cwd=str(mono), run=spy)
+        assert exc.value.code == "git_failed" and "git fetch" in str(exc.value)
+        assert not spy.pushes()
+    finally:
+        if hidden.exists():
+            hidden.rename(child)
+    assert _readonly_state(world) == before
+
+
+@needs_subtree
+@pytest.mark.parametrize("write", [False, True])
+def test_actual_default_ref_lookup_failure_never_pushes(world, write):
+    mono, child = world["mono"], world["child"]
+    split = _split(mono)
+    _git(mono, "push", "-q", str(child), f"{split}:refs/heads/develop")
+    _git(child, "symbolic-ref", "HEAD", "refs/heads/develop")
+    before = _readonly_state(world)
+    hidden = world["tmp"] / "unavailable.git"
+    reads = []
+
+    def hide_before_second_read(argv, kwargs):
+        if argv[1:2] == ["ls-remote"]:
+            reads.append(argv)
+            if len(reads) == 2:
+                child.rename(hidden)
+        return None
+
+    spy = Spy(hide_before_second_read)
+    try:
+        with pytest.raises(g.SubtreePushError) as exc:
+            g.subtree_push("sub", str(child), "sync/lookup-fails", write=write, cwd=str(mono), run=spy)
+        assert exc.value.code == "git_remote_unavailable"
+        assert len(reads) == 2 and not spy.pushes()
+    finally:
+        if hidden.exists():
+            hidden.rename(child)
+    assert _readonly_state(world) == before

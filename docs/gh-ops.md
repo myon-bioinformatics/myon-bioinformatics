@@ -115,7 +115,12 @@ read-only checks switch to GHI's public functions and only the push stays here.
 - Error messages name the ref involved (`refs/heads/<branch>`, `remote ref <compare>`).
 - Only a NEW branch: main/master, the remote default branch and existing branches are refused.
 - The remote compare ref (`--compare-ref`, default: the remote default branch, then
-  main/master/trunk) must be an ancestor of the split. Paths that exist only on the
+  main/master/trunk) must be resolved and be an ancestor of the split. An explicit
+  `--compare-ref` is never replaced by a fallback: a missing ref stops both plan and
+  write with `compare_ref_not_found`. If no comparison can be selected, both stop
+  with `compare_ref_unavailable` before fetching or splitting. Empty remotes cannot
+  be bootstrapped with this command; establish a comparison branch first. Failed
+  remote reads or compare-tip fetches also stop without pushing. Paths that exist only on the
   child are refused unless `--child-only-path GLOB` allows them (none by default).
 - The compare tip is fetched object-only before splitting (`--no-write-fetch-head
   --no-tags`, no destination ref). After a `--squash` join, `git subtree split` otherwise
