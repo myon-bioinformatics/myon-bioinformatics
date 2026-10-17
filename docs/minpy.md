@@ -13,7 +13,8 @@
 - 文字列リテラルの `importlib.import_module("名前")` は通常の import として辿ります。引数が変数の `import_module(name)` はプラグイン読み込みとして残します。バンドル済みモジュールは、元のモジュール名でも import できます。
 - `__import__`、`exec`、`eval`、`spec_from_file_location` は拒否します。
 - `__file__` は、`if __name__ == "__main__":` の直下だけ許します。それ以外はデータファイル同梱とみなして拒否します。`importlib.resources`、`pkgutil.get_data`、`pkg_resources` も拒否します。
-- スクリプト入口（その `if` と、そこからしか呼ばれない関数）の中だけにある外部 import は、min ファイルでは `ImportError` に置き換えます。import しただけでは走りません。カタログでは元ファイルを `requires_companion_tool` で skip し、`<name>_min.py` を別エントリにします。
+- スクリプト入口（その `if` と、そこからしか呼ばれない関数）の中だけにある外部 import は、min ファイルでは `ImportError` に置き換えます。メッセージは、元のファイルと伴走ツールを使うよう案内します。import しただけでは走りません。`__all__` に載っている名前、または中身を静的に読めない `__all__` があるモジュールの関数は、ライブラリ側として扱います。カタログでは、本当にスクリプト専用のときだけ元ファイルを `requires_companion_tool` で skip し、`<name>_min.py` を別エントリにします。
+- 子モジュールから親パッケージへの import（`from . import helpers` や `from pkg import helpers`）は、パッケージの初期化に伴う依存なので循環には数えません。兄弟どうしの循環は既定で失敗します。
 - 次も壊れたファイルを出さず、終了コード 1 で止まります。
   - C 拡張（`.so` / `.pyd` / `.dylib`）
   - 名前空間パッケージ（`__init__.py` がないディレクトリ）
@@ -27,7 +28,7 @@
 
 ## 使い方
 
-コミット SHA は常に引数で渡します。コードに SHA 定数はありません。チェックアウトが git で、HEAD がその SHA と違う場合は失敗します。合成ツリーでは `--skip-head-check` を使います。公開用に作るときは `--require-clean` で未コミットの変更を拒否できます。
+コミット SHA は常に引数で渡します。コードに SHA 定数はありません。`.git` があるときは HEAD がその SHA と一致する必要があり、未コミットの変更は `--require-clean` で拒否できます。`.git` が無い合成ツリーは `--skip-head-check` を付けないと失敗します。標準ライブラリの集合は、バンドルを作った Python のメジャー.マイナーに依存します。ヘッダの `python` とそのインタプリタが違う再生成は失敗します。
 
 ```sh
 python tools/minpy.py bundle \
@@ -53,7 +54,7 @@ python tools/minpy.py catalog \
 
 検索パスの既定はリポジトリ直下（`.`）です。`src` レイアウトなら `--path src` を繰り返します。
 
-検証は、ヘッダの content-sha256（その行の 16 進を 64 個の 0 に置き換えた UTF-8 全体の SHA-256）と、同じツール版での再生成がバイト一致することを見ます。
+検証は、ヘッダの content-sha256（その行の 16 進を 64 個の 0 に置き換えた UTF-8 全体の SHA-256）と、同じツール版・同じ Python メジャー.マイナーでの再生成がバイト一致することを見ます。`--root` を付けたときだけ `status` は `regenerated` で `ok` は true です。`--root` が無いときは自己ハッシュだけを見て、`status` は `hash-only`、`ok` は false です。終了コードはハッシュが一致すれば 0 のままです。CI は `tests/fixtures/minpy_widget` を `minpy check --root` で再生成比較します。
 
 ```sh
 python tools/minpy.py check --bundle probe_min.py --root /path/to/source
@@ -115,7 +116,7 @@ python tools/minpy.py check \
 
 ヘッダにはツール版、`owner/repo`、40 文字の commit、入口、allowlist、循環の有無、モジュール一覧、content-sha256 が入ります。モジュールの格納順は名前順です。同じ入力と同じツール版なら同じバイト列になります。
 
-内部ではモジュールを `_minpy_mods` 以下に置き、入口の公開名をバンドルモジュールへコピーします。`_minpy_mods` は予約名です。トップレベルモジュールの `__package__` は `_minpy_mods` になります。関数の `__module__` もその配下です。
+内部モジュール名は、リポジトリと入口と commit から作った `_minpy_` で始まる接頭辞の下に置きます。バンドルごとに別の接頭辞なので、同じプロセスに複数のバンドルを import しても混ざりません。`_minpy_` で始まる名前は予約です。finder は接頭辞付きの名前だけを返し、利用側の同名モジュールは奪いません。入口の公開名はバンドルモジュールへコピーするだけです。`probe_min.func = ...` のような差し替えは、すでに束縛された内部の関数には届きません。スクリプトとして実行したときの traceback の filename は `minpy://<module>.py` です。`__file__` は生成ファイルのパスのままです。
 
 ## 制限
 
@@ -123,4 +124,4 @@ python tools/minpy.py check \
 - サードパーティのルートはヘッダに記録しません。check 時に同じ `--third-party-root` を渡します。
 - 1 行に import と別の文が混在するものは拒否します。
 - `open("data.txt")` のようなカレントディレクトリ相対の読み取りは、元のスクリプトと同じく実行時のカレントに依存します。パッケージデータの同梱はしません。
-- 複数のバンドルを同時に import すると、同名モジュールは先に挿入された finder が優先します。
+- 変数引数の `importlib.import_module(name)` は、バンドル内のモジュールを元の名前では読みません。プラグインは通常の import 経路に任せます。

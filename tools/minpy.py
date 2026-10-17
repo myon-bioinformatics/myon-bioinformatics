@@ -38,7 +38,7 @@ __all__ = [
 
 BUNDLE_SCHEMA = "minpy-bundle/1"
 CHECK_SCHEMA = "minpy-check/1"
-PREFIX = "_minpy_mods"
+PREFIX = "_minpy_"
 HASH_PREFIX = "# content-sha256: "
 HASH_RULE = "# content-sha256-rule: sha256-utf8-with-content-sha256-hex-replaced-by-64-zeros"
 HASH_ZERO = "0" * 64
@@ -77,8 +77,6 @@ def _minpy_original(fullname):
     prefix = _MINPY_PREFIX + "."
     if fullname.startswith(prefix):
         return fullname[len(prefix):]
-    if fullname in _MINPY_SOURCES:
-        return fullname
     return None
 
 
@@ -134,7 +132,8 @@ def _minpy_run_entry_as_main():
     original = _MINPY_ENTRY
     full = _MINPY_PREFIX + "." + original
     module = types.ModuleType("__main__")
-    module.__file__ = globals().get("__file__") or ("minpy://" + original + ".py")
+    origin = "minpy://" + original + ".py"
+    module.__file__ = globals().get("__file__") or origin
     if original in _MINPY_PACKAGES:
         module.__package__ = full
         module.__path__ = []
@@ -144,7 +143,7 @@ def _minpy_run_entry_as_main():
         module.__package__ = _MINPY_PREFIX
     sys.modules["__main__"] = module
     sys.modules[full] = module
-    exec(compile(_MINPY_SOURCES[original], module.__file__, "exec"), module.__dict__)
+    exec(compile(_MINPY_SOURCES[original], origin, "exec"), module.__dict__)
 
 
 def _minpy_export_entry(namespace):
@@ -261,8 +260,8 @@ def _search_path(value: str) -> str:
 def _allow_name(value: str) -> str:
     if not isinstance(value, str) or not _IDENTIFIER.fullmatch(value):
         raise MinpyError("allowlist entries must be top-level Python module names")
-    if value == PREFIX:
-        raise MinpyError(PREFIX + " is reserved by minpy")
+    if value.startswith(PREFIX):
+        raise MinpyError(value + " is reserved by minpy")
     return value
 
 
@@ -294,14 +293,10 @@ def _require_head(root: Path, commit: str, *, skip_head_check: bool, require_cle
     if require_clean and skip_head_check:
         raise MinpyError("--require-clean cannot be combined with --skip-head-check")
     if skip_head_check:
-        if require_clean:
-            raise MinpyError("--require-clean needs a git checkout")
         return
     head = _git_head(root)
     if head is None:
-        if require_clean:
-            raise MinpyError("--require-clean needs a git checkout")
-        return
+        raise MinpyError("checkout has no git HEAD; pass --skip-head-check for a synthetic tree")
     if head != commit:
         raise MinpyError("checkout HEAD does not match --commit; pass --skip-head-check to stamp a different SHA")
     if not require_clean:
@@ -443,6 +438,8 @@ class _Scanner(ast.NodeVisitor):
         self._stack: list[str] = ["library"]
         self.defined: set[str] = set()
         self.loads: dict[str, set[str]] = {}
+        self.exported: set[str] = set()
+        self.all_unparsed = False
 
     def visit_If(self, node: ast.If) -> None:
         if _is_type_checking(node.test):
@@ -463,6 +460,31 @@ class _Scanner(ast.NodeVisitor):
         self._stack.append("class:" + node.name)
         self.generic_visit(node)
         self._stack.pop()
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id == "__all__":
+                self._record_all(node.value)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if isinstance(node.target, ast.Name) and node.target.id == "__all__" and node.value is not None:
+            self._record_all(node.value)
+        self.generic_visit(node)
+
+    def visit_AugAssign(self, node: ast.AugAssign) -> None:
+        if isinstance(node.target, ast.Name) and node.target.id == "__all__":
+            self._record_all(node.value)
+        self.generic_visit(node)
+
+    def _record_all(self, value: ast.AST) -> None:
+        if self._stack != ["library"]:
+            return
+        names = _constant_strings(value)
+        if names is None:
+            self.all_unparsed = True
+            return
+        self.exported.update(names)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._visit_function(node)
@@ -577,7 +599,9 @@ class _Scanner(ast.NodeVisitor):
 
     def script_only_functions(self) -> set[str]:
         """Functions reachable only from ``if __name__ == '__main__'``."""
-        library_loads = set(self.loads.get("library", ()))
+        if self.all_unparsed:
+            return set()
+        library_loads = set(self.loads.get("library", ())) | set(self.exported)
         script_loads = set(self.loads.get("script", ()))
         func_loads: dict[str, set[str]] = {}
         for scope, names in self.loads.items():
@@ -636,6 +660,18 @@ def _is_main_guard(node: ast.AST) -> bool:
     left = node.left
     right = node.comparators[0]
     return (is_name(left) and is_main(right)) or (is_main(left) and is_name(right))
+
+
+def _constant_strings(value: ast.AST) -> set[str] | None:
+    if isinstance(value, (ast.List, ast.Tuple, ast.Set)):
+        found: set[str] = set()
+        for item in value.elts:
+            if isinstance(item, ast.Constant) and isinstance(item.value, str):
+                found.add(item.value)
+            else:
+                return None
+        return found
+    return None
 
 
 def _literal_module(node: ast.Call) -> str | None:
@@ -702,7 +738,7 @@ def _module_name(root: Path, entry: str, search_paths: list[str]) -> tuple[str, 
             parts = relative.with_suffix("").parts
         if not parts or any(not part.isidentifier() for part in parts):
             raise MinpyError("entry path is not an importable module: " + entry)
-        if any(part == PREFIX for part in parts):
+        if any(part.startswith(PREFIX) for part in parts):
             raise MinpyError(PREFIX + " is reserved by minpy")
         return ".".join(parts), entry_path
     raise MinpyError("entry is not under a search path: " + entry)
@@ -757,8 +793,8 @@ def _resolve_target(
 ) -> tuple[str, str | None]:
     """Return ``("stdlib", None)``, ``("local", module)``, or ``("missing", top)``."""
     top = dotted.split(".")[0]
-    if top == PREFIX:
-        raise MinpyError("import of reserved module " + PREFIX)
+    if top.startswith(PREFIX):
+        raise MinpyError("import of reserved module " + top)
     if _is_stdlib(top):
         if _shadows(top, search_roots) or (top in allow and _shadows(top, third_roots)):
             raise MinpyError("module " + top + " shadows the standard library")
@@ -805,7 +841,7 @@ def _collect(
         if name in seen:
             continue
         seen.add(name)
-        if any(part == PREFIX or not part.isidentifier() for part in name.split(".")):
+        if any(part.startswith(PREFIX) or not part.isidentifier() for part in name.split(".")):
             graph.problems.append(name + ": invalid or reserved module name")
             continue
         from_third = False
@@ -876,6 +912,13 @@ def _collect(
                     continue
                 if not resolved or resolved == name:
                     continue
+                if name.startswith(resolved + "."):
+                    if resolved not in graph.modules:
+                        queue.append(resolved)
+                    for parent in _parents(resolved):
+                        if parent not in graph.modules:
+                            queue.append(parent)
+                    continue
                 graph.edges.setdefault(name, set()).add(resolved)
                 if resolved not in graph.modules:
                     queue.append(resolved)
@@ -937,11 +980,24 @@ def _import_tops(node: ast.AST) -> list[str]:
     return []
 
 
-def _script_stub(top: str) -> str:
-    return "raise ImportError(" + json.dumps(top + " is not included in the stdlib minpy bundle") + ")"
+def _script_stub(top: str, entry_file: str) -> str:
+    message = (
+        top
+        + " is not included in the stdlib minpy bundle. Use the original "
+        + entry_file
+        + " with the companion tool."
+    )
+    return "raise ImportError(" + json.dumps(message) + ")"
 
 
-def _rewrite_source(source: str, modules: set[str], display: str, script_external: set[str]) -> str:
+def _rewrite_source(
+    source: str,
+    modules: set[str],
+    display: str,
+    script_external: set[str],
+    prefix: str,
+    entry_file: str,
+) -> str:
     try:
         tree = ast.parse(source, filename=display)
     except SyntaxError as error:
@@ -961,11 +1017,11 @@ def _rewrite_source(source: str, modules: set[str], display: str, script_externa
                     + ": split mixed stdlib and script-only external imports onto separate lines"
                 )
             if external:
-                rendered: str | None = _script_stub(external[0])
+                rendered: str | None = _script_stub(external[0], entry_file)
             elif isinstance(node, ast.Import):
-                rendered = _render_import(node, modules)
+                rendered = _render_import(node, modules, prefix)
             else:
-                rendered = _render_from(node, modules)
+                rendered = _render_from(node, modules, prefix)
         else:
             continue
         if rendered is None:
@@ -992,6 +1048,46 @@ def _rewrite_source(source: str, modules: set[str], display: str, script_externa
         indent = lines[start - 1][: len(lines[start - 1]) - len(lines[start - 1].lstrip(" \t"))]
         body = "\n".join(indent + part for part in rendered.split("\n")) + "\n"
         lines[start - 1:end] = [body]
+    return _rewrite_import_module_calls("".join(lines), modules, prefix, display)
+
+
+def _rewrite_import_module_calls(source: str, modules: set[str], prefix: str, display: str) -> str:
+    """Point literal import_module calls at the prefixed module object."""
+    try:
+        tree = ast.parse(source, filename=display)
+    except SyntaxError as error:
+        raise MinpyError("syntax error in " + display + ": " + str(error.msg)) from error
+    replacements: list[tuple[int, int, int, int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        function = node.func
+        if not isinstance(function, ast.Attribute) or function.attr != "import_module":
+            continue
+        argument = node.args[0]
+        if not isinstance(argument, ast.Constant) or not isinstance(argument.value, str):
+            continue
+        if argument.value not in modules and not any(
+            name.startswith(argument.value + ".") for name in modules
+        ):
+            continue
+        if argument.lineno is None or argument.end_lineno is None or argument.col_offset is None:
+            raise MinpyError(display + ": import_module literal is missing location")
+        if argument.end_col_offset is None or argument.lineno != argument.end_lineno:
+            raise MinpyError(display + ": import_module literal must be on one line")
+        replacements.append((
+            argument.lineno,
+            argument.col_offset,
+            argument.end_lineno,
+            argument.end_col_offset,
+            json.dumps(prefix + "." + argument.value),
+        ))
+    if not replacements:
+        return source
+    lines = source.splitlines(keepends=True)
+    for lineno, col, _end_lineno, end_col, rendered in sorted(replacements, reverse=True):
+        raw = lines[lineno - 1].encode("utf-8")
+        lines[lineno - 1] = (raw[:col] + rendered.encode("utf-8") + raw[end_col:]).decode("utf-8")
     return "".join(lines)
 
 
@@ -999,7 +1095,7 @@ def _import_is_bundled(name: str, modules: set[str]) -> bool:
     return name in modules
 
 
-def _render_import(node: ast.Import, modules: set[str]) -> str | None:
+def _render_import(node: ast.Import, modules: set[str], prefix: str) -> str | None:
     if not any(_import_is_bundled(alias.name, modules) for alias in node.names):
         return None
     lines: list[str] = []
@@ -1007,7 +1103,7 @@ def _render_import(node: ast.Import, modules: set[str]) -> str | None:
         if not _import_is_bundled(alias.name, modules):
             lines.append("import " + alias.name + (" as " + alias.asname if alias.asname else ""))
             continue
-        prefixed = PREFIX + "." + alias.name
+        prefixed = prefix + "." + alias.name
         if alias.asname:
             lines.append("import " + prefixed + " as " + alias.asname)
             continue
@@ -1016,11 +1112,11 @@ def _render_import(node: ast.Import, modules: set[str]) -> str | None:
             lines.append("import " + prefixed + " as " + top)
         else:
             lines.append("__import__(" + json.dumps(prefixed) + ")")
-            lines.append("from " + PREFIX + " import " + top)
+            lines.append("from " + prefix + " import " + top)
     return "\n".join(lines)
 
 
-def _render_from(node: ast.ImportFrom, modules: set[str]) -> str | None:
+def _render_from(node: ast.ImportFrom, modules: set[str], prefix: str) -> str | None:
     if node.level or not node.module:
         return None
     names = [alias.name for alias in node.names]
@@ -1037,7 +1133,7 @@ def _render_from(node: ast.ImportFrom, modules: set[str]) -> str | None:
             rendered.append(alias.name + " as " + alias.asname)
         else:
             rendered.append(alias.name)
-    return "from " + PREFIX + "." + node.module + " import " + ", ".join(rendered)
+    return "from " + prefix + "." + node.module + " import " + ", ".join(rendered)
 
 
 def _sources_literal(sources: dict[str, str]) -> str:
@@ -1054,6 +1150,16 @@ def _packages_literal(packages: list[str]) -> str:
     return "(\n" + "".join("    " + json.dumps(name) + ",\n" for name in packages) + ")"
 
 
+def _python_version() -> str:
+    return str(sys.version_info[0]) + "." + str(sys.version_info[1])
+
+
+def bundle_prefix(repository: str, entry: str, commit: str) -> str:
+    """Return a module prefix unique to this repository, entry, and commit."""
+    material = repository + "\n" + entry.replace("\\", "/") + "\n" + commit
+    return PREFIX + hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
+
+
 def _header(
     *,
     repository: str,
@@ -1065,12 +1171,14 @@ def _header(
     allow_cycles: bool,
     cycles: list[tuple[str, ...]],
     modules: list[str],
+    prefix: str,
     digest: str,
 ) -> str:
     return "\n".join([
         "#!/usr/bin/env python3",
         "# minpy-bundle/1",
         "# tool: minpy/" + __version__,
+        "# python: " + _python_version(),
         "# repository: " + repository,
         "# commit: " + commit,
         "# entry: " + entry,
@@ -1080,6 +1188,7 @@ def _header(
         "# allow-cycles: " + ("yes" if allow_cycles else "no"),
         "# cycles: " + _cycle_text(cycles),
         "# modules: " + ",".join(modules),
+        "# prefix: " + prefix,
         HASH_PREFIX + digest,
         HASH_RULE,
         "",
@@ -1099,6 +1208,7 @@ def _render_bundle(
     cycles: list[tuple[str, ...]],
     sources: dict[str, str],
     packages: list[str],
+    prefix: str,
 ) -> str:
     modules = sorted(sources)
     placeholder = _header(
@@ -1111,10 +1221,11 @@ def _render_bundle(
         allow_cycles=allow_cycles,
         cycles=cycles,
         modules=modules,
+        prefix=prefix,
         digest=HASH_ZERO,
     )
     loader = _LOADER.format(
-        prefix=json.dumps(PREFIX),
+        prefix=json.dumps(prefix),
         entry=json.dumps(entry_module),
         packages=_packages_literal(packages),
         sources=_sources_literal(sources),
@@ -1154,15 +1265,18 @@ def content_sha256(text: str) -> str:
 
 
 def parse_header(text: str) -> dict[str, object]:
-    """Parse and authenticate a bundle header. The body hash must match."""
+    """Parse a bundle header and check its content hash.
+
+    The hash detects edits. It is not authentication: anyone can recompute it.
+    """
     lines = text.splitlines()
     expected = [
         "#!/usr/bin/env python3",
         "# minpy-bundle/1",
     ]
-    if lines[:2] != expected or len(lines) < 15 or lines[14] != "":
+    if lines[:2] != expected or len(lines) < 17 or lines[16] != "":
         raise MinpyError("bundle header is not a minpy-bundle/1 file")
-    if lines[13] != HASH_RULE:
+    if lines[15] != HASH_RULE:
         raise MinpyError("bundle content-sha256 rule is missing or was edited")
 
     def field(index: int, label: str) -> str:
@@ -1177,29 +1291,37 @@ def parse_header(text: str) -> dict[str, object]:
     version = tool[len("minpy/"):]
     if not _VERSION.fullmatch(version):
         raise MinpyError("bundle tool version is invalid")
-    repository = _repository(field(3, "repository"))
-    commit = _commit(field(4, "commit"))
-    entry = field(5, "entry")
+    python = field(3, "python")
+    if not re.fullmatch(r"[0-9]+\.[0-9]+", python):
+        raise MinpyError("bundle python version is invalid")
+    repository = _repository(field(4, "repository"))
+    commit = _commit(field(5, "commit"))
+    entry = field(6, "entry")
     if not entry.endswith(".py") or "\\" in entry or entry.startswith("/"):
         raise MinpyError("bundle entry path is invalid")
-    entry_module = field(6, "entry-module")
-    search_raw = field(7, "search-paths")
+    entry_module = field(7, "entry-module")
+    search_raw = field(8, "search-paths")
     search_paths = [_search_path(part) for part in search_raw.split(",") if part]
     if not search_paths:
         raise MinpyError("bundle search-paths is empty")
-    allow_raw = field(8, "allow")
+    allow_raw = field(9, "allow")
     allow = [_allow_name(part) for part in allow_raw.split(",") if part]
     if allow != sorted(set(allow)):
         raise MinpyError("bundle allow list must be sorted unique names")
-    cycles_flag = field(9, "allow-cycles")
+    cycles_flag = field(10, "allow-cycles")
     if cycles_flag not in {"yes", "no"}:
         raise MinpyError("bundle allow-cycles must be yes or no")
-    cycles = field(10, "cycles")
-    modules_raw = field(11, "modules")
+    cycles = field(11, "cycles")
+    modules_raw = field(12, "modules")
     modules = [part for part in modules_raw.split(",") if part]
     if modules != sorted(set(modules)):
         raise MinpyError("bundle modules list must be sorted unique names")
-    digest = field(12, "content-sha256")
+    prefix = field(13, "prefix")
+    if not re.fullmatch(r"_minpy_[0-9a-f]{16}", prefix):
+        raise MinpyError("bundle prefix is invalid")
+    if prefix != bundle_prefix(repository, entry, commit):
+        raise MinpyError("bundle prefix does not match repository, entry, and commit")
+    digest = field(14, "content-sha256")
     if not _HEX64.fullmatch(digest):
         raise MinpyError("bundle content-sha256 is invalid")
     if content_sha256(text) != digest:
@@ -1210,6 +1332,8 @@ def parse_header(text: str) -> dict[str, object]:
         "schema": BUNDLE_SCHEMA,
         "tool": "minpy",
         "tool_version": version,
+        "python": python,
+        "prefix": prefix,
         "repository": repository,
         "commit": commit,
         "entry": entry,
@@ -1485,8 +1609,17 @@ def bundle(
     modules = prepared.graph.modules
     names = set(modules)
     script_external = set(prepared.graph.script_external)
+    prefix = bundle_prefix(prepared.repository, prepared.entry, prepared.commit)
+    entry_file = PurePosixPath(prepared.entry).name
     rewritten = {
-        name: _rewrite_source(module.source, names, module.relative, script_external)
+        name: _rewrite_source(
+            module.source,
+            names,
+            module.relative,
+            script_external,
+            prefix,
+            entry_file,
+        )
         for name, module in modules.items()
     }
     text = _render_bundle(
@@ -1500,6 +1633,7 @@ def bundle(
         cycles=prepared.cycles if prepared.allow_cycles else [],
         sources=rewritten,
         packages=sorted(name for name, module in modules.items() if module.is_package),
+        prefix=prefix,
     )
     if output is not None:
         destination = Path(output)
@@ -1590,6 +1724,14 @@ def check_bundle(
                 + " and this checker is minpy/"
                 + __version__
             )
+        if header["python"] != _python_version():
+            raise MinpyError(
+                "bundle records Python "
+                + str(header["python"])
+                + " and this interpreter is Python "
+                + _python_version()
+                + "; the standard-library set can differ"
+            )
         fresh = bundle(
             root=source_root,
             entry=str(header["entry"]),
@@ -1625,7 +1767,8 @@ def check_bundle(
             raise MinpyError("vendor-lock entry is missing bundle metadata")
     return {
         "schema": CHECK_SCHEMA,
-        "ok": True,
+        "status": "regenerated" if regenerated else "hash-only",
+        "ok": regenerated,
         "repository": header["repository"],
         "commit": header["commit"],
         "entry": header["entry"],
@@ -1634,6 +1777,8 @@ def check_bundle(
         "content_sha256": header["content_sha256"],
         "regenerated": regenerated,
         "tool_version": header["tool_version"],
+        "python": header["python"],
+        "prefix": header["prefix"],
     }
 
 

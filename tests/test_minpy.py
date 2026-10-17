@@ -269,7 +269,12 @@ def test_output_is_deterministic_and_self_describing(tmp_path: Path) -> None:
         minpy.parse_header(tampered)
     fresh = minpy.check_bundle(first, source_root=root, skip_head_check=True)
     assert fresh["ok"] is True
+    assert fresh["status"] == "regenerated"
     assert fresh["regenerated"] is True
+    partial = minpy.check_bundle(first)
+    assert partial["ok"] is False
+    assert partial["status"] == "hash-only"
+    assert partial["regenerated"] is False
     out = tmp_path / "app.min.py"
     out.write_bytes(first.encode("utf-8"))
     assert minpy.main([
@@ -419,6 +424,20 @@ def test_git_head_must_match_commit(tmp_path: Path) -> None:
     assert minpy.parse_header(text)["commit"] == head
     with pytest.raises(minpy.MinpyError, match="HEAD"):
         minpy.bundle(root=root, entry="app.py", repository=REPO, commit=COMMIT)
+    clean = minpy.bundle(root=root, entry="app.py", repository=REPO, commit=head, require_clean=True)
+    assert minpy.parse_header(clean)["commit"] == head
+    _write(root, "extra.py", "VALUE = 2\n")
+    with pytest.raises(minpy.MinpyError, match="uncommitted"):
+        minpy.bundle(root=root, entry="app.py", repository=REPO, commit=head, require_clean=True)
+    with pytest.raises(minpy.MinpyError, match="cannot be combined"):
+        minpy.bundle(
+            root=root,
+            entry="app.py",
+            repository=REPO,
+            commit=head,
+            skip_head_check=True,
+            require_clean=True,
+        )
 
 
 def _normalized_repo_module(repository: str) -> str:
@@ -482,7 +501,7 @@ def test_companion_script_bundle_registers_stdlib_min(tmp_path: Path) -> None:
     assert "class CacheView" in text
     assert "from queryu import" not in text
     assert "import queryu" not in text
-    assert "queryu is not included in the stdlib minpy bundle" in text
+    assert "queryu is not included in the stdlib minpy bundle. Use the original probe.py with the companion tool." in text
     assert "import_module" in text
     out = tmp_path / "dist" / "probe_min.py"
     out.parent.mkdir()
@@ -490,15 +509,21 @@ def test_companion_script_bundle_registers_stdlib_min(tmp_path: Path) -> None:
     loaded = _load_expr(out, "module.inspect_cache('n')")
     assert loaded.returncode == 0, loaded.stderr
     assert loaded.stdout.strip() == "view:n"
-    plugin = _load_expr(out, "module.load_source('snapshot_source').CacheView('n').label()")
+    plugin = _load_expr(
+        out,
+        "(module.inspect_cache('n'), 'snapshot_source' in __import__('sys').modules)",
+    )
     assert plugin.returncode == 0, plugin.stderr
-    assert plugin.stdout.strip() == "view:n"
+    assert plugin.stdout.strip() == "('view:n', False)"
+    missing = _load_expr(out, "module.load_source('snapshot_source')")
+    assert missing.returncode != 0
+    assert "snapshot_source" in missing.stderr
     stdlib_plugin = _load_expr(out, "module.load_source('json').loads('1')")
     assert stdlib_plugin.returncode == 0, stdlib_plugin.stderr
     assert stdlib_plugin.stdout.strip() == "1"
     executed = _run(out, [str(out)])
     assert executed.returncode != 0
-    assert "queryu is not included in the stdlib minpy bundle" in executed.stderr
+    assert "Use the original probe.py with the companion tool." in executed.stderr
 
     plan = minpy.catalog_plan(
         root=root,
@@ -645,6 +670,344 @@ def test_stdlib_single_file_sets_source_and_skips_min_entry(tmp_path: Path) -> N
         "reason": "synthetic stdlib module",
     }]
     _assert_explicit_catalog_sources(plan)
+
+
+def _load_modules(tmp_path: Path, script: str) -> subprocess.CompletedProcess[str]:
+    path = tmp_path / "load_modules.py"
+    path.write_text(script, encoding="utf-8")
+    return _run(path, [str(path)], cwd=tmp_path)
+
+
+def test_two_bundles_do_not_share_modules(tmp_path: Path) -> None:
+    left = tmp_path / "left"
+    right = tmp_path / "right"
+    _write(left, "utils.py", 'NAME = "A-utils"\n')
+    _write(left, "probe.py", "import utils\ndef who():\n    return utils.NAME\n")
+    _write(right, "utils.py", 'NAME = "B-utils"\n')
+    _write(right, "other.py", "import utils\ndef who():\n    return utils.NAME\n")
+    text_left = _bundle(left, "probe.py", repository="example/alpha")
+    text_right = _bundle(right, "other.py", repository="example/beta")
+    header_left = minpy.parse_header(text_left)
+    header_right = minpy.parse_header(text_right)
+    assert header_left["prefix"] != header_right["prefix"]
+    assert header_left["prefix"] == minpy.bundle_prefix("example/alpha", "probe.py", COMMIT)
+    probe = tmp_path / "probe_min.py"
+    other = tmp_path / "other_min.py"
+    probe.write_bytes(text_left.encode("utf-8"))
+    other.write_bytes(text_right.encode("utf-8"))
+    loaded = _load_modules(
+        tmp_path,
+        "import importlib.util\n"
+        "import sys\n"
+        "def load(path, name):\n"
+        "    spec = importlib.util.spec_from_file_location(name, path)\n"
+        "    module = importlib.util.module_from_spec(spec)\n"
+        "    sys.modules[name] = module\n"
+        "    spec.loader.exec_module(module)\n"
+        "    return module\n"
+        f"probe = load({str(probe)!r}, 'probe_min')\n"
+        f"other = load({str(other)!r}, 'other_min')\n"
+        "print(probe.who())\n"
+        "print(other.who())\n"
+        "prefixed = [name for name in sys.modules if name.endswith('.utils')]\n"
+        "print(len(prefixed))\n"
+        "print('utils' in sys.modules)\n"
+        "print(sys.modules[prefixed[0]] is sys.modules[prefixed[1]])\n",
+    )
+    assert loaded.returncode == 0, loaded.stderr
+    assert loaded.stdout.splitlines() == ["A-utils", "B-utils", "2", "False", "False"]
+
+
+def test_bundle_does_not_hijack_consumer_module(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    consumer = tmp_path / "consumer"
+    _write(root, "utils.py", 'NAME = "B-utils"\n')
+    _write(root, "other.py", "import utils\ndef who():\n    return utils.NAME\n")
+    _write(consumer, "utils.py", 'NAME = "consumer-utils"\n')
+    text = _bundle(root, "other.py", repository="example/beta")
+    bundle = tmp_path / "other_min.py"
+    bundle.write_bytes(text.encode("utf-8"))
+    prefix = minpy.parse_header(text)["prefix"]
+    loaded = _load_modules(
+        tmp_path,
+        "import importlib.util\n"
+        "import sys\n"
+        f"sys.path.insert(0, {str(consumer)!r})\n"
+        "def load(path, name):\n"
+        "    spec = importlib.util.spec_from_file_location(name, path)\n"
+        "    module = importlib.util.module_from_spec(spec)\n"
+        "    sys.modules[name] = module\n"
+        "    spec.loader.exec_module(module)\n"
+        "    return module\n"
+        f"other = load({str(bundle)!r}, 'other_min')\n"
+        "print('bare-before', 'utils' in sys.modules)\n"
+        "import utils\n"
+        "print(other.who())\n"
+        "print(utils.NAME)\n"
+        f"bundled = sys.modules[{prefix!r} + '.utils']\n"
+        "print(utils is bundled)\n"
+        "print(other.who.__globals__['utils'] is bundled)\n",
+    )
+    assert loaded.returncode == 0, loaded.stderr
+    assert loaded.stdout.splitlines() == [
+        "bare-before False",
+        "B-utils",
+        "consumer-utils",
+        "False",
+        "True",
+    ]
+
+
+def test_parent_package_import_is_not_a_cycle(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "pkg/__init__.py", "from .core import add\n")
+    _write(
+        root,
+        "pkg/core.py",
+        "from . import helpers\n"
+        "def add(value):\n"
+        "    return helpers.bump(value)\n",
+    )
+    _write(root, "pkg/helpers.py", "def bump(value):\n    return value + 1\n")
+    text = _bundle(root, "pkg/__init__.py")
+    out = tmp_path / "pkg_min.py"
+    out.write_bytes(text.encode("utf-8"))
+    loaded = _load_expr(out, "module.add(1)")
+    assert loaded.returncode == 0, loaded.stderr
+    assert loaded.stdout.strip() == "2"
+    _write(root, "pkg/left.py", "import pkg.right\ndef ping():\n    return pkg.right.pong()\n")
+    _write(root, "pkg/right.py", "import pkg.left\ndef pong():\n    return 'pong'\n")
+    with pytest.raises(minpy.MinpyError, match="circular import"):
+        _bundle(root, "pkg/left.py")
+
+
+def test_public_all_is_not_script_only(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(
+        root,
+        "tool.py",
+        "__all__ = ['run', 'calc']\n"
+        "def calc():\n"
+        "    return 3\n"
+        "def run():\n"
+        "    import queryu\n"
+        "    return queryu\n"
+        "if __name__ == '__main__':\n"
+        "    run()\n",
+    )
+    with pytest.raises(minpy.MinpyError, match="queryu"):
+        _bundle(root, "tool.py")
+    plan = minpy.catalog_plan(
+        root=root,
+        entry="tool.py",
+        repository=REPO,
+        commit=COMMIT,
+        reason="public companion import",
+        skip_head_check=True,
+    )
+    assert plan["min_source"] is None
+    assert plan["library_external"] == ["queryu"]
+    assert plan["catalog"]["tools"][0]["default_enrollment"]["reason"] == "requires_external_package"
+    _write(
+        root,
+        "tool.py",
+        "names = ['run']\n"
+        "__all__ = names\n"
+        "def run():\n"
+        "    import queryu\n"
+        "    return queryu\n"
+        "if __name__ == '__main__':\n"
+        "    run()\n",
+    )
+    with pytest.raises(minpy.MinpyError, match="queryu"):
+        _bundle(root, "tool.py")
+
+
+def test_script_only_sibling_stays_stubbed_when_all_lists_other_names(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(
+        root,
+        "tool.py",
+        "__all__ = ['calc']\n"
+        "def calc():\n"
+        "    return 4\n"
+        "def run():\n"
+        "    import queryu\n"
+        "    return queryu\n"
+        "if __name__ == '__main__':\n"
+        "    run()\n",
+    )
+    text = _bundle(root, "tool.py")
+    assert "Use the original tool.py with the companion tool." in text
+    out = tmp_path / "tool_min.py"
+    out.write_bytes(text.encode("utf-8"))
+    loaded = _load_expr(out, "module.calc()")
+    assert loaded.returncode == 0, loaded.stderr
+    assert loaded.stdout.strip() == "4"
+    failed = _load_expr(out, "module.run()")
+    assert failed.returncode != 0
+    assert "companion tool" in failed.stderr
+
+
+def test_main_traceback_uses_minpy_filename(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "def run():\n    raise RuntimeError('boom')\nrun()\n")
+    text = _bundle(root)
+    out = tmp_path / "app_min.py"
+    out.write_bytes(text.encode("utf-8"))
+    executed = _run(out, [str(out)])
+    assert executed.returncode != 0
+    assert 'File "minpy://app.py"' in executed.stderr
+    assert "# allow-cycles" not in executed.stderr
+    assert executed.stderr.find("boom") != -1
+
+
+def test_crlf_hash_line_is_checked(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "VALUE = 1\n")
+    text = _bundle(root)
+    crlf = text.replace("\n", "\r\n")
+    with pytest.raises(minpy.MinpyError, match="content-sha256"):
+        minpy.parse_header(crlf)
+    assert minpy.content_sha256(text) == minpy.parse_header(text)["content_sha256"]
+
+
+def test_missing_git_requires_skip_head_check(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "VALUE = 1\n")
+    with pytest.raises(minpy.MinpyError, match="skip-head-check"):
+        minpy.bundle(root=root, entry="app.py", repository=REPO, commit=COMMIT)
+
+
+def test_stdlib_fallback_without_stdlib_module_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delattr(sys, "stdlib_module_names", raising=False)
+    monkeypatch.delattr(minpy._stdlib_fallback, "names", raising=False)
+    assert minpy._is_stdlib("json") is True
+    assert minpy._is_stdlib("json") is True
+    assert minpy._is_stdlib("polars_not_a_stdlib_module") is False
+
+
+def test_html_import_lock_check_and_blob_mismatch(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "VALUE = 5\n")
+    text = _bundle(root)
+    raw = text.encode("utf-8")
+    metadata = minpy.bundle_metadata(entry="app.py", search_paths=["."], allow=[], allow_cycles=False)
+    html_lock = {
+        "schema": "html-import-vendor/1",
+        "sources": [
+            {
+                "repository": REPO,
+                "commit": COMMIT,
+                "source_path": "dist/app_min.py",
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "blob_sha": minpy.git_blob_sha1(raw),
+                "bundle": metadata,
+            }
+        ],
+    }
+    path = tmp_path / "html.lock.json"
+    path.write_text(json.dumps(html_lock), encoding="utf-8")
+    report = minpy.check_bundle(text, lock_path=path, source="dist/app_min.py")
+    assert report["status"] == "hash-only"
+    assert report["ok"] is False
+    with pytest.raises(minpy.MinpyError, match="--source"):
+        minpy.check_bundle(text, lock_path=path)
+    broken = json.loads(json.dumps(html_lock))
+    broken["sources"][0]["blob_sha"] = "d" * 40
+    path.write_text(json.dumps(broken), encoding="utf-8")
+    with pytest.raises(minpy.MinpyError, match="blob_sha"):
+        minpy.check_bundle(text, lock_path=path, source="dist/app_min.py")
+    broken["sources"][0]["blob_sha"] = minpy.git_blob_sha1(raw)
+    broken["sources"][0]["bundle"] = ["not", "an", "object"]
+    path.write_text(json.dumps(broken), encoding="utf-8")
+    with pytest.raises(minpy.MinpyError, match="bundle metadata"):
+        minpy.check_bundle(text, lock_path=path, source="dist/app_min.py")
+    with pytest.raises(minpy.MinpyError, match="locked file bytes"):
+        minpy.check_bundle(text, consumer_bytes=b"different")
+
+
+def test_regeneration_mismatch_and_missing_lock_bundle(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "VALUE = 1\n")
+    text = _bundle(root)
+    tampered = text.replace("VALUE = 1", "VALUE = 2", 1)
+    # Keep the hash line consistent so regeneration, not the self-hash, fails.
+    digest = minpy.content_sha256(tampered)
+    tampered = tampered.replace(minpy.parse_header(text)["content_sha256"], digest, 1)  # type: ignore[arg-type]
+    with pytest.raises(minpy.MinpyError, match="first difference"):
+        minpy.check_bundle(tampered, source_root=root, skip_head_check=True)
+    raw = text.encode("utf-8")
+    lock = {
+        "schema": "vendor-lock/1",
+        "files": [{
+            "repository": REPO,
+            "ref": "refs/heads/main",
+            "commit": COMMIT,
+            "source": "app_min.py",
+            "destination": "vendor/app_min.py",
+            "blob_sha": minpy.git_blob_sha1(raw),
+            "sha256": hashlib.sha256(raw).hexdigest(),
+        }],
+    }
+    path = tmp_path / "vendor.lock.json"
+    path.write_text(json.dumps(lock), encoding="utf-8")
+    with pytest.raises(minpy.MinpyError, match="missing bundle metadata"):
+        minpy.check_bundle(text, lock_path=path, destination="vendor/app_min.py")
+    bundle_path = tmp_path / "app_min.py"
+    bundle_path.write_bytes(b"\xff")
+    assert minpy.main(["check", "--bundle", str(bundle_path)]) == 1
+    assert "minpy:" in capsys.readouterr().err
+
+
+def test_bundle_cli_receipt_in_process(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "def add(left, right):\n    return left + right\n")
+    _write(root, "app.py", "from mathx import add\nVALUE = add(1, 2)\n")
+    output = tmp_path / "app_min.py"
+    code = minpy.main([
+        "bundle",
+        "--root", str(root),
+        "--entry", "app.py",
+        "--repository", REPO,
+        "--commit", COMMIT,
+        "--skip-head-check",
+        "--output", str(output),
+        "--reason", "in-process receipt",
+    ])
+    assert code == 0, capsys.readouterr()
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["min_source"] == "app_min.py"
+    assert receipt["stdlib_min"] is True
+    assert receipt["catalog"]["tools"][1]["source"] == "app_min.py"
+    assert output.is_file()
+    check = minpy.main(["check", "--bundle", str(output)])
+    assert check == 0
+    partial = json.loads(capsys.readouterr().out)
+    assert partial["status"] == "hash-only"
+    assert partial["ok"] is False
+
+
+def test_checked_in_fixture_regenerates(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "minpy_widget"
+    output = tmp_path / "app_min.py"
+    code = minpy.main([
+        "bundle",
+        "--root", str(root),
+        "--entry", "app.py",
+        "--repository", "example/widget",
+        "--commit", "a" * 40,
+        "--skip-head-check",
+        "--output", str(output),
+    ])
+    assert code == 0
+    code = minpy.main([
+        "check",
+        "--bundle", str(output),
+        "--root", str(root),
+        "--skip-head-check",
+    ])
+    assert code == 0
 
 
 def test_checked_in_registry_still_validates() -> None:

@@ -58,6 +58,20 @@ jobs:
       - run: python -m py_compile git_inspector.py gh_ops.py vendor_consumers.py tools/parent_pin_check.py tools/minpy.py
       - name: Verify enrolled GitHub identity dependency (offline)
         run: python -S vendor_sync.py check --manifest vendor.lock.json
+      - name: Regenerate minpy fixture and compare
+        shell: bash
+        run: |
+          python tools/minpy.py bundle \
+            --root tests/fixtures/minpy_widget \
+            --entry app.py \
+            --repository example/widget \
+            --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            --skip-head-check \
+            --output "$RUNNER_TEMP/app_min.py"
+          python tools/minpy.py check \
+            --bundle "$RUNNER_TEMP/app_min.py" \
+            --root tests/fixtures/minpy_widget \
+            --skip-head-check
       - name: Run tests with JUnit
         run: python -m pytest -q --junitxml=reports/junit.xml
       - name: Preserve JUnit report
@@ -89,6 +103,20 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install pytest
+      - name: Regenerate minpy fixture and compare
+        shell: bash
+        run: |
+          python tools/minpy.py bundle \
+            --root tests/fixtures/minpy_widget \
+            --entry app.py \
+            --repository example/widget \
+            --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            --skip-head-check \
+            --output "$RUNNER_TEMP/app_min.py"
+          python tools/minpy.py check \
+            --bundle "$RUNNER_TEMP/app_min.py" \
+            --root tests/fixtures/minpy_widget \
+            --skip-head-check
       - name: Exercise changed public Git snapshots and rejection cases
         run: python -m pytest -q tests/test_vendor_sync.py tests/test_vendor_stage.py tests/test_vendor_consumers.py tests/test_vendor_update_workflow.py tests/test_gh_ops.py tests/test_minpy.py --junitxml=reports/vendor.xml
       - name: Preserve vendor regression JUnit
