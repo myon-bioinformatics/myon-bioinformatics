@@ -547,6 +547,7 @@ def test_pr_retarget_negative_ahead_by_is_compare_failure():
     out = gh_ops.pr_retarget(REPO, NUMBER, "main", write=True, client=client)
     assert out["status"] == "refused_compare_failure"
     assert out["compare_error"] == "negative ahead_by in compare response"
+    assert out["old_base_unmerged_commits"] is None
     assert not any(call["method"] == "PATCH" for call in stub.calls)
 
     client, stub = client_for(retarget_routes("feat/p", {"ahead_by": -1}, pr_reads=[
