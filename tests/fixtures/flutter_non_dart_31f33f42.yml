@@ -424,7 +424,7 @@ jobs:
         working-directory: e2e
         run: |
           npm install
-          npx playwright install --with-deps chromium firefox webkit
+          npx playwright install --with-deps --only-shell chromium firefox webkit
           npx playwright test --list --project=chromium --project=firefox --project=webkit --project=mobile-chromium --project=mobile-webkit
 
       - name: Run real browser through shared Python Playwright adapter
@@ -488,7 +488,7 @@ jobs:
         working-directory: e2e
         run: |
           npm install
-          npx playwright install --with-deps chromium firefox webkit
+          npx playwright install --with-deps --only-shell chromium firefox webkit
 
       - name: Serve web build and run Playwright
         working-directory: e2e
@@ -559,7 +559,7 @@ jobs:
         working-directory: e2e
         run: |
           npm install
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps --only-shell chromium
 
       - name: Run validation page browser contract
         working-directory: e2e
