@@ -1401,33 +1401,54 @@ def test_rejects_import_module_literal_importlib_resources(tmp_path: Path) -> No
         _bundle(root)
 
 
+def _bundle_and_run_main(root: Path, app_body: str, entry: str = "app.py") -> tuple[str, str]:
+    _write(root, "mathx.py", "VALUE = 1\n")
+    app_source = "import mathx\n" + app_body
+    _write(root, entry, app_source)
+    original = _run(root / entry, [str(root / entry)], cwd=root)
+    assert original.returncode == 0, original.stderr
+    expected = original.stdout.strip()
+    text = _bundle(root, entry)
+    out = root / "dist" / "app_min.py"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(text.encode("utf-8"))
+    bundled = _run(out, [str(out)], cwd=out.parent)
+    assert bundled.returncode == 0, bundled.stderr
+    assert bundled.stdout.strip() == expected
+    return expected, text
+
+
 def test_user_defined_import_module_call_is_not_rewritten(tmp_path: Path) -> None:
     root = tmp_path / "src"
-    _write(
-        root,
-        "app.py",
-        "def import_module(name):\n    return name\nVALUE = import_module('mathx')\n",
+    app = (
+        "def import_module(name):\n"
+        "    return name\n"
+        "if __name__ == '__main__':\n"
+        "    print('user:' + import_module('mathx'))\n"
     )
-    text = _bundle(root)
+    expected, text = _bundle_and_run_main(root, app)
+    assert expected == "user:mathx"
     prefix = minpy.bundle_prefix(REPO, "app.py", COMMIT)
+    assert '"mathx"' in text
     assert "import_module('mathx')" in text
-    assert prefix + ".mathx" not in text
+    assert f"import_module('{prefix}.mathx')" not in text
 
 
 def test_foreign_loader_import_module_call_is_not_rewritten(tmp_path: Path) -> None:
     root = tmp_path / "src"
-    _write(
-        root,
-        "app.py",
+    app = (
         "class Loader:\n"
         "    def import_module(self, name):\n"
         "        return name\n"
-        "VALUE = Loader().import_module('mathx')\n",
+        "if __name__ == '__main__':\n"
+        "    print('user:' + Loader().import_module('mathx'))\n"
     )
-    text = _bundle(root)
+    expected, text = _bundle_and_run_main(root, app)
+    assert expected == "user:mathx"
     prefix = minpy.bundle_prefix(REPO, "app.py", COMMIT)
+    assert '"mathx"' in text
     assert "import_module('mathx')" in text
-    assert prefix + ".mathx" not in text
+    assert f"import_module('{prefix}.mathx')" not in text
 
 
 def test_rejects_getattr_pkgutil_get_data_literal(tmp_path: Path) -> None:
@@ -1449,6 +1470,77 @@ def test_rejects_importlib_star_import(tmp_path: Path) -> None:
     _write(root, "app.py", "from importlib import *\nimport_module('mathx')\n")
     with pytest.raises(minpy.MinpyError, match=r"line 1: importlib star-import"):
         _bundle(root)
+
+
+def test_rejects_pkgutil_star_import(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "from pkgutil import *\nget_data('x', 'y')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 1: pkgutil star-import"):
+        _bundle(root)
+
+
+def test_rejects_importlib_resources_star_import(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "from importlib.resources import *\nfiles('pkg')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 1: importlib\.resources star-import"):
+        _bundle(root)
+
+
+def test_rejects_pkg_resources_star_import(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "from pkg_resources import *\nresource_filename('pkg', 'x')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 1: pkg_resources star-import"):
+        _bundle(root)
+
+
+def test_rejects_bound_importlib_import_module_attribute(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "VALUE = 1\n")
+    _write(root, "app.py", "import importlib\nim = importlib.import_module\nim('mathx')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib\.import_module"):
+        _bundle(root)
+
+
+def test_rejects_getattr_importlib_import_module_literal(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "import importlib\ngetattr(importlib, 'import_module')('mathx')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib\.import_module"):
+        _bundle(root)
+
+
+def test_rejects_bound_from_import_import_module_name(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "from importlib import import_module\ng = import_module\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib\.import_module"):
+        _bundle(root)
+
+
+def test_rejects_import_module_passed_as_argument(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "from importlib import import_module\ndef take(fn):\n    return fn\ntake(import_module)\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 4: importlib\.import_module"):
+        _bundle(root)
+
+
+def test_allows_importlib_submodules_and_local_hook_names(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(
+        root,
+        "app.py",
+        "import importlib.metadata\n"
+        "import importlib.util\n"
+        "resources = 1\n"
+        "files = 2\n"
+        "get_data = 3\n"
+        "import_module = 4\n"
+        "class Loader:\n"
+        "    def import_module(self, name):\n"
+        "        return name\n"
+        "VALUE = Loader().import_module('local')\n",
+    )
+    text = _bundle(root)
+    assert "importlib.metadata" in text
+    assert "VALUE" in text
 
 
 @pytest.mark.parametrize(
