@@ -12,7 +12,7 @@
 - ライブラリとして必要な非標準ライブラリ（モジュール直下や、スクリプト入口以外から使う関数の中）はエラーです。同じリポジトリのモジュールがあっても、標準ライブラリだけの `<name>_min.py` は作りません。
 - 文字列リテラルの `importlib.import_module("名前")` と、importlib（またはその別名）から取り込んだ `import_module("名前")` の**直接呼び出し**だけを通常の import として辿り、呼び出し先は接頭辞付きの名前に書き換えます。自分で定義した `import_module` や、別オブジェクトの `loader.import_module` は書き換えません。`importlib.import_module` を代入・引数渡し・`getattr(importlib, "import_module")` で取り出す形、および `from importlib import import_module` のあと参照だけする形（`g = import_module` など）は拒否します。`from importlib import *`、`from pkgutil import *`、`from importlib.resources import *`、`from pkg_resources import *` も拒否します。引数が変数の `import_module(name)` はプラグイン読み込みとして残し、バンドル内モジュールは元の名前では読みません。finder は自分の接頭辞の名前にしか答えません。
 - `__import__`、`exec`、`eval`、`spec_from_file_location` は拒否します。
-- `__file__` は、`if __name__ == "__main__":` の直下だけ許します。それ以外はデータファイル同梱とみなして拒否します。`importlib.resources`、`importlib.import_module`（上記の直接呼び出し以外）、`pkgutil.get_data`、`pkg_resources` への import・属性アクセス・呼び出し（別名や `getattr(importlib, "resources")` / `getattr(importlib, "import_module")` の文字列リテラル形を含む）も拒否します。`importlib.metadata` や `importlib.util`、ローカル変数名の `resources` / `files` / `get_data` / `import_module`、無関係なオブジェクトの `import_module` 属性は拒否しません。変数に束ねたあとの `getattr(module, name)` や、実行時に組み立てた属性名は静的解析では拒否できない場合があります。
+- `__file__` は、`if __name__ == "__main__":` の直下だけ許します。それ以外はデータファイル同梱とみなして拒否します。`importlib.resources`、`importlib.import_module`（上記の直接呼び出し以外）、`pkgutil.get_data`、`pkg_resources` への import・属性アクセス・呼び出し（別名や `getattr(importlib, "resources")` / `getattr(importlib, "import_module")` の文字列リテラル形を含む）も拒否します。`importlib`、`pkgutil`、`pkg_resources`、`importlib.resources` のモジュールオブジェクトを属性を取らずに参照する形（代入・引数・リスト要素など）も拒否します。`importlib.metadata` や `importlib.util`、ローカル変数名の `resources` / `files` / `get_data` / `import_module`、無関係なオブジェクトの `import_module` 属性は拒否しません。変数に束ねたあとの `getattr(module, name)` や、実行時に組み立てた属性名は静的解析では拒否できない場合があります。
 - スクリプト入口（その `if` と、そこからしか呼ばれない関数）の中だけにある外部 import は、min ファイルでは `ImportError` に置き換えます。メッセージは、元のファイルと伴走ツールを使うよう案内します。import しただけでは走りません。`__all__` に載っている名前、または中身を静的に読めない `__all__` があるモジュールの関数は、ライブラリ側として扱います。カタログでは、本当にスクリプト専用のときだけ元ファイルを `requires_companion_tool` で skip し、`<name>_min.py` を別エントリにします。
 - 子モジュールから親パッケージへの import（`from . import helpers` や `from pkg import helpers`）は、パッケージの初期化に伴う依存なので循環には数えません。兄弟どうしの循環は既定で失敗します。親への参照を循環に数えないため、`__init__` が終わる前に親の名前を使う不具合は検出しません。その失敗は元のコードと同じく実行時に起きます。
 - 次も壊れたファイルを出さず、終了コード 1 で止まります。
@@ -125,3 +125,4 @@ python tools/minpy.py check \
 - 1 行に import と別の文が混在するものは拒否します。
 - `open("data.txt")` のようなカレントディレクトリ相対の読み取りは、元のスクリプトと同じく実行時のカレントに依存します。パッケージデータの同梱はしません。
 - 変数引数の `importlib.import_module(name)` は、バンドル内のモジュールを元の名前では読みません。プラグインは通常の import 経路に任せます。
+- 関数の仮引数が import した名前と同じ場合、仮引数より内側の参照と import を区別できません。

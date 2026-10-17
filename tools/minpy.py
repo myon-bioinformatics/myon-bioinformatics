@@ -462,8 +462,9 @@ class _Scanner(ast.NodeVisitor):
         self._importlib_modules: set[str] = set()
         self._resources_modules: set[str] = set()
         self._import_module_names: set[str] = set()
-        self._bound_import_module_names: set[str] = set()
+        self._pkg_resources_modules: set[str] = set()
         self._current_call_func: ast.AST | None = None
+        self._attribute_prefix_suppress: frozenset[str] = frozenset()
         self._stack: list[str] = ["library"]
         self.defined: set[str] = set()
         self.loads: dict[str, set[str]] = {}
@@ -494,18 +495,11 @@ class _Scanner(ast.NodeVisitor):
         for target in node.targets:
             if isinstance(target, ast.Name) and target.id == "__all__":
                 self._record_all(node.value)
-        if self._is_importlib_import_module_value(node.value):
-            for target in node.targets:
-                if isinstance(target, ast.Name):
-                    self._bound_import_module_names.add(target.id)
         self.generic_visit(node)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
         if isinstance(node.target, ast.Name) and node.target.id == "__all__" and node.value is not None:
             self._record_all(node.value)
-        if node.value is not None and self._is_importlib_import_module_value(node.value):
-            if isinstance(node.target, ast.Name):
-                self._bound_import_module_names.add(node.target.id)
         self.generic_visit(node)
 
     def visit_AugAssign(self, node: ast.AugAssign) -> None:
@@ -567,6 +561,8 @@ class _Scanner(ast.NodeVisitor):
                 self._pkgutil.add(alias.asname or alias.name.split(".")[0])
             if alias.name == "importlib" or alias.name.startswith("importlib."):
                 self._importlib_modules.add(alias.asname or "importlib")
+            if alias.name == "pkg_resources" or alias.name.startswith("pkg_resources."):
+                self._pkg_resources_modules.add(alias.asname or "pkg_resources")
             self._add_ref(0, alias.name, (), node.lineno)
         self.generic_visit(node)
 
@@ -601,6 +597,8 @@ class _Scanner(ast.NodeVisitor):
                 self._get_data_names.add(alias.asname or "get_data")
         if node.module == "pkgutil":
             self._pkgutil.add("pkgutil")
+        if node.module == "pkg_resources":
+            self._pkg_resources_modules.add("pkg_resources")
         self.generic_visit(node)
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
@@ -614,7 +612,11 @@ class _Scanner(ast.NodeVisitor):
             dotted = _attribute_dotted_name(node)
             if dotted:
                 self._reject_data_dotted(node.lineno or 0, dotted)
+        previous_suppress = self._attribute_prefix_suppress
+        if isinstance(node.value, ast.Name):
+            self._attribute_prefix_suppress = frozenset({node.value.id})
         self.generic_visit(node)
+        self._attribute_prefix_suppress = previous_suppress
 
     def visit_Name(self, node: ast.Name) -> None:
         if node.id == "__file__" and "script" not in self._stack:
@@ -622,10 +624,10 @@ class _Scanner(ast.NodeVisitor):
         if isinstance(node.ctx, ast.Load):
             if node.id in self._get_data_names:
                 self._reject_data_dotted(node.lineno or 0, "pkgutil.get_data")
-            elif node.id in self._bound_import_module_names:
-                self._reject_import_module_reference(node.lineno or 0)
             elif node.id in self._import_module_names and node is not self._current_call_func:
                 self._reject_import_module_reference(node.lineno or 0)
+            elif node.id not in self._attribute_prefix_suppress:
+                self._reject_bare_hook_module_name(node.lineno or 0, node.id)
         if isinstance(node.ctx, ast.Load):
             self.loads.setdefault(self._stack[-1], set()).add(node.id)
         self.generic_visit(node)
@@ -639,8 +641,6 @@ class _Scanner(ast.NodeVisitor):
                 self.problems.append(  # minpy: uncovered
                     "line " + str(node.lineno) + ": dynamic " + function.id + " is not bundled"
                 )
-            elif function.id in self._bound_import_module_names:
-                self._reject_import_module_reference(node.lineno or 0)
             elif function.id in self._import_module_names:
                 self._visit_import_module_call(node)
             elif function.id == "getattr" and len(node.args) >= 2:
@@ -658,16 +658,19 @@ class _Scanner(ast.NodeVisitor):
         self.generic_visit(node)
         self._current_call_func = previous_call_func
 
-    def _is_importlib_import_module_value(self, value: ast.AST) -> bool:
-        return (
-            isinstance(value, ast.Attribute)
-            and value.attr == "import_module"
-            and self._import_module_owner_is_importlib(value)
-        )
-
     def _import_module_owner_is_importlib(self, function: ast.Attribute) -> bool:
         owner = function.value
         return isinstance(owner, ast.Name) and owner.id in self._importlib_modules
+
+    def _reject_bare_hook_module_name(self, lineno: int, name: str) -> None:
+        if name in self._importlib_modules:
+            self._data_file_problem(lineno, "importlib")
+        elif name in self._pkgutil:
+            self._data_file_problem(lineno, "pkgutil")
+        elif name in self._pkg_resources_modules:
+            self._data_file_problem(lineno, "pkg_resources")
+        elif name in self._resources_modules:
+            self._data_file_problem(lineno, "importlib.resources")
 
     def _reject_import_module_reference(self, lineno: int) -> None:
         self._data_file_problem(lineno, "importlib.import_module")
@@ -714,9 +717,11 @@ class _Scanner(ast.NodeVisitor):
 
     def _data_file_problem(self, lineno: int, kind: str) -> None:
         message = {
+            "importlib": "importlib (module object references are not bundled)",
             "importlib.resources": "importlib.resources (data files are not bundled)",
             "importlib.import_module": "importlib.import_module (dynamic import is not bundled)",
             "pkg_resources": "pkg_resources (data files are not bundled)",
+            "pkgutil": "pkgutil (module object references are not bundled)",
             "pkgutil.get_data": "pkgutil.get_data (data files are not bundled)",
         }[kind]
         self.problems.append("line " + str(lineno) + ": " + message)

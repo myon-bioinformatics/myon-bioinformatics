@@ -1434,6 +1434,21 @@ def test_user_defined_import_module_call_is_not_rewritten(tmp_path: Path) -> Non
     assert f"import_module('{prefix}.mathx')" not in text
 
 
+def test_foreign_loader_import_module_attribute_reference_allowed(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    app = (
+        "class Loader:\n"
+        "    def import_module(self, name):\n"
+        "        return name\n"
+        "if __name__ == '__main__':\n"
+        "    loader = Loader()\n"
+        "    g = loader.import_module\n"
+        "    print('user:' + loader.import_module('mathx'))\n"
+    )
+    expected, _text = _bundle_and_run_main(root, app)
+    assert expected == "user:mathx"
+
+
 def test_foreign_loader_import_module_call_is_not_rewritten(tmp_path: Path) -> None:
     root = tmp_path / "src"
     app = (
@@ -1519,6 +1534,55 @@ def test_rejects_import_module_passed_as_argument(tmp_path: Path) -> None:
     root = tmp_path / "src"
     _write(root, "app.py", "from importlib import import_module\ndef take(fn):\n    return fn\ntake(import_module)\n")
     with pytest.raises(minpy.MinpyError, match=r"line 4: importlib\.import_module"):
+        _bundle(root)
+
+
+def test_rejects_bare_importlib_module_reference(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "VALUE = 1\n")
+    _write(root, "app.py", "import importlib\nm = importlib\nm.import_module('mathx')\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib \(module object"):
+        _bundle(root)
+
+
+def test_rejects_bare_pkgutil_module_reference(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "import pkgutil\nitems = [pkgutil]\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: pkgutil \(module object"):
+        _bundle(root)
+
+
+def test_rejects_bare_pkg_resources_module_reference(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "import pkg_resources\ndef take(mod):\n    return mod\ntake(pkg_resources)\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 4: pkg_resources"):
+        _bundle(root)
+
+
+def test_rejects_bare_importlib_resources_module_reference(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "from importlib import resources\nholder = resources\n")
+    with pytest.raises(minpy.MinpyError, match=r"line 2: importlib\.resources"):
+        _bundle(root)
+
+
+def test_allows_importlib_metadata_attribute_access(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "import importlib\nVALUE = importlib.metadata\n")
+    text = _bundle(root)
+    assert "importlib.metadata" in text
+
+
+def test_import_module_parameter_shadow_rejects_body_reference(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(
+        root,
+        "app.py",
+        "from importlib import import_module\n"
+        "def b(import_module):\n"
+        "    return import_module\n",
+    )
+    with pytest.raises(minpy.MinpyError, match=r"line 3: importlib\.import_module"):
         _bundle(root)
 
 
