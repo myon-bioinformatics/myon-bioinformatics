@@ -216,7 +216,7 @@ def test_public_commit_exists_uses_compare_api_reachability(monkeypatch):
 
     def ok(url):
         if url.endswith('/repos/owner/example'):
-            return b'{"default_branch":"main"}'
+            return b'{"default_branch":"main","private":false,"visibility":"public","full_name":"owner/example"}'
         if '/compare/main...' in url:
             return b'{"status":"behind"}'
         raise AssertionError(url)
@@ -225,14 +225,14 @@ def test_public_commit_exists_uses_compare_api_reachability(monkeypatch):
 
     def identical(url):
         if url.endswith('/repos/owner/example'):
-            return b'{"default_branch":"main"}'
+            return b'{"default_branch":"main","private":false,"visibility":"public","full_name":"owner/example"}'
         return b'{"status":"identical"}'
     monkeypatch.setattr(sync, '_public_http_get', identical)
     assert sync.public_commit_exists(repo, commit, entry_label=label) == commit
 
     def ahead(url):
         if url.endswith('/repos/owner/example'):
-            return b'{"default_branch":"main"}'
+            return b'{"default_branch":"main","private":false,"visibility":"public","full_name":"owner/example"}'
         return b'{"status":"ahead"}'
     monkeypatch.setattr(sync, '_public_http_get', ahead)
     with pytest.raises(ValueError, match='not reachable from default branch') as unreachable:
@@ -253,7 +253,33 @@ def test_public_commit_exists_uses_compare_api_reachability(monkeypatch):
         sync.public_commit_exists(repo, commit, entry_label=label)
 
 
-def test_public_http_get_uses_token_when_set(monkeypatch):
+@pytest.mark.parametrize('visibility,private', [
+    ('private', True), ('internal', False), ('public', True), (None, False), ('public', None),
+])
+def test_authenticated_catalog_lookup_rejects_nonpublic_metadata(monkeypatch, visibility, private):
+    calls = []
+
+    def get(url):
+        calls.append(url)
+        assert url == 'https://api.github.com/repos/owner/example'
+        return json.dumps({'full_name': 'owner/example', 'default_branch': 'main',
+                           'private': private, 'visibility': visibility}).encode()
+
+    monkeypatch.setenv('GH_TOKEN', 'test-token')
+    monkeypatch.setattr(sync, '_public_http_get', get)
+    with pytest.raises(ValueError, match='source repository is not public') as error:
+        sync.public_commit_exists('owner/example', OLD)
+    assert 'owner/example' not in str(error.value)
+    assert len(calls) == 1  # Reject before reading private branch/commit information.
+
+
+@pytest.mark.parametrize('url,authenticated', [
+    ('https://api.github.com/repos/o/r', True),
+    ('https://raw.githubusercontent.com/o/r/main/tool.py', False),
+    ('https://github.com/o/r', False),
+    ('https://example.test/api.github.com/repos/o/r', False),
+])
+def test_public_http_get_scopes_token_to_github_api(monkeypatch, url, authenticated):
     captured = {}
 
     class Response:
@@ -272,8 +298,8 @@ def test_public_http_get_uses_token_when_set(monkeypatch):
 
     monkeypatch.setenv('GH_TOKEN', 'test-token')
     monkeypatch.setattr(sync, 'urlopen', urlopen)
-    sync._public_http_get('https://api.github.com/repos/o/r')
-    assert ('Authorization', 'Bearer test-token') in captured['headers']
+    sync._public_http_get(url)
+    assert (('Authorization', 'Bearer test-token') in captured['headers']) is authenticated
 
 
 def test_validate_pin_commits_dedupes_and_checks_each_pair(monkeypatch):

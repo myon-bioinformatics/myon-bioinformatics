@@ -167,11 +167,11 @@ class PublicGitAccessBlocked(ValueError):
 
 def _public_http_get(url):
     headers = {"User-Agent": "vendor-sync/public-github"}
-    if "api.github.com/" in url:
+    if url.startswith("https://api.github.com/"):
         headers["Accept"] = "application/vnd.github+json"
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if token:
-        headers["Authorization"] = "Bearer " + token
+        token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+        if token:
+            headers["Authorization"] = "Bearer " + token
     try:
         with urlopen(Request(url, headers=headers), timeout=30) as response:
             raw = response.read(MAX_BYTES + 1)
@@ -206,6 +206,8 @@ def _public_repo_default_branch(repository):
     repository = _normalize_repository(repository)
     url = "https://api.github.com/repos/{}".format(repository)
     payload = json.loads(_public_http_get(url).decode("utf-8"))
+    if not record_is_public_source_pin(payload):
+        raise ValueError("source repository is not public")
     branch = payload.get("default_branch")
     if not isinstance(branch, str) or not branch:
         raise ValueError(PUBLIC_GIT_FETCH_ERROR)
