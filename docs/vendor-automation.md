@@ -508,3 +508,23 @@ registration request, add a reviewed catalog entry or explicit consumer
 relationship in the parent; this alone does **not** mutate the child's
 lock or place files. An eventual parent-led candidate PR still requires
 source/LICENSE verification and the consumer's CI gates.
+
+## Compact license references
+
+A registry entry may use one local path instead of repeating a LICENSE entry:
+
+```json
+{"repository": "owner/tool", "source": "tool.py", "destination": "vendor/tool.py", "license": "vendor/tool-LICENSE"}
+```
+
+`vendor_consumers.validate` expands `license` to the same repository's upstream
+`LICENSE` and that local destination before the existing topology checks. It does
+not mutate the input. An absent locked LICENSE or duplicate/unsafe destination
+still fails. Put a shared license on one source entry only. A nonstandard upstream
+license filename or a license-only enrollment uses the existing explicit entry.
+The separately verified `vendor-lock/1` commit/blob/SHA-256 records remain intact;
+this is a shorter registry representation, not a weaker license check. MIT text
+and copyright notices remain unchanged. Aoi manages subtree children in its own
+child registry; the account parent remains responsible for its direct consumer
+baselines. Whole-subtree synchronization and optional minpy file consumption are
+separate mechanisms.
