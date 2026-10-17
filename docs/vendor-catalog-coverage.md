@@ -68,3 +68,14 @@ interaction.mjs: `skipped(explicit_consumer_only)`, flutter only). The new paren
 ### Staged acceptance of the new parent tools
 
 PR #96 introduces `py_matrix.py`, `pytest_brief.py`, and `publish_check.py` without recommending an unmerged intermediate commit. PR #95 adds their catalog entries only after #96 merges, using its full first-parent main merge SHA. None has registered consumers yet. Flutter #197 keeps its reviewed parent `gh_ops.py` pin `1eda992aa6fa31a902e2c06428e53ab17e8fe3c1`; a later adoption of the new git-commit implementation must verify and materialize the accepted parent merge commit, never the PR head.
+
+2026-10-17 acceptance completed: Flutter #197 was squash-merged at
+`a9b19253fd9923ee4799e5178fd07b20de5a6ed4`; the reviewed lock and workflow
+blobs are unchanged. Parent #96 was merge-committed at
+`09831b992dc91d83b15c44861a788e03b1e654c4` after all six workflows passed.
+The three new parent tool catalog entries now use that accepted main commit,
+with explicit source and `skipped(explicit_consumer_only)`. No consumer lock
+was promoted to the new git-commit implementation. Aoi retains its web-ui
+source/LICENSE pin `573b4ca07a916c4a44695dbd5739da36b902d8f2`; Flutter retains
+its parent gh_ops/LICENSE pin `1eda992aa6fa31a902e2c06428e53ab17e8fe3c1`.
+The btk legacy-copy retirement remains a separate, uncompleted migration.

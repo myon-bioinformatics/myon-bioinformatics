@@ -486,6 +486,36 @@
         "enrollment": "skipped",
         "reason": "explicit_consumer_only"
       }
+    },
+    {
+      "repository": "myon-bioinformatics/myon-bioinformatics",
+      "commit": "09831b992dc91d83b15c44861a788e03b1e654c4",
+      "reason": "Parent-owned pytest matrix helper migrated from browser-test-kit; no fleet-wide enrollment yet. Source accepted by parent PR #96; pinned to its main merge commit.",
+      "source": "py_matrix.py",
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/myon-bioinformatics",
+      "commit": "09831b992dc91d83b15c44861a788e03b1e654c4",
+      "reason": "Parent-owned pytest brief runner migrated from browser-test-kit; no fleet-wide enrollment yet. Source accepted by parent PR #96; pinned to its main merge commit.",
+      "source": "pytest_brief.py",
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/myon-bioinformatics",
+      "commit": "09831b992dc91d83b15c44861a788e03b1e654c4",
+      "reason": "GitHub Pages publish/delivery checks migrated from browser-test-kit; no consumer enrollment yet. Source accepted by parent PR #96; pinned to its main merge commit.",
+      "source": "publish_check.py",
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
     }
   ]
 }
