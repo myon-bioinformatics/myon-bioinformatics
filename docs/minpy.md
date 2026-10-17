@@ -10,11 +10,11 @@
 - リポジトリ内の通常のパッケージ（`__init__.py` があるもの）とモジュールは取り込みます。絶対 import と相対 import の両方を扱います。
 - サードパーティは、明示した allowlist のトップレベル名だけで、かつ `--third-party-root` にある純 Python のソースだけを取り込みます。allowlist で取り込んだ成果物は標準ライブラリ専用ではないので、カタログの `<name>_min.py` には載せません。
 - ライブラリとして必要な非標準ライブラリ（モジュール直下や、スクリプト入口以外から使う関数の中）はエラーです。同じリポジトリのモジュールがあっても、標準ライブラリだけの `<name>_min.py` は作りません。
-- 文字列リテラルの `importlib.import_module("名前")` は通常の import として辿ります。引数が変数の `import_module(name)` はプラグイン読み込みとして残します。バンドル済みモジュールは、元のモジュール名でも import できます。
+- 文字列リテラルの `importlib.import_module("名前")` は通常の import として辿り、呼び出し先は接頭辞付きの名前に書き換えます。引数が変数の `import_module(name)` はプラグイン読み込みとして残し、バンドル内モジュールは元の名前では読みません。finder は自分の接頭辞の名前にしか答えません。
 - `__import__`、`exec`、`eval`、`spec_from_file_location` は拒否します。
 - `__file__` は、`if __name__ == "__main__":` の直下だけ許します。それ以外はデータファイル同梱とみなして拒否します。`importlib.resources`、`pkgutil.get_data`、`pkg_resources` も拒否します。
 - スクリプト入口（その `if` と、そこからしか呼ばれない関数）の中だけにある外部 import は、min ファイルでは `ImportError` に置き換えます。メッセージは、元のファイルと伴走ツールを使うよう案内します。import しただけでは走りません。`__all__` に載っている名前、または中身を静的に読めない `__all__` があるモジュールの関数は、ライブラリ側として扱います。カタログでは、本当にスクリプト専用のときだけ元ファイルを `requires_companion_tool` で skip し、`<name>_min.py` を別エントリにします。
-- 子モジュールから親パッケージへの import（`from . import helpers` や `from pkg import helpers`）は、パッケージの初期化に伴う依存なので循環には数えません。兄弟どうしの循環は既定で失敗します。
+- 子モジュールから親パッケージへの import（`from . import helpers` や `from pkg import helpers`）は、パッケージの初期化に伴う依存なので循環には数えません。兄弟どうしの循環は既定で失敗します。親への参照を循環に数えないため、`__init__` が終わる前に親の名前を使う不具合は検出しません。その失敗は元のコードと同じく実行時に起きます。
 - 次も壊れたファイルを出さず、終了コード 1 で止まります。
   - C 拡張（`.so` / `.pyd` / `.dylib`）
   - 名前空間パッケージ（`__init__.py` がないディレクトリ）
@@ -28,7 +28,7 @@
 
 ## 使い方
 
-コミット SHA は常に引数で渡します。コードに SHA 定数はありません。`.git` があるときは HEAD がその SHA と一致する必要があり、未コミットの変更は `--require-clean` で拒否できます。`.git` が無い合成ツリーは `--skip-head-check` を付けないと失敗します。標準ライブラリの集合は、バンドルを作った Python のメジャー.マイナーに依存します。ヘッダの `python` とそのインタプリタが違う再生成は失敗します。
+コミット SHA は常に引数で渡します。コードに SHA 定数はありません。`.git` があるときは HEAD がその SHA と一致する必要があり、未コミットの変更は `--require-clean` で拒否できます。`.git` が無い合成ツリーは `--skip-head-check` を付けないと失敗します。生成されるバイト列は Python のマイナー版ごとに変わります。作る側は、バンドルを生成する Python の版を固定してください。標準ライブラリの集合はその版に依存します。ヘッダの `python` とそのインタプリタが違う再生成は失敗します。
 
 ```sh
 python tools/minpy.py bundle \
@@ -54,7 +54,7 @@ python tools/minpy.py catalog \
 
 検索パスの既定はリポジトリ直下（`.`）です。`src` レイアウトなら `--path src` を繰り返します。
 
-検証は、ヘッダの content-sha256（その行の 16 進を 64 個の 0 に置き換えた UTF-8 全体の SHA-256）と、同じツール版・同じ Python メジャー.マイナーでの再生成がバイト一致することを見ます。`--root` を付けたときだけ `status` は `regenerated` で `ok` は true です。`--root` が無いときは自己ハッシュだけを見て、`status` は `hash-only`、`ok` は false です。終了コードはハッシュが一致すれば 0 のままです。CI は `tests/fixtures/minpy_widget` を `minpy check --root` で再生成比較します。
+検証は、ヘッダの content-sha256（その行の 16 進を 64 個の 0 に置き換えた UTF-8 全体の SHA-256）と、同じツール版・同じ Python メジャー.マイナーでの再生成がバイト一致することを見ます。`--root` を付けたときだけ `status` は `regenerated` で `ok` は true で、終了コードは 0 です。`--root` が無いときは自己ハッシュだけを見て、`status` は `hash-only`、`ok` は false で、終了コードは 0 以外です。レポートの JSON はどちらも標準出力に出します。CI は `tests/fixtures/minpy_widget` を、その場で生成したファイルに対して `minpy check --root` で再生成比較します。コミット済みの `<name>_min.py` とのずれは、この CI では検出しません。本物のバンドルを登録するときは、コミットされた成果物を `minpy check --root` で比べてください。この文書の変更では公開リポジトリのピンは登録しません。
 
 ```sh
 python tools/minpy.py check --bundle probe_min.py --root /path/to/source
@@ -114,7 +114,7 @@ python tools/minpy.py check \
 
 ## 出力
 
-ヘッダにはツール版、`owner/repo`、40 文字の commit、入口、allowlist、循環の有無、モジュール一覧、content-sha256 が入ります。モジュールの格納順は名前順です。同じ入力と同じツール版なら同じバイト列になります。
+ヘッダにはツール版、生成した Python のメジャー.マイナー、`owner/repo`、40 文字の commit、入口、allowlist、循環の有無、モジュール一覧、content-sha256 が入ります。モジュールの格納順は名前順です。同じ入力、同じツール版、同じ Python のメジャー.マイナーなら同じバイト列になります。
 
 内部モジュール名は、リポジトリと入口と commit から作った `_minpy_` で始まる接頭辞の下に置きます。バンドルごとに別の接頭辞なので、同じプロセスに複数のバンドルを import しても混ざりません。`_minpy_` で始まる名前は予約です。finder は接頭辞付きの名前だけを返し、利用側の同名モジュールは奪いません。入口の公開名はバンドルモジュールへコピーするだけです。`probe_min.func = ...` のような差し替えは、すでに束縛された内部の関数には届きません。スクリプトとして実行したときの traceback の filename は `minpy://<module>.py` です。`__file__` は生成ファイルのパスのままです。
 

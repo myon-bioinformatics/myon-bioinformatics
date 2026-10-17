@@ -982,8 +982,9 @@ def test_bundle_cli_receipt_in_process(tmp_path: Path, capsys: pytest.CaptureFix
     assert receipt["catalog"]["tools"][1]["source"] == "app_min.py"
     assert output.is_file()
     check = minpy.main(["check", "--bundle", str(output)])
-    assert check == 0
-    partial = json.loads(capsys.readouterr().out)
+    captured = capsys.readouterr()
+    assert check == 1
+    partial = json.loads(captured.out)
     assert partial["status"] == "hash-only"
     assert partial["ok"] is False
 
@@ -1010,8 +1011,345 @@ def test_checked_in_fixture_regenerates(tmp_path: Path) -> None:
     assert code == 0
 
 
+def _restamp(text: str, old: str, new: str) -> str:
+    updated = text.replace(old, new, 1)
+    digest = minpy.content_sha256(updated)
+    previous = str(minpy.parse_header(text)["content_sha256"])
+    return updated.replace(previous, digest, 1)
+
+
+def _write_bundle(tmp_path: Path, text: str) -> Path:
+    out = tmp_path / "dist" / "app_min.py"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(text.encode("utf-8"))
+    return out
+
+
+def test_import_forms_are_rewritten_without_shifting_lines(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "def add(left, right):\n    return left + right\n")
+    _write(root, "pkg/__init__.py", "from .core import VALUE\n__all__ = ['VALUE']\n")
+    _write(root, "pkg/core.py", "VALUE = 9\n")
+    _write(
+        root,
+        "app.py",
+        "import mathx as mx\n"
+        "import os, mathx\n"
+        "import pkg.core\n"
+        "from mathx import add as plus\n"
+        "from pkg import *\n"
+        "\n"
+        "def run():\n"
+        "    raise RuntimeError('boom')\n"
+        "\n"
+        "def value():\n"
+        "    return plus(mx.add(1, 2), mathx.add(0, 1)), pkg.core.VALUE, VALUE, os.name\n",
+    )
+    text = _bundle(root)
+    out = _write_bundle(tmp_path, text)
+    loaded = _load_expr(out, "module.value()")
+    assert loaded.returncode == 0, loaded.stderr
+    assert loaded.stdout.strip().startswith("(4, 9, 9, ")
+    probe = out.parent / "probe_line.py"
+    probe.write_text(
+        "import importlib.util\n"
+        f"spec = importlib.util.spec_from_file_location('line_bundle', {str(out)!r})\n"
+        "module = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(module)\n"
+        "try:\n"
+        "    module.run()\n"
+        "except RuntimeError:\n"
+        "    import traceback\n"
+        "    traceback.print_exc()\n",
+        encoding="utf-8",
+    )
+    executed = _run(probe, [str(probe)])
+    assert executed.returncode == 0, executed.stderr
+    assert 'File "minpy://app.py", line 8, in run' in executed.stderr
+    assert "boom" in executed.stderr
+
+
+def test_conditionals_follow_runtime_imports_only(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "def add(left, right):\n    return left + right\n")
+    _write(root, "other.py", "def add(left, right):\n    return left * right\n")
+    _write(
+        root,
+        "app.py",
+        "import typing\n"
+        "from typing import TYPE_CHECKING\n"
+        "if TYPE_CHECKING:\n"
+        "    import missing_type_only\n"
+        "elif typing.TYPE_CHECKING:\n"
+        "    import missing_type_attr\n"
+        "else:\n"
+        "    MARK = 'runtime'\n"
+        "if True:\n"
+        "    from mathx import add\n"
+        "else:\n"
+        "    from other import add\n"
+        "if __name__ == '__main__':\n"
+        "    import missing_script_only\n"
+        "else:\n"
+        "    FROM_IMPORT = add(2, 3)\n"
+        "VALUE = add(1, 2)\n",
+    )
+    text = _bundle(root)
+    header = minpy.parse_header(text)
+    assert header["modules"] == ["app", "mathx", "other"]
+    assert "missing_type_only" not in header["modules"]
+    assert "missing_type_attr" not in header["modules"]
+    out = _write_bundle(tmp_path, text)
+    loaded = _load_expr(out, "(module.VALUE, module.FROM_IMPORT, module.MARK)")
+    assert loaded.returncode == 0, loaded.stderr
+    assert loaded.stdout.strip() == "(3, 5, 'runtime')"
+
+
+def test_try_forms_mark_optional_imports(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "def add(left, right):\n    return left + right\n")
+    _write(root, "extra.py", "READY = 7\n")
+    _write(root, "side.py", "MARK = 'else'\n")
+    _write(
+        root,
+        "app.py",
+        "import builtins\n"
+        "try:\n"
+        "    from mathx import add\n"
+        "except RuntimeError:\n"
+        "    add = None\n"
+        "try:\n"
+        "    import missing_modulenotfound\n"
+        "except ModuleNotFoundError:\n"
+        "    missing_modulenotfound = None\n"
+        "try:\n"
+        "    import missing_tuple\n"
+        "except (OSError, ImportError):\n"
+        "    missing_tuple = None\n"
+        "try:\n"
+        "    import missing_attr\n"
+        "except builtins.ModuleNotFoundError:\n"
+        "    missing_attr = None\n"
+        "try:\n"
+        "    import missing_bare\n"
+        "except:\n"
+        "    missing_bare = None\n"
+        "try:\n"
+        "    import missing_else\n"
+        "except ImportError:\n"
+        "    missing_else = None\n"
+        "else:\n"
+        "    from side import MARK\n"
+        "finally:\n"
+        "    from extra import READY\n"
+        "VALUE = add(1, 2) + READY\n",
+    )
+    text = _bundle(root)
+    header = minpy.parse_header(text)
+    assert "mathx" in header["modules"]
+    assert "extra" in header["modules"]
+    assert "side" in header["modules"]
+    out = _write_bundle(tmp_path, text)
+    loaded = _load_expr(
+        out,
+        "(module.VALUE, module.missing_modulenotfound, module.missing_tuple, module.missing_attr, module.missing_bare)",
+    )
+    assert loaded.returncode == 0, loaded.stderr
+    assert loaded.stdout.strip() == "(10, None, None, None, None)"
+
+
+def test_augmented_and_annotated_all_are_library(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(
+        root,
+        "app.py",
+        "__all__: list[str] = ['calc']\n"
+        "__all__ += ['run']\n"
+        "\n"
+        "def calc():\n"
+        "    return 1\n"
+        "\n"
+        "def run():\n"
+        "    import queryu_not_real\n"
+        "    return queryu_not_real\n"
+        "\n"
+        "if __name__ == '__main__':\n"
+        "    print(run())\n",
+    )
+    with pytest.raises(minpy.MinpyError, match="queryu_not_real"):
+        _bundle(root)
+
+
+def test_async_function_import_is_bundled(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "mathx.py", "def add(left, right):\n    return left + right\n")
+    _write(
+        root,
+        "app.py",
+        "import asyncio\n"
+        "\n"
+        "async def total():\n"
+        "    from mathx import add\n"
+        "    return add(2, 3)\n"
+        "\n"
+        "def value():\n"
+        "    return asyncio.run(total())\n",
+    )
+    text = _bundle(root)
+    assert "mathx" in minpy.parse_header(text)["modules"]
+    out = _write_bundle(tmp_path, text)
+    loaded = _load_expr(out, "module.value()")
+    assert loaded.returncode == 0, loaded.stderr
+    assert loaded.stdout.strip() == "5"
+
+
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="except* requires Python 3.11")
+def test_except_star_optional_import(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(
+        root,
+        "app.py",
+        "try:\n"
+        "    import missing_star\n"
+        "except* ModuleNotFoundError:\n"
+        "    missing_star = None\n"
+        "VALUE = missing_star\n",
+    )
+    text = _bundle(root)
+    out = _write_bundle(tmp_path, text)
+    loaded = _load_expr(out, "module.VALUE")
+    assert loaded.returncode == 0, loaded.stderr
+    assert loaded.stdout.strip() == "None"
+
+
+def test_check_rejects_tool_python_and_lock_identity(tmp_path: Path) -> None:
+    root = tmp_path / "src"
+    _write(root, "app.py", "VALUE = 1\n")
+    text = _bundle(root)
+    other_python = "3.8" if minpy._python_version() != "3.8" else "3.9"
+    wrong_python = _restamp(text, "# python: " + minpy._python_version(), "# python: " + other_python)
+    with pytest.raises(minpy.MinpyError, match="standard-library set can differ"):
+        minpy.check_bundle(wrong_python, source_root=root, skip_head_check=True)
+    wrong_tool = _restamp(text, "# tool: minpy/" + minpy.__version__, "# tool: minpy/9.9.9")
+    with pytest.raises(minpy.MinpyError, match="minpy/9.9.9"):
+        minpy.check_bundle(wrong_tool, source_root=root, skip_head_check=True)
+    raw = text.encode("utf-8")
+    lock = {
+        "schema": "vendor-lock/1",
+        "files": [{
+            "repository": "example/other",
+            "ref": "refs/heads/main",
+            "commit": COMMIT,
+            "source": "app_min.py",
+            "destination": "vendor/app_min.py",
+            "blob_sha": minpy.git_blob_sha1(raw),
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "bundle": _metadata(),
+        }],
+    }
+    path = tmp_path / "vendor.lock.json"
+    path.write_text(json.dumps(lock), encoding="utf-8")
+    with pytest.raises(minpy.MinpyError, match="lock repository or commit"):
+        minpy.check_bundle(text, lock_path=path, destination="vendor/app_min.py")
+    lock["files"][0]["repository"] = REPO
+    lock["files"][0]["commit"] = "b" * 40
+    path.write_text(json.dumps(lock), encoding="utf-8")
+    with pytest.raises(minpy.MinpyError, match="lock repository or commit"):
+        minpy.check_bundle(text, lock_path=path, destination="vendor/app_min.py")
+
+
 def test_checked_in_registry_still_validates() -> None:
     root = Path(__file__).resolve().parents[1]
     registry = json.loads((root / "vendor-consumers.json").read_text(encoding="utf-8"))
     lock = json.loads((root / "vendor.lock.json").read_text(encoding="utf-8"))
     assert vendor_consumers.compare(registry, lock, "myon-bioinformatics/myon-bioinformatics")["matches"]
+
+
+def test_unexecuted_statements_are_classified(tmp_path: Path) -> None:
+    """covered + unreachable + uncovered equals the statement count.
+
+    Missed lines that only report an error are marked ``minpy: unreachable``
+    when no input can reach them, or ``minpy: uncovered`` when a caller could.
+    Every other missed statement counts as uncovered.
+    """
+    pytest.importorskip("coverage")
+    if os.environ.get("MINPY_COVERAGE_CHILD"):
+        return
+    repo = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["MINPY_COVERAGE_CHILD"] = "1"
+    env["COVERAGE_FILE"] = str(tmp_path / ".coverage")
+    rcfile = tmp_path / "coveragerc"
+    rcfile.write_text("[run]\nbranch = false\n", encoding="utf-8")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "coverage",
+            "run",
+            "--rcfile",
+            str(rcfile),
+            "--include",
+            "*/minpy.py",
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_minpy.py",
+            "--tb=line",
+        ],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + "\n" + result.stderr
+    report_path = tmp_path / "coverage.json"
+    listed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "coverage",
+            "json",
+            "-o",
+            str(report_path),
+            "--include",
+            "*/minpy.py",
+        ],
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert listed.returncode == 0, listed.stderr
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert len(payload["files"]) == 1
+    info = next(iter(payload["files"].values()))
+    executed = set(info["executed_lines"])
+    missed = set(info["missing_lines"])
+    source = (repo / "tools" / "minpy.py").read_text(encoding="utf-8").splitlines()
+
+    def marker(number: int) -> str | None:
+        text = source[number - 1]
+        if "minpy: unreachable" in text:
+            return "unreachable"
+        if "minpy: uncovered" in text:
+            return "uncovered"
+        return None
+
+    unreachable = {number for number in executed | missed if marker(number) == "unreachable"}
+    assert unreachable <= missed
+    untagged = []
+    for number in sorted(missed):
+        text = source[number - 1]
+        reports_error = (
+            "raise MinpyError" in text or "problems.append" in text or "raise SystemExit" in text
+        )
+        if reports_error and marker(number) not in {"unreachable", "uncovered"}:
+            untagged.append(number)
+    assert untagged == []
+    uncovered = missed - unreachable
+    assert len(executed) + len(unreachable) + len(uncovered) == len(executed | missed)
+    assert not (executed & unreachable)
+    assert not (unreachable & uncovered)

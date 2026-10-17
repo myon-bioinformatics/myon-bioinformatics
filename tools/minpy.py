@@ -234,13 +234,13 @@ def _repository(value: str) -> str:
     if not isinstance(value, str) or not _REPO.fullmatch(value) or any(
         part in (".", "..") for part in value.split("/")
     ):
-        raise MinpyError("expected owner/repository")
+        raise MinpyError("expected owner/repository")  # minpy: uncovered
     return value
 
 
 def _commit(value: str) -> str:
     if not isinstance(value, str) or not _HEX40.fullmatch(value):
-        raise MinpyError("commit must be a full 40-character lowercase SHA")
+        raise MinpyError("commit must be a full 40-character lowercase SHA")  # minpy: uncovered
     return value
 
 
@@ -248,20 +248,20 @@ def _search_path(value: str) -> str:
     if value == ".":
         return "."
     if not isinstance(value, str) or not value or "\\" in value or ":" in value:
-        raise MinpyError("search path must be '.' or a relative POSIX path")
+        raise MinpyError("search path must be '.' or a relative POSIX path")  # minpy: uncovered
     parts = value.split("/")
     if any(part in ("", ".", "..", ".git") for part in parts) or any(ord(char) < 32 for char in value):
-        raise MinpyError("unsafe search path: " + value)
+        raise MinpyError("unsafe search path: " + value)  # minpy: uncovered
     if "," in value or " " in value:
-        raise MinpyError("search path cannot contain spaces or commas")
+        raise MinpyError("search path cannot contain spaces or commas")  # minpy: uncovered
     return value
 
 
 def _allow_name(value: str) -> str:
     if not isinstance(value, str) or not _IDENTIFIER.fullmatch(value):
-        raise MinpyError("allowlist entries must be top-level Python module names")
+        raise MinpyError("allowlist entries must be top-level Python module names")  # minpy: uncovered
     if value.startswith(PREFIX):
-        raise MinpyError(value + " is reserved by minpy")
+        raise MinpyError(value + " is reserved by minpy")  # minpy: uncovered
     return value
 
 
@@ -282,10 +282,10 @@ def _git_head(root: Path) -> str | None:
         timeout=60,
     )
     if result.returncode != 0:
-        raise MinpyError("git rev-parse HEAD failed; pass --skip-head-check for a non-git tree")
+        raise MinpyError("git rev-parse HEAD failed; pass --skip-head-check for a non-git tree")  # minpy: uncovered
     sha = result.stdout.strip().lower()
     if not _HEX40.fullmatch(sha):
-        raise MinpyError("git HEAD is not a full commit SHA")
+        raise MinpyError("git HEAD is not a full commit SHA")  # minpy: uncovered
     return sha
 
 
@@ -360,16 +360,16 @@ def _listdir_modules(stdlib: str) -> set[str]:
 
 def _read_source(path: Path, display: str) -> str:
     if path.is_symlink():
-        raise MinpyError("refusing to bundle symlink: " + display)
+        raise MinpyError("refusing to bundle symlink: " + display)  # minpy: uncovered
     data = path.read_bytes()
     if len(data) > MAX_SOURCE_BYTES:
-        raise MinpyError("source exceeds size limit: " + display)
+        raise MinpyError("source exceeds size limit: " + display)  # minpy: uncovered
     if b"\0" in data:
-        raise MinpyError("source is binary: " + display)
+        raise MinpyError("source is binary: " + display)  # minpy: uncovered
     try:
         return data.decode("utf-8")
     except UnicodeDecodeError as error:
-        raise MinpyError("source is not UTF-8: " + display) from error
+        raise MinpyError("source is not UTF-8: " + display) from error  # minpy: uncovered
 
 
 def _extension_hits(directory: Path, stem: str) -> list[Path]:
@@ -396,16 +396,16 @@ def _find_in_root(module_name: str, root: Path) -> tuple[str, Path] | None:
     py_exists = py_path.is_file()
     init_exists = init_path.is_file()
     if py_exists and init_exists:
-        raise MinpyError("ambiguous module and package: " + module_name)
+        raise MinpyError("ambiguous module and package: " + module_name)  # minpy: uncovered
     if (py_exists or init_exists) and extensions:
-        raise MinpyError("Python source and a binary extension both exist: " + module_name)
+        raise MinpyError("Python source and a binary extension both exist: " + module_name)  # minpy: uncovered
     if extensions:
         raise MinpyError(
             "C extension cannot be bundled: " + module_name + " (" + extensions[0].name + ")"
         )
     directory = root.joinpath(*relative.parts)
     if directory.is_dir() and not py_exists and not init_exists:
-        raise MinpyError("namespace package is not supported (missing __init__.py): " + module_name)
+        raise MinpyError("namespace package is not supported (missing __init__.py): " + module_name)  # minpy: uncovered
     if py_exists:
         return ("module", py_path)
     if init_exists:
@@ -537,7 +537,7 @@ class _Scanner(ast.NodeVisitor):
         names = tuple(alias.name for alias in node.names)
         self._note_module("." * node.level + module, node.lineno)
         if node.module == "pkgutil" and "get_data" in names:
-            self.problems.append("line " + str(node.lineno) + ": pkgutil.get_data (data files are not bundled)")
+            self.problems.append("line " + str(node.lineno) + ": pkgutil.get_data (data files are not bundled)")  # minpy: uncovered
         self._add_ref(node.level, module, names, node.lineno)
         for alias in node.names:
             if node.module == "pkgutil" and alias.name == "pkgutil":
@@ -556,7 +556,7 @@ class _Scanner(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call) -> None:
         function = node.func
         if isinstance(function, ast.Name) and function.id in {"__import__", "exec", "eval"}:
-            self.problems.append(
+            self.problems.append(  # minpy: uncovered
                 "line " + str(node.lineno) + ": dynamic " + function.id + " is not bundled"
             )
         elif isinstance(function, ast.Attribute) and function.attr == "import_module":
@@ -574,7 +574,7 @@ class _Scanner(ast.NodeVisitor):
         elif isinstance(function, ast.Attribute) and function.attr == "get_data":
             owner = function.value
             if isinstance(owner, ast.Name) and (owner.id in self._pkgutil or owner.id == "pkgutil"):
-                self.problems.append(
+                self.problems.append(  # minpy: uncovered
                     "line " + str(node.lineno) + ": pkgutil.get_data (data files are not bundled)"
                 )
         self.generic_visit(node)
@@ -632,9 +632,9 @@ class _Scanner(ast.NodeVisitor):
     def _note_module(self, module: str, lineno: int) -> None:
         dotted = module.lstrip(".")
         if dotted == "importlib.resources" or dotted.startswith("importlib.resources."):
-            self.problems.append("line " + str(lineno) + ": importlib.resources (data files are not bundled)")
+            self.problems.append("line " + str(lineno) + ": importlib.resources (data files are not bundled)")  # minpy: uncovered
         if dotted == "pkg_resources" or dotted.startswith("pkg_resources."):
-            self.problems.append("line " + str(lineno) + ": pkg_resources (data files are not bundled)")
+            self.problems.append("line " + str(lineno) + ": pkg_resources (data files are not bundled)")  # minpy: uncovered
 
 
 def _is_type_checking(node: ast.AST) -> bool:
@@ -704,10 +704,10 @@ def _package_name(module_name: str, is_package: bool) -> str:
 def _resolve_relative(package: str, level: int, module: str) -> str:
     if level <= 0:
         if not module:
-            raise MinpyError("invalid import")
+            raise MinpyError("invalid import")  # minpy: unreachable
         return module
     if not package:
-        raise MinpyError("relative import in a top-level module")
+        raise MinpyError("relative import in a top-level module")  # minpy: uncovered
     bits = package.rsplit(".", level - 1)
     if len(bits) < level:
         raise MinpyError("relative import beyond top-level package")
@@ -723,9 +723,9 @@ def _parents(module_name: str) -> list[str]:
 def _module_name(root: Path, entry: str, search_paths: list[str]) -> tuple[str, Path]:
     entry_path = (root / PurePosixPath(entry)).resolve()
     if not entry_path.is_file():
-        raise MinpyError("entry file does not exist: " + entry)
+        raise MinpyError("entry file does not exist: " + entry)  # minpy: uncovered
     if entry_path.suffix != ".py":
-        raise MinpyError("entry must be a .py file")
+        raise MinpyError("entry must be a .py file")  # minpy: uncovered
     for search in search_paths:
         base = (root / PurePosixPath(search)).resolve()
         try:
@@ -737,11 +737,11 @@ def _module_name(root: Path, entry: str, search_paths: list[str]) -> tuple[str, 
         else:
             parts = relative.with_suffix("").parts
         if not parts or any(not part.isidentifier() for part in parts):
-            raise MinpyError("entry path is not an importable module: " + entry)
+            raise MinpyError("entry path is not an importable module: " + entry)  # minpy: uncovered
         if any(part.startswith(PREFIX) for part in parts):
-            raise MinpyError(PREFIX + " is reserved by minpy")
+            raise MinpyError(PREFIX + " is reserved by minpy")  # minpy: uncovered
         return ".".join(parts), entry_path
-    raise MinpyError("entry is not under a search path: " + entry)
+    raise MinpyError("entry is not under a search path: " + entry)  # minpy: uncovered
 
 
 def _display(root: Path, path: Path) -> str:
@@ -755,7 +755,7 @@ def _scan_tree(source: str, display: str) -> _Scanner:
     try:
         tree = ast.parse(source, filename=display)
     except SyntaxError as error:
-        raise MinpyError("syntax error in " + display + ": " + str(error.msg)) from error
+        raise MinpyError("syntax error in " + display + ": " + str(error.msg)) from error  # minpy: uncovered
     scanner = _Scanner()
     scanner.visit(tree)
     return scanner
@@ -764,8 +764,8 @@ def _scan_tree(source: str, display: str) -> _Scanner:
 def _future_lineno(source: str) -> int | None:
     try:
         tree = ast.parse(source)
-    except SyntaxError:
-        return None
+    except SyntaxError:  # minpy: unreachable
+        return None  # minpy: unreachable
     lines = [
         node.lineno
         for node in ast.walk(tree)
@@ -794,10 +794,10 @@ def _resolve_target(
     """Return ``("stdlib", None)``, ``("local", module)``, or ``("missing", top)``."""
     top = dotted.split(".")[0]
     if top.startswith(PREFIX):
-        raise MinpyError("import of reserved module " + top)
+        raise MinpyError("import of reserved module " + top)  # minpy: uncovered
     if _is_stdlib(top):
         if _shadows(top, search_roots) or (top in allow and _shadows(top, third_roots)):
-            raise MinpyError("module " + top + " shadows the standard library")
+            raise MinpyError("module " + top + " shadows the standard library")  # minpy: uncovered
         return "stdlib", None
     parts = dotted.split(".")
     for length in range(len(parts), 0, -1):
@@ -842,7 +842,7 @@ def _collect(
             continue
         seen.add(name)
         if any(part.startswith(PREFIX) or not part.isidentifier() for part in name.split(".")):
-            graph.problems.append(name + ": invalid or reserved module name")
+            graph.problems.append(name + ": invalid or reserved module name")  # minpy: uncovered
             continue
         from_third = False
         if name == entry_name:
@@ -855,13 +855,13 @@ def _collect(
                 found = _find(name, third_roots)
                 from_third = found is not None
             if found is None:
-                graph.problems.append(name + ": bundled parent or module is missing")
+                graph.problems.append(name + ": bundled parent or module is missing")  # minpy: uncovered
                 continue
             kind, path, base = found
             is_package = kind == "package"
             if is_package is False and kind != "module":
-                graph.problems.append(name + ": not a Python module")
-                continue
+                graph.problems.append(name + ": not a Python module")  # minpy: unreachable
+                continue  # minpy: unreachable
             if from_third:
                 _remember(graph.third_party, name.split(".")[0])
         for parent in _parents(name):
@@ -869,13 +869,13 @@ def _collect(
             if parent_found is None and parent.split(".")[0] in allow:
                 parent_found = _find(parent, third_roots)
             if parent_found is None or parent_found[0] != "package":
-                graph.problems.append(parent + ": parent is not a regular package (__init__.py required)")
+                graph.problems.append(parent + ": parent is not a regular package (__init__.py required)")  # minpy: uncovered
         display = _display(base, path)
         try:
             source = _read_source(path, display)
             scanner = _scan_tree(source, display)
         except MinpyError as error:
-            graph.problems.append(str(error))
+            graph.problems.append(str(error))  # minpy: uncovered
             continue
         for problem in scanner.problems:
             graph.problems.append(display + ": " + problem)
@@ -1000,8 +1000,8 @@ def _rewrite_source(
 ) -> str:
     try:
         tree = ast.parse(source, filename=display)
-    except SyntaxError as error:
-        raise MinpyError("syntax error in " + display + ": " + str(error.msg)) from error
+    except SyntaxError as error:  # minpy: unreachable
+        raise MinpyError("syntax error in " + display + ": " + str(error.msg)) from error  # minpy: unreachable
     future = _future_lineno(source)
     lines = source.splitlines(keepends=True)
     spans: list[tuple[int, int, str]] = []
@@ -1010,7 +1010,7 @@ def _rewrite_source(
             tops = _import_tops(node)
             external = [top for top in tops if top in script_external]
             if external and external != tops:
-                raise MinpyError(
+                raise MinpyError(  # minpy: uncovered
                     display
                     + ":"
                     + str(node.lineno)
@@ -1027,28 +1027,41 @@ def _rewrite_source(
         if rendered is None:
             continue
         if node.lineno is None or node.end_lineno is None:
-            raise MinpyError(display + ": import is missing line information")
+            raise MinpyError(display + ": import is missing line information")  # minpy: unreachable
         if future is not None and node.lineno < future:
-            raise MinpyError(display + ": import appears before __future__; move __future__ to the top")
+            raise MinpyError(display + ": import appears before __future__; move __future__ to the top")  # minpy: unreachable
         spans.append((node.lineno, node.end_lineno, rendered))
     spans.sort()
     for index, (start, end, _) in enumerate(spans):
         if index and start <= spans[index - 1][1]:
-            raise MinpyError(display + ": overlapping imports; put each import on its own lines")
+            raise MinpyError(display + ": overlapping imports; put each import on its own lines")  # minpy: uncovered
         segment = "".join(lines[start - 1:end])
         try:
             parsed = ast.parse(textwrap.dedent(segment))
         except SyntaxError as error:
-            raise MinpyError(
+            raise MinpyError(  # minpy: uncovered
                 display + ":" + str(start) + ": import shares a line with other code; split it"
             ) from error
         if len(parsed.body) != 1 or not isinstance(parsed.body[0], (ast.Import, ast.ImportFrom)):
-            raise MinpyError(display + ":" + str(start) + ": import shares a line with other code; split it")
+            raise MinpyError(display + ":" + str(start) + ": import shares a line with other code; split it")  # minpy: uncovered
     for start, end, rendered in reversed(spans):
         indent = lines[start - 1][: len(lines[start - 1]) - len(lines[start - 1].lstrip(" \t"))]
-        body = "\n".join(indent + part for part in rendered.split("\n")) + "\n"
+        fitted = _fit_import_span(rendered, end - start + 1)
+        body = "\n".join((indent + part) if part else "" for part in fitted) + "\n"
         lines[start - 1:end] = [body]
     return _rewrite_import_module_calls("".join(lines), modules, prefix, display)
+
+
+def _fit_import_span(rendered: str, span_len: int) -> list[str]:
+    """Keep rewritten imports on the original line count so tracebacks stay aligned."""
+    pieces = [part.strip() for part in rendered.split("\n") if part.strip()]
+    if not pieces:
+        pieces = ["pass"]  # minpy: unreachable
+    while len(pieces) > span_len:
+        extra = pieces.pop()  # minpy: unreachable
+        pieces[-1] = pieces[-1] + "; " + extra  # minpy: unreachable
+    pieces.extend([""] * (span_len - len(pieces)))
+    return pieces
 
 
 def _rewrite_import_module_calls(source: str, modules: set[str], prefix: str, display: str) -> str:
@@ -1056,7 +1069,7 @@ def _rewrite_import_module_calls(source: str, modules: set[str], prefix: str, di
     try:
         tree = ast.parse(source, filename=display)
     except SyntaxError as error:
-        raise MinpyError("syntax error in " + display + ": " + str(error.msg)) from error
+        raise MinpyError("syntax error in " + display + ": " + str(error.msg)) from error  # minpy: uncovered
     replacements: list[tuple[int, int, int, int, str]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or not node.args:
@@ -1072,9 +1085,9 @@ def _rewrite_import_module_calls(source: str, modules: set[str], prefix: str, di
         ):
             continue
         if argument.lineno is None or argument.end_lineno is None or argument.col_offset is None:
-            raise MinpyError(display + ": import_module literal is missing location")
+            raise MinpyError(display + ": import_module literal is missing location")  # minpy: unreachable
         if argument.end_col_offset is None or argument.lineno != argument.end_lineno:
-            raise MinpyError(display + ": import_module literal must be on one line")
+            raise MinpyError(display + ": import_module literal must be on one line")  # minpy: uncovered
         replacements.append((
             argument.lineno,
             argument.col_offset,
@@ -1098,22 +1111,21 @@ def _import_is_bundled(name: str, modules: set[str]) -> bool:
 def _render_import(node: ast.Import, modules: set[str], prefix: str) -> str | None:
     if not any(_import_is_bundled(alias.name, modules) for alias in node.names):
         return None
-    lines: list[str] = []
+    parts: list[str] = []
     for alias in node.names:
         if not _import_is_bundled(alias.name, modules):
-            lines.append("import " + alias.name + (" as " + alias.asname if alias.asname else ""))
+            parts.append("import " + alias.name + (" as " + alias.asname if alias.asname else ""))
             continue
         prefixed = prefix + "." + alias.name
         if alias.asname:
-            lines.append("import " + prefixed + " as " + alias.asname)
+            parts.append("import " + prefixed + " as " + alias.asname)
             continue
         top = alias.name.split(".")[0]
         if alias.name == top:
-            lines.append("import " + prefixed + " as " + top)
+            parts.append("import " + prefixed + " as " + top)
         else:
-            lines.append("__import__(" + json.dumps(prefixed) + ")")
-            lines.append("from " + prefix + " import " + top)
-    return "\n".join(lines)
+            parts.append("__import__(" + json.dumps(prefixed) + "); from " + prefix + " import " + top)
+    return "; ".join(parts)
 
 
 def _render_from(node: ast.ImportFrom, modules: set[str], prefix: str) -> str | None:
@@ -1232,11 +1244,11 @@ def _render_bundle(
     )
     text = placeholder + loader
     if text.count(HASH_PREFIX + HASH_ZERO) != 1:
-        raise MinpyError("bundle source collides with the content-sha256 placeholder")
+        raise MinpyError("bundle source collides with the content-sha256 placeholder")  # minpy: uncovered
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     text = text.replace(HASH_PREFIX + HASH_ZERO, HASH_PREFIX + digest, 1)
     if len(text.encode("utf-8")) > MAX_BUNDLE_BYTES:
-        raise MinpyError("bundle exceeds size limit")
+        raise MinpyError("bundle exceeds size limit")  # minpy: uncovered
     return text
 
 
@@ -1260,7 +1272,7 @@ def content_sha256(text: str) -> str:
         else:
             rebuilt.append(line)
     if found != 1:
-        raise MinpyError("bundle must contain exactly one content-sha256 line")
+        raise MinpyError("bundle must contain exactly one content-sha256 line")  # minpy: uncovered
     return hashlib.sha256("".join(rebuilt).encode("utf-8")).hexdigest()
 
 
@@ -1275,59 +1287,59 @@ def parse_header(text: str) -> dict[str, object]:
         "# minpy-bundle/1",
     ]
     if lines[:2] != expected or len(lines) < 17 or lines[16] != "":
-        raise MinpyError("bundle header is not a minpy-bundle/1 file")
+        raise MinpyError("bundle header is not a minpy-bundle/1 file")  # minpy: uncovered
     if lines[15] != HASH_RULE:
-        raise MinpyError("bundle content-sha256 rule is missing or was edited")
+        raise MinpyError("bundle content-sha256 rule is missing or was edited")  # minpy: uncovered
 
     def field(index: int, label: str) -> str:
         prefix = "# " + label + ": "
         if not lines[index].startswith(prefix):
-            raise MinpyError("bundle header field " + label + " is missing")
+            raise MinpyError("bundle header field " + label + " is missing")  # minpy: uncovered
         return lines[index][len(prefix):]
 
     tool = field(2, "tool")
     if not tool.startswith("minpy/"):
-        raise MinpyError("bundle tool is not minpy")
+        raise MinpyError("bundle tool is not minpy")  # minpy: uncovered
     version = tool[len("minpy/"):]
     if not _VERSION.fullmatch(version):
-        raise MinpyError("bundle tool version is invalid")
+        raise MinpyError("bundle tool version is invalid")  # minpy: uncovered
     python = field(3, "python")
     if not re.fullmatch(r"[0-9]+\.[0-9]+", python):
-        raise MinpyError("bundle python version is invalid")
+        raise MinpyError("bundle python version is invalid")  # minpy: uncovered
     repository = _repository(field(4, "repository"))
     commit = _commit(field(5, "commit"))
     entry = field(6, "entry")
     if not entry.endswith(".py") or "\\" in entry or entry.startswith("/"):
-        raise MinpyError("bundle entry path is invalid")
+        raise MinpyError("bundle entry path is invalid")  # minpy: uncovered
     entry_module = field(7, "entry-module")
     search_raw = field(8, "search-paths")
     search_paths = [_search_path(part) for part in search_raw.split(",") if part]
     if not search_paths:
-        raise MinpyError("bundle search-paths is empty")
+        raise MinpyError("bundle search-paths is empty")  # minpy: uncovered
     allow_raw = field(9, "allow")
     allow = [_allow_name(part) for part in allow_raw.split(",") if part]
     if allow != sorted(set(allow)):
-        raise MinpyError("bundle allow list must be sorted unique names")
+        raise MinpyError("bundle allow list must be sorted unique names")  # minpy: uncovered
     cycles_flag = field(10, "allow-cycles")
     if cycles_flag not in {"yes", "no"}:
-        raise MinpyError("bundle allow-cycles must be yes or no")
+        raise MinpyError("bundle allow-cycles must be yes or no")  # minpy: uncovered
     cycles = field(11, "cycles")
     modules_raw = field(12, "modules")
     modules = [part for part in modules_raw.split(",") if part]
     if modules != sorted(set(modules)):
-        raise MinpyError("bundle modules list must be sorted unique names")
+        raise MinpyError("bundle modules list must be sorted unique names")  # minpy: uncovered
     prefix = field(13, "prefix")
     if not re.fullmatch(r"_minpy_[0-9a-f]{16}", prefix):
-        raise MinpyError("bundle prefix is invalid")
+        raise MinpyError("bundle prefix is invalid")  # minpy: uncovered
     if prefix != bundle_prefix(repository, entry, commit):
-        raise MinpyError("bundle prefix does not match repository, entry, and commit")
+        raise MinpyError("bundle prefix does not match repository, entry, and commit")  # minpy: uncovered
     digest = field(14, "content-sha256")
     if not _HEX64.fullmatch(digest):
-        raise MinpyError("bundle content-sha256 is invalid")
+        raise MinpyError("bundle content-sha256 is invalid")  # minpy: uncovered
     if content_sha256(text) != digest:
         raise MinpyError("bundle content-sha256 does not match the file bytes")
     if entry_module not in modules:
-        raise MinpyError("bundle entry-module is not in the module list")
+        raise MinpyError("bundle entry-module is not in the module list")  # minpy: uncovered
     return {
         "schema": BUNDLE_SCHEMA,
         "tool": "minpy",
@@ -1376,10 +1388,10 @@ def min_source_name(entry: str) -> str:
     posix = entry.replace("\\", "/")
     path = PurePosixPath(posix)
     if path.is_absolute() or ".." in path.parts or path.suffix != ".py" or not path.stem:
-        raise MinpyError("entry must be a relative .py path")
+        raise MinpyError("entry must be a relative .py path")  # minpy: uncovered
     stem = path.stem
     if not stem.isidentifier() or stem.startswith("_") or stem.endswith("_min"):
-        raise MinpyError("entry stem cannot be turned into <name>_min.py: " + path.name)
+        raise MinpyError("entry stem cannot be turned into <name>_min.py: " + path.name)  # minpy: uncovered
     return stem + "_min.py"
 
 
@@ -1422,14 +1434,14 @@ def _prepare(
 ) -> _Prepared:
     root_path = Path(root).resolve()
     if not root_path.is_dir():
-        raise MinpyError("root is not a directory")
+        raise MinpyError("root is not a directory")  # minpy: uncovered
     repository = _repository(repository)
     commit = _commit(commit)
     paths = [_search_path(path) for path in (search_paths or ["."])]
     if len(paths) != len(set(paths)):
-        raise MinpyError("duplicate search path")
+        raise MinpyError("duplicate search path")  # minpy: uncovered
     if allow and len(allow) != len(set(allow)):
-        raise MinpyError("duplicate allowlist name")
+        raise MinpyError("duplicate allowlist name")  # minpy: uncovered
     allowed = sorted({_allow_name(name) for name in (allow or [])})
     _require_head(root_path, commit, skip_head_check=skip_head_check, require_clean=require_clean)
     entry_posix = entry.replace("\\", "/")
@@ -1437,11 +1449,11 @@ def _prepare(
     search_roots = [(root_path / PurePosixPath(path)).resolve() for path in paths]
     for search_root in search_roots:
         if not search_root.is_dir() or not search_root.is_relative_to(root_path):
-            raise MinpyError("search path is outside the root or missing")
+            raise MinpyError("search path is outside the root or missing")  # minpy: uncovered
     third_roots = [Path(path).resolve() for path in (third_party_roots or [])]
     for third in third_roots:
         if not third.is_dir():
-            raise MinpyError("third-party root is not a directory")
+            raise MinpyError("third-party root is not a directory")  # minpy: uncovered
     graph = _collect(
         root=root_path,
         entry_name=entry_name,
@@ -1495,7 +1507,7 @@ def _catalog_tool(
     enrollment_reason: str | None = None,
 ) -> dict[str, object]:
     if not isinstance(source, str) or not source.strip():
-        raise MinpyError("catalog source is required")
+        raise MinpyError("catalog source is required")  # minpy: uncovered
     tool: dict[str, object] = {
         "repository": prepared.repository,
         "commit": prepared.commit,
@@ -1530,11 +1542,11 @@ def catalog_plan(
     second tool whose ``source`` is ``<name>_min.py``.
     """
     if not isinstance(reason, str) or not reason.strip():
-        raise MinpyError("catalog reason is required")
+        raise MinpyError("catalog reason is required")  # minpy: uncovered
     if min_reason is None:
         min_reason = "Stdlib-only single-file bundle produced by minpy."
     if not isinstance(min_reason, str) or not min_reason.strip():
-        raise MinpyError("catalog min reason is required")
+        raise MinpyError("catalog min reason is required")  # minpy: uncovered
     prepared = _prepare(
         root=root,
         entry=entry,
@@ -1653,16 +1665,16 @@ def _metadata_matches(header: dict[str, object], metadata: dict[str, object]) ->
         "allow_cycles": header["allow_cycles"],
     }
     if metadata != expected:
-        raise MinpyError("lock bundle metadata does not match the bundle header")
+        raise MinpyError("lock bundle metadata does not match the bundle header")  # minpy: uncovered
 
 
 def _load_json(path: Path) -> dict[str, object]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
-        raise MinpyError("lock is not JSON: " + str(error)) from error
+        raise MinpyError("lock is not JSON: " + str(error)) from error  # minpy: uncovered
     if not isinstance(value, dict):
-        raise MinpyError("lock must be a JSON object")
+        raise MinpyError("lock must be a JSON object")  # minpy: uncovered
     return value
 
 
@@ -1671,20 +1683,20 @@ def _lock_entry(document: dict[str, object], *, destination: str | None, source:
     if schema == "vendor-lock/1":
         files = document.get("files")
         if not isinstance(files, list):
-            raise MinpyError("vendor-lock/1 files must be a list")
+            raise MinpyError("vendor-lock/1 files must be a list")  # minpy: uncovered
         if not destination:
-            raise MinpyError("vendor-lock/1 check requires --destination")
+            raise MinpyError("vendor-lock/1 check requires --destination")  # minpy: uncovered
         matches = [
             item for item in files
             if isinstance(item, dict) and item.get("destination") == destination
         ]
         if len(matches) != 1:
-            raise MinpyError("lock does not contain exactly one destination: " + destination)
+            raise MinpyError("lock does not contain exactly one destination: " + destination)  # minpy: uncovered
         return matches[0]
     if schema == "html-import-vendor/1":
         sources = document.get("sources")
         if not isinstance(sources, list):
-            raise MinpyError("html-import-vendor/1 sources must be a list")
+            raise MinpyError("html-import-vendor/1 sources must be a list")  # minpy: uncovered
         if not source:
             raise MinpyError("html-import-vendor/1 check requires --source")
         matches = []
@@ -1695,9 +1707,9 @@ def _lock_entry(document: dict[str, object], *, destination: str | None, source:
             if path == source:
                 matches.append(item)
         if len(matches) != 1:
-            raise MinpyError("html-import lock does not contain exactly one source: " + source)
+            raise MinpyError("html-import lock does not contain exactly one source: " + source)  # minpy: uncovered
         return matches[0]
-    raise MinpyError("unsupported lock schema")
+    raise MinpyError("unsupported lock schema")  # minpy: uncovered
 
 
 def check_bundle(
@@ -1788,7 +1800,7 @@ def _first_diff(left: str, right: str) -> str:
     for index, (one, two) in enumerate(zip(left_lines, right_lines), 1):
         if one != two:
             return "first difference at line " + str(index)
-    return "line count " + str(len(left_lines)) + " != " + str(len(right_lines))
+    return "line count " + str(len(left_lines)) + " != " + str(len(right_lines))  # minpy: uncovered
 
 
 def _read_bundle_file(path: Path) -> str:
@@ -1937,8 +1949,10 @@ def main(argv: list[str] | None = None) -> int:
             print("minpy: " + line, file=sys.stderr)
         return 1
     print(json.dumps(receipt, indent=2, ensure_ascii=False, sort_keys=True))
+    if args.command == "check" and receipt.get("ok") is not True:
+        return 1
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main())  # minpy: uncovered
