@@ -59,3 +59,12 @@ the most consumers registered in `vendor-consumers.json`. They use
 `default_enrollment: skipped(explicit_consumer_only)` with explicit `enrolled`
 overrides for the repositories that already lock them, so no new registration is
 requested from other consumers.
+
+2026-10-17 btk ownership (parent registry): `image_diff.py` and
+`scripts/interaction.mjs` are catalogued under browser-test-kit with explicit
+sources (image_diff: `skipped(requires_external_package)`, flutter only;
+interaction.mjs: `skipped(explicit_consumer_only)`, flutter only). The new parent-owned tools are staged as described below; no fleet-wide enrollment is requested.
+
+### Staged acceptance of the new parent tools
+
+PR #96 introduces `py_matrix.py`, `pytest_brief.py`, and `publish_check.py` without recommending an unmerged intermediate commit. PR #95 adds their catalog entries only after #96 merges, using its full first-parent main merge SHA. None has registered consumers yet. Flutter #197 keeps its reviewed parent `gh_ops.py` pin `1eda992aa6fa31a902e2c06428e53ab17e8fe3c1`; a later adoption of the new git-commit implementation must verify and materialize the accepted parent merge commit, never the PR head.

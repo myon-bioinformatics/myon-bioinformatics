@@ -111,8 +111,8 @@
     },
     {
       "repository": "myon-bioinformatics/myon-bioinformatics",
-      "commit": "380d877cd85837f36cf6030d626ee8bb7dfa28cb",
-      "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
+      "commit": "1eda992aa6fa31a902e2c06428e53ab17e8fe3c1",
+      "reason": "Reviewed gh_identity request/search adapter already locked by Flutter PR #197; git-commit additions in this PR require a later deliberate consumer repin after merge.",
       "source": "gh_ops.py"
     },
     {
@@ -446,6 +446,38 @@
       "source": "src/mcp_toolcall_lab/adapters/html_snapshot.py",
       "consumers": {
         "myon-bioinformatics/myon-bioinformatics.github.io": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        }
+      },
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/browser-test-kit",
+      "commit": "725f35900021f2fa8beecafe850cd5f7062b1ae5",
+      "reason": "Pillow-backed image diff for browser evidence; enrolled only where the dependency is already accepted.",
+      "source": "scripts/image_diff.py",
+      "consumers": {
+        "myon-bioinformatics/flutter_navigation_basic": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        }
+      },
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "requires_external_package"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/browser-test-kit",
+      "commit": "61872b2df6da908152bc8f965832da79dd97d6b9",
+      "reason": "Playwright interaction helpers vendored into flutter e2e; explicit consumer enrollment only.",
+      "source": "scripts/interaction.mjs",
+      "consumers": {
+        "myon-bioinformatics/flutter_navigation_basic": {
           "enrollment": "enrolled",
           "reason": "already_locked_by_consumer"
         }

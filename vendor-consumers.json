@@ -561,8 +561,8 @@
           "destination": "python/vendor/xprobe.py"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
-          "source": "scripts/gh_ops.py",
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "gh_ops.py",
           "destination": "python/vendor/gh_ops.py"
         },
         {
@@ -611,6 +611,16 @@
           "destination": "python/vendor/image_diff.py"
         },
         {
+          "repository": "myon-bioinformatics/browser-test-kit",
+          "source": "scripts/interaction.mjs",
+          "destination": "e2e/utils/interaction.mjs"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "LICENSE",
+          "destination": "python/vendor/myon-bioinformatics-LICENSE"
+        },
+        {
           "repository": "myon-bioinformatics/gh_identity",
           "source": "gh_identity.py",
           "destination": "python/vendor/gh_identity.py"
@@ -623,7 +633,7 @@
       ],
       "locked_ci": {
         "workflow": ".github/workflows/non-dart.yml",
-        "sha256": "7bc2d362256aea48a6e002d7d9e0c415ad174d3ec89c2e042bbe89f43792bb12"
+        "sha256": "2e4c19bb968208d4eed3f69ae5cfa2d8e1e40a0a93df979b63ec7be2e88a8127"
       }
     },
     {

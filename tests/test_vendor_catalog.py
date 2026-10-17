@@ -209,9 +209,47 @@ def test_real_git_source_mode_and_exact_pin(tmp_path, monkeypatch):
         catalog.verify(doc)
 
 
-def test_checked_in_catalog_and_cli_errors(tmp_path):
+def test_public_commit_exists_classifies_http_errors(monkeypatch):
+    commit = OLD
+    repo = 'owner/example'
+
+    def missing(url):
+        raise sync.PublicGitNotFound('not found')
+    monkeypatch.setattr(sync, '_public_http_get', missing)
+    with pytest.raises(ValueError, match='catalog pin commit not found'):
+        sync.public_commit_exists(repo, commit)
+
+    def blocked(url):
+        raise sync.PublicGitAccessBlocked(sync.PUBLIC_ACCESS_BLOCKED)
+    monkeypatch.setattr(sync, '_public_http_get', blocked)
+    with pytest.raises(sync.PublicGitAccessBlocked):
+        sync.public_commit_exists(repo, commit)
+
+
+def test_validate_pin_commits_dedupes_and_checks_each_pair(monkeypatch):
+    doc = {'schema': catalog.SCHEMA, 'tools': [
+        {'repository': 'owner/a', 'commit': OLD, 'reason': 'one', 'source': 'a.py'},
+        {'repository': 'owner/a', 'commit': OLD, 'reason': 'two', 'source': 'b.py'},
+        {'repository': 'owner/b', 'commit': NEW, 'reason': 'three', 'source': 'b.py'},
+    ]}
+    normalized = catalog.validate(doc)
+    checked = []
+    monkeypatch.setattr(sync, 'public_commit_exists', lambda repo, commit: checked.append((repo, commit)))
+    catalog.validate_pin_commits(normalized)
+    assert checked == [('owner/a', OLD), ('owner/b', NEW)]
+
+
+def test_validate_verify_pins_rejects_missing_commit(monkeypatch):
+    doc = manifest()
+    monkeypatch.setattr(sync, 'public_commit_exists', lambda *a, **k: (_ for _ in ()).throw(ValueError('catalog pin commit not found')))
+    with pytest.raises(ValueError, match='catalog pin commit not found'):
+        catalog.validate(doc, verify_pins=True)
+
+
+def test_checked_in_catalog_and_cli_errors(tmp_path, monkeypatch):
     root = Path(__file__).resolve().parents[1]
-    value = catalog.validate(json.loads((root / 'vendor-catalog.json').read_text()))
+    monkeypatch.setattr(sync, 'public_commit_exists', lambda repo, commit: commit)
+    value = catalog.validate(json.loads((root / 'vendor-catalog.json').read_text()), verify_pins=True)
     assert {'gh_identity.py', 'xprobe.py', 'yourself.py', 'cli_args.py', 'markdown.py', 'ascii_artist.py'} <= {t['source'] for t in value['tools']}
     assert catalog.main(['validate', '--catalog', str(tmp_path / 'missing')]) == 2
     result = subprocess.run([sys.executable, str(root / 'vendor_catalog.py'), '--help'], cwd=tmp_path, capture_output=True)
@@ -238,9 +276,10 @@ def test_invalid_default_decision(decision):
         catalog.validate(doc)
 
 
-def test_public_inventory_has_complete_catalog_coverage():
+def test_public_inventory_has_complete_catalog_coverage(monkeypatch):
     root = Path(__file__).resolve().parents[1]
-    doc = catalog.validate(json.loads((root / "vendor-catalog.json").read_text()))
+    monkeypatch.setattr(sync, 'public_commit_exists', lambda repo, commit: commit)
+    doc = catalog.validate(json.loads((root / "vendor-catalog.json").read_text()), verify_pins=True)
     inventory = json.loads((root / "docs/vendor-target-inventory.json").read_text())
     tools = {(t["repository"], t["source"]): t for t in doc["tools"]}
     assert len(inventory["repositories"]) + inventory["private_repositories_omitted"] == inventory["inspected_repositories"]

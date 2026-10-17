@@ -1,7 +1,7 @@
 """Regression for the parent-approved Flutter vendor and workflow baseline.
 
 The relocated lock snapshot from #189 is unchanged by merged #194. The reviewed
-workflow snapshot comes from #194 squash merge 31f33f42 on Flutter main.
+workflow snapshot comes from flutter PR #197 head 56fa7e26 (coordinates with gh_ops parent vendor).
 """
 import copy
 import hashlib
@@ -25,12 +25,12 @@ def load(filename):
 
 def test_flutter_registry_matches_pinned_post_migration_lock():
     registry = load("vendor-consumers.json")
-    lock = load("tests/fixtures/flutter_vendor_lock_5ade883c.json")
+    lock = load("tests/fixtures/flutter_vendor_lock_56fa7e26.json")
     result = vendor_consumers.compare(registry, lock, FLUTTER)
     assert result["matches"] is True
     assert result["missing"] == result["unexpected"] == []
     entries = vendor_consumers.get_consumer(registry, FLUTTER)["entries"]
-    assert len(entries) == len(lock["files"]) == 14
+    assert len(entries) == len(lock["files"]) == 16
     assert {x["destination"] for x in entries} == {x["destination"] for x in lock["files"]}
 
 
@@ -44,26 +44,26 @@ def test_retired_git_inspector_is_explicit_skip_not_new_registration():
     assert len(retired) == 1
     assert retired[0]["action"] == "skipped"
     assert retired[0]["reason"] == "retired_after_gh_identity_migration"
-    assert result["counts"]["needs_registration"] == 6
+    assert result["counts"]["needs_registration"] == 5
     assert result["counts"]["skipped"] == 27
 
 
 def test_regression_detects_removed_or_reintroduced_vendor_source():
     registry = load("vendor-consumers.json")
-    lock = load("tests/fixtures/flutter_vendor_lock_5ade883c.json")
+    lock = load("tests/fixtures/flutter_vendor_lock_56fa7e26.json")
     tampered = copy.deepcopy(lock)
     tampered["files"].pop()
     result = vendor_consumers.compare(registry, tampered, FLUTTER)
     assert result["matches"] is False
     assert len(result["missing"]) == 1
     assert result["unexpected"] == []
-    assert len(lock["files"]) == 14
+    assert len(lock["files"]) == 16
 
 
 def test_existing_pins_remain_sole_consumer_authority():
     registry = load("vendor-consumers.json")
     catalog = load("vendor-catalog.json")
-    lock = load("tests/fixtures/flutter_vendor_lock_5ade883c.json")
+    lock = load("tests/fixtures/flutter_vendor_lock_56fa7e26.json")
     pins = vendor_catalog.compare(catalog, lock, FLUTTER)["tools"]
     assert {r["source"] for r in pins if r["enrollment"] == "enrolled" and
             r["comparison"] == "different"} == {"gh_identity.py", "xprobe.py", "yourself.py"}
@@ -77,7 +77,10 @@ def test_historical_layout_requires_deliberate_parent_baseline_update():
     assert not vendor_consumers.compare(registry, old_lock, FLUTTER)["matches"]
     current = vendor_consumers.get_consumer(registry, FLUTTER)
     assert current["lock"] == "python/vendor.lock.json"
-    assert all(row["destination"].startswith("python/vendor/") for row in current["entries"])
+    assert all(
+        row["destination"].startswith("python/vendor/") or row["destination"].startswith("e2e/")
+        for row in current["entries"]
+    )
 
 
 @pytest.mark.parametrize("fault", [None, "removed", "disabled", "ignored", "command",
@@ -87,7 +90,7 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
     heads = load("child-heads.json")
     consumer = vendor_consumers.get_consumer(registry, FLUTTER)
     contract = consumer["locked_ci"]
-    approved = (ROOT / "tests/fixtures/flutter_non_dart_31f33f42.yml").read_bytes()
+    approved = (ROOT / "tests/fixtures/flutter_non_dart_56fa7e26.yml").read_bytes()
     assert hashlib.sha256(approved).hexdigest() == contract["sha256"]
     recorded = heads["heads"][FLUTTER]
     assert recorded["repository_id"] == 739348522
