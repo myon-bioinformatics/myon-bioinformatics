@@ -18,6 +18,8 @@ is a thin adapter over them::
     python -c "from gh_ops import pr_merge; print(pr_merge('OWNER/REPO', 11, sha='ecfd0ba'))"
     python -S gh_ops.py pr-body-set OWNER/REPO 11 --file body.md --write
     python -S gh_ops.py pr-edit OWNER/REPO 11 --base develop --write
+    python -S gh_ops.py pr-retarget OWNER/REPO 71 --base main            # plan
+    python -S gh_ops.py pr-retarget OWNER/REPO 71 --base main --write    # apply, then read back
     python -S gh_ops.py file-put OWNER/REPO docs/x.md --from x.md --branch docs --message "add x" --write
     python -S gh_ops.py git-commit --message-file msg.txt a.py --write
     python -S gh_ops.py git-commit --message-file msg.txt a.py --write --push
@@ -217,6 +219,17 @@ def _client(client: Client | None) -> Client:
 def _preview(text: str, limit: int) -> str:
     flat = " ".join(text.split())
     return flat if len(flat) <= limit else flat[: max(limit - 1, 0)] + "…"
+
+
+def _commit_message_subject(message: str | None, *, limit: int = 100) -> str:
+    """First non-empty line of a commit message, or a fixed label when absent or whitespace-only."""
+    if message is None:
+        return "(empty commit message)"
+    for line in message.splitlines():
+        stripped = line.strip()
+        if stripped:
+            return stripped[:limit]
+    return "(empty commit message)"
 
 
 def _login(comment: dict) -> str:
@@ -885,6 +898,81 @@ def pr_edit(repo: str, number: int, *, title: str | None = None, base: str | Non
     verified = all(now[key] == value for key, value in fields.items())
     return {"ok": verified, "dry_run": False, "changed": True, "fields": report, "verified": verified,
             "reason": "" if verified else "PR fields do not match the requested values after the update"}
+
+
+def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = False,
+                allow_unmerged: bool = False, client: Client | None = None) -> dict:
+    """Change a PR's base branch (for example a stacked PR onto main after its parent merged).
+
+    Dry-run by default. Compares the old base with the new one: commits on the old
+    base that are not in the new base would join the PR diff, so ``--write`` is
+    refused unless ``--allow-unmerged``. A deleted or missing old base needs
+    ``--allow-unmerged`` as well. Verifies by re-reading the PR after PATCH.
+    """
+    if int(number) < 1:
+        raise GhOpsError("PR number must be a positive integer")
+    if not isinstance(base, str) or not base.strip():
+        raise GhOpsError("base is required")
+    base = base.strip()
+    client = _client(client)
+    repo = _repo(repo)
+    number = int(number)
+    path = f"/repos/{repo}/pulls/{number}"
+
+    def pull_fields() -> dict:
+        pr = client.get(path)
+        return {"state": pr.get("state"), "merged": bool(pr.get("merged")),
+                "base_ref": (pr.get("base") or {}).get("ref"), "url": pr.get("html_url")}
+
+    head = pull_fields()
+    old = head["base_ref"]
+    out: dict[str, Any] = {"ok": True, "schema": "gh-ops-pr-retarget/1", "repository": repo, "number": number,
+                           "from": old, "to": base, "write": bool(write), "url": head.get("url")}
+    if head["state"] != "open":
+        out["status"] = "not_open"
+        out["ok"] = False
+        out["reason"] = "merged" if head["merged"] else f"PR is {head['state']}"
+        return out
+    if old == base:
+        out["status"] = "already_satisfied"
+        out["reason"] = "base already matches"
+        return out
+    compare_path = (f"/repos/{repo}/compare/{urllib.parse.quote(base, safe='')}"
+                    f"...{urllib.parse.quote(old or '', safe='')}")
+    try:
+        cmp = client.get(compare_path)
+        out["old_base_unmerged_commits"] = cmp.get("ahead_by")
+        commits = cmp.get("commits") or []
+        out["old_base_commit_subjects"] = [
+            _commit_message_subject((item.get("commit") or {}).get("message")) for item in commits[:5]]
+    except GhOpsError as error:
+        out["old_base_unmerged_commits"] = None
+        out["old_base_commit_subjects"] = []
+        text = str(error)
+        out["compare_error"] = "not_found" if "HTTP 404" in text else text
+    risky = out["old_base_unmerged_commits"] != 0
+    if risky:
+        count = out["old_base_unmerged_commits"]
+        out["warning"] = (f"{old} has {count} commit(s) not in {base}; they would join the diff" if count
+                          else f"could not compare {old} with {base}")
+    if not write:
+        out["status"] = "planned"
+        out["dry_run"] = True
+        return out
+    if risky and not allow_unmerged:
+        out["status"] = "refused_unmerged_base"
+        out["ok"] = False
+        out["reason"] = out.get("warning", "")
+        return out
+    client.request("PATCH", path, {"base": base})
+    after = pull_fields()
+    verified = after["base_ref"] == base
+    out["status"] = "verified" if verified else "verification_mismatch"
+    out["ok"] = verified
+    out["dry_run"] = False
+    if not verified:
+        out["reason"] = f"base is {after['base_ref']!r} after PATCH, expected {base!r}"
+    return out
 
 
 def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: str = "squash",
@@ -1741,6 +1829,10 @@ def _render(command: str, result: dict) -> str:
                 if result.get("state") == "pushed" else
                 f"dry run subtree-push: would run {' '.join(result['command'])}")
         return head + f"\nsplit={result['split_method']}{compare}\n{result['provenance']['trailer']}"
+    if command == "pr-retarget":
+        extra = f" ({result['warning']})" if result.get("warning") else ""
+        return (f"{result['status']} {result['repository']}#{result['number']} base {result['from']} -> {result['to']}"
+                f"{extra}")
     reason = result.get("reason") or "; ".join(result.get("failures", []))
     status = "OK" if result["ok"] else "NG"
     mode = "dry run" if result.get("dry_run") else "applied"
@@ -1876,6 +1968,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--state", choices=_PR_EDIT_STATES)
     p.add_argument("--write", action="store_true")
 
+    p = sub.add_parser("pr-retarget", help="change a stacked PR's base (planned unless --write; refuses unmerged old-base commits)")
+    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("--base", default="main", help="new base branch (default: main)")
+    p.add_argument("--allow-unmerged", action="store_true",
+                   help="allow --write when the old base has commits not in the new base, or compare failed")
+    p.add_argument("--write", action="store_true")
+
     p = sub.add_parser("file-put", help="create or update one file via the contents API (needs --write)")
     p.add_argument("repo"); p.add_argument("path", help="path of the file inside the repository")
     p.add_argument("--from", dest="from_path", required=True, help="local file to read the new content from")
@@ -1975,6 +2074,9 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
     if command == "pr-edit":
         return pr_edit(args.repo, args.number, title=args.title, base=args.base, state=args.state,
                        write=args.write, client=client)
+    if command == "pr-retarget":
+        return pr_retarget(args.repo, args.number, args.base, write=args.write,
+                           allow_unmerged=args.allow_unmerged, client=client)
     if command == "file-put":
         return file_put(args.repo, args.path, content=Path(args.from_path).read_bytes(), branch=args.branch,
                         message=args.message, write=args.write, allow_default_branch=args.allow_default_branch,
