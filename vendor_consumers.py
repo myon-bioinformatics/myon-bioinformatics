@@ -106,11 +106,11 @@ def validate(registry):
         destinations = set()
         identities = set()
         for entry in consumer["entries"]:
-            if not isinstance(entry, dict) or set(entry) != {
-                "repository",
-                "source",
-                "destination",
-            }:
+            required_entry = {"repository", "source", "destination"}
+            if (
+                not isinstance(entry, dict)
+                or not required_entry <= set(entry) <= required_entry | {"bundle"}
+            ):
                 raise ValueError("invalid consumer entry fields")
             source_repository = _repository(entry["repository"])
             if source_repository.casefold() == folded:
@@ -125,6 +125,8 @@ def validate(registry):
             if identity in identities:
                 raise ValueError("duplicate consumer entry")
             identities.add(identity)
+            if "bundle" in entry:
+                vendor_sync.validate_minpy_bundle(entry["bundle"])
     return result
 
 
@@ -137,6 +139,17 @@ def get_consumer(registry, repository):
     raise ValueError("consumer not registered: " + repository)
 
 
+def _topology_entry(entry):
+    row = {
+        "repository": entry["repository"],
+        "source": entry["source"],
+        "destination": entry["destination"],
+    }
+    if "bundle" in entry:
+        row["bundle"] = copy.deepcopy(entry["bundle"])
+    return row
+
+
 def compare(registry, lock, repository):
     """Compare topology only; exact commit/blob/SHA-256 remain lock-owned."""
     consumer = get_consumer(registry, repository)
@@ -146,15 +159,12 @@ def compare(registry, lock, repository):
 
     expected = {
         (entry["repository"].casefold(), entry["source"], entry["destination"].casefold()):
-        copy.deepcopy(entry)
+        _topology_entry(entry)
         for entry in consumer["entries"]
     }
     actual = {
-        (entry["repository"].casefold(), entry["source"], entry["destination"].casefold()): {
-            "repository": entry["repository"],
-            "source": entry["source"],
-            "destination": entry["destination"],
-        }
+        (entry["repository"].casefold(), entry["source"], entry["destination"].casefold()):
+        _topology_entry(entry)
         for entry in lock["files"]
     }
 
@@ -164,13 +174,28 @@ def compare(registry, lock, repository):
     def rows(mapping, keys):
         return [mapping[key] for key in sorted(keys)]
 
+    def bundle_of(entry):
+        return copy.deepcopy(entry["bundle"]) if "bundle" in entry else None
+
+    bundle_mismatch = []
+    for key in sorted(expected.keys() & actual.keys()):
+        if bundle_of(expected[key]) != bundle_of(actual[key]):
+            bundle_mismatch.append({
+                "repository": expected[key]["repository"],
+                "source": expected[key]["source"],
+                "destination": expected[key]["destination"],
+                "expected": bundle_of(expected[key]),
+                "actual": bundle_of(actual[key]),
+            })
+
     return {
         "schema": "vendor-consumer-comparison/1",
         "consumer": consumer["repository"],
         "lock": consumer["lock"],
-        "matches": not missing_keys and not unexpected_keys,
+        "matches": not missing_keys and not unexpected_keys and not bundle_mismatch,
         "missing": rows(expected, missing_keys),
         "unexpected": rows(actual, unexpected_keys),
+        "bundle_mismatch": bundle_mismatch,
     }
 
 
