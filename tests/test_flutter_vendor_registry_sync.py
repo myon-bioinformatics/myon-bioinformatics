@@ -1,7 +1,7 @@
 """Regression for the parent-approved Flutter vendor and workflow baseline.
 
 Lock snapshot comes from Flutter #207 f73c72eb, adopting browser-test-kit #84
-main merge 4be0f0d2. The approved Non-Dart workflow and gh_ops/LICENSE pins are unchanged.
+main merge 4be0f0d2. The approved Non-Dart workflow adds same-run Python/Node build observations; gh_ops/LICENSE pins are unchanged.
 """
 import copy
 import hashlib
@@ -18,7 +18,7 @@ import vendor_sync
 ROOT = Path(__file__).resolve().parents[1]
 FLUTTER = "myon-bioinformatics/flutter_navigation_basic"
 LOCK_FIXTURE = "tests/fixtures/flutter_vendor_lock_f73c72eb.json"
-WORKFLOW_FIXTURE = "tests/fixtures/flutter_non_dart_1dd33afc.yml"
+WORKFLOW_FIXTURE = "tests/fixtures/flutter_non_dart_build_companions.yml"
 GH_OPS_CATALOG_COMMIT = "09831b992dc91d83b15c44861a788e03b1e654c4"
 
 
@@ -116,7 +116,7 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
     assert hashlib.sha256(approved).hexdigest() == contract["sha256"]
     recorded = heads["heads"][FLUTTER]
     assert recorded["repository_id"] == 739348522
-    assert recorded["sha"] == "85491b2632520d9455f2dcecf963309851c239e7"
+    assert recorded["sha"] == "8f4946a21435b1779a48b29b0f1d084de20b48ac"
     data = approved
     if fault == "removed":
         start = data.index(b"  python-vendor-locked:\n")
