@@ -1444,8 +1444,6 @@ def _git_network_env(extra: dict | None = None) -> dict:
     # Empty GIT_ASKPASS also suppresses core.askPass (TERMINAL_PROMPT alone does not).
     env = {**os.environ, **(extra or {}), "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never",
            "GIT_ASKPASS": "", "SSH_ASKPASS": "", "SSH_ASKPASS_REQUIRE": "never"}
-    if not env.get("GIT_SSH"):
-        env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
     return env
 
 
@@ -1456,6 +1454,22 @@ def _git_network_run(argv: list[str], *, run: Callable[..., Any], timeout: float
               "timeout": timeout, "env": env}
     if run is not subprocess.run:
         return run(argv, **kwargs)
+    if len(argv) > 1 and argv[0] == "git" and argv[1] in _GIT_NETWORK_COMMANDS and "GIT_SSH_COMMAND" not in env:
+        # Git's priority is GIT_SSH_COMMAND > core.sshCommand > GIT_SSH > ssh.
+        # Resolve config in the command's cwd/env; never replace a configured
+        # identity, port or wrapper. This setup read consumes the communication
+        # budget; standalone/local Git operations gain no new restrictions.
+        started = time.monotonic()
+        config = _git_network_run(["git", "config", "--get", "core.sshCommand"],
+                                  run=run, timeout=timeout, cwd=cwd, env=env)
+        if config.returncode not in (0, 1):
+            return subprocess.CompletedProcess(argv, config.returncode, config.stdout, config.stderr)
+        if config.returncode == 1 and not env.get("GIT_SSH"):
+            kwargs["env"] = {**env, "GIT_SSH_COMMAND": "ssh -o BatchMode=yes"}
+        remaining = timeout - (time.monotonic() - started)
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(argv, timeout)
+        timeout = remaining
     # subprocess.run kills only Git on timeout. SSH/credential helpers can retain
     # output pipes, making communicate() (or Windows reader-thread cleanup) hang.
     # Regular temporary files let us wait for the process without draining pipes.

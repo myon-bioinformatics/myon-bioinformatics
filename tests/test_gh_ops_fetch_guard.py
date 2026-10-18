@@ -147,10 +147,19 @@ def test_guards_override_inherited_and_extra_prompt_settings(monkeypatch):
     assert dict(os.environ) == original
 
 
-def test_default_openssh_disables_password_and_hostkey_prompts(monkeypatch):
-    monkeypatch.delenv("GIT_SSH_COMMAND", raising=False)
-    monkeypatch.delenv("GIT_SSH", raising=False)
-    assert g._git_network_env()["GIT_SSH_COMMAND"] == "ssh -o BatchMode=yes"
+def test_default_openssh_disables_password_and_hostkey_prompts(monkeypatch, git_env):
+    seen = []
+    popen = subprocess.Popen
+
+    def record(argv, **kwargs):
+        seen.append((argv, kwargs["env"]))
+        return popen(argv, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", record)
+    remote_probe("ssh://git@127.0.0.1:1/absent.git", git_env)
+    (_, env), = [(a, e) for a, e in seen if a[1] == "ls-remote"]
+    assert env["GIT_SSH_COMMAND"] == "ssh -o BatchMode=yes"
+    monkeypatch.setattr(subprocess, "Popen", popen)
     if not shutil.which("ssh"):
         pytest.skip("OpenSSH unavailable")
     done = subprocess.run(["ssh", "-G", "-F", os.devnull, "-o", "BatchMode=yes", "example.invalid"],
@@ -163,6 +172,17 @@ def test_custom_git_ssh_executable_is_preserved(monkeypatch):
     monkeypatch.setenv("GIT_SSH", "/custom path/transport")
     env = g._git_network_env()
     assert env["GIT_SSH"] == "/custom path/transport" and "GIT_SSH_COMMAND" not in env
+
+
+@pytest.mark.skipif(os.name != "posix", reason="FIFO configuration-read timeout regression")
+def test_ssh_configuration_lookup_shares_the_communication_deadline(git_env, tmp_path):
+    fifo = tmp_path / "blocked-gitconfig"
+    os.mkfifo(fifo)
+    env = {**git_env, "GIT_CONFIG_GLOBAL": str(fifo)}
+    started = time.monotonic()
+    with pytest.raises(subprocess.TimeoutExpired):
+        remote_probe("ssh://git@example.invalid/remote.git", env, timeout=0.3)
+    assert time.monotonic() - started < 3
 
 
 @pytest.fixture
@@ -208,8 +228,8 @@ def http_git(tmp_path):
         thread.join(timeout=2)
 
 
-def remote_probe(url, env, timeout=5):
-    return g._git_network_run(["git", "ls-remote", url], run=subprocess.run, cwd=".", timeout=timeout, env=env)
+def remote_probe(url, env, timeout=5, cwd="."):
+    return g._git_network_run(["git", "ls-remote", url], run=subprocess.run, cwd=cwd, timeout=timeout, env=env)
 
 
 @pytest.mark.parametrize("transport", ["http", "https"])
@@ -268,7 +288,8 @@ def test_real_openssh_connection_refusal(git_env):
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX exec-based local SSH transport fixture")
-def test_custom_ssh_success_preserves_options_and_reads_real_git_refs(git_env, tmp_path):
+@pytest.mark.parametrize("selection", ["env", "core", "env_over_core", "core_over_git_ssh"])
+def test_custom_ssh_success_preserves_options_and_reads_real_git_refs(git_env, tmp_path, selection):
     bare = tmp_path / "remote.git"
     subprocess.run(["git", "init", "--bare", "-q", str(bare)], check=True, env=git_env)
     script = tmp_path / "local-ssh.py"
@@ -278,8 +299,17 @@ def test_custom_ssh_success_preserves_options_and_reads_real_git_refs(git_env, t
         f"open({str(args_file)!r}, 'w').write(json.dumps(sys.argv[1:]))\n"
         f"os.execvp('git-upload-pack', ['git-upload-pack', {str(bare)!r}])\n")
     command = f'"{sys.executable}" "{script}" -i "identity with spaces"'
-    env = {**git_env, "GIT_SSH_COMMAND": command, "GIT_SSH_VARIANT": "ssh"}
-    done = remote_probe("ssh://git@example.invalid/remote.git", env)
+    work = tmp_path / "work"
+    subprocess.run(["git", "init", "-q", str(work)], check=True, env=git_env)
+    env = {**git_env, "GIT_SSH_VARIANT": "ssh"}
+    if selection in ("core", "core_over_git_ssh", "env_over_core"):
+        configured = "missing-ssh-command" if selection == "env_over_core" else command
+        subprocess.run(["git", "-C", str(work), "config", "core.sshCommand", configured], check=True, env=env)
+    if selection in ("env", "env_over_core"):
+        env["GIT_SSH_COMMAND"] = command
+    if selection == "core_over_git_ssh":
+        env["GIT_SSH"] = "missing-ssh-command"
+    done = remote_probe("ssh://git@example.invalid/remote.git", env, cwd=str(work))
     assert done.returncode == 0, done.stderr
     import json
     assert json.loads(args_file.read_text())[:2] == ["-i", "identity with spaces"]

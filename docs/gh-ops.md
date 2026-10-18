@@ -93,8 +93,11 @@ Network Git receives closed stdin, `GIT_TERMINAL_PROMPT=0`,
 `GCM_INTERACTIVE=never`, empty Git/SSH AskPass settings, and
 `SSH_ASKPASS_REQUIRE=never`. Guards override inherited/caller prompt settings;
 credentials and unrelated environment settings remain available. The default
-OpenSSH command uses `BatchMode=yes`. An explicit `GIT_SSH_COMMAND` or `GIT_SSH` is preserved
-verbatim, including identity files and wrappers; custom transports/helpers must
+OpenSSH command uses `BatchMode=yes` only when neither environment variables nor
+Git configuration select a custom transport. The priority of `GIT_SSH_COMMAND`,
+effective `core.sshCommand` (in the target cwd/environment), and `GIT_SSH` is
+preserved, including identity files and wrappers. The configuration lookup shares
+the communication budget. Custom transports/helpers must
 implement their own noninteractive behavior. Their waiting is still bounded by
 the process deadline and they cannot use this process's controlling terminal
 on POSIX (a new session is used).
