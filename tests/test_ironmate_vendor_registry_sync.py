@@ -1,4 +1,4 @@
-"""Parent topology follows Ironmate #122's locked snapshot, not auto-enrollment."""
+"""Parent topology follows Ironmate #126's locked flow workspace snapshot."""
 import copy
 import json
 from pathlib import Path
@@ -16,8 +16,8 @@ def load(path):
 
 def test_ironmate_registry_matches_reviewed_flow_lock():
     registry = load('vendor-consumers.json')
-    lock = load('tests/fixtures/ironmate-flow-b5ae001.lock.json')
-    assert len(lock['files']) == 54
+    lock = load('tests/fixtures/ironmate-flow-workspace.lock.json')
+    assert len(lock['files']) == 58
     assert vendor_consumers.compare(registry, lock, CONSUMER)['matches']
     # All adopted source digests remain owned by the child's immutable lock.
     assert all(x['ref'] == x['commit'] for x in lock['files'])
@@ -33,3 +33,10 @@ def test_retired_sources_are_not_proposed_for_reenrollment():
         rows = [x for x in result['rows'] if x['tool_repository'] ==
                 'myon-bioinformatics/myon-bioinformatics' and x['source'] == source]
         assert len(rows) == 1 and rows[0]['action'] == 'skipped'
+
+
+def test_old_flow_export_lock_is_not_silently_accepted_after_patch_enrollment():
+    old = load('tests/fixtures/ironmate-flow-b5ae001.lock.json')
+    result = vendor_consumers.compare(load('vendor-consumers.json'), old, CONSUMER)
+    assert not result['matches']
+    assert len(old['files']) == 54

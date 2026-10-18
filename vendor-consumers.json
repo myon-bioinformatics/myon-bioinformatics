@@ -342,6 +342,26 @@
           "repository": "myon-bioinformatics/web-ui",
           "source": "examples/pr-flow.json",
           "destination": "examples/flow.json"
+        },
+        {
+          "repository": "myon-bioinformatics/web-ui",
+          "source": "tool/flow_diagram.py",
+          "destination": "vendor/web_ui/tool/flow_diagram.py"
+        },
+        {
+          "repository": "myon-bioinformatics/web-ui",
+          "source": "tool/flow_patch.py",
+          "destination": "vendor/web_ui/tool/flow_patch.py"
+        },
+        {
+          "repository": "myon-bioinformatics/web-ui",
+          "source": "js/flow.cjs",
+          "destination": "vendor/web_ui/js/flow.cjs"
+        },
+        {
+          "repository": "myon-bioinformatics/web-ui",
+          "source": "js/flow-patch.cjs",
+          "destination": "vendor/web_ui/js/flow-patch.cjs"
         }
       ]
     },
