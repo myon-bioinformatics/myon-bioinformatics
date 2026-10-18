@@ -1,7 +1,9 @@
 """Regression for the parent-approved Flutter vendor and workflow baseline.
 
 Lock snapshot comes from Flutter #207 bounded-candidate repair, adopting browser-test-kit #85
-main merge 8d8512fe. The approved Non-Dart workflow adds same-run Python/Node build observations; gh_ops/LICENSE pins are unchanged.
+main merge 8d8512fe. This historical lock still checks catalog behavior.
+The approved Non-Dart workflow at Flutter #210 adds the existing Ironmate handoff
+portable case; its immutable head also records the fetch-guard vendor rollout.
 """
 import copy
 import hashlib
@@ -127,7 +129,7 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
     assert hashlib.sha256(approved).hexdigest() == contract["sha256"]
     recorded = heads["heads"][FLUTTER]
     assert recorded["repository_id"] == 739348522
-    assert recorded["sha"] == "01df02d20f6aa1909fc4cf9cd335f2619d00b361"
+    assert recorded["sha"] == "4b0fbfbc14eb2d478af1c7bc8d5a1942a4dad454"
     data = approved
     if fault == "removed":
         start = data.index(b"  python-vendor-locked:\n")
