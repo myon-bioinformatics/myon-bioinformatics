@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_ironmate_registered_contract_ignores_recommendation_skips():
     registry = json.loads((ROOT / 'vendor-consumers.json').read_text())
     catalog = json.loads((ROOT / 'vendor-catalog.json').read_text())
-    lock = json.loads((ROOT / 'tests/fixtures/ironmate-flow-b5ae001.lock.json').read_text())
+    lock = json.loads((ROOT / 'tests/fixtures/ironmate-flow-workspace.lock.json').read_text())
     assert not any(t['repository'].lower().endswith('/ironmate') for t in catalog['tools'])
     assert sync.verify_child_lock_against_parent(registry, catalog, lock, 'myon-bioinformatics/Ironmate') == sync.validate(lock)
     changed = copy.deepcopy(lock)
