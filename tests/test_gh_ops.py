@@ -1277,3 +1277,33 @@ def test_default_open_prs_uses_bounded_canonical_search(monkeypatch):
     result = gh_ops.open_prs("octo", org=True, limit=5)
     assert result["total"] == 7 and result["truncated"] and not result["complete"]
     assert seen == [("is:open archived:false org:octo", {"kind": "pr", "max_items": 5})]
+
+
+# --- pr-merge --ignore -------------------------------------------------------------------
+
+def test_pr_merge_ignore_drops_failing_review_bot():
+    runs = [check_run(f"c{i}", run_id=i) for i in range(5)] + [check_run("copilot-pull-request-reviewer", "failure", run_id=9)]
+    client, stub = client_for(merge_routes(runs=runs))
+    blocked = gh_ops.pr_merge(REPO, 11, sha="ecfd0ba", min_checks=5, write=True, client=client)
+    assert blocked["ok"] is False and "PUT" not in stub.methods
+    result = gh_ops.pr_merge(REPO, 11, sha="ecfd0ba", min_checks=5, ignore=r"(?i)copilot", write=True, client=client)
+    assert result["ok"] is True and result["merged"] is True
+    assert result["checks"]["ignored"] == [{"name": "copilot-pull-request-reviewer", "conclusion": "failure"}]
+
+
+def test_pr_merge_ignore_never_counts_ignored_checks_toward_min():
+    runs = [check_run("c0", run_id=0), check_run("Copilot", run_id=1)]
+    client, stub = client_for(merge_routes(runs=runs))
+    result = gh_ops.pr_merge(REPO, 11, sha="ecfd0ba", min_checks=2, ignore=r"(?i)copilot", write=True, client=client)
+    assert result["ok"] is False and "only 1 check run(s)" in result["failures"][0]
+    assert "PUT" not in stub.methods
+
+
+def test_pr_merge_cli_ignores_copilot_by_default_and_rejects_bad_regex(capsys):
+    runs = [check_run(f"c{i}", run_id=i) for i in range(5)] + [check_run("copilot-pull-request-reviewer", "failure", run_id=9)]
+    client, _ = client_for(merge_routes(runs=runs))
+    assert gh_ops.main(["pr-merge", REPO, "11", "--sha", "ecfd0ba", "--min-checks", "5"], client=client) == 0
+    client, _ = client_for(merge_routes(runs=runs))
+    assert gh_ops.main(["pr-merge", REPO, "11", "--sha", "ecfd0ba", "--min-checks", "5", "--ignore", ""], client=client) != 0
+    with pytest.raises(gh_ops.GhOpsError):
+        gh_ops.pr_merge(REPO, 11, sha="ecfd0ba", ignore="(", client=client)

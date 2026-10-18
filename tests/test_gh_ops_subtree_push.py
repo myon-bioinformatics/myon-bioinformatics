@@ -557,7 +557,12 @@ def test_push_with_retry_default_args_unchanged():
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     assert g.git_commit_push_with_retry(run=run, sleep=lambda s: None) == (True, "")
-    assert seen == [(["git", "push", "origin", "HEAD"], {"cwd": ".", "capture_output": True, "text": True})]
+    (argv, kwargs), = seen
+    env = kwargs.pop("env")
+    assert (argv, kwargs) == (["git", "push", "origin", "HEAD"],
+                              {"cwd": ".", "capture_output": True, "text": True, "timeout": 60.0,
+                               "stdin": subprocess.DEVNULL})
+    assert env["GIT_TERMINAL_PROMPT"] == "0" and env["GCM_INTERACTIVE"] == "never"
     seen.clear()
     g.git_commit_push_with_retry(run=run, sleep=lambda s: None, push_args=("--", "/r", "a:refs/heads/b"))
     assert seen[0][0] == ["git", "push", "--", "/r", "a:refs/heads/b"]
@@ -811,3 +816,49 @@ def test_actual_default_ref_lookup_failure_never_pushes(world, write):
         if hidden.exists():
             hidden.rename(child)
     assert _readonly_state(world) == before
+
+
+def test_push_timeout_is_a_retried_network_error():
+    """fetch-guard: a hung push is cut at the deadline and retried like a network error."""
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(kwargs["timeout"])
+        if len(calls) == 1:
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+        return subprocess.CompletedProcess(argv, 0, "ok", "")
+
+    sleeps = []
+    assert g.git_commit_push_with_retry(run=run, sleep=sleeps.append, timeout=5) == (True, "ok")
+    assert calls == [5, 5] and len(sleeps) == 1
+    ok, output = g.git_commit_push_with_retry(
+        run=lambda argv, **k: (_ for _ in ()).throw(subprocess.TimeoutExpired(argv, 5)),
+        sleep=lambda s: None, delays=(), timeout=5)
+    assert ok is False and "timed out after 5s" in output
+
+
+def test_subtree_network_commands_never_prompt():
+    seen = []
+
+    def run(argv, **kwargs):
+        seen.append((argv[1], kwargs.get("env")))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    g._subtree_git(".", ["ls-remote", "--", "origin"], run=run, timeout=9)
+    g._subtree_git(".", ["rev-parse", "HEAD"], run=run, timeout=9)
+    g._subtree_git(".", ["fetch", "-q", "origin"], run=run, timeout=9, env={"X": "1"})
+    (_, remote_env), (_, local_env), (_, fetch_env) = seen
+    assert remote_env["GIT_TERMINAL_PROMPT"] == "0" and local_env is None
+    assert fetch_env["GIT_TERMINAL_PROMPT"] == "0" and fetch_env["X"] == "1"
+
+
+def test_fetch_against_an_unreachable_remote_fails_fast(tmp_path):
+    """Connection refusal is a transport failure, not proof of prompt suppression."""
+    import time
+    repo = tmp_path / "r"
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    start = time.monotonic()
+    done = subprocess.run(["git", "-C", str(repo), "ls-remote", "https://127.0.0.1:9/x.git"],
+                          capture_output=True, text=True, timeout=30, env=g._git_network_env(),
+                          stdin=subprocess.DEVNULL)
+    assert done.returncode != 0 and time.monotonic() - start < 30

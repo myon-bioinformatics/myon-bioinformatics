@@ -45,6 +45,7 @@ import fnmatch
 import json
 import os
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -1162,20 +1163,26 @@ def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = Fal
 
 
 def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: str = "squash",
-             message: str | None = None, title: str | None = None, write: bool = False,
-             client: Client | None = None) -> dict:
+             message: str | None = None, title: str | None = None, ignore: str | None = None,
+             write: bool = False, client: Client | None = None) -> dict:
     """Verify, then (only with ``write=True``) merge a PR in one call.
 
     Preconditions: open, ``mergeable_state == "clean"``, head matches
     ``sha`` (an abbreviated SHA must match exactly one PR commit), and the
     head has at least ``min_checks`` check runs, all completed and passing.
     Any failed precondition returns ``ok: False`` without an HTTP write.
-    The merge request always pins ``sha`` to the verified head.
+    The merge request always pins ``sha`` to the verified head. ``ignore`` is a
+    regex of check names (e.g. ``(?i)copilot`` for the review bot) dropped
+    before judging; they are listed under ``checks["ignored"]``.
     """
     if method not in MERGE_METHODS:
         raise GhOpsError(f"--method must be one of {', '.join(MERGE_METHODS)}")
     if min_checks < 1:
         raise GhOpsError("--min-checks must be at least 1; zero check runs never counts as green")
+    try:
+        pattern = re.compile(ignore) if ignore else None
+    except re.error as error:
+        raise GhOpsError(f"--ignore is not a valid regex: {error}") from None
     client, repo, prefix = _client(client), _repo(repo), _sha(sha)
     path = f"/repos/{repo}/pulls/{int(number)}"
     pr = client.get(path)
@@ -1201,7 +1208,10 @@ def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: s
     elif not matching:
         failures.append("the PR commit list does not contain the head commit; refusing to merge")
     if pre_merge["sha_matches_head"] and len(matching) == 1:
-        checks = _summarize_checks(_check_runs(client, repo, head), min_checks)
+        runs = _check_runs(client, repo, head)
+        ignored = [run for run in runs if pattern and pattern.search(run.get("name") or "")]
+        checks = _summarize_checks([run for run in runs if run not in ignored], min_checks)
+        checks["ignored"] = [{"name": run.get("name"), "conclusion": run.get("conclusion")} for run in ignored]
         if not checks["ok"]:
             failures.append(checks["reason"])
     else:
@@ -1422,25 +1432,129 @@ def git_commit_build_message(base: str, trailers: list[str]) -> str:
     return body + "\n\n" + "\n".join(to_add) + "\n"
 
 
+# fetch-guard: a network git command must never wait for a person (credential or SSH
+# prompt) and must end within a deadline, so a missing token fails fast instead of hanging.
+_GIT_NETWORK_COMMANDS = frozenset({"fetch", "push", "pull", "clone", "ls-remote"})
+_GIT_NETWORK_TIMEOUT = 300.0
+_GIT_PUSH_ATTEMPT_TIMEOUT = 60.0
+
+
+def _git_network_env(extra: dict | None = None) -> dict:
+    # Apply guards last: callers may add credentials, but cannot re-enable prompts.
+    # Empty GIT_ASKPASS also suppresses core.askPass (TERMINAL_PROMPT alone does not).
+    env = {**os.environ, **(extra or {}), "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never",
+           "GIT_ASKPASS": "", "SSH_ASKPASS": "", "SSH_ASKPASS_REQUIRE": "never"}
+    return env
+
+
+def _git_network_run(argv: list[str], *, run: Callable[..., Any], timeout: float,
+                     cwd: str, env: dict) -> Any:
+    """Bound network Git and its transport children; keep injectable runners intact."""
+    kwargs = {"cwd": cwd, "capture_output": True, "text": True, "stdin": subprocess.DEVNULL,
+              "timeout": timeout, "env": env}
+    if run is not subprocess.run:
+        return run(argv, **kwargs)
+    if len(argv) > 1 and argv[0] == "git" and argv[1] in _GIT_NETWORK_COMMANDS and "GIT_SSH_COMMAND" not in env:
+        # Git's priority is GIT_SSH_COMMAND > core.sshCommand > GIT_SSH > ssh.
+        # Resolve config in the command's cwd/env; never replace a configured
+        # identity, port or wrapper. This setup read consumes the communication
+        # budget; standalone/local Git operations gain no new restrictions.
+        started = time.monotonic()
+        config = _git_network_run(["git", "config", "--get", "core.sshCommand"],
+                                  run=run, timeout=timeout, cwd=cwd, env=env)
+        if config.returncode not in (0, 1):
+            return subprocess.CompletedProcess(argv, config.returncode, config.stdout, config.stderr)
+        if config.returncode == 1 and not env.get("GIT_SSH"):
+            kwargs["env"] = {**env, "GIT_SSH_COMMAND": "ssh -o BatchMode=yes"}
+        remaining = timeout - (time.monotonic() - started)
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(argv, timeout)
+        timeout = remaining
+    # subprocess.run kills only Git on timeout. SSH/credential helpers can retain
+    # output pipes, making communicate() (or Windows reader-thread cleanup) hang.
+    # Regular temporary files let us wait for the process without draining pipes.
+    kwargs.pop("capture_output")
+    kwargs.pop("timeout")
+    with tempfile.TemporaryFile(mode="w+") as stdout, tempfile.TemporaryFile(mode="w+") as stderr, \
+         subprocess.Popen(argv, stdout=stdout, stderr=stderr,
+                          start_new_session=(os.name == "posix"), **kwargs) as process:
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            if os.name == "posix":
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+            else:
+                # taskkill is the Windows process-tree equivalent. Its own wait
+                # is bounded too, and it has no output pipes to drain.
+                with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+                    subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1)
+                process.kill()
+            process.wait(timeout=1)
+            raise error
+        stdout.seek(0)
+        stderr.seek(0)
+        return subprocess.CompletedProcess(argv, process.returncode, stdout.read(), stderr.read())
+
+
 def _git_commit_looks_like_network_error(text: str) -> bool:
     lowered = text.lower()
+    # SSH authentication failures also contain the broad remote-read hint below.
+    if any(hint in lowered for hint in ("permission denied", "authentication failed", "terminal prompts disabled",
+                                       "host key verification failed", "[rejected]", "non-fast-forward")):
+        return False
     return any(hint in lowered for hint in _GIT_COMMIT_NETWORK_HINTS)
 
 
 def git_commit_push_with_retry(*, cwd: str = ".", delays: tuple[float, ...] = _GIT_COMMIT_PUSH_DELAYS,
                                run: Callable[..., Any] = subprocess.run,
                                sleep: Callable[[float], None] = time.sleep,
-                               push_args: tuple[str, ...] = ("origin", "HEAD")) -> tuple[bool, str]:
-    """``git push <push_args>``, retrying only on network-looking errors (default: ``origin HEAD``)."""
+                               push_args: tuple[str, ...] = ("origin", "HEAD"),
+                               timeout: float = _GIT_PUSH_ATTEMPT_TIMEOUT,
+                               total_timeout: float = _GIT_NETWORK_TIMEOUT,
+                               monotonic: Callable[[], float] = time.monotonic) -> tuple[bool, str]:
+    """``git push <push_args>``, retrying only on network-looking errors (default: ``origin HEAD``).
+
+    ``timeout`` bounds one attempt (60s); ``total_timeout`` bounds all attempts
+    and backoff together (300s). Process cleanup may add at most 1s on POSIX,
+    2s on Windows, plus OS scheduling/process creation overhead. Neither
+    limit applies to local add/commit/merge or subtree splitting.
+    """
+    for name, value in (("timeout", timeout), ("total_timeout", total_timeout)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < value < float("inf"):
+            raise ValueError(f"{name} must be positive and finite")
     remaining = list(delays)
+    if any(isinstance(d, bool) or not isinstance(d, (int, float)) or not 0 <= d < float("inf") for d in remaining):
+        raise ValueError("delays must be non-negative and finite")
+    deadline = monotonic() + total_timeout
+    output = ""
+
+    def exhausted() -> tuple[bool, str]:
+        return False, output + f"\ngit push: total timeout after {total_timeout:g}s (attempts and retry waits)"
+
     while True:
-        done = run(["git", "push", *push_args], cwd=cwd, capture_output=True, text=True)
-        output = done.stdout + done.stderr
-        if done.returncode == 0:
+        budget = deadline - monotonic()
+        if budget <= 0:
+            return exhausted()
+        attempt_timeout = min(timeout, budget)
+        try:
+            done = _git_network_run(["git", "push", *push_args], run=run, cwd=cwd,
+                                    timeout=attempt_timeout, env=_git_network_env())
+            output = done.stdout + done.stderr
+        except subprocess.TimeoutExpired:
+            done, output = None, f"git push: operation timed out after {attempt_timeout:g}s"
+        if done is not None and done.returncode == 0:
             return True, output
+        if deadline - monotonic() <= 0:
+            return exhausted()
         if not remaining or not _git_commit_looks_like_network_error(output):
             return False, output
-        sleep(remaining.pop(0))
+        budget = deadline - monotonic()
+        if budget <= 0:
+            return exhausted()
+        delay = remaining.pop(0)
+        sleep(min(delay, budget))
 
 
 def git_commit(message_file: str, files: list[str], *, trailers: list[str] | None = None,
@@ -1500,7 +1614,15 @@ def sync_main(*, base: str = "main", remote: str = "origin", write: bool = False
     merge and only with ``write``.
     """
     def git(*args: str, check: bool = True) -> Any:
-        completed = run(["git", *args], cwd=cwd, capture_output=True, text=True)
+        extra = ({"timeout": _GIT_NETWORK_TIMEOUT, "env": _git_network_env()}
+                 if args[0] in _GIT_NETWORK_COMMANDS else {})
+        try:
+            if extra:
+                completed = _git_network_run(["git", *args], run=run, cwd=cwd, **extra)
+            else:
+                completed = run(["git", *args], cwd=cwd, capture_output=True, text=True)
+        except subprocess.TimeoutExpired:
+            raise GhOpsError(f"git {args[0]} timed out after {_GIT_NETWORK_TIMEOUT:g}s") from None
         if check and completed.returncode != 0:
             raise GhOpsError(f"git {' '.join(args)} failed: {completed.stderr.strip()}")
         return completed
@@ -1561,10 +1683,15 @@ class SubtreePushError(GhOpsError):
 def _subtree_git(cwd: Any, args: list[str], *, run: Callable[..., Any], timeout: float,
                  ok: tuple[int, ...] = (0,), env: dict | None = None) -> Any:
     kwargs: dict = {"cwd": str(cwd), "capture_output": True, "text": True, "timeout": timeout}
-    if env:
+    if args and args[0] in _GIT_NETWORK_COMMANDS:
+        kwargs["env"] = _git_network_env(env)
+    elif env:
         kwargs["env"] = {**os.environ, **env}
     try:
-        done = run(["git", *args], **kwargs)
+        if args and args[0] in _GIT_NETWORK_COMMANDS:
+            done = _git_network_run(["git", *args], run=run, cwd=str(cwd), timeout=timeout, env=kwargs["env"])
+        else:
+            done = run(["git", *args], **kwargs)
     except subprocess.TimeoutExpired:
         raise SubtreePushError("git_timeout", f"git {args[0]}") from None
     if done.returncode not in ok:
@@ -2242,6 +2369,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--sha", required=True)
     p.add_argument("--min-checks", type=int, default=1)
     p.add_argument("--method", choices=MERGE_METHODS, default="squash")
+    p.add_argument("--ignore", default=r"(?i)copilot", metavar="REGEX",
+                   help="drop check names matching REGEX before judging (default (?i)copilot; '' keeps all)")
     p.add_argument("--title")
     p.add_argument("--message-file")
     p.add_argument("--write", action="store_true")
@@ -2388,7 +2517,7 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
     if command == "pr-merge":
         message = _read_text(args.message_file) if args.message_file else None
         return pr_merge(args.repo, args.number, sha=args.sha, min_checks=args.min_checks, method=args.method,
-                        title=args.title, message=message, write=args.write, client=client)
+                        title=args.title, message=message, ignore=args.ignore, write=args.write, client=client)
     if command == "git-commit":
         if args.push and not args.write:
             raise GhOpsError("--push requires --write")
