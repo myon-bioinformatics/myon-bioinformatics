@@ -7,13 +7,6 @@
       "repository_id": 1402862784,
       "sha": "85243d6d1285e3bf4667e1447308543c7d648ab7"
     },
-    "myon-bioinformatics/BlueProbe": {
-      "optional": {
-        "repository_created_at": "2026-10-14T01:27:17Z"
-      },
-      "repository_id": 1418210841,
-      "sha": "9fe05fe657676dc85318ad12702b44d54e6c5663"
-    },
     "myon-bioinformatics/Err-o-RoadRunner": {
       "optional": {
         "repository_created_at": "2026-10-11T12:46:05Z"

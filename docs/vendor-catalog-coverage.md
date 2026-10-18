@@ -20,9 +20,10 @@ The catalog expands coverage to yourself, cli_args, markdown, ascii_artist,
 nvd_nist_known_vulns, web-ui (`web_ui.py`), BlueProbe (`blueprobe.py`), and the
 parent's shared tools. `web_ui.py` uses `skipped(pending_explicit_enrollment)`
 by default; only consumers with an existing locked copy (Aoi and github.io) are
-`enrolled` explicitly. `blueprobe.py` uses `skipped(requires_sibling_module)`;
-Aoi is additionally `skipped(subtree_child)` because subtree sync owns that
-layout. QueRyu (`queryu.py`) and PythDRagoras (`pythdragoras.py`) use
+`enrolled` explicitly. BlueProbe is an Aoi subtree child (see Aoi's
+`child-heads.json`); the catalog still lists `blueprobe.py` for organization-wide
+coverage with `skipped(requires_sibling_module)` like QueRyu and PythDRagoras,
+not as a parent `vendor-consumers.json` lock. QueRyu (`queryu.py`) and PythDRagoras (`pythdragoras.py`) use
 `skipped(requires_external_package)`. A warn-only check for legacy implicit
 `source` defaults in child snapshots is deferred; use
 `validate --allow-legacy-implicit-source` until 2027-04-01 instead. Existing

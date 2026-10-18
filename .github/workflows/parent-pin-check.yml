@@ -30,6 +30,7 @@ jobs:
     with:
       exclude-globs: |
         tests/**
+        .github/workflows/vendor-consumers-compat.yml
 
   reusable-layout-smoke:
     runs-on: ubuntu-latest

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.parent_pin_workflow_cli import cli_excludes_from_shell_run
 from tools.parent_pin_check import (
     PARENT_PIN_TOOL_PATH,
     PARENT_REPOSITORY,
@@ -274,6 +275,126 @@ def test_fetch_parent_main_from_atom(monkeypatch: pytest.MonkeyPatch) -> None:
     sha, branch = fetch_parent_main_sha(PARENT_REPOSITORY, "token")
     assert branch == "main"
     assert sha == "ece241afedb60d5daf0b12e37241ebb1dd001bd8"
+
+
+PARENT_PIN_CHECK_WORKFLOW = (
+    Path(__file__).resolve().parents[1] / ".github/workflows/parent-pin-check.yml"
+)
+PARENT_REPO_COMPAT_EXCLUDE = ".github/workflows/vendor-consumers-compat.yml"
+
+
+def _load_parent_pin_check_workflow() -> dict:
+    return yaml.load(PARENT_PIN_CHECK_WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+
+def _check_job_exclude_globs(workflow: dict) -> list[str]:
+    globs = workflow["jobs"]["check"]["with"]["exclude-globs"].splitlines()
+    return [line.strip() for line in globs if line.strip()]
+
+
+def _smoke_step_cli_excludes(workflow: dict) -> list[str]:
+    for step in workflow["jobs"]["reusable-layout-smoke"]["steps"]:
+        run = step.get("run")
+        if not run or "parent_pin_check.py" not in run:
+            continue
+        return cli_excludes_from_shell_run(run)
+    raise AssertionError("smoke step running parent_pin_check.py not found")
+
+
+def test_parent_pin_check_workflow_excludes_vendor_consumers_compat_only() -> None:
+    globs = _check_job_exclude_globs(_load_parent_pin_check_workflow())
+    assert PARENT_REPO_COMPAT_EXCLUDE in globs
+    assert ".github/workflows/*-compat.yml" not in globs
+    assert ".github/workflows/foo-compat.yml" not in globs
+
+
+def test_reusable_layout_smoke_does_not_repeat_check_job_compat_exclude() -> None:
+    workflow = _load_parent_pin_check_workflow()
+    check_globs = _check_job_exclude_globs(workflow)
+    smoke_excludes = _smoke_step_cli_excludes(workflow)
+    assert PARENT_REPO_COMPAT_EXCLUDE in check_globs
+    assert smoke_excludes == ["tests/**"]
+    assert PARENT_REPO_COMPAT_EXCLUDE not in smoke_excludes
+
+
+def test_repo_scoped_compat_exclude_skips_only_vendor_consumers_compat(tmp_path: Path) -> None:
+    historical = "1" * 40
+    stale = "2" * 40
+    checkout_block = (
+        "steps:\n"
+        "  - uses: actions/checkout@v7\n"
+        "    with:\n"
+        f"      repository: {PARENT_REPOSITORY}\n"
+        "      ref: {sha}\n"
+    )
+    _write(
+        tmp_path,
+        PARENT_REPO_COMPAT_EXCLUDE,
+        checkout_block.format(sha=historical),
+    )
+    _write(
+        tmp_path,
+        ".github/workflows/foo-compat.yml",
+        checkout_block.format(sha=stale),
+    )
+    _write(
+        tmp_path,
+        ".github/workflows/ci.yml",
+        f"uses: {PARENT_REPOSITORY}/.github/workflows/reusable-parent-pin-check.yml@{stale}\n",
+    )
+    pins = scan(
+        tmp_path,
+        include_default_excludes=True,
+        exclude_globs=(PARENT_REPO_COMPAT_EXCLUDE,),
+    )
+    files = {pin["file"] for pin in pins}
+    assert PARENT_REPO_COMPAT_EXCLUDE not in files
+    assert ".github/workflows/foo-compat.yml" in files
+    assert ".github/workflows/ci.yml" in files
+    assert {pin["commit"] for pin in pins} == {stale}
+
+
+def test_other_compat_workflows_still_flag_stale_parent_pins(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import tools.parent_pin_check as module
+
+    historical = "1" * 40
+    stale = "2" * 40
+    main = "3" * 40
+    checkout_block = (
+        "steps:\n"
+        "  - uses: actions/checkout@v7\n"
+        "    with:\n"
+        f"      repository: {PARENT_REPOSITORY}\n"
+        "      ref: {sha}\n"
+    )
+    _write(tmp_path, PARENT_REPO_COMPAT_EXCLUDE, checkout_block.format(sha=historical))
+    _write(tmp_path, ".github/workflows/foo-compat.yml", checkout_block.format(sha=stale))
+    _write(
+        tmp_path,
+        ".github/workflows/ci.yml",
+        f"uses: {PARENT_REPOSITORY}/.github/workflows/reusable-parent-pin-check.yml@{stale}\n",
+    )
+    pins = scan(
+        tmp_path,
+        include_default_excludes=True,
+        exclude_globs=(PARENT_REPO_COMPAT_EXCLUDE,),
+    )
+
+    def fake_behind(parent_repository: str, pin: str, main_sha: str, token: str | None) -> bool:
+        return pin == stale
+
+    monkeypatch.setattr(module, "pin_behind_main", fake_behind)
+    report = evaluate(
+        pins,
+        parent_repository=PARENT_REPOSITORY,
+        main_sha=main,
+        token="token",
+        enforce=True,
+    )
+    assert report["stale"]
+    assert report["stale_commits"] == [stale]
 
 
 def test_child_heads_excluded_by_default(tmp_path: Path) -> None:

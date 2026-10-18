@@ -216,7 +216,6 @@ def test_checked_in_registry_and_parent_lock():
         "myon-bioinformatics/web-ui",
         "myon-bioinformatics/flutter_navigation_basic",
         "myon-bioinformatics/Aoi",
-        "myon-bioinformatics/BlueProbe",
         "myon-bioinformatics/Err-o-RoadRunner",
         "myon-bioinformatics/cli_args",
         "myon-bioinformatics/gh_identity",

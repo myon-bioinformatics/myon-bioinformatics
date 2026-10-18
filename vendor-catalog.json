@@ -295,12 +295,6 @@
       "default_enrollment": {
         "enrollment": "skipped",
         "reason": "requires_sibling_module"
-      },
-      "consumers": {
-        "myon-bioinformatics/Aoi": {
-          "enrollment": "skipped",
-          "reason": "subtree_child"
-        }
       }
     },
     {
@@ -353,10 +347,6 @@
       "reason": "Catalog gap: already locked by consumers but previously uncatalogued; pinned to the commit locked by the most consumers registered in vendor-consumers.json. Not an automatic promotion.",
       "source": "scripts/check_evidence.py",
       "consumers": {
-        "myon-bioinformatics/BlueProbe": {
-          "enrollment": "enrolled",
-          "reason": "already_locked_by_consumer"
-        },
         "myon-bioinformatics/Err-o-RoadRunner": {
           "enrollment": "enrolled",
           "reason": "already_locked_by_consumer"
@@ -377,10 +367,6 @@
       "reason": "Catalog gap: already locked by consumers but previously uncatalogued; pinned to the commit locked by the most consumers registered in vendor-consumers.json. Not an automatic promotion.",
       "source": "scripts/jsonl_digest.py",
       "consumers": {
-        "myon-bioinformatics/BlueProbe": {
-          "enrollment": "enrolled",
-          "reason": "already_locked_by_consumer"
-        },
         "myon-bioinformatics/Err-o-RoadRunner": {
           "enrollment": "enrolled",
           "reason": "already_locked_by_consumer"
@@ -421,10 +407,6 @@
       "reason": "Catalog gap: already locked by consumers but previously uncatalogued; pinned to the commit locked by the most consumers registered in vendor-consumers.json. Not an automatic promotion.",
       "source": "src/mcp_toolcall_lab/github_public_resolver.py",
       "consumers": {
-        "myon-bioinformatics/BlueProbe": {
-          "enrollment": "enrolled",
-          "reason": "already_locked_by_consumer"
-        },
         "myon-bioinformatics/ascii_artist": {
           "enrollment": "enrolled",
           "reason": "already_locked_by_consumer"
