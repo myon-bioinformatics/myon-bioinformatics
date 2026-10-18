@@ -71,8 +71,9 @@ reviews before any merge; a successful `git am` does not replace those gates.
 For the 2026-10-14 follow-up tracked in parent Issue #56, preserve the agreed
 JUnit pin `652608b16c73ecd1e39db848abba3d08a00a8a3a` and `commit-sha`, and the
 vendor-sync pin `f907560c2b9b3f7a0f78f4434f547f91cb2ef954`. Workflow pin cleanup
-and lock enrollment for cli_args, gh_identity, BlueProbe and github.io are
-separate reviewed patch contents. Do not infer a 16-repository target set from
+and lock enrollment for cli_args, gh_identity, and github.io are separate
+reviewed patch contents. BlueProbe vendor enrollment moved to the Aoi subtree
+model (Aoi `child-heads.json`); do not re-register it in the parent. Do not infer a 16-repository target set from
 an older inventory or treat this runner's implementation as completion of that
 rollout. This change does not re-enable vendor auto-update jobs.
 

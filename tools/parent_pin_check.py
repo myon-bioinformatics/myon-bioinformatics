@@ -26,6 +26,7 @@ SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", ".test-deps"}
 ZERO_SHA = "0" * 40
 
 DEFAULT_EXCLUDE_GLOBS = (
+    ".github/workflows/vendor-consumers-compat.yml",
     "child-heads.json",
     "vendor-catalog.json",
     "vendor-consumers.json",

@@ -276,6 +276,20 @@ def test_fetch_parent_main_from_atom(monkeypatch: pytest.MonkeyPatch) -> None:
     assert sha == "ece241afedb60d5daf0b12e37241ebb1dd001bd8"
 
 
+def test_vendor_consumers_compat_workflow_excluded_by_default(tmp_path: Path) -> None:
+    sha = "1" * 40
+    workflow = (
+        "steps:\n"
+        "  - uses: actions/checkout@v7\n"
+        "    with:\n"
+        f"      repository: {PARENT_REPOSITORY}\n"
+        f"      ref: {sha}\n"
+    )
+    _write(tmp_path, ".github/workflows/vendor-consumers-compat.yml", workflow)
+    pins = scan(tmp_path, include_default_excludes=True)
+    assert pins == []
+
+
 def test_child_heads_excluded_by_default(tmp_path: Path) -> None:
     sha = "2" * 40
     _write(
