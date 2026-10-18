@@ -331,6 +331,17 @@
           "source": "cli_args.py",
           "destination": "vendor/cli_args.py",
           "license": "vendor/cli_args-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/web-ui",
+          "source": "tool/flow_diagram.py",
+          "destination": "vendor/web_ui_flow.py",
+          "license": "vendor/web-ui-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/web-ui",
+          "source": "examples/pr-flow.json",
+          "destination": "examples/flow.json"
         }
       ]
     },

@@ -1,4 +1,4 @@
-"""Parent topology follows Ironmate #94's locked snapshot, not auto-enrollment."""
+"""Parent topology follows Ironmate #122's locked snapshot, not auto-enrollment."""
 import copy
 import json
 from pathlib import Path
@@ -14,10 +14,10 @@ def load(path):
     return json.loads((ROOT / path).read_text())
 
 
-def test_ironmate_registry_matches_reviewed_pr94_lock():
+def test_ironmate_registry_matches_reviewed_flow_lock():
     registry = load('vendor-consumers.json')
-    lock = load('tests/fixtures/ironmate_vendor_lock_841bf541.json')
-    assert len(lock['files']) == 51
+    lock = load('tests/fixtures/ironmate-flow-b5ae001.lock.json')
+    assert len(lock['files']) == 54
     assert vendor_consumers.compare(registry, lock, CONSUMER)['matches']
     # All adopted source digests remain owned by the child's immutable lock.
     assert all(x['ref'] == x['commit'] for x in lock['files'])

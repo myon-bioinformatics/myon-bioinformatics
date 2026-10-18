@@ -29,6 +29,7 @@ jobs:
     timeout-minutes: 15
     env:
       VENDOR_LEGACY_ROOT: .compat/parent-old
+      VENDOR_SHORTHAND_ROOT: .compat/parent-shorthand
       IRONMATE_COMPAT_ROOT: .compat/ironmate
     steps:
       - name: Checkout proposed parent version
@@ -42,7 +43,14 @@ jobs:
           ref: 1eda992aa6fa31a902e2c06428e53ab17e8fe3c1
           path: .compat/parent-old
           persist-credentials: false
-      - name: Checkout current audited Ironmate snapshot
+      - name: Checkout immutable license-shorthand registry fixture
+        uses: actions/checkout@v7
+        with:
+          repository: myon-bioinformatics/myon-bioinformatics
+          ref: a9df23dec720f125772a24b77b413552d60060ba
+          path: .compat/parent-shorthand
+          persist-credentials: false
+      - name: Checkout historical audited Ironmate snapshot
         uses: actions/checkout@v7
         with:
           repository: myon-bioinformatics/Ironmate

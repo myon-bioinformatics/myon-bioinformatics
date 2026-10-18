@@ -1,5 +1,9 @@
 """Pinned old/new vendor consumer compatibility matrix (offline, stdlib CLI).
 
+Both registry documents are frozen: later legitimate topology enrollments must
+not silently change this license-shorthand migration regression. The proposed
+tool is still used for every new-tool test; live topology is audited separately.
+
 The dedicated workflow checks out both historical parent and Ironmate at
 immutable commit SHAs. Ordinary Python test jobs skip these tests because
 their shallow checkouts do not contain those external snapshots.
@@ -17,6 +21,7 @@ import vendor_sync
 
 PARENT_ROOT = Path(__file__).resolve().parents[1]
 LEGACY_SHA = "1eda992aa6fa31a902e2c06428e53ab17e8fe3c1"
+SHORTHAND_SHA = "a9df23dec720f125772a24b77b413552d60060ba"
 IRONMATE_SHA = "77cd700f961f2a97051da96b9c13a6c7a64258df"
 IRONMATE_NAME = "myon-bioinformatics/Ironmate"
 PARENT_NAME = "myon-bioinformatics/myon-bioinformatics"
@@ -27,21 +32,22 @@ RETIRED = {"git_inspector.py", "vendor_sync.py"}
 def snapshots():
     old = os.environ.get("VENDOR_LEGACY_ROOT")
     iron = os.environ.get("IRONMATE_COMPAT_ROOT")
+    shorthand = os.environ.get("VENDOR_SHORTHAND_ROOT")
     if not old and not iron:
         pytest.skip("pinned compatibility snapshots exercised in dedicated workflow")
-    assert old and iron, "both immutable snapshot roots must be configured"
-    old, iron = Path(old).resolve(), Path(iron).resolve()
+    assert old and iron and shorthand, "both immutable snapshot roots must be configured"
+    old, iron, shorthand = Path(old).resolve(), Path(iron).resolve(), Path(shorthand).resolve()
     for path in (old / "vendor_consumers.py", old / "vendor_sync.py",
-                 old / "vendor-consumers.json", iron / "vendor.lock.json",
+                 old / "vendor-consumers.json", shorthand / "vendor-consumers.json", iron / "vendor.lock.json",
                  iron / ".github/workflows/vendor-catalog-audit.yml"):
         assert path.is_file(), f"missing pinned snapshot: {path}"
-    for path, expected in ((old, LEGACY_SHA), (iron, IRONMATE_SHA)):
+    for path, expected in ((old, LEGACY_SHA), (iron, IRONMATE_SHA), (shorthand, SHORTHAND_SHA)):
         actual = subprocess.run(
             ["git", "-C", str(path), "rev-parse", "HEAD"],
             check=True, capture_output=True, text=True,
         ).stdout.strip()
         assert actual == expected, f"{path} expected {expected}, got {actual}"
-    return old, iron
+    return old, iron, shorthand
 
 
 def _project_retired_parent_tools(doc):
@@ -66,9 +72,9 @@ def _invoke(tool_root, mode, registry_path, lock_path=None):
 
 @pytest.fixture
 def documents(tmp_path, snapshots):
-    old_root, iron_root = snapshots
+    old_root, iron_root, shorthand_root = snapshots
     old = json.loads((old_root / "vendor-consumers.json").read_text(encoding="utf-8"))
-    new = json.loads((PARENT_ROOT / "vendor-consumers.json").read_text(encoding="utf-8"))
+    new = json.loads((shorthand_root / "vendor-consumers.json").read_text(encoding="utf-8"))
     assert not any("license" in entry for c in old["consumers"] for entry in c["entries"])
     assert any("license" in entry for c in new["consumers"] for entry in c["entries"])
     paths = {}
@@ -88,7 +94,7 @@ def documents(tmp_path, snapshots):
 @pytest.mark.parametrize("mode", ["validate", "compare"])
 def test_actual_historical_tool_registry_matrix(snapshots, documents, mode,
                                                 tool_version, registry_version, expected_code):
-    old_root, _ = snapshots
+    old_root, _, _ = snapshots
     registry_paths, lock_path = documents
     tool_root = old_root if tool_version == "old" else PARENT_ROOT
     proc = _invoke(tool_root, mode, registry_paths[registry_version],
@@ -113,7 +119,7 @@ def test_actual_historical_tool_registry_matrix(snapshots, documents, mode,
 
 
 def test_old_and_new_registry_ironmate_topology_and_lock_metadata(snapshots, documents):
-    old_root, _ = snapshots
+    old_root, _, _ = snapshots
     registry_paths, lock_path = documents
     expanded = {}
     for version in ("old", "new"):
@@ -143,7 +149,7 @@ def test_old_and_new_registry_ironmate_topology_and_lock_metadata(snapshots, doc
 
 
 def test_ironmate_current_workflow_fetches_tool_and_registry_from_same_pin(snapshots):
-    _, iron_root = snapshots
+    _, iron_root, _ = snapshots
     workflow = (iron_root / ".github/workflows/vendor-catalog-audit.yml").read_text(
         encoding="utf-8")
     assert "ref: " + LEGACY_SHA in workflow
