@@ -249,8 +249,9 @@ def test_real_connection_refusal_is_distinct_from_authentication(git_env):
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
-        # Bound, non-listening port: no service can race to take it.
-        done = remote_probe(f"http://127.0.0.1:{port}/repo.git", git_env)
+    # macOS can silently drop connections while the port remains bound without
+    # listen(). Close it first so this probes refusal, rather than a timeout.
+    done = remote_probe(f"http://127.0.0.1:{port}/repo.git", git_env)
     assert done.returncode != 0 and g._git_commit_looks_like_network_error(done.stderr)
     assert "terminal prompts disabled" not in done.stderr.lower()
 
@@ -261,7 +262,7 @@ def test_real_openssh_connection_refusal(git_env):
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
-        done = remote_probe(f"ssh://git@127.0.0.1:{port}/repo.git", git_env)
+    done = remote_probe(f"ssh://git@127.0.0.1:{port}/repo.git", git_env)
     assert done.returncode != 0 and "connection refused" in done.stderr.lower()
     assert g._git_commit_looks_like_network_error(done.stderr)
 
