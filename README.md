@@ -120,6 +120,7 @@ Template to kickstart API-based search clients.
 * [cli_args](https://github.com/myon-bioinformatics/cli_args)
 * [convert_img_fmt_to_webp-CUI-](https://github.com/myon-bioinformatics/convert_img_fmt_to_webp-CUI-)
 * [cumlative_usage](https://github.com/myon-bioinformatics/cumlative_usage)
+* [DRAgoWing](https://github.com/myon-bioinformatics/DRAgoWing)
 * [Err-o-RoadRunner](https://github.com/myon-bioinformatics/Err-o-RoadRunner)
 * [flutter_navigation_basic](https://github.com/myon-bioinformatics/flutter_navigation_basic)
 * [gh_identity](https://github.com/myon-bioinformatics/gh_identity)
@@ -196,6 +197,7 @@ sibling repositories. It is both the profile README and the parent tooling repo.
 | GitHub workflow operations | [gh_workflow.py](gh_workflow.py), [guide](docs/gh-workflow.md) | Keep explicit write preconditions and repository-specific orchestration |
 | JUnit failure identity | [reusable collector](.github/workflows/reusable-junit-identity.yml), [contract](docs/junit-identity.md) | Produce raw XML, preserve the test exit code, and configure exact expected report paths |
 | Browser screenshot evidence | [browser_evidence.py](browser_evidence.py), [contract](docs/browser-evidence.md) | Capture screenshots with the consumer's engine runner; supply run and checkout identity |
+| Third-party browser JS (`js-adopt`) | [js_adopt.py](js_adopt.py), [guide](docs/js-adopt.md) | Keep `js.lock.json` (raw GitHub URL, sha256, SRI, license) and check it in CI; verify the page in each engine |
 | TypeScript compiler policy | [policy](docs/typescript-native-policy.md) | Policy only; pin a compatible stable release and validate each consumer at the same head |
 
 The parent's [Python tests workflow](.github/workflows/python-tests.yml) collects
