@@ -82,7 +82,7 @@ def test_plan_then_write_one_verified_commit():
     assert {i["path"]: i["change"] for i in plan["plan"]} == {
         "dir/new.txt": "new", "edit.txt": "changed", "keep.txt": "unchanged", "old.txt": "delete", "never.txt": "absent"}
     assert {m for m, _ in remote.calls} == {"GET"}
-    done = gh_ops.commit_files(REPO, "feat", files, "msg", deletes=("old.txt",), expect_head="c0c0c0",
+    done = gh_ops.commit_files(REPO, "feat", files, "msg", deletes=("old.txt",), expect_head="C0" * 20,
                                write=True, client=remote.client())
     assert done["ok"] and done["verified"] and remote.head == done["commit_sha"]
     assert remote.trees[remote.commits[remote.head]] == {
@@ -100,8 +100,12 @@ def test_refusals_and_failures_never_move_the_branch():
     assert same["ok"] and same["reason"] == "unchanged"
     main = gh_ops.commit_files(REPO, "main", {"a.txt": b"y"}, "m", write=True, client=remote.client())
     assert not main["ok"] and "default branch" in main["reason"]
-    moved = gh_ops.commit_files(REPO, "b", {"a.txt": b"y"}, "m", expect_head="ffff", write=True, client=remote.client())
+    moved = gh_ops.commit_files(REPO, "b", {"a.txt": b"y"}, "m", expect_head="f" * 40, write=True, client=remote.client())
     assert not moved["ok"] and "branch moved" in moved["reason"]
+    # Same leading digits, different commit: an exact match is required.
+    near = gh_ops.commit_files(REPO, "b", {"a.txt": b"y"}, "m", expect_head="c0" * 19 + "c1", write=True,
+                               client=remote.client())
+    assert not near["ok"] and "branch moved" in near["reason"] and remote.head == start
     remote.refuse_patch = True
     refused = gh_ops.commit_files(REPO, "b", {"a.txt": b"y"}, "m", write=True, client=remote.client())
     assert not refused["ok"] and "ref update refused" in refused["reason"] and remote.head == start
@@ -119,7 +123,7 @@ def test_refusals_and_failures_never_move_the_branch():
     {"branch": ""}, {"branch": "-x"}, {"branch": "a..b"}, {"message": " "}, {"files": {}},
     {"files": {"../x": b""}}, {"files": {"/x": b""}}, {"files": {".git/config": b""}}, {"files": {"a\\b": b""}},
     {"files": {"a": b""}, "deletes": ("a",)}, {"files": {"a": "text"}},
-    {"files": {f"f{i}": b"" for i in range(101)}}, {"expect_head": "zz"},
+    {"files": {f"f{i}": b"" for i in range(101)}}, {"expect_head": "zz"}, {"expect_head": "c0c0c0c"}, {"expect_head": "c0" * 21},
 ])
 def test_validation(kwargs):
     args = {"branch": "b", "files": {"a.txt": b"x"}, "message": "m", **kwargs}

@@ -140,7 +140,7 @@ Flow for a child repository that was joined with `git subtree add --squash`:
 
 ```sh
 python -S gh_ops.py commit-files OWNER/REPO --branch my-branch --file docs/a.md --file src/x.py=/tmp/x.py --delete old.txt --message "msg"
-python -S gh_ops.py commit-files OWNER/REPO --branch my-branch --file docs/a.md --message "msg" --expect-head 1a2b3c4 --write
+python -S gh_ops.py commit-files OWNER/REPO --branch my-branch --file docs/a.md --message "msg" --expect-head "$(git rev-parse origin/my-branch)" --write
 ```
 
 The same blobs/tree/commit/ref sequence as a connector `create_tree` call, but planned
@@ -148,7 +148,7 @@ first: each path is listed as `new`, `changed`, `unchanged`, `delete` or `absent
 its size and Git blob SHA, and a dry run issues no write. Like `file-put`, the default
 branch is refused unless `--allow-default-branch`. `--write` uploads only changed blobs,
 creates one commit on the current head and moves the branch fast-forward only
-(`force: false`); `--expect-head` refuses if the branch moved. Verification re-reads
+(`force: false`); `--expect-head` takes the full 40-hex SHA and refuses unless the branch tip is exactly that commit (a short prefix is rejected, since a moved branch could still match it). Verification re-reads
 the branch and the new tree and compares every blob SHA with the local bytes. A
 refused ref update leaves an unreferenced commit, which is harmless; re-plan and retry.
 At most 100 paths and 10 MiB per file. `file-put` remains the one-file contents-API path.

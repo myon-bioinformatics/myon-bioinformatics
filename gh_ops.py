@@ -1314,6 +1314,11 @@ def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: 
             raise GhOpsError(f"{path}: content must be bytes")
         if len(data) > _COMMIT_FILE_BYTES:
             raise GhOpsError(f"{path}: larger than {_COMMIT_FILE_BYTES} bytes")
+    if expect_head is not None:
+        # A full SHA, compared exactly: a short prefix would let a moved branch through.
+        if not isinstance(expect_head, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", expect_head):
+            raise GhOpsError(f"expect_head must be the full 40-hex commit SHA, got {expect_head!r}")
+        expect_head = expect_head.lower()
     default_branch = client.get(f"/repos/{repo}")["default_branch"]
     out: dict = {"ok": False, "dry_run": not write, "repository": repo, "branch": branch}
     if branch == default_branch and not allow_default_branch:
@@ -1321,7 +1326,7 @@ def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: 
                                  "without --allow-default-branch"}
     head = _git_ref_tip_sha(client, repo, branch)
     out["head"] = head
-    if expect_head and not head.startswith(_sha(expect_head)):
+    if expect_head is not None and head != expect_head:
         return {**out, "reason": f"branch moved: head is {head[:12]}, expected {expect_head}"}
     base_tree = _git_commit_tree_sha(client, repo, head)
     tree = client.get(f"/repos/{repo}/git/trees/{base_tree}", params={"recursive": "1"})
@@ -2305,7 +2310,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="repository path, optionally =local file to read (default: the same path)")
     p.add_argument("--delete", action="append", default=[], metavar="PATH")
     p.add_argument("--message", required=True, help="commit message")
-    p.add_argument("--expect-head", help="refuse unless the branch tip starts with this SHA")
+    p.add_argument("--expect-head", metavar="SHA", help="refuse unless the branch tip is exactly this full 40-hex SHA")
     p.add_argument("--allow-default-branch", action="store_true",
                    help="permit writing directly to the repository's default branch")
     p.add_argument("--write", action="store_true")
