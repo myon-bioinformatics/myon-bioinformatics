@@ -298,10 +298,11 @@ def test_real_custom_ssh_hang_is_bounded_and_children_are_killed(git_env, tmp_pa
     script = tmp_path / "fake-ssh.py"
     pidfile = tmp_path / "child.pid"
     survived = tmp_path / "child-survived"
+    child_code = f"import time; time.sleep(2); open({str(survived)!r}, 'w').write('alive')"
     script.write_text(
         "import subprocess, sys, time\n"
         "if '-G' in sys.argv: sys.exit(0)\n"
-        f"p = subprocess.Popen([sys.executable, '-c', {('import time; time.sleep(2); open(' + repr(str(survived)) + ', "w").write("alive")')!r}])\n"
+        f"p = subprocess.Popen([sys.executable, '-c', {child_code!r}])\n"
         f"open({str(pidfile)!r}, 'w').write(str(p.pid))\n"
         "print('transport started', flush=True)\n"
         "time.sleep(30)\n")
