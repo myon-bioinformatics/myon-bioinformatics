@@ -23,6 +23,8 @@ import base64
 import hashlib
 import json
 import re
+import shlex
+import subprocess
 import sys
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
@@ -54,18 +56,94 @@ def sri(data: bytes) -> str:
     return "sha384-" + base64.b64encode(hashlib.sha384(data).digest()).decode()
 
 
-def download(url: str) -> bytes:
-    with urlopen(Request(url, headers={"User-Agent": "js-adopt/1"}), timeout=TIMEOUT_SECONDS) as response:
-        data = response.read(MAX_BYTES + 1)
-    if len(data) > MAX_BYTES:
+# A separate process makes the deadline cover DNS, headers and a trickling body.
+# No bytes are published until the response is complete and within the cap.
+_URLLIB_READ = """import sys, urllib.request
+url, cap, seconds = sys.argv[1], int(sys.argv[2]), float(sys.argv[3])
+with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "js-adopt/1"}), timeout=seconds) as response:
+    length = response.headers.get("Content-Length")
+    if length is not None and int(length) > cap:
         raise ValueError("download exceeds byte limit")
-    return data
+    data = response.read(cap + 1)
+    if len(data) > cap:
+        raise ValueError("download exceeds byte limit")
+    if length is not None and len(data) != int(length):
+        raise ValueError("incomplete response")
+sys.stdout.buffer.write(data)
+"""
 
 
-def license_ok(expression: str) -> bool:
-    """An SPDX expression is allowed when one OR-branch is entirely allowed (AND needs every part)."""
-    branches = [b.strip(" ()") for b in re.split(r"\s+OR\s+", expression.strip())]
-    return any(all(part.strip(" ()") in ALLOWED for part in re.split(r"\s+AND\s+", b)) for b in branches)
+def download(url: str) -> bytes:
+    try:
+        result = subprocess.run(
+            [sys.executable, "-S", "-c", _URLLIB_READ, url, str(MAX_BYTES), str(TIMEOUT_SECONDS)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=TIMEOUT_SECONDS, check=True)
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+        raise ValueError("download failed, exceeded byte limit or total deadline") from exc
+    return result.stdout
+
+
+def license_ok(expression: str, *, strict: bool = False) -> bool:
+    """Parse ID / parentheses / AND / OR, with AND binding tighter than OR.
+
+    Parse every branch even when its value cannot change the answer. WITH,
+    LicenseRef, legacy '+' and malformed/overly complex expressions fail closed.
+    """
+    if not isinstance(expression, str) or len(expression) > 4096:
+        if strict:
+            raise ValueError("unsupported SPDX expression")
+        return False
+    tokens = re.findall(r"[A-Za-z0-9][A-Za-z0-9.-]*|[()]|[^\s]", expression)
+    if not tokens or len(tokens) > 256:
+        if strict:
+            raise ValueError("unsupported SPDX expression")
+        return False
+    position = 0
+
+    def primary():
+        nonlocal position
+        if position >= len(tokens):
+            raise ValueError("missing operand")
+        token = tokens[position]
+        position += 1
+        if token == "(":
+            value = disjunction()
+            if position >= len(tokens) or tokens[position] != ")":
+                raise ValueError("unclosed parenthesis")
+            position += 1
+            return value
+        if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]*", token)
+                or token in {"AND", "OR", "WITH"} or token.startswith(("LicenseRef-", "DocumentRef-"))):
+            raise ValueError("unsupported operand")
+        return token in ALLOWED
+
+    def conjunction():
+        nonlocal position
+        value = primary()
+        while position < len(tokens) and tokens[position] == "AND":
+            position += 1
+            right = primary()
+            value = value and right
+        return value
+
+    def disjunction():
+        nonlocal position
+        value = conjunction()
+        while position < len(tokens) and tokens[position] == "OR":
+            position += 1
+            right = conjunction()
+            value = value or right
+        return value
+
+    try:
+        value = disjunction()
+        if position != len(tokens):
+            raise ValueError("trailing SPDX tokens")
+        return value
+    except (ValueError, RecursionError) as exc:
+        if strict:
+            raise ValueError("unsupported SPDX expression") from exc
+        return False
 
 
 def _safe_relative(value: str, what: str) -> str:
@@ -125,7 +203,7 @@ def add(lock: dict, root: Path, repository: str, ref: str, path: str, dest: str,
     name = name or PurePosixPath(path).name.split(".")[0].lower()
     if not _NAME.fullmatch(name):
         raise ValueError(f"invalid name: {name!r}")
-    if not license_ok(license) and not allow_license:
+    if not license_ok(license, strict=True) and not allow_license:
         raise LicenseNotAllowed(f"license {license!r} is not in the allow list; review it and pass --allow-license")
     url = raw_url(repository, ref, path)
     data = fetch(url)
@@ -152,7 +230,7 @@ def check(lock: dict, root: Path, *, remote: bool = False, fetch=download) -> li
             problems.append(f"{e['name']}: local bytes differ from the lock")
         if not _gitattributes_covers(root, e["destination"]):
             problems.append(f"{e['name']}: .gitattributes lacks '{e['destination']} -text' (CRLF would break SRI)")
-        if not license_ok(e["license"]) and not e.get("license_reviewed"):
+        if not license_ok(e["license"], strict=True) and not e.get("license_reviewed"):
             problems.append(f"{e['name']}: license {e['license']} not allowed")
         if remote and hashlib.sha256(fetch(e["url"])).hexdigest() != e["sha256"]:
             problems.append(f"{e['name']}: {e['ref']} now serves different bytes (moved tag?)")
@@ -171,15 +249,95 @@ def script_tag(entry: dict, *, cdn: bool = False, base: str = "") -> str:
     return f'<script src="{src}" integrity="{entry["sri"]}" crossorigin="anonymous"></script>'
 
 
+# This supervisor bounds stdout even when curl receives no Content-Length.
+# A timer kills the actual network process, including during DNS/blocked reads.
+_FETCH_EXAMPLE = """import hashlib, os, subprocess, sys, tempfile, threading
+command = COMMAND
+process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+timer = threading.Timer(SECONDS, process.kill)
+timer.start()
+try:
+    data = process.stdout.read(CAP + 1)
+    if len(data) > CAP:
+        raise ValueError("download exceeds byte limit")
+    if process.wait() != 0:
+        raise ValueError("download failed or total deadline exceeded")
+finally:
+    timer.cancel()
+    if process.poll() is None:
+        process.kill()
+    process.wait()
+    process.stdout.close()
+if hashlib.sha256(data).hexdigest() != DIGEST:
+    raise ValueError("sha256 mismatch")
+name = None
+try:
+    with tempfile.NamedTemporaryFile(dir=os.path.dirname(DEST) or ".", delete=False) as target:
+        name = target.name
+        target.write(data)
+    os.replace(name, DEST)
+finally:
+    if name is not None and os.path.exists(name):
+        os.unlink(name)
+"""
+
+
 def oneliners(entry: dict) -> list[str]:
-    url, digest = entry["url"], entry["sha256"]
-    return [
-        f"curl -fsSL --max-time {TIMEOUT_SECONDS} '{url}' -o '{entry['destination']}' && "
-        f"echo '{digest}  {entry['destination']}' | sha256sum -c -",
-        f"await (await fetch('{cdn_url(entry)}', {{integrity: '{entry['sri']}'}})).text()",
-        f"python -c \"import urllib.request,hashlib;d=urllib.request.urlopen('{url}',timeout={TIMEOUT_SECONDS}).read();"
-        f"assert hashlib.sha256(d).hexdigest()=='{digest}';open('{entry['destination']}','wb').write(d)\"",
-    ]
+    """Standalone POSIX shell commands and a browser-console expression.
+
+    The shell examples need Python 3; curl additionally needs curl. Destinations
+    are replaced only after successful completion and hash verification.
+    """
+    def shell(command):
+        values = dict(COMMAND=command, SECONDS=repr(TIMEOUT_SECONDS), CAP=repr(MAX_BYTES),
+                      DIGEST=repr(entry["sha256"]), DEST=repr(entry["destination"]))
+        code = re.sub(r"\b(COMMAND|SECONDS|CAP|DIGEST|DEST)\b", lambda m: values[m[0]], _FETCH_EXAMPLE)
+        return "python -S -c " + shlex.quote(code)
+
+    curl = shell(repr(["curl", "-fsSL", "--max-time", str(TIMEOUT_SECONDS),
+                       "--max-filesize", str(MAX_BYTES), entry["url"]]))
+    urllib = shell("[sys.executable, '-S', '-c', " + repr(_URLLIB_READ) + ", "
+                   + repr(entry["url"]) + ", " + repr(str(MAX_BYTES)) + ", "
+                   + repr(str(TIMEOUT_SECONDS)) + "]")
+    # fetch's integrity option may buffer the entire response before exposing a
+    # stream. Verify SRI ourselves after the bounded read instead.
+    browser = """await (async () => {
+const controller = new AbortController();
+let reader, timer;
+const work = (async () => {
+  const response = await fetch(URL, {signal: controller.signal});
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+  const length = response.headers.get('content-length');
+  if (length !== null && Number(length) > CAP) throw new Error('byte limit');
+  reader = response.body.getReader();
+  const chunks = []; let size = 0;
+  for (;;) {
+    const {done, value} = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > CAP) throw new Error('byte limit');
+    chunks.push(value);
+  }
+  const data = new Uint8Array(size); let offset = 0;
+  for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.byteLength; }
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-384', data));
+  const integrity = 'sha384-' + btoa(String.fromCharCode(...hash));
+  if (integrity !== SRI) throw new Error('integrity mismatch');
+  return new TextDecoder().decode(data);
+})();
+try {
+  return await Promise.race([work, new Promise((_, reject) => {
+    timer = setTimeout(() => { controller.abort(); reject(new Error('total deadline')); }, MILLISECONDS);
+  })]);
+} finally {
+  clearTimeout(timer); controller.abort();
+  if (reader) { reader.cancel().catch(() => {}); }
+}
+})()"""
+    values = dict(URL=json.dumps(cdn_url(entry)), CAP=str(MAX_BYTES),
+                  SRI=json.dumps(entry["sri"]), MILLISECONDS=str(TIMEOUT_SECONDS * 1000))
+    browser = re.sub(r"\b(URL|CAP|SRI|MILLISECONDS)\b", lambda m: values[m[0]], browser)
+    return [curl, browser, urllib]
 
 
 def main(argv=None) -> int:

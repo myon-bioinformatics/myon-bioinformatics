@@ -106,9 +106,9 @@ def test_tags_and_oneliners_carry_the_same_integrity(tmp_path):
         f'<script src="../vendor/js/purify.min.js" integrity="{entry["sri"]}" crossorigin="anonymous"></script>')
     assert 'src="https://cdn.jsdelivr.net/gh/cure53/DOMPurify@3.4.17/dist/purify.min.js"' in ja.script_tag(entry, cdn=True)
     curl, fetch, py = ja.oneliners(entry)
-    assert entry["sha256"] in curl and "--max-time" in curl and "sha256sum -c" in curl
-    assert f"integrity: '{entry['sri']}'" in fetch
-    assert "timeout=" in py and entry["sha256"] in py
+    assert entry["sha256"] in curl and "--max-time" in curl and "sha256" in curl
+    assert entry["sri"] in fetch and "AbortController" in fetch
+    assert "threading.Timer" in py and entry["sha256"] in py
 
 
 def test_cli_runs_under_python_s(tmp_path):

@@ -32,10 +32,33 @@ CC0-1.0. Anything else (GPL, LGPL such as libheif, unknown) is refused unless
 python -S js_adopt.py add cure53/DOMPurify 3.4.17 dist/purify.min.js --dest vendor/js --license "MPL-2.0 OR Apache-2.0"
 python -S js_adopt.py check [--remote]
 python -S js_adopt.py tag purify [--cdn] [--base ../]
-python -S js_adopt.py oneliners purify      # curl + sha256sum, browser fetch with integrity, urllib
+python -S js_adopt.py oneliners purify      # bounded curl / browser fetch + Web Crypto SRI / urllib
 ```
 
-Downloads have a 30 s timeout and a 10 MB cap (`fetch-guard`). Exit codes: 0 OK; 1
+Downloads and all generated examples have a 30 s **total network deadline**
+(including DNS, headers and a trickling body) and a 10,000,000-byte cap
+(`fetch-guard`). Exact-limit bodies are accepted; one extra byte is rejected.
+The Python network worker is killed at the deadline. Generated shell examples
+require Python 3 (the curl example also requires curl), stream through a bounded
+supervisor, verify SHA-256, then atomically replace the destination. Failures keep
+any existing destination intact. The destination directory must already exist.
+The displayed shell commands use POSIX quoting and contain embedded newlines;
+copy each complete command.
+
+The browser example streams with AbortController and a deadline race, then verifies
+SHA-384 SRI with Web Crypto before returning text. It deliberately avoids fetch's
+`integrity` option, which can buffer the body before exposing a stream. It requires
+Web Crypto in a secure context and CORS permission from the source.
+
+Supported license grammar: license identifiers, parentheses, `AND`, and `OR`;
+`AND` binds tighter than `OR`. Every branch must parse. Unsupported syntax
+(including `WITH`, legacy `+`, and LicenseRef/DocumentRef), malformed expressions,
+and expressions over 4096 characters or 256 tokens are rejected even with
+`--allow-license`. That flag only reviews a syntactically supported expression
+containing licenses outside the allow list. The adopter remains responsible for
+checking the actual license text.
+
+Exit codes: 0 OK; 1
 mismatch or license not allowed; 2 input error.
 
 ## Notes
