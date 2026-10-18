@@ -1162,20 +1162,26 @@ def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = Fal
 
 
 def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: str = "squash",
-             message: str | None = None, title: str | None = None, write: bool = False,
-             client: Client | None = None) -> dict:
+             message: str | None = None, title: str | None = None, ignore: str | None = None,
+             write: bool = False, client: Client | None = None) -> dict:
     """Verify, then (only with ``write=True``) merge a PR in one call.
 
     Preconditions: open, ``mergeable_state == "clean"``, head matches
     ``sha`` (an abbreviated SHA must match exactly one PR commit), and the
     head has at least ``min_checks`` check runs, all completed and passing.
     Any failed precondition returns ``ok: False`` without an HTTP write.
-    The merge request always pins ``sha`` to the verified head.
+    The merge request always pins ``sha`` to the verified head. ``ignore`` is a
+    regex of check names (e.g. ``(?i)copilot`` for the review bot) dropped
+    before judging; they are listed under ``checks["ignored"]``.
     """
     if method not in MERGE_METHODS:
         raise GhOpsError(f"--method must be one of {', '.join(MERGE_METHODS)}")
     if min_checks < 1:
         raise GhOpsError("--min-checks must be at least 1; zero check runs never counts as green")
+    try:
+        pattern = re.compile(ignore) if ignore else None
+    except re.error as error:
+        raise GhOpsError(f"--ignore is not a valid regex: {error}") from None
     client, repo, prefix = _client(client), _repo(repo), _sha(sha)
     path = f"/repos/{repo}/pulls/{int(number)}"
     pr = client.get(path)
@@ -1201,7 +1207,10 @@ def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: s
     elif not matching:
         failures.append("the PR commit list does not contain the head commit; refusing to merge")
     if pre_merge["sha_matches_head"] and len(matching) == 1:
-        checks = _summarize_checks(_check_runs(client, repo, head), min_checks)
+        runs = _check_runs(client, repo, head)
+        ignored = [run for run in runs if pattern and pattern.search(run.get("name") or "")]
+        checks = _summarize_checks([run for run in runs if run not in ignored], min_checks)
+        checks["ignored"] = [{"name": run.get("name"), "conclusion": run.get("conclusion")} for run in ignored]
         if not checks["ok"]:
             failures.append(checks["reason"])
     else:
@@ -2270,6 +2279,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--sha", required=True)
     p.add_argument("--min-checks", type=int, default=1)
     p.add_argument("--method", choices=MERGE_METHODS, default="squash")
+    p.add_argument("--ignore", default=r"(?i)copilot", metavar="REGEX",
+                   help="drop check names matching REGEX before judging (default (?i)copilot; '' keeps all)")
     p.add_argument("--title")
     p.add_argument("--message-file")
     p.add_argument("--write", action="store_true")
@@ -2416,7 +2427,7 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
     if command == "pr-merge":
         message = _read_text(args.message_file) if args.message_file else None
         return pr_merge(args.repo, args.number, sha=args.sha, min_checks=args.min_checks, method=args.method,
-                        title=args.title, message=message, write=args.write, client=client)
+                        title=args.title, message=message, ignore=args.ignore, write=args.write, client=client)
     if command == "git-commit":
         if args.push and not args.write:
             raise GhOpsError("--push requires --write")

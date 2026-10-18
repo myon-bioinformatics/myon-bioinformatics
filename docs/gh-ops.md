@@ -65,6 +65,14 @@ commits. A consumer repin is separate from this parent registry change.
 `gh_identity.py` remains read-oriented in child repositories: it does not replace
 `gh_ops.py` for REST writes or local `git add`/`commit`/`push` workflows.
 
+## Merge with verification (`pr-merge`)
+
+`pr-merge` merges only when the PR is open, `clean`, its head matches `--sha`, and
+the head's check runs are all completed and passing. `--ignore REGEX` drops check
+names before judging (default `(?i)copilot`, so a failing Copilot review bot does not
+block; `--ignore ''` keeps every check). Ignored checks never count toward
+`--min-checks` and are listed under `checks.ignored`.
+
 ## PR base retarget (`pr-retarget`)
 
 Stacked pull requests often need their base branch moved (for example from a
