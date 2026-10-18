@@ -457,7 +457,7 @@
       ],
       "locked_ci": {
         "workflow": ".github/workflows/non-dart.yml",
-        "sha256": "d2fc6753185bfabbce0da5c5aa9574af10de99ee1e7776a50c52bb900517ad20"
+        "sha256": "65d0618bac062420bf5e2f527a18345f9c0d2e2cb27b8c2f83306d1349580194"
       }
     },
     {
@@ -522,7 +522,8 @@
         {
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "gh_ops.py",
-          "destination": "vendor/gh_ops.py"
+          "destination": "vendor/gh_ops.py",
+          "license": "vendor/myon-bioinformatics-LICENSE"
         },
         {
           "repository": "myon-bioinformatics/browser-test-kit",

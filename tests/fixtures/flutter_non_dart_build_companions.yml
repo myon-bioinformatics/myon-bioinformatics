@@ -515,7 +515,7 @@ jobs:
           junit_dir="$GITHUB_WORKSPACE/build/test-results"
           mkdir -p "$junit_dir"
           PLAYWRIGHT_JUNIT_OUTPUT_FILE="$junit_dir/playwright-portable.xml" \
-            python3 ../python/playwright.py test --project chromium --project firefox --project webkit --project mobile-chromium --project mobile-webkit --grep @portable tests/hub_navigation.spec.ts tests/screen_navigation.spec.ts tests/photo_studio.spec.ts tests/photo_studio_ingress.spec.ts tests/photo_studio_format_matrix.spec.ts tests/shared_header.spec.ts tests/home_discovery_journeys.spec.ts
+            python3 ../python/playwright.py test --project chromium --project firefox --project webkit --project mobile-chromium --project mobile-webkit --grep @portable tests/hub_navigation.spec.ts tests/screen_navigation.spec.ts tests/photo_studio.spec.ts tests/photo_studio_ingress.spec.ts tests/photo_studio_format_matrix.spec.ts tests/ironmate_published_handoff.spec.ts tests/shared_header.spec.ts tests/home_discovery_journeys.spec.ts
           # Later Playwright invocations replace their default output folders.
           # Preserve the five-browser screenshots and JSON before that happens.
           mkdir -p ../build/playwright-portable
