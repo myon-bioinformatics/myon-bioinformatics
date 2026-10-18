@@ -1422,6 +1422,18 @@ def git_commit_build_message(base: str, trailers: list[str]) -> str:
     return body + "\n\n" + "\n".join(to_add) + "\n"
 
 
+# fetch-guard: a network git command must never wait for a person (credential or SSH
+# prompt) and must end within a deadline, so a missing token fails fast instead of hanging.
+_GIT_NETWORK_COMMANDS = frozenset({"fetch", "push", "pull", "clone", "ls-remote"})
+_GIT_NETWORK_TIMEOUT = 300.0
+
+
+def _git_network_env(extra: dict | None = None) -> dict:
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never", **(extra or {})}
+    env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
+    return env
+
+
 def _git_commit_looks_like_network_error(text: str) -> bool:
     lowered = text.lower()
     return any(hint in lowered for hint in _GIT_COMMIT_NETWORK_HINTS)
@@ -1430,13 +1442,22 @@ def _git_commit_looks_like_network_error(text: str) -> bool:
 def git_commit_push_with_retry(*, cwd: str = ".", delays: tuple[float, ...] = _GIT_COMMIT_PUSH_DELAYS,
                                run: Callable[..., Any] = subprocess.run,
                                sleep: Callable[[float], None] = time.sleep,
-                               push_args: tuple[str, ...] = ("origin", "HEAD")) -> tuple[bool, str]:
-    """``git push <push_args>``, retrying only on network-looking errors (default: ``origin HEAD``)."""
+                               push_args: tuple[str, ...] = ("origin", "HEAD"),
+                               timeout: float = _GIT_NETWORK_TIMEOUT) -> tuple[bool, str]:
+    """``git push <push_args>``, retrying only on network-looking errors (default: ``origin HEAD``).
+
+    Each attempt is non-interactive and bounded by ``timeout`` seconds; a timed-out attempt
+    counts as a network error (and is retried while delays remain).
+    """
     remaining = list(delays)
     while True:
-        done = run(["git", "push", *push_args], cwd=cwd, capture_output=True, text=True)
-        output = done.stdout + done.stderr
-        if done.returncode == 0:
+        try:
+            done = run(["git", "push", *push_args], cwd=cwd, capture_output=True, text=True,
+                       timeout=timeout, env=_git_network_env())
+            output = done.stdout + done.stderr
+        except subprocess.TimeoutExpired:
+            done, output = None, f"git push: operation timed out after {timeout:g}s"
+        if done is not None and done.returncode == 0:
             return True, output
         if not remaining or not _git_commit_looks_like_network_error(output):
             return False, output
@@ -1500,7 +1521,12 @@ def sync_main(*, base: str = "main", remote: str = "origin", write: bool = False
     merge and only with ``write``.
     """
     def git(*args: str, check: bool = True) -> Any:
-        completed = run(["git", *args], cwd=cwd, capture_output=True, text=True)
+        extra = ({"timeout": _GIT_NETWORK_TIMEOUT, "env": _git_network_env()}
+                 if args[0] in _GIT_NETWORK_COMMANDS else {})
+        try:
+            completed = run(["git", *args], cwd=cwd, capture_output=True, text=True, **extra)
+        except subprocess.TimeoutExpired:
+            raise GhOpsError(f"git {args[0]} timed out after {_GIT_NETWORK_TIMEOUT:g}s") from None
         if check and completed.returncode != 0:
             raise GhOpsError(f"git {' '.join(args)} failed: {completed.stderr.strip()}")
         return completed
@@ -1561,7 +1587,9 @@ class SubtreePushError(GhOpsError):
 def _subtree_git(cwd: Any, args: list[str], *, run: Callable[..., Any], timeout: float,
                  ok: tuple[int, ...] = (0,), env: dict | None = None) -> Any:
     kwargs: dict = {"cwd": str(cwd), "capture_output": True, "text": True, "timeout": timeout}
-    if env:
+    if args and args[0] in _GIT_NETWORK_COMMANDS:
+        kwargs["env"] = _git_network_env(env)
+    elif env:
         kwargs["env"] = {**os.environ, **env}
     try:
         done = run(["git", *args], **kwargs)
