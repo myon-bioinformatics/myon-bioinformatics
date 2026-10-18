@@ -73,6 +73,50 @@ names before judging (default `(?i)copilot`, so a failing Copilot review bot doe
 block; `--ignore ''` keeps every check). Ignored checks never count toward
 `--min-checks` and are listed under `checks.ignored`.
 
+## Network Git limits (`fetch-guard`)
+
+| Operation | One communication | Attempts plus backoff |
+| --- | --- | --- |
+| `git-commit --push`, subtree's verified push | 60 seconds | 300 seconds total, at most five attempts |
+| `sync-main` fetch / push | 300 seconds each | No retry; fetch and push are separate communications |
+| Subtree fetch / clone / ls-remote | Existing subtree `timeout` argument (600 seconds by default) | Separate bounded calls; this is not an overall subtree deadline |
+
+The push helper uses a monotonic deadline. Each attempt is capped at the smaller
+of its per-attempt timeout and the remaining total budget; retry waits consume
+the same budget. No attempt starts after that deadline. `timeout` and
+`total_timeout` are separate Python helper arguments, both positive and finite.
+Timeouts and transient connection errors may retry; authentication failures,
+host-key failures and rejected pushes stop immediately with the original error.
+No force-push or refspec policy is changed.
+
+Network Git receives closed stdin, `GIT_TERMINAL_PROMPT=0`,
+`GCM_INTERACTIVE=never`, empty Git/SSH AskPass settings, and
+`SSH_ASKPASS_REQUIRE=never`. Guards override inherited/caller prompt settings;
+credentials and unrelated environment settings remain available. The default
+OpenSSH command uses `BatchMode=yes`. An explicit `GIT_SSH_COMMAND` or `GIT_SSH` is preserved
+verbatim, including identity files and wrappers; custom transports/helpers must
+implement their own noninteractive behavior. Their waiting is still bounded by
+the process deadline and they cannot use this process's controlling terminal
+on POSIX (a new session is used).
+
+On timeout the real runner kills the POSIX process group or uses Windows
+`taskkill /T /F` before killing Git. Output-pipe cleanup is bounded too, so a
+transport retaining a pipe cannot make cleanup wait indefinitely. Cleanup may
+add up to one second on POSIX or two on Windows, plus OS scheduling and process
+creation overhead. A push timeout can occur after the remote accepted a write;
+callers must inspect the remote state before trying a different write. Subtree
+push retains its empty-lease/new-branch and post-write verification guards.
+
+Local `add`, `commit`, `status`, `diff`, `rev-parse` and `merge` gain no new
+timeout or environment restrictions. Existing subtree local-operation limits
+are retained. A whole multi-operation workflow should use its own job timeout;
+the 300-second retry budget is not an overall workflow deadline.
+
+Regression tests use a local HTTP/HTTPS server returning a real 401 challenge
+and an AskPass positive control, a successful local Git HTTP remote, connection
+refusal, an SSH transport with a hanging child, and a deterministic clock for
+retry/deadline cases. They require no external network or real credentials.
+
 ## PR base retarget (`pr-retarget`)
 
 Stacked pull requests often need their base branch moved (for example from a

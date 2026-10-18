@@ -45,6 +45,7 @@ import fnmatch
 import json
 import os
 import re
+import signal
 import shutil
 import subprocess
 import sys
@@ -1435,16 +1436,60 @@ def git_commit_build_message(base: str, trailers: list[str]) -> str:
 # prompt) and must end within a deadline, so a missing token fails fast instead of hanging.
 _GIT_NETWORK_COMMANDS = frozenset({"fetch", "push", "pull", "clone", "ls-remote"})
 _GIT_NETWORK_TIMEOUT = 300.0
+_GIT_PUSH_ATTEMPT_TIMEOUT = 60.0
 
 
 def _git_network_env(extra: dict | None = None) -> dict:
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never", **(extra or {})}
-    env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
+    # Apply guards last: callers may add credentials, but cannot re-enable prompts.
+    # Empty GIT_ASKPASS also suppresses core.askPass (TERMINAL_PROMPT alone does not).
+    env = {**os.environ, **(extra or {}), "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never",
+           "GIT_ASKPASS": "", "SSH_ASKPASS": "", "SSH_ASKPASS_REQUIRE": "never"}
+    if not env.get("GIT_SSH"):
+        env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
     return env
+
+
+def _git_network_run(argv: list[str], *, run: Callable[..., Any], timeout: float,
+                     cwd: str, env: dict) -> Any:
+    """Bound network Git and its transport children; keep injectable runners intact."""
+    kwargs = {"cwd": cwd, "capture_output": True, "text": True, "stdin": subprocess.DEVNULL,
+              "timeout": timeout, "env": env}
+    if run is not subprocess.run:
+        return run(argv, **kwargs)
+    # subprocess.run kills only Git on timeout. SSH/credential helpers can retain
+    # its output pipes, making run's subsequent communicate() wait indefinitely.
+    kwargs.pop("capture_output")
+    kwargs.pop("timeout")
+    with subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                          start_new_session=(os.name == "posix"), **kwargs) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            if os.name == "posix":
+                with contextlib.suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+            else:
+                # taskkill is the Windows process-tree equivalent. Its own wait
+                # is bounded too; never drain inherited pipes without a timeout.
+                with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+                    subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)],
+                                   capture_output=True, timeout=1)
+                process.kill()
+            try:
+                process.communicate(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.stdout.close()
+                process.stderr.close()
+            raise error
+        return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
 
 
 def _git_commit_looks_like_network_error(text: str) -> bool:
     lowered = text.lower()
+    # SSH authentication failures also contain the broad remote-read hint below.
+    if any(hint in lowered for hint in ("permission denied", "authentication failed", "terminal prompts disabled",
+                                       "host key verification failed", "[rejected]", "non-fast-forward")):
+        return False
     return any(hint in lowered for hint in _GIT_COMMIT_NETWORK_HINTS)
 
 
@@ -1452,25 +1497,50 @@ def git_commit_push_with_retry(*, cwd: str = ".", delays: tuple[float, ...] = _G
                                run: Callable[..., Any] = subprocess.run,
                                sleep: Callable[[float], None] = time.sleep,
                                push_args: tuple[str, ...] = ("origin", "HEAD"),
-                               timeout: float = _GIT_NETWORK_TIMEOUT) -> tuple[bool, str]:
+                               timeout: float = _GIT_PUSH_ATTEMPT_TIMEOUT,
+                               total_timeout: float = _GIT_NETWORK_TIMEOUT,
+                               monotonic: Callable[[], float] = time.monotonic) -> tuple[bool, str]:
     """``git push <push_args>``, retrying only on network-looking errors (default: ``origin HEAD``).
 
-    Each attempt is non-interactive and bounded by ``timeout`` seconds; a timed-out attempt
-    counts as a network error (and is retried while delays remain).
+    ``timeout`` bounds one attempt (60s); ``total_timeout`` bounds all attempts
+    and backoff together (300s). Process cleanup may add at most 1s on POSIX,
+    2s on Windows, plus OS scheduling/process creation overhead. Neither
+    limit applies to local add/commit/merge or subtree splitting.
     """
+    for name, value in (("timeout", timeout), ("total_timeout", total_timeout)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < value < float("inf"):
+            raise ValueError(f"{name} must be positive and finite")
     remaining = list(delays)
+    if any(isinstance(d, bool) or not isinstance(d, (int, float)) or not 0 <= d < float("inf") for d in remaining):
+        raise ValueError("delays must be non-negative and finite")
+    deadline = monotonic() + total_timeout
+    output = ""
+
+    def exhausted() -> tuple[bool, str]:
+        return False, output + f"\ngit push: total timeout after {total_timeout:g}s (attempts and retry waits)"
+
     while True:
+        budget = deadline - monotonic()
+        if budget <= 0:
+            return exhausted()
+        attempt_timeout = min(timeout, budget)
         try:
-            done = run(["git", "push", *push_args], cwd=cwd, capture_output=True, text=True,
-                       timeout=timeout, env=_git_network_env())
+            done = _git_network_run(["git", "push", *push_args], run=run, cwd=cwd,
+                                    timeout=attempt_timeout, env=_git_network_env())
             output = done.stdout + done.stderr
         except subprocess.TimeoutExpired:
-            done, output = None, f"git push: operation timed out after {timeout:g}s"
+            done, output = None, f"git push: operation timed out after {attempt_timeout:g}s"
         if done is not None and done.returncode == 0:
             return True, output
+        if deadline - monotonic() <= 0:
+            return exhausted()
         if not remaining or not _git_commit_looks_like_network_error(output):
             return False, output
-        sleep(remaining.pop(0))
+        budget = deadline - monotonic()
+        if budget <= 0:
+            return exhausted()
+        delay = remaining.pop(0)
+        sleep(min(delay, budget))
 
 
 def git_commit(message_file: str, files: list[str], *, trailers: list[str] | None = None,
@@ -1533,7 +1603,10 @@ def sync_main(*, base: str = "main", remote: str = "origin", write: bool = False
         extra = ({"timeout": _GIT_NETWORK_TIMEOUT, "env": _git_network_env()}
                  if args[0] in _GIT_NETWORK_COMMANDS else {})
         try:
-            completed = run(["git", *args], cwd=cwd, capture_output=True, text=True, **extra)
+            if extra:
+                completed = _git_network_run(["git", *args], run=run, cwd=cwd, **extra)
+            else:
+                completed = run(["git", *args], cwd=cwd, capture_output=True, text=True)
         except subprocess.TimeoutExpired:
             raise GhOpsError(f"git {args[0]} timed out after {_GIT_NETWORK_TIMEOUT:g}s") from None
         if check and completed.returncode != 0:
@@ -1601,7 +1674,10 @@ def _subtree_git(cwd: Any, args: list[str], *, run: Callable[..., Any], timeout:
     elif env:
         kwargs["env"] = {**os.environ, **env}
     try:
-        done = run(["git", *args], **kwargs)
+        if args and args[0] in _GIT_NETWORK_COMMANDS:
+            done = _git_network_run(["git", *args], run=run, cwd=str(cwd), timeout=timeout, env=kwargs["env"])
+        else:
+            done = run(["git", *args], **kwargs)
     except subprocess.TimeoutExpired:
         raise SubtreePushError("git_timeout", f"git {args[0]}") from None
     if done.returncode not in ok:

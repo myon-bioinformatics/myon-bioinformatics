@@ -560,7 +560,8 @@ def test_push_with_retry_default_args_unchanged():
     (argv, kwargs), = seen
     env = kwargs.pop("env")
     assert (argv, kwargs) == (["git", "push", "origin", "HEAD"],
-                              {"cwd": ".", "capture_output": True, "text": True, "timeout": 300.0})
+                              {"cwd": ".", "capture_output": True, "text": True, "timeout": 60.0,
+                               "stdin": subprocess.DEVNULL})
     assert env["GIT_TERMINAL_PROMPT"] == "0" and env["GCM_INTERACTIVE"] == "never"
     seen.clear()
     g.git_commit_push_with_retry(run=run, sleep=lambda s: None, push_args=("--", "/r", "a:refs/heads/b"))
@@ -851,8 +852,8 @@ def test_subtree_network_commands_never_prompt():
     assert fetch_env["GIT_TERMINAL_PROMPT"] == "0" and fetch_env["X"] == "1"
 
 
-def test_fetch_against_a_password_remote_fails_fast(tmp_path):
-    """A real git fetch that would ask for credentials returns an error instead of waiting."""
+def test_fetch_against_an_unreachable_remote_fails_fast(tmp_path):
+    """Connection refusal is a transport failure, not proof of prompt suppression."""
     import time
     repo = tmp_path / "r"
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
