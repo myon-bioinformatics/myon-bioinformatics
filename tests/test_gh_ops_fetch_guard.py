@@ -293,7 +293,6 @@ def test_real_http_success_reads_remote_refs(http_git, git_env, tmp_path):
     assert done.returncode == 0 and any(path.startswith("/repo.git/info/refs") for path in requests)
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX transport process-group regression")
 def test_real_custom_ssh_hang_is_bounded_and_children_are_killed(git_env, tmp_path):
     script = tmp_path / "fake-ssh.py"
     pidfile = tmp_path / "child.pid"
@@ -319,8 +318,12 @@ def test_real_custom_ssh_hang_is_bounded_and_children_are_killed(git_env, tmp_pa
         if pidfile.exists():
             import contextlib
             import signal
-            with contextlib.suppress(ProcessLookupError):
-                os.kill(int(pidfile.read_text()), signal.SIGKILL)
+            if os.name == "posix":
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(int(pidfile.read_text()), signal.SIGKILL)
+            else:
+                subprocess.run(["taskkill", "/F", "/T", "/PID", pidfile.read_text()],
+                               capture_output=True, timeout=2)
 
 
 def test_sync_main_network_timeout_does_not_limit_local_commands():
