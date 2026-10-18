@@ -86,6 +86,20 @@ def test_check_detects_local_edit_missing_file_and_moved_ref(tmp_path):
     assert ja.check(lock, tmp_path) == ["purify: missing vendor/js/purify.min.js"]
 
 
+def test_add_pins_line_endings_and_check_reports_a_missing_rule(tmp_path):
+    """CRLF_BREAKS_SRI: Windows autocrlf rewrote adopted JS and every engine refused it."""
+    (tmp_path / ".gitattributes").write_text("other.py -text")  # no trailing newline
+    lock, _, _ = adopt(tmp_path)
+    assert (tmp_path / ".gitattributes").read_text() == "other.py -text\nvendor/js/purify.min.js -text\n"
+    adopt(tmp_path)
+    assert (tmp_path / ".gitattributes").read_text().count("purify") == 1  # idempotent
+    (tmp_path / ".gitattributes").write_text("vendor/js/** -text\n")
+    assert ja.check(lock, tmp_path) == []
+    (tmp_path / ".gitattributes").write_text("vendor/js/** text\n")
+    assert ja.check(lock, tmp_path) == [
+        "purify: .gitattributes lacks 'vendor/js/purify.min.js -text' (CRLF would break SRI)"]
+
+
 def test_tags_and_oneliners_carry_the_same_integrity(tmp_path):
     _, entry, _ = adopt(tmp_path)
     assert ja.script_tag(entry, base="../") == (

@@ -40,6 +40,11 @@ mismatch or license not allowed; 2 input error.
 
 ## Notes
 
+- `add` writes `<destination> -text` to `.gitattributes`, and `check` fails without such a rule
+  (an exact path or a `dir/**` pattern). Windows runners check out with `core.autocrlf=true`; the
+  CRLF bytes no longer match the SRI hash and every engine refuses the file (seen in
+  browser-test-kit platform-matrix: all 14 Windows environments failed, Linux and macOS passed).
+
 - Some minified files drop the license header (seedrandom 3.0.5 keeps its MIT notice only
   in `seedrandom.js` and the README). When the notice must travel with the file, adopt the
   unminified file or also adopt the LICENSE file under the same `--dest`.

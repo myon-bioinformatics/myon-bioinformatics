@@ -9,7 +9,8 @@
 `add` downloads https://raw.githubusercontent.com/OWNER/REPO/REF/PATH with urllib (no git, no npm),
 writes it under --dest, and records `js-adopt/1` in js.lock.json: repository, ref, path, url,
 destination, bytes, sha256, the browser SRI value (sha384), and the SPDX license you state. A tag
-can move, so the sha256 is what pins the bytes: `check` re-hashes the local copy, and
+can move, so the sha256 is what pins the bytes; `add` also marks the file `-text` in
+.gitattributes so Windows checkouts keep the exact bytes. `check` re-hashes the local copy, and
 `check --remote` re-downloads to detect a moved ref. The SRI value lets a page refuse a changed
 file (`<script integrity>` or `fetch(url, {integrity})`) whether it loads the local copy or the CDN.
 
@@ -88,6 +89,31 @@ def save_lock(path: Path, lock: dict) -> None:
     path.write_text(json.dumps(lock, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _gitattributes_covers(root: Path, destination: str) -> bool:
+    """True when .gitattributes marks the file -text, exactly or through a `dir/**` pattern."""
+    path = root / ".gitattributes"
+    lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
+    for line in lines:
+        parts = line.split()
+        if len(parts) >= 2 and "-text" in parts[1:]:
+            pattern = parts[0]
+            if pattern == destination or (pattern.endswith("/**") and destination.startswith(pattern[:-2])):
+                return True
+    return False
+
+
+def ensure_gitattributes(root: Path, destination: str) -> bool:
+    """Keep adopted bytes exact: Windows checkouts (core.autocrlf) would rewrite LF to CRLF and
+    break the SRI hash in every engine (CRLF_BREAKS_SRI). Returns True when a line was added."""
+    if _gitattributes_covers(root, destination):
+        return False
+    path = root / ".gitattributes"
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    path.write_text(text + ("" if not text or text.endswith("\n") else "\n") + f"{destination} -text\n",
+                    encoding="utf-8")
+    return True
+
+
 def add(lock: dict, root: Path, repository: str, ref: str, path: str, dest: str, *, license: str,
         name: str | None = None, allow_license: bool = False, fetch=download) -> dict:
     if not _REPO.fullmatch(repository) or any(p in (".", "..") for p in repository.split("/")):
@@ -111,6 +137,7 @@ def add(lock: dict, root: Path, repository: str, ref: str, path: str, dest: str,
              "destination": destination, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
              "sri": sri(data), "license": license}
     lock["files"] = [e for e in lock["files"] if e["name"] != name and e["destination"] != destination] + [entry]
+    ensure_gitattributes(root, destination)
     return entry
 
 
@@ -123,6 +150,8 @@ def check(lock: dict, root: Path, *, remote: bool = False, fetch=download) -> li
             problems.append(f"{e['name']}: missing {e['destination']}")
         elif hashlib.sha256(data).hexdigest() != e["sha256"] or sri(data) != e["sri"]:
             problems.append(f"{e['name']}: local bytes differ from the lock")
+        if not _gitattributes_covers(root, e["destination"]):
+            problems.append(f"{e['name']}: .gitattributes lacks '{e['destination']} -text' (CRLF would break SRI)")
         if not license_ok(e["license"]) and not e.get("license_reviewed"):
             problems.append(f"{e['name']}: license {e['license']} not allowed")
         if remote and hashlib.sha256(fetch(e["url"])).hexdigest() != e["sha256"]:
