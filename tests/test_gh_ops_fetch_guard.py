@@ -294,6 +294,27 @@ def test_real_http_success_reads_remote_refs(http_git, git_env, tmp_path):
     assert done.returncode == 0 and any(path.startswith("/repo.git/info/refs") for path in requests)
 
 
+def test_exited_process_with_inherited_output_handle_does_not_wait_for_eof(git_env):
+    # communicate() waits for the sleeping child's inherited output pipes even
+    # after its parent exited successfully. File capture must return immediately.
+    code = ("import subprocess, sys; "
+            "p=subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+            "print(p.pid, flush=True); print('progress', file=sys.stderr, flush=True)")
+    done = None
+    start = time.monotonic()
+    try:
+        done = g._git_network_run([sys.executable, "-c", code], run=subprocess.run,
+                                  cwd=".", timeout=3, env=git_env)
+        assert done.returncode == 0 and time.monotonic() - start < 3
+        assert done.stderr == "progress\n"
+    finally:
+        if done is not None and done.stdout.strip():
+            import contextlib
+            import signal
+            with contextlib.suppress(OSError):
+                os.kill(int(done.stdout.strip()), signal.SIGTERM)
+
+
 def test_real_custom_ssh_hang_is_bounded_and_children_are_killed(git_env, tmp_path):
     script = tmp_path / "fake-ssh.py"
     pidfile = tmp_path / "child.pid"
@@ -304,7 +325,6 @@ def test_real_custom_ssh_hang_is_bounded_and_children_are_killed(git_env, tmp_pa
         "if '-G' in sys.argv: sys.exit(0)\n"
         f"p = subprocess.Popen([sys.executable, '-c', {child_code!r}])\n"
         f"open({str(pidfile)!r}, 'w').write(str(p.pid))\n"
-        "print('transport started', flush=True)\n"
         "time.sleep(30)\n")
     env = {**git_env, "GIT_SSH_COMMAND": f'"{sys.executable}" "{script}"', "GIT_SSH_VARIANT": "ssh"}
     start = time.monotonic()

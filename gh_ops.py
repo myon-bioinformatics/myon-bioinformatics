@@ -1457,31 +1457,31 @@ def _git_network_run(argv: list[str], *, run: Callable[..., Any], timeout: float
     if run is not subprocess.run:
         return run(argv, **kwargs)
     # subprocess.run kills only Git on timeout. SSH/credential helpers can retain
-    # its output pipes, making run's subsequent communicate() wait indefinitely.
+    # output pipes, making communicate() (or Windows reader-thread cleanup) hang.
+    # Regular temporary files let us wait for the process without draining pipes.
     kwargs.pop("capture_output")
     kwargs.pop("timeout")
-    with subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    with tempfile.TemporaryFile(mode="w+") as stdout, tempfile.TemporaryFile(mode="w+") as stderr, \
+         subprocess.Popen(argv, stdout=stdout, stderr=stderr,
                           start_new_session=(os.name == "posix"), **kwargs) as process:
         try:
-            stdout, stderr = process.communicate(timeout=timeout)
+            process.wait(timeout=timeout)
         except subprocess.TimeoutExpired as error:
             if os.name == "posix":
                 with contextlib.suppress(ProcessLookupError):
                     os.killpg(process.pid, signal.SIGKILL)
             else:
                 # taskkill is the Windows process-tree equivalent. Its own wait
-                # is bounded too; never drain inherited pipes without a timeout.
+                # is bounded too, and it has no output pipes to drain.
                 with contextlib.suppress(OSError, subprocess.TimeoutExpired):
                     subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)],
-                                   capture_output=True, timeout=1)
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1)
                 process.kill()
-            try:
-                process.communicate(timeout=1)
-            except subprocess.TimeoutExpired:
-                process.stdout.close()
-                process.stderr.close()
+            process.wait(timeout=1)
             raise error
-        return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+        stdout.seek(0)
+        stderr.seek(0)
+        return subprocess.CompletedProcess(argv, process.returncode, stdout.read(), stderr.read())
 
 
 def _git_commit_looks_like_network_error(text: str) -> bool:

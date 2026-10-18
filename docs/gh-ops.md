@@ -100,8 +100,9 @@ the process deadline and they cannot use this process's controlling terminal
 on POSIX (a new session is used).
 
 On timeout the real runner kills the POSIX process group or uses Windows
-`taskkill /T /F` before killing Git. Output-pipe cleanup is bounded too, so a
-transport retaining a pipe cannot make cleanup wait indefinitely. Cleanup may
+`taskkill /T /F` before killing Git. Output is captured in regular temporary
+files rather than pipes, so a transport retaining an output handle cannot make
+pipe-draining or Windows reader-thread cleanup wait indefinitely. Cleanup may
 add up to one second on POSIX or two on Windows, plus OS scheduling and process
 creation overhead. A push timeout can occur after the remote accepted a write;
 callers must inspect the remote state before trying a different write. Subtree
