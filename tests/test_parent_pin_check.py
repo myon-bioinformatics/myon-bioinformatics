@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-import re
+import shlex
 import textwrap
 from pathlib import Path
 
@@ -281,7 +281,51 @@ PARENT_PIN_CHECK_WORKFLOW = (
     Path(__file__).resolve().parents[1] / ".github/workflows/parent-pin-check.yml"
 )
 PARENT_REPO_COMPAT_EXCLUDE = ".github/workflows/vendor-consumers-compat.yml"
-_SMOKE_CLI_EXCLUDE = re.compile(r"--exclude\s+'([^']+)'")
+
+
+def _cli_excludes_from_shell_run(run: str) -> list[str]:
+    """Collect every ``--exclude`` / ``--exclude=`` value from a workflow run block."""
+    segments: list[str] = []
+    buf = ""
+    for line in run.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if buf:
+            buf = f"{buf} {stripped}"
+        else:
+            buf = stripped
+        if buf.endswith("\\"):
+            buf = buf[:-1].rstrip()
+            continue
+        segments.append(buf)
+        buf = ""
+    if buf:
+        segments.append(buf)
+
+    command = ""
+    for segment in segments:
+        if "parent_pin_check.py" in segment:
+            command = segment
+            break
+    if not command:
+        return []
+
+    tokens = shlex.split(command, posix=True)
+    excludes: list[str] = []
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--exclude":
+            if index + 1 >= len(tokens):
+                raise ValueError("--exclude requires a value")
+            excludes.append(tokens[index + 1])
+            index += 2
+            continue
+        if token.startswith("--exclude="):
+            excludes.append(token.partition("=")[2])
+        index += 1
+    return excludes
 
 
 def _load_parent_pin_check_workflow() -> dict:
@@ -298,8 +342,36 @@ def _smoke_step_cli_excludes(workflow: dict) -> list[str]:
         run = step.get("run")
         if not run or "parent_pin_check.py" not in run:
             continue
-        return _SMOKE_CLI_EXCLUDE.findall(run)
+        return _cli_excludes_from_shell_run(run)
     raise AssertionError("smoke step running parent_pin_check.py not found")
+
+
+@pytest.mark.parametrize(
+    ("run", "expected"),
+    [
+        ("python tools/parent_pin_check.py --exclude 'tests/**'", ["tests/**"]),
+        ('python tools/parent_pin_check.py --exclude "tests/**"', ["tests/**"]),
+        ("python tools/parent_pin_check.py --exclude tests/**", ["tests/**"]),
+        ("python tools/parent_pin_check.py --exclude=tests/**", ["tests/**"]),
+        (
+            "python parent-pin-tool/tools/parent_pin_check.py \\\n"
+            f'  --exclude "{PARENT_REPO_COMPAT_EXCLUDE}"',
+            [PARENT_REPO_COMPAT_EXCLUDE],
+        ),
+        (
+            "python parent-pin-tool/tools/parent_pin_check.py \\\n"
+            f"  --exclude={PARENT_REPO_COMPAT_EXCLUDE}",
+            [PARENT_REPO_COMPAT_EXCLUDE],
+        ),
+        (
+            "python parent-pin-tool/tools/parent_pin_check.py \\\n"
+            f"  --exclude {PARENT_REPO_COMPAT_EXCLUDE}",
+            [PARENT_REPO_COMPAT_EXCLUDE],
+        ),
+    ],
+)
+def test_cli_excludes_from_shell_run_accepts_quote_styles(run: str, expected: list[str]) -> None:
+    assert _cli_excludes_from_shell_run(run) == expected
 
 
 def test_parent_pin_check_workflow_excludes_vendor_consumers_compat_only() -> None:
