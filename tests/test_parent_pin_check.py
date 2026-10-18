@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import textwrap
 from pathlib import Path
 
@@ -280,15 +281,41 @@ PARENT_PIN_CHECK_WORKFLOW = (
     Path(__file__).resolve().parents[1] / ".github/workflows/parent-pin-check.yml"
 )
 PARENT_REPO_COMPAT_EXCLUDE = ".github/workflows/vendor-consumers-compat.yml"
+_SMOKE_CLI_EXCLUDE = re.compile(r"--exclude\s+'([^']+)'")
+
+
+def _load_parent_pin_check_workflow() -> dict:
+    return yaml.load(PARENT_PIN_CHECK_WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+
+
+def _check_job_exclude_globs(workflow: dict) -> list[str]:
+    globs = workflow["jobs"]["check"]["with"]["exclude-globs"].splitlines()
+    return [line.strip() for line in globs if line.strip()]
+
+
+def _smoke_step_cli_excludes(workflow: dict) -> list[str]:
+    for step in workflow["jobs"]["reusable-layout-smoke"]["steps"]:
+        run = step.get("run")
+        if not run or "parent_pin_check.py" not in run:
+            continue
+        return _SMOKE_CLI_EXCLUDE.findall(run)
+    raise AssertionError("smoke step running parent_pin_check.py not found")
 
 
 def test_parent_pin_check_workflow_excludes_vendor_consumers_compat_only() -> None:
-    workflow = yaml.load(PARENT_PIN_CHECK_WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
-    globs = workflow["jobs"]["check"]["with"]["exclude-globs"].splitlines()
-    globs = [line.strip() for line in globs if line.strip()]
+    globs = _check_job_exclude_globs(_load_parent_pin_check_workflow())
     assert PARENT_REPO_COMPAT_EXCLUDE in globs
     assert ".github/workflows/*-compat.yml" not in globs
     assert ".github/workflows/foo-compat.yml" not in globs
+
+
+def test_reusable_layout_smoke_does_not_repeat_check_job_compat_exclude() -> None:
+    workflow = _load_parent_pin_check_workflow()
+    check_globs = _check_job_exclude_globs(workflow)
+    smoke_excludes = _smoke_step_cli_excludes(workflow)
+    assert PARENT_REPO_COMPAT_EXCLUDE in check_globs
+    assert smoke_excludes == ["tests/**"]
+    assert PARENT_REPO_COMPAT_EXCLUDE not in smoke_excludes
 
 
 def test_repo_scoped_compat_exclude_skips_only_vendor_consumers_compat(tmp_path: Path) -> None:

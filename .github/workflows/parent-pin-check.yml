@@ -66,6 +66,5 @@ jobs:
             --root consumer \
             --skip-api \
             --exclude 'tests/**' \
-            --exclude '.github/workflows/vendor-consumers-compat.yml' \
             --event pull_request \
             --ref refs/pull/85/merge
