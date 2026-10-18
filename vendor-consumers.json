@@ -437,11 +437,16 @@
           "source": "gh_identity.py",
           "destination": "python/vendor/gh_identity.py",
           "license": "python/vendor/gh_identity-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/browser-test-kit",
+          "source": "scripts/browser_execution.mjs",
+          "destination": "e2e/utils/browser_execution.mjs"
         }
       ],
       "locked_ci": {
         "workflow": ".github/workflows/non-dart.yml",
-        "sha256": "2e4c19bb968208d4eed3f69ae5cfa2d8e1e40a0a93df979b63ec7be2e88a8127"
+        "sha256": "d2fc6753185bfabbce0da5c5aa9574af10de99ee1e7776a50c52bb900517ad20"
       }
     },
     {
