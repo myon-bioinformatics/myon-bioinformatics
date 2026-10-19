@@ -201,9 +201,14 @@ sibling repositories. It is both the profile README and the parent tooling repo.
 | Concise test runner (`pytest-brief`) | [pytest_brief.py](pytest_brief.py), [contract](docs/pytest-brief.md) | Resolve missing dependencies and run pytest with filtered summary output |
 | TypeScript compiler policy | [policy](docs/typescript-native-policy.md) | Policy only; pin a compatible stable release and validate each consumer at the same head |
 
+The [Python runtime/setup policy](docs/python-ci-policy.md) separates stdlib runtime
+compatibility from development tooling and records the governed template boundary.
+
 The parent's [Python tests workflow](.github/workflows/python-tests.yml) collects
-JUnit from five Python versions (3.10–3.14) and three vendor-portability jobs
-(Linux 3.9, Windows 3.12, macOS 3.12). Raw XML and compact failure identity are
+JUnit from four development/test Python versions (3.11–3.14) and three
+vendor-portability jobs (Linux 3.11, Windows 3.12, macOS 3.12). Separate
+stdlib-only runtime smoke jobs exercise vendor tools on Python 3.9/3.10 and
+the workflow wrapper on Python 3.10 using `python -S`, without installing pytest. Raw XML and compact failure identity are
 separate artifacts: raw XML is retained for 14 days, while compact artifacts use
 repository-default retention. A complete collection does not turn a
 failed producer job green, and a green run may have an empty failure corpus.

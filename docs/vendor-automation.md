@@ -390,7 +390,7 @@ development-head CI update behavior.
 `vendor_sync` Git snapshot/digest/check operations. The first connected consumer
 is this parent repository; the proving artifact is `gh_identity.py` and its
 explicitly locked LICENSE. `.github/workflows/vendor-candidate.yml` automatically
-runs on relevant PRs/main pushes, and supports manual dispatch, on Python 3.10
+runs on relevant PRs/main pushes, and supports manual dispatch, on development/test Python 3.11
 and 3.14 with read-only permissions and no persisted checkout credentials.
 
 ```sh
