@@ -139,7 +139,7 @@ Template to kickstart API-based search clients.
 * [PythDRagoras](https://github.com/myon-bioinformatics/PythDRagoras)
 * [Qiita_API_Template](https://github.com/myon-bioinformatics/Qiita_API_Template)
 * [QueRyu](https://github.com/myon-bioinformatics/QueRyu)
-* [sakanalytics](https://github.com/myon-bioinformatics/sakanalytics)
+* [SakAnalytics](https://github.com/myon-bioinformatics/SakAnalytics)
 * [search_seq_including_spaces](https://github.com/myon-bioinformatics/search_seq_including_spaces)
 * [video_to_image_gui](https://github.com/myon-bioinformatics/video_to_image_gui)
 * [video2audio_gui](https://github.com/myon-bioinformatics/video2audio_gui)
