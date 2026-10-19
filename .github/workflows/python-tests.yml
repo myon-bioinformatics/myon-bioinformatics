@@ -41,16 +41,31 @@ permissions:
   contents: read
 
 jobs:
+  stdlib-runtime:
+    name: Stdlib runtime (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.10"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Exercise runtime without third-party packages
+        run: python -S tests/stdlib_runtime_smoke.py
+
   pytest:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
           cache: pip
@@ -92,7 +107,7 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            python: "3.9"
+            python: "3.11"
           - os: windows-latest
             python: "3.12"
           - os: macos-latest
@@ -101,7 +116,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install pytest
@@ -138,6 +153,6 @@ jobs:
       actions: read
     uses: ./.github/workflows/reusable-junit-identity.yml
     with:
-      expected-reports: '["junit-parent-py3.10/junit.xml","junit-parent-py3.11/junit.xml","junit-parent-py3.12/junit.xml","junit-parent-py3.13/junit.xml","junit-parent-py3.14/junit.xml","junit-vendor-ubuntu-latest-py3.9/vendor.xml","junit-vendor-windows-latest-py3.12/vendor.xml","junit-vendor-macos-latest-py3.12/vendor.xml"]'
+      expected-reports: '["junit-parent-py3.11/junit.xml","junit-parent-py3.12/junit.xml","junit-parent-py3.13/junit.xml","junit-parent-py3.14/junit.xml","junit-vendor-ubuntu-latest-py3.11/vendor.xml","junit-vendor-windows-latest-py3.12/vendor.xml","junit-vendor-macos-latest-py3.12/vendor.xml"]'
       output-artifact: parent-python-failure-identity
       commit-sha: ${{ github.sha }}
