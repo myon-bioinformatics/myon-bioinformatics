@@ -941,3 +941,55 @@ def test_resolver_rejects_wrong_pr_response(field, value):
     with pytest.raises(ValueError):
         sync.resolve_parent_pr('owner/parent', 1, pr_fetch=lambda *a, **k: pull,
                                repo_fetch=lambda *a: repo)
+
+
+def test_remote_source_diff_has_no_automatic_maintenance_workers(tmp_path, monkeypatch):
+    """Real file-remote fetches must not launch maintenance after the scan exits."""
+    repo = tmp_path / "upstream"
+    _init_repo(repo)
+    _git(repo, "checkout", "-b", "feature")
+    (repo / "file.txt").write_bytes(b"feature\n")
+    _git(repo, "commit", "-am", "feature")
+    tip = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "main")
+    trace = tmp_path / "git-trace.jsonl"
+    original_env = sync._git_subprocess_env
+    monkeypatch.setattr(sync, "_git_subprocess_env",
+                        lambda: dict(original_env(), GIT_TRACE2_EVENT=str(trace)))
+    created = []
+    original_temp = sync.tempfile.TemporaryDirectory
+
+    def temporary_directory(*args, **kwargs):
+        temp = original_temp(*args, **kwargs)
+        created.append(Path(temp.name))
+        return temp
+
+    monkeypatch.setattr(sync.tempfile, "TemporaryDirectory", temporary_directory)
+    result = sync.branches_differing_from_main("owner/repo", remotes={"owner/repo": repo.as_uri()})
+    assert result == [{"repository": "owner/repo", "branch": "feature", "tip": tip}]
+    assert created and all(not path.exists() for path in created)
+    events = [json.loads(line) for line in trace.read_text().splitlines()]
+    assert any(event.get("event") == "start" and "fetch" in event.get("argv", []) for event in events)
+    workers = [event for event in events if event.get("event") == "child_start"
+               and ({"maintenance", "gc"} & set(event.get("argv", [])))]
+    assert workers == []
+
+
+def test_remote_source_diff_does_not_suppress_cleanup_errors(tmp_path, monkeypatch):
+    """Disabling background work is not permission to ignore real I/O failures."""
+    import errno
+
+    class FailingCleanup:
+        def __enter__(self):
+            return str(tmp_path)
+
+        def __exit__(self, *args):
+            raise OSError(errno.ENOTEMPTY, "Directory not empty", str(tmp_path / ".git/objects"))
+
+    monkeypatch.setattr(sync.tempfile, "TemporaryDirectory", lambda **kw: FailingCleanup())
+    monkeypatch.setattr(sync, "_list_remote_branches", lambda *a, **kw: [])
+    monkeypatch.setattr(sync.subprocess, "run", lambda argv, **kw:
+                        subprocess.CompletedProcess(argv, 0, b"", b""))
+    with pytest.raises(OSError) as error:
+        sync.branches_differing_from_main("owner/repo")
+    assert error.value.errno == errno.ENOTEMPTY

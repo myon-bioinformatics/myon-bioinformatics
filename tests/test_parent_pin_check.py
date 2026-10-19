@@ -1128,3 +1128,37 @@ def test_public_api_uses_token_for_head_tree_and_compare(monkeypatch: pytest.Mon
     pins = [{"commit": "c" * 40, "file": "ci.yml", "line": 1}]
     assert evaluate(pins, parent_repository=PARENT_REPOSITORY, main_sha="a" * 40, token="token", enforce=True)["stale"]
     assert len(calls) == 4
+
+
+PARENT_HISTORICAL_EVIDENCE_EXCLUDE = "docs/evidence/vendor-triage-20261019.json"
+
+
+def test_parent_pin_check_excludes_only_the_named_historical_evidence() -> None:
+    globs = _check_job_exclude_globs(_load_parent_pin_check_workflow())
+    assert globs == [
+        "tests/**", PARENT_REPO_COMPAT_EXCLUDE, PARENT_HISTORICAL_EVIDENCE_EXCLUDE,
+    ]
+
+
+def test_historical_evidence_exclusion_preserves_active_pin_enforcement(tmp_path: Path) -> None:
+    historical, runtime, workflow = "a" * 40, "b" * 40, "c" * 40
+    _write(tmp_path, PARENT_HISTORICAL_EVIDENCE_EXCLUDE,
+           json.dumps({"repository": PARENT_REPOSITORY, "commit": historical}))
+    # A neighbouring JSON is not automatically historical merely because it
+    # lives under docs/evidence. Active runtime data must remain enforceable.
+    _write(tmp_path, "docs/evidence/runtime-config.json",
+           json.dumps({"repository": PARENT_REPOSITORY, "commit": runtime}))
+    _write(tmp_path, ".github/workflows/active.yml",
+           f"uses: {PARENT_REPOSITORY}/.github/workflows/reusable-actionlint.yml@{workflow}\n")
+    original = (tmp_path / PARENT_HISTORICAL_EVIDENCE_EXCLUDE).read_bytes()
+    globs = _check_job_exclude_globs(_load_parent_pin_check_workflow())
+    pins = scan(tmp_path, exclude_globs=globs)
+    assert {pin["file"] for pin in pins} == {
+        "docs/evidence/runtime-config.json", ".github/workflows/active.yml",
+    }
+    assert {pin["commit"] for pin in pins} == {runtime, workflow}
+    assert (tmp_path / PARENT_HISTORICAL_EVIDENCE_EXCLUDE).read_bytes() == original
+    report = evaluate(pins, parent_repository=PARENT_REPOSITORY,
+                      main_sha=None, token=None, enforce=True)
+    assert report["inconsistent"]
+    assert not report["ok"]

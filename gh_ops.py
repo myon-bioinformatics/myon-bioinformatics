@@ -174,7 +174,8 @@ class Client:
     def get(self, path: str, *, params: dict | None = None) -> Any:
         return self.request("GET", path, params=params).data
 
-    def paginate(self, path: str, *, params: dict | None = None, key: str | None = None, max_pages: int = 50) -> list:
+    def paginate(self, path: str, *, params: dict | None = None, key: str | None = None, max_pages: int = 50,
+                 require_total_count: bool = False) -> list:
         if max_pages < 1:
             raise GhOpsError("pagination requires a positive page limit")
         items: list = []
@@ -189,6 +190,10 @@ class Client:
                 raise GhOpsError("pagination cycle; incomplete response")
             seen.add(request_url)
             response = self.request("GET", url, params=query)
+            if require_total_count and (not key or not isinstance(response.data, dict)
+                                        or "total_count" not in response.data
+                                        or not isinstance(response.data.get(key), list)):
+                raise GhOpsError("pagination requires a counted list; incomplete response")
             if key and "total_count" in response.data:
                 count = response.data["total_count"]
                 if type(count) is not int or count < 0 or (expected is not None and count != expected):
@@ -898,31 +903,46 @@ def issue_comment_create(repo: str, number: int, *, body: str, write: bool = Fal
 _VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 
 
-def _variable_state(client: Client, path: str) -> str:
-    """``present`` / ``absent`` (HTTP 404 only) / raise for anything else, e.g. 403."""
+def _variable_state(client: Client, repo: str, name: str) -> str:
+    """Prove absence with a complete scoped listing, never with a bare 404."""
+    path = f"/repos/{repo}/actions/variables/{urllib.parse.quote(name, safe='')}"
     try:
-        client.get(path)
+        observed = client.get(path)
     except GhOpsError as error:
-        if error.http_status == 404:
-            return "absent"
-        raise
+        if error.http_status != 404:
+            raise
+        # GitHub may hide inaccessible resources behind 404. A successful,
+        # complete listing proves access to the specific variables scope.
+        rows = client.paginate(f"/repos/{repo}/actions/variables", key="variables", require_total_count=True)
+        names = set()
+        for row in rows:
+            candidate = row.get("name") if isinstance(row, dict) else None
+            if not isinstance(candidate, str) or not _VARIABLE_NAME.fullmatch(candidate):
+                raise GhOpsError("variable listing contains an invalid name; incomplete response")
+            canonical = candidate.casefold()
+            if canonical in names:
+                raise GhOpsError("variable listing contains duplicate names; incomplete response")
+            names.add(canonical)
+        return "present" if name.casefold() in names else "absent"
+    if not isinstance(observed, dict) or not isinstance(observed.get("name"), str) or observed["name"].casefold() != name.casefold():
+        raise GhOpsError("variable read-back has an unexpected identity")
     return "present"
 
 
 def variable_delete(repo: str, name: str, *, write: bool = False, client: Client | None = None) -> dict:
     """Delete one repository Actions variable, dry-run by default.
 
-    Only a clear HTTP 404 counts as "absent". A 403 or any other failure is never
-    read as "already deleted": invisible is not the same as gone. After DELETE the
-    variable is read again and the receipt is ``verified`` only on a 404.
+    A 404 is ambiguous. Absence is accepted only after a successful, complete
+    repository-variable listing also excludes the name. Inaccessible, malformed
+    or incomplete listings never prove absence, before or after DELETE.
     ``name`` is the variable's name; its value is never fetched into the result.
     """
-    if not _VARIABLE_NAME.match(name or ""):
+    if not isinstance(name, str) or not _VARIABLE_NAME.fullmatch(name):
         raise GhOpsError(f"invalid variable name: {name!r}")
     client, repo = _client(client), _repo(repo)
     path = f"/repos/{repo}/actions/variables/{urllib.parse.quote(name, safe='')}"
     try:
-        before = _variable_state(client, path)
+        before = _variable_state(client, repo, name)
     except GhOpsError as error:
         return {"ok": False, "dry_run": not write, "deleted": False, "name": name, "status": "inaccessible",
                 "http_status": error.http_status, "reason": f"cannot confirm the variable exists: {error}"}
@@ -931,31 +951,42 @@ def variable_delete(repo: str, name: str, *, write: bool = False, client: Client
     if not write:
         return {"ok": True, "dry_run": True, "deleted": False, "name": name, "status": "would_delete",
                 "would_delete": {"path": path}}
-    client.request("DELETE", path, expect=(204,))
     try:
-        after = _variable_state(client, path)
+        client.request("DELETE", path, expect=(204,))
+    except GhOpsError as error:
+        uncertain = error.http_status is None or error.http_status >= 500
+        return {"ok": False, "dry_run": False, "deleted": None if uncertain else False, "name": name,
+                "status": "mutation_uncertain" if uncertain else "mutation_failed", "verified": False,
+                "mutation_status": "uncertain" if uncertain else "failed", "http_status": error.http_status,
+                "reason": f"DELETE did not return a success receipt; inspect before retrying: {error}"}
+    try:
+        after = _variable_state(client, repo, name)
     except GhOpsError as error:
         return {"ok": False, "dry_run": False, "deleted": True, "name": name, "status": "verification_uncertain",
-                "verified": False, "http_status": error.http_status,
-                "reason": f"DELETE succeeded but the read-back was not a 404; inspect before retrying: {error}"}
+                "verified": False, "mutation_status": "succeeded", "http_status": error.http_status,
+                "reason": f"DELETE succeeded but absence could not be verified; inspect before retrying: {error}"}
     verified = after == "absent"
     return {"ok": verified, "dry_run": False, "deleted": True, "name": name,
             "status": "verified" if verified else "verification_failed", "verified": verified,
+            "mutation_status": "succeeded",
             "reason": "" if verified else "variable is still present after DELETE"}
 
 
 def issue_comment_upsert(repo: str, number: int, *, body: str, marker: str, author: str,
                          write: bool = False, client: Client | None = None) -> dict:
-    """Update the newest comment by ``author`` whose body starts with ``marker``, or create one.
+    """Update a PR's newest comment by ``author`` starting with ``marker``, or create one.
 
-    Comments by anyone else that carry the same marker are ignored, so another
-    user's copy can never turn the PATCH into a 403. ``body`` must start with ``marker``.
+    Other authors' matching comments are ignored. The caller must still supply
+    credentials allowed to edit the selected author's comment. ``body`` must
+    start with ``marker``; post-write receipts distinguish mutation and verification.
     """
     if not marker or not body.startswith(marker):
         raise GhOpsError("body must start with the marker")
     if not author:
         raise GhOpsError("author must not be empty")
     client, repo, number = _client(client), _repo(repo), int(number)
+    # Match issue_comment_create's PR-only target contract on every path.
+    client.get(f"/repos/{repo}/pulls/{number}")
     comments = client.paginate(f"/repos/{repo}/issues/{number}/comments")
     mine = [c for c in comments
             if (c.get("user") or {}).get("login") == author and (c.get("body") or "").startswith(marker)]
@@ -969,9 +1000,25 @@ def issue_comment_upsert(repo: str, number: int, *, body: str, marker: str, auth
     if not write:
         return {"ok": True, "dry_run": True, "action": "update", "comment_id": comment_id,
                 "would_patch": {"path": path, "body_chars": len(body)}}
-    client.request("PATCH", path, {"body": body})
-    verified = (client.get(path).get("body") or "") == body
+    try:
+        client.request("PATCH", path, {"body": body})
+    except GhOpsError as error:
+        uncertain = error.http_status is None or error.http_status >= 500
+        return {"ok": False, "dry_run": False, "action": "update", "comment_id": comment_id,
+                "updated": None if uncertain else False, "verified": False,
+                "status": "mutation_uncertain" if uncertain else "mutation_failed",
+                "mutation_status": "uncertain" if uncertain else "failed", "http_status": error.http_status,
+                "reason": f"comment PATCH did not return success; inspect before retrying: {error}"}
+    try:
+        observed = client.get(path)
+    except GhOpsError as error:
+        return {"ok": False, "dry_run": False, "action": "update", "comment_id": comment_id,
+                "updated": True, "verified": False, "status": "verification_uncertain",
+                "mutation_status": "succeeded", "http_status": error.http_status,
+                "reason": f"comment PATCH succeeded but verification failed; inspect before retrying: {error}"}
+    verified = isinstance(observed, dict) and observed.get("body") == body
     return {"ok": verified, "dry_run": False, "action": "update", "comment_id": comment_id, "verified": verified,
+            "updated": True, "mutation_status": "succeeded", "status": "verified" if verified else "verification_failed",
             "reason": "" if verified else "comment was updated but body verification differed"}
 
 
@@ -2447,7 +2494,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--write", action="store_true")
 
     p = sub.add_parser("variable-delete",
-                       help="delete one repository Actions variable; verified only by a 404 read-back (needs --write)")
+                       help="delete one repository Actions variable; verify absence via complete scoped listing (needs --write)")
     p.add_argument("repo"); p.add_argument("name")
     p.add_argument("--write", action="store_true")
 

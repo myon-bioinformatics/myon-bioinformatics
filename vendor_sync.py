@@ -1546,7 +1546,11 @@ def branches_differing_from_main(repository, *, remotes=None, local_roots=None, 
         return diverged
     remote = _repository_remote(repository, remotes)
     with tempfile.TemporaryDirectory(prefix="vendor-branch-diff-") as directory:
-        command = ["git", "-c", "credential.helper=", "-C", directory]
+        # Fetch normally launches automatic maintenance. A detached worker can
+        # outlive this disposable repository and race TemporaryDirectory cleanup.
+        # Disable maintenance only for these commands; keep cleanup fail-closed.
+        command = ["git", "-c", "credential.helper=", "-c", "maintenance.auto=false",
+                   "-c", "gc.auto=0", "-C", directory]
         def git(*args):
             result = subprocess.run(command + list(args), env=_git_subprocess_env(),
                                     capture_output=True, timeout=120)
