@@ -138,9 +138,12 @@ def test_status_inconsistency_is_error(execute):
 def test_workflow_runs_offline_regressions_and_uploads_even_on_failure():
     workflow = WORKFLOW.read_text(encoding="utf-8")
     assert "tests/test_duplicate_files_report.py" in workflow
-    assert 'GH_IDENTITY_SHA: a85022b88ca808dec7ef497ead1e3469906010a4' in workflow
     job = workflow.split("\n  duplicate-files:\n", 1)[1]
     assert "duplicate_files_report.py" in job
+    assert "--identity vendor/gh_identity.py" in job
+    assert "vendor_sync.py check --manifest vendor.lock.json" in job
+    assert "GH_IDENTITY_SHA" not in job
+    assert "repository: myon-bioinformatics/gh_identity" not in job
     assert "if: always()" in job.split("- name: Upload duplicate-files report", 1)[1]
     assert "reports/duplicate-files.json" in job
     assert "reports/duplicate-files.md" in job
@@ -165,3 +168,61 @@ def test_weekly_scan_event_and_permission_boundaries():
     upload = job["steps"][-1]
     assert upload["if"] == "always()"
     assert upload["with"]["retention-days"] == "14"
+
+
+@pytest.mark.parametrize("truncated", [False, True])
+def test_locked_collector_preserves_nested_provenance_and_completeness(monkeypatch, truncated):
+    """Exercise the actual dependency selected for the scheduled parent adapter."""
+    import base64
+    import hashlib
+    import importlib.util
+
+    root = SCRIPT.parent
+    spec = importlib.util.spec_from_file_location("locked_collector", root / "vendor/gh_identity.py")
+    ghi = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ghi)
+    upstream, consumer, old = "a" * 40, "b" * 40, "c" * 40
+    old_bytes, new_bytes = b"old\n", b"new\n"
+    row = {
+        "repository": "sample/upstream", "ref": old, "commit": old,
+        "source": "tool.py", "destination": "python/vendor/tool.py",
+        "blob_sha": ghi.git_blob_sha(old_bytes),
+        "sha256": hashlib.sha256(old_bytes).hexdigest(),
+    }
+    def blob(path, data):
+        return {"path": path, "type": "blob", "mode": "100644", "sha": ghi.git_blob_sha(data)}
+
+    routes = {
+        "repos/sample/upstream": {"default_branch": "main", "visibility": "public"},
+        "repos/sample/consumer": {"default_branch": "main", "visibility": "public"},
+        "repos/sample/upstream/commits/main": {"sha": upstream},
+        "repos/sample/consumer/commits/main": {"sha": consumer},
+        f"repos/sample/upstream/git/trees/{upstream}?recursive=1": {
+            "tree": [blob("tool.py", new_bytes)], "truncated": False},
+        f"repos/sample/consumer/git/trees/{consumer}?recursive=1": {
+            "tree": [blob("vendor.lock.json", b"root"), blob("python/vendor.lock.json", b"nested"),
+                     blob("python/vendor/tool.py", old_bytes)], "truncated": truncated},
+    }
+    for placement, entries in (("vendor.lock.json", [row]), ("python/vendor.lock.json", [row])):
+        routes[f"repos/sample/consumer/contents/{placement}?ref={consumer}"] = {
+            "encoding": "base64", "content": base64.b64encode(
+                json.dumps({"schema": "vendor-lock/1", "files": entries}).encode()).decode()}
+
+    def request(method, path, **kwargs):
+        assert method == "GET"
+        return routes[path]
+
+    monkeypatch.setattr(ghi, "request", request)
+    report = ghi.duplicate_files("sample", repos=["upstream", "consumer"])
+    assert report["complete"] is (not truncated)
+    if truncated:
+        assert report["errors"] == [{"repository": "sample/consumer", "detail": "truncated_tree"}]
+        assert "sample/consumer" not in report["scanned"]
+    else:
+        assert report["errors"] == []
+        assert report["scanned"]["sample/consumer"]["lock_paths"] == [
+            "vendor.lock.json", "python/vendor.lock.json"]
+        found = next(f for f in report["groups"][0]["files"] if f["repository"] == "sample/consumer")
+        assert found["provenance"]["commit"] == old
+        assert found["matches_lock"] is True
+        assert found["stale"] is True

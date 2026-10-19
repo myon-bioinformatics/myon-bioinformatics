@@ -93,13 +93,10 @@ jobs:
 
   duplicate-files:
     name: Cross-repository duplicate files (read only)
-    # PR/push validate the adapter offline; scheduled/manual runs use the verified pin.
+    # PR/push validate the adapter offline; scheduled/manual runs use the verified lock.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      # Pinned gh_identity collector: multi-layout locks + complete/errors contract.
-      GH_IDENTITY_SHA: a85022b88ca808dec7ef497ead1e3469906010a4
     steps:
       - uses: actions/checkout@v7
         with:
@@ -107,21 +104,14 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Fetch pinned gh_identity
-        uses: actions/checkout@v7
-        with:
-          repository: myon-bioinformatics/gh_identity
-          ref: ${{ env.GH_IDENTITY_SHA }}
-          path: .gh-identity
-          persist-credentials: false
-      - name: Verify pin
-        run: test "$(git -C .gh-identity rev-parse HEAD)" = "$GH_IDENTITY_SHA"
+      - name: Verify locked gh_identity (offline)
+        run: python -S vendor_sync.py check --manifest vendor.lock.json
       - name: Duplicate files with vendor-lock provenance
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python -S duplicate_files_report.py \
-            --identity .gh-identity/gh_identity.py \
+            --identity vendor/gh_identity.py \
             --output reports/duplicate-files.json \
             --timeout 900 \
             --owner myon-bioinformatics

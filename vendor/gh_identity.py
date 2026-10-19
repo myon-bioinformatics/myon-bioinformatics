@@ -369,19 +369,82 @@ def _review_rest(path,transport,timeout,max_items,max_pages):
   path=next_path
  return rows,False,"max_pages"
 
+_SEVERITY_NAMES=("Must","Blocking","Should","Non-blocking","Nit")
+_SEVERITY_BY_LOWER={n.lower():n for n in _SEVERITY_NAMES}
+_FENCE_START=re.compile(r"^\s*(```|~~~)")
+_INLINE_LABEL=re.compile(r"^\s*(?:[-*]\s+|#{1,6}\s+)?(?:\*\*|__)?(Must|Blocking|Should|Non-blocking|Nit)(?:\*\*|__)?(?:\s+\d+)?(?=\s*(?:[:：—–]|-\s|$))",re.I)
+_BOLD_SEVERITY_HEADING=re.compile(r"^\s*(?:\*\*|__)(Must|Blocking|Should|Non-blocking|Nit)(?:\*\*|__)\s*$",re.I)
+_MD_HEADING=re.compile(r"^\s*(#{1,6})\s+(.+?)\s*$")
+
+def _severity_word(word):
+ return _SEVERITY_BY_LOWER.get(word.lower())
+
+def _is_nashi_line(line):
+ text=line.strip()
+ return bool(re.fullmatch(r"(?i)(?:なし|none|n/?a|—|-)\.?",text) or text in ("なし。","なし．"))
+
+def _heading_kind(line):
+ bold=_BOLD_SEVERITY_HEADING.match(line)
+ if bold:return ("severity",_severity_word(bold.group(1)))
+ md=_MD_HEADING.match(line)
+ if md:
+  title=md.group(2).strip()
+  inner=re.match(r"^(?:\*\*|__)?(Must|Blocking|Should|Non-blocking|Nit)(?:\*\*|__)?$",title,re.I)
+  if inner:return ("severity",_severity_word(inner.group(1)))
+  return ("other",title)
+ return None
+
+def _list_top_indent(line):
+ m=re.match(r"^(\s*)(?:[-*]|\d+\.)\s",line)
+ return len(m.group(1)) if m else None
+
+def _skip_fence(lines,i):
+ i+=1
+ while i<len(lines) and not _FENCE_START.match(lines[i]):i+=1
+ return i+1 if i<len(lines) else i
+
 def _explicit_severity(body):
- # Only standalone labels or labels introducing a finding; never prose keywords.
- labels=[]
- pattern=r"^\s*(?:[-*]\s+|#{1,6}\s+)?(?:\*\*)?(Blocking|Should|Non-blocking|Nit)(?:\*\*)?(?=\s*(?::|$))"
- fenced=False
- for line in body.splitlines():
-  if re.match(r"^\s*(```|~~~)",line):fenced=not fenced;continue
-  if fenced:continue
-  match=re.match(pattern,line,re.I)
-  if match:
-   label={"blocking":"Blocking","should":"Should","non-blocking":"Non-blocking","nit":"Nit"}[match[1].lower()]
-   labels.append({"label":label,"source":"explicit_body_label","text":line})
- return labels
+ """Section parser for explicit Must/Blocking/Should labels in review bodies."""
+ findings=[];lines=body.splitlines();i=0;doc_fenced=False
+ while i<len(lines):
+  line=lines[i]
+  if _FENCE_START.match(line):doc_fenced=not doc_fenced;i+=1;continue
+  if doc_fenced:i+=1;continue
+  kind=_heading_kind(line)
+  if kind and kind[0]=="severity":
+   section=kind[1];i+=1;section_lines=[]
+   while i<len(lines):
+    if _FENCE_START.match(lines[i]):i=_skip_fence(lines,i);continue
+    inner=_heading_kind(lines[i])
+    if inner:break
+    if lines[i].strip():section_lines.append(lines[i])
+    i+=1
+   if section_lines and all(_is_nashi_line(x) for x in section_lines):continue
+   k=0
+   while k<len(section_lines):
+    sl=section_lines[k];indent=_list_top_indent(sl)
+    if indent is not None:
+     block=[sl];k+=1
+     while k<len(section_lines):
+      nxt=section_lines[k];ni=_list_top_indent(nxt)
+      if ni is not None and ni<=indent:break
+      block.append(nxt);k+=1
+     text=" ".join(" ".join(block).split());im=_INLINE_LABEL.match(block[0])
+     lab=_severity_word(im.group(1)) if im else section
+     if not _is_nashi_line(block[0]):findings.append({"label":lab,"source":"explicit_body_label","text":text})
+    else:
+     im=_INLINE_LABEL.match(sl)
+     if im:findings.append({"label":_severity_word(im.group(1)),"source":"explicit_body_label","text":sl})
+     k+=1
+   continue
+  if kind and kind[0]=="other":
+   im=_INLINE_LABEL.match(line)
+   if im:findings.append({"label":_severity_word(im.group(1)),"source":"explicit_body_label","text":line})
+   i+=1;continue
+  im=_INLINE_LABEL.match(line)
+  if im:findings.append({"label":_severity_word(im.group(1)),"source":"explicit_body_label","text":line})
+  i+=1
+ return findings
 
 def _review_body(x):
  body=x.get("body") or ""
@@ -2062,12 +2125,17 @@ def _git_drain_bounded(stream, max_bytes, result):
 
 
 def _git_run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None, timeout=None,
-             inherit_auth=False, _auth_read=False, _auth_file=None, _auth_file_query=None):
+             inherit_auth=False, extra_env=None, _auth_read=False, _auth_file=None, _auth_file_query=None):
     _git_positive(max_bytes, "max_bytes")
     if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0):
         raise ValueError("timeout must be positive and finite")
     if input_bytes is not None and not isinstance(input_bytes, bytes):
         raise TypeError("input_bytes must be bytes")
+    for key, value in (extra_env or {}).items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise TypeError("extra_env keys and values must be strings")
+        if key != "FILTER_BRANCH_SQUELCH_WARNING":
+            raise ValueError("unsupported extra_env key")
     if inherit_auth:
         # Read configuration only; Git parses includes/conditional includes but
         # does not execute helpers here. Never expose this private snapshot.
@@ -2104,7 +2172,7 @@ def _git_run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None, time
                     stream.write(variable + " = " + quoted(value) + "\n")
             os.chmod(filename, 0o600)
             return _git_run(root, args, max_bytes=max_bytes, ok=ok, input_bytes=input_bytes,
-                            timeout=max(0.001, deadline-time.monotonic()), _auth_file=filename)
+                            timeout=max(0.001, deadline-time.monotonic()), extra_env=extra_env, _auth_file=filename)
     command = ["git", "-C", str(_git_root(root)), "--no-pager",
                "--no-optional-locks", "-c", "core.fsmonitor=false",
                "-c", "core.askPass=", "-c", "credential.interactive=false", *args]
@@ -2127,6 +2195,8 @@ def _git_run(root, args, *, max_bytes=1_000_000, ok=(0,), input_bytes=None, time
                  "GIT_CONFIG_NOSYSTEM"):
         env.pop(name, None)
     env["GIT_OPTIONAL_LOCKS"] = "0"
+    if extra_env:
+        env.update(extra_env)
     # Never wait for a person: a network command without cached credentials must
     # fail fast instead of blocking on a username/password or SSH prompt.
     env["GIT_TERMINAL_PROMPT"] = "0"
@@ -2810,17 +2880,121 @@ def _subtree_prefix(prefix):
     return "/".join(parts)
 
 
+def _git_object_oid(root, spec):
+    """Resolve a tree/blob/commit oid (e.g. `HEAD:path` or `sha^{tree}`)."""
+    if not isinstance(spec, str) or not spec or spec.startswith("-") or any(c in spec for c in ("\0", "\n", "\r")):
+        return None
+    raw, _, code = _git_run(root, ["rev-parse", "-q", spec], max_bytes=4096, ok=(0, 1, 128))
+    if code != 0:
+        return None
+    oid = _git_decode(raw).strip()
+    return oid if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", oid) else None
+
+
+def _prefix_tree_at(root, source, prefix):
+    return _git_object_oid(root, source + ":" + prefix)
+
+
+def _commit_root_tree(root, commit):
+    if not commit:
+        return None
+    return _git_object_oid(root, commit + "^{tree}")
+
+
+def _subtree_split_matches_prefix_tree(monorepo_root, source, prefix, split_sha, *, split_root=None):
+    """True when `split_sha`'s root tree equals the tree at `source:<prefix>` in the monorepo."""
+    if split_root is None:
+        split_root = monorepo_root
+    prefix_tree = _prefix_tree_at(monorepo_root, source, prefix)
+    split_tree = _commit_root_tree(split_root, split_sha)
+    trees_match = bool(prefix_tree and split_tree and prefix_tree == split_tree)
+    return {"prefix_tree": prefix_tree, "split_tree": split_tree, "trees_match": trees_match}
+
+
+def _subtree_split_filter_branch(root, prefix, source, timeout):
+    """Filter in a temporary clone; import objects without changing refs or FETCH_HEAD.
+
+    The returned SHA is unreferenced in root and may disappear after Git GC.
+    """
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("timeout must be positive and finite")
+    deadline = time.monotonic() + timeout
+    origin = str(_git_root(root))
+    with tempfile.TemporaryDirectory(prefix="ghi-subtree-fb-") as directory:
+        clone = os.path.join(directory, "repo")
+        remaining = max(0.001, deadline - time.monotonic())
+        _, _, code = _git_run(root, ["clone", "-q", "--no-hardlinks", origin, clone], max_bytes=64 * 1024,
+                              timeout=remaining, ok=(0, 1, 128))
+        if code != 0:
+            return None
+        remaining = max(0.001, deadline - time.monotonic())
+        # A detached/unreferenced revision may not have been copied by clone.
+        _, _, code = _git_run(clone, ["fetch", "-q", "--no-write-fetch-head", origin, source],
+                              max_bytes=64 * 1024, timeout=remaining, ok=(0, 1, 128))
+        if code != 0:
+            return None
+        remaining = max(0.001, deadline - time.monotonic())
+        _, _, code = _git_run(clone, ["checkout", "-q", "--detach", source], max_bytes=4096, timeout=remaining, ok=(0, 1, 128))
+        if code != 0:
+            return None
+        remaining = max(0.001, deadline - time.monotonic())
+        _, _, code = _git_run(clone, ["filter-branch", "-f", "--prune-empty", "--subdirectory-filter", prefix, "HEAD"],
+                              max_bytes=256 * 1024, timeout=remaining, ok=(0, 1, 128),
+                              extra_env={"FILTER_BRANCH_SQUELCH_WARNING": "1"})
+        if code != 0:
+            return None
+        fb = _rev_commit(clone, "HEAD")
+        if not _subtree_split_matches_prefix_tree(root, source, prefix, fb, split_root=clone)["trees_match"]:
+            return None
+        remaining = max(0.001, deadline - time.monotonic())
+        _, _, code = _git_run(root, ["fetch", "-q", "--no-write-fetch-head", clone, fb], max_bytes=64 * 1024,
+                              timeout=remaining, ok=(0, 1, 128))
+        if code != 0 or not _subtree_split_matches_prefix_tree(root, source, prefix, fb)["trees_match"]:
+            return None
+        return fb
+
+
+@contextlib.contextmanager
+def _subtree_cache_cleanup(root):
+    """git-subtree leaves $GIT_DIR/subtree-cache/<pid> behind; remove only what
+    the wrapped call created so the checkout's .git is left as it was."""
+    git_dir = Path(_git_decode(_git_run(root, ["rev-parse", "--absolute-git-dir"], max_bytes=64 * 1024)[0]).strip())
+    cache = git_dir / "subtree-cache"
+    cache_existed = cache.is_dir()
+    before = set(os.listdir(cache)) if cache_existed else set()
+    try:
+        yield
+    finally:
+        if cache.is_dir() and not cache.is_symlink():
+            for name in set(os.listdir(cache)) - before:
+                shutil.rmtree(cache / name, ignore_errors=True)
+            if not cache_existed:
+                with contextlib.suppress(OSError):
+                    cache.rmdir()
+
+
 def git_subtree_split(root=".", prefix=None, revision="HEAD", *, timeout=600):
     """Read-only `git subtree split --prefix=<dir> <sha>`: return the split commit SHA.
 
     Never passes --branch/--rejoin/--onto/--annotate, so no ref is created or
     moved and no commit is added to the current branch. Requires the contrib
     `git subtree` command; when it is missing, reason is subtree_unavailable.
+
+    The split commit's root tree must match `source:prefix`. When `git subtree
+    split` exits 0 but returns an older commit (known on some git versions),
+    `filter-branch --subdirectory-filter` in a temporary clone is used instead.
+    It imports only local objects (no refs/FETCH_HEAD changes); the returned SHA
+    is unreferenced and may be pruned by GC. Fallback use and elapsed seconds
+    are reported. The split and fallback share one timeout budget.
     """
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("timeout must be positive and finite")
+    deadline = time.monotonic() + timeout
     prefix = _subtree_prefix(prefix)
     if not isinstance(revision, str) or not revision or revision.startswith("-") or any(c in revision for c in ("\0", "\n", "\r")):
         raise ValueError("invalid revision")
-    base = {"schema": "gh-identity-subtree-split/1", "prefix": prefix, "write": False}
+    base = {"schema": "gh-identity-subtree-split/1", "prefix": prefix, "write": False,
+            "fallback_used": False, "fallback_elapsed_seconds": 0.0}
     raw, _, code = _git_run(root, ["rev-parse", "--verify", "-q", "--end-of-options", revision + "^{commit}"],
                             max_bytes=4096, ok=(0, 1, 128))
     if code != 0:
@@ -2829,29 +3003,40 @@ def git_subtree_split(root=".", prefix=None, revision="HEAD", *, timeout=600):
     raw, _, code = _git_run(root, ["cat-file", "-t", source + ":" + prefix], max_bytes=4096, ok=(0, 1, 128))
     if code != 0 or _git_decode(raw).strip() != "tree":
         return {**base, "source": source, "sha": None, "reason": "prefix_not_found"}
+    prefix_tree = _prefix_tree_at(root, source, prefix)
     if not _git_subtree_available(root):
         return {**base, "source": source, "sha": None, "reason": "subtree_unavailable",
-                "detail": "git subtree (contrib) is not installed"}
-    # git-subtree leaves $GIT_DIR/subtree-cache/<pid> behind; remove only what
-    # this call created so the checkout's .git is left as it was.
-    git_dir = Path(_git_decode(_git_run(root, ["rev-parse", "--absolute-git-dir"], max_bytes=64 * 1024)[0]).strip())
-    cache = git_dir / "subtree-cache"
-    cache_existed = cache.is_dir()
-    before = set(os.listdir(cache)) if cache_existed else set()
-    try:
+                "detail": "git subtree (contrib) is not installed", "prefix_tree": prefix_tree}
+    with _subtree_cache_cleanup(root):
         raw, _, _ = _git_run(root, ["subtree", "split", "-q", "--prefix=" + prefix, source],
-                             max_bytes=64 * 1024, timeout=timeout)
-    finally:
-        if cache.is_dir() and not cache.is_symlink():
-            for name in set(os.listdir(cache)) - before:
-                shutil.rmtree(cache / name, ignore_errors=True)
-            if not cache_existed:
-                with contextlib.suppress(OSError):
-                    cache.rmdir()
+                             max_bytes=64 * 1024, timeout=max(0.001, deadline - time.monotonic()))
     sha = _git_decode(raw).strip().splitlines()[-1:] or [""]
     if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", sha[0]):
         raise GitInspectionError("unexpected git subtree output")
-    return {**base, "source": source, "sha": sha[0], "reason": None}
+    subtree_sha = sha[0]
+    check = _subtree_split_matches_prefix_tree(root, source, prefix, subtree_sha)
+    method, warning, out_sha = "subtree", None, subtree_sha
+    if not check["trees_match"]:
+        warning = "subtree_split_stale"
+        started = time.monotonic()
+        fb = _subtree_split_filter_branch(root, prefix, source, max(0.001, deadline - started))
+        base.update(fallback_used=True, fallback_elapsed_seconds=time.monotonic() - started)
+        if fb is None:
+            return {**base, "source": source, "sha": None, "reason": "stale_subtree_split",
+                    "subtree_sha": subtree_sha, "warning": warning, "method": "subtree", **check}
+        fb_check = _subtree_split_matches_prefix_tree(root, source, prefix, fb)
+        if not fb_check["trees_match"]:
+            return {**base, "source": source, "sha": None, "reason": "stale_subtree_split",
+                    "subtree_sha": subtree_sha, "filter_branch_tree": fb_check.get("split_tree"),
+                    "warning": warning, "method": "filter-branch", **fb_check}
+        method, out_sha = "filter-branch", fb
+        check = fb_check
+    final = _subtree_split_matches_prefix_tree(root, source, prefix, out_sha)
+    if not final["trees_match"]:
+        return {**base, "source": source, "sha": None, "reason": "stale_subtree_split",
+                "subtree_sha": subtree_sha, "warning": warning or "subtree_split_stale", "method": method, **final}
+    return {**base, "source": source, "sha": out_sha, "reason": None, "method": method,
+            "subtree_sha": subtree_sha if method != "subtree" else None, "warning": warning, **final}
 
 
 _SUBTREE_TRAILER = "Subtree-Split"
@@ -2882,15 +3067,156 @@ def _changed_paths(root, sha):
     return sorted({p for p in _git_decode(raw).split("\0") if p})
 
 
+def _git_commit_exists(root, sha):
+    raw, _, code = _git_run(root, ["cat-file", "-t", sha], max_bytes=4096, ok=(0, 1, 128))
+    return code == 0 and _git_decode(raw).strip() == "commit"
+
+
+def _git_merge_base_exists(root, a, b):
+    if not _git_commit_exists(root, a) or not _git_commit_exists(root, b):
+        return False
+    _, _, code = _git_run(root, ["merge-base", a, b], max_bytes=4096, ok=(0, 1, 128))
+    return code == 0
+
+
+def _git_is_ancestor(root, ancestor, descendant):
+    if not _git_commit_exists(root, ancestor) or not _git_commit_exists(root, descendant):
+        return False
+    _, _, code = _git_run(root, ["merge-base", "--is-ancestor", ancestor, descendant], max_bytes=4096, ok=(0, 1))
+    return code == 0
+
+
+def _git_tree_paths(root, tree_sha, max_bytes=8 * 1024 * 1024):
+    raw, truncated, _ = _git_run(root, ["ls-tree", "-r", "-z", "--name-only", tree_sha], max_bytes=max_bytes)
+    if truncated:
+        raise GitInspectionError("ls-tree exceeds output limit")
+    return {p for p in _git_decode(raw).split("\0") if p}
+
+
+def _monorepo_has_subtree_trailers(root, prefix, source, other_set, max_bytes=4 * 1024 * 1024):
+    """A subtree trailer at source must name a commit in the compared history.
+
+    This also recognises squash imports, whose original child commits need not
+    be parents of the monorepo. A trailer for another child is not evidence.
+    """
+    raw, truncated, _ = _git_run(root, ["log", "--format=%B%x1e", "--end-of-options", source],
+                                 max_bytes=max_bytes)
+    if truncated:
+        raise GitInspectionError("log exceeds output limit")
+    for body in _git_decode(raw).split("\x1e"):
+        lines = {line.strip() for line in body.splitlines()}
+        splits = [m.group(1) for line in lines
+                  if (m := re.fullmatch(r"git-subtree-split:\s+([0-9a-f]{40}|[0-9a-f]{64})", line))]
+        if "git-subtree-dir: " + prefix in lines and any(sha in other_set for sha in splits):
+            return True
+    return False
+
+
+def _subtree_history_related(monorepo_root, prefix, source, split_sha, other_root, other_head, mono_set, other_set):
+    """Shared split ancestry, merge-base in either object db, or monorepo subtree trailers."""
+    if mono_set & other_set:
+        return True
+    if _git_merge_base_exists(monorepo_root, split_sha, other_head):
+        return True
+    if _git_merge_base_exists(other_root, split_sha, other_head):
+        return True
+    if _git_merge_base_exists(monorepo_root, source, other_head):
+        return True
+    return _monorepo_has_subtree_trailers(monorepo_root, prefix, source, other_set)
+
+
+def _remote_ls_ref_tip(listing, ref):
+    m = re.search(r"^([0-9a-f]{40})\s+" + re.escape(ref) + r"$", listing, re.M)
+    return m.group(1) if m else None
+
+
+def _subtree_push_guards_isolated(root, remote, tip, split_sha, timeout, ref_name="remote ref"):
+    """Run ancestor/path guards in a temporary clone (no writes to `root`)."""
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("timeout must be positive and finite")
+    deadline = time.monotonic() + timeout
+    origin = str(_git_root(root))
+    with tempfile.TemporaryDirectory(prefix="ghi-push-guard-") as directory:
+        clone = os.path.join(directory, "repo")
+        remaining = max(0.001, deadline - time.monotonic())
+        _, _, code = _git_run(root, ["clone", "-q", "--no-hardlinks", origin, clone], max_bytes=64 * 1024,
+                              timeout=remaining, ok=(0, 1, 128))
+        if code != 0:
+            raise ValueError("could not clone for push guard")
+        remaining = max(0.001, deadline - time.monotonic())
+        _, _, code = _git_run(clone, ["fetch", "-q", "--no-write-fetch-head", "--", remote, tip],
+                              max_bytes=64 * 1024, timeout=remaining, ok=(0, 1, 128), inherit_auth=True)
+        if code != 0:
+            raise ValueError("could not fetch remote ref for push guard")
+        if not _git_is_ancestor(clone, tip, split_sha):
+            raise ValueError("remote ref " + ref_name + " is not an ancestor of the split commit")
+        split_tree = _commit_root_tree(clone, split_sha)
+        child_tree = _commit_root_tree(clone, tip)
+        if not split_tree or not child_tree:
+            raise ValueError("could not resolve trees for push guard")
+        only_child = sorted(_git_tree_paths(clone, child_tree) - _git_tree_paths(clone, split_tree))
+        if only_child:
+            raise ValueError("child-only paths not present in split: " + ", ".join(only_child))
+        return only_child
+
+
+_SUBTREE_BRANCH_RACE_NOTE = (
+    "Branch existence is checked before push, and the push carries "
+    "--force-with-lease=refs/heads/<branch>: (empty expected value: the branch must not exist), "
+    "so a branch created concurrently makes the push fail even when it would fast-forward."
+)
+
+
+def _subtree_push_lease(branch):
+    """Lease that only lets the push create refs/heads/<branch> (rejected once it exists)."""
+    return "--force-with-lease=refs/heads/" + branch + ":"
+
+
+def _subtree_push_guards(root, remote, prefix, split_sha, remote_default_branch, net, *, compare_ref=None,
+                         timeout=600):
+    """Refuse push when the remote compare tip is not an ancestor of split_sha or has extra paths.
+
+    Uses ls-remote on `root` only; object imports run inside a temporary clone so the caller's
+    checkout is not modified.
+    """
+    ref = compare_ref or remote_default_branch
+    # An explicit compare ref is not silently replaced by main/master/trunk.
+    candidates = [compare_ref] if compare_ref else list(dict.fromkeys(
+        c for c in ([ref] if ref else []) + ["main", "master", "trunk"] if c))
+    for candidate in candidates:
+        listing_raw, _, code = net(["ls-remote", "--", remote, "refs/heads/" + candidate], ok=tuple(range(256)))
+        if code != 0:
+            continue
+        tip = _remote_ls_ref_tip(_git_decode(listing_raw), "refs/heads/" + candidate)
+        if tip is None:
+            continue
+        _subtree_push_guards_isolated(root, remote, tip, split_sha, timeout, ref_name=candidate)
+        return {
+            "compare_ref": candidate, "compare_sha": tip, "child_only_paths": [],
+            "checked_in": "temporary_clone",
+            "branch_race_note": _SUBTREE_BRANCH_RACE_NOTE,
+        }
+    if compare_ref:
+        raise ValueError("remote compare ref " + compare_ref + " was not found")
+    return {
+        "compare_ref": None, "compare_sha": None, "child_only_paths": [],
+        "checked_in": "ls-remote_only",
+        "branch_race_note": _SUBTREE_BRANCH_RACE_NOTE,
+    }
+
+
 def subtree_sync_status(root=".", prefix=None, other_root=None, *, revision="HEAD", other_ref="HEAD",
                         other_only_paths=(), max_listed=50, timeout=600, mainline=None):
     """Compare `git subtree split --prefix` of a monorepo with a split-out checkout.
 
-    Local only, read-only, no fetch. git subtree split is deterministic, so the
-    split commits of the monorepo carry the same SHAs as the history of the
-    split-out repository; both histories are compared as SHA sets from their
-    own object databases. Commits of the other side touching only
-    `other_only_paths` (fnmatch patterns, e.g. repo-only files) are not counted.
+    Local only; no refs, HEAD, index, working tree or FETCH_HEAD changes.
+    Split recovery may import unreferenced objects from a temporary local clone.
+    Uses a tree-validated split SHA (see
+    `git_subtree_split`). Returns `trees_match` (prefix tree vs other HEAD tree)
+    separately from `history_related` (shared split ancestry). When trees match
+    but histories do not overlap, `state` is `subtree_add_required` instead of
+    `in_sync`. Commits of the other side touching only `other_only_paths`
+    (fnmatch patterns) are not counted toward `other_ahead`.
     """
     if other_root is None:
         raise ValueError("other_root required")
@@ -2903,13 +3229,28 @@ def subtree_sync_status(root=".", prefix=None, other_root=None, *, revision="HEA
     _rev_commit(root, revision)
     other_head = _rev_commit(other_root, other_ref)
     split = git_subtree_split(root, prefix, revision, timeout=timeout)
+    if split["sha"]:
+        mono_tree = _subtree_split_matches_prefix_tree(root, split["source"], split["prefix"], split["sha"])
+    else:
+        mono_tree = {"prefix_tree": split.get("prefix_tree"), "split_tree": split.get("split_tree"), "trees_match": False}
+    other_tree_check = _subtree_split_matches_prefix_tree(
+        root, split["source"], split["prefix"], other_head, split_root=other_root)
+    prefix_tree, other_tree = mono_tree["prefix_tree"], other_tree_check["split_tree"]
+    trees_match = bool(split["sha"] and mono_tree["trees_match"] and other_tree_check["trees_match"])
     base = {"schema": "gh-identity-subtree-sync/1", "prefix": split["prefix"], "write": False,
-            "source": split["source"], "split_sha": split["sha"]}
+            "source": split["source"], "split_sha": split["sha"], "prefix_tree": prefix_tree,
+            "other_tree": other_tree, "trees_match": trees_match,
+            "split_method": split.get("method"), "split_warning": split.get("warning"),
+            "fallback_used": split.get("fallback_used", False),
+            "fallback_elapsed_seconds": split.get("fallback_elapsed_seconds", 0.0)}
     if split["reason"]:
-        return {**base, "state": None, "reason": split["reason"], "other_head": other_head}
+        return {**base, "state": None, "reason": split["reason"], "other_head": other_head,
+                "history_related": None}
     mono = _rev_list(root, split["sha"])
     other = _rev_list(other_root, other_head)
     mono_set, other_set = set(mono), set(other)
+    history_related = _subtree_history_related(
+        root, split["prefix"], split["source"], split["sha"], other_root, other_head, mono_set, other_set)
     mono_extra = [c for c in mono if c not in other_set]
     other_extra, ignored = [], []
     for c in other:
@@ -2920,8 +3261,8 @@ def subtree_sync_status(root=".", prefix=None, other_root=None, *, revision="HEA
             ignored.append(c)
         else:
             other_extra.append(c)
-    if not mono_set & other_set:
-        state = "unrelated"
+    if not history_related:
+        state = "subtree_add_required" if trees_match else "unrelated"
     elif mono_extra and other_extra:
         state = "diverged"
     elif mono_extra:
@@ -2930,6 +3271,12 @@ def subtree_sync_status(root=".", prefix=None, other_root=None, *, revision="HEA
         state = "other_ahead"
     else:
         state = "in_sync"
+    guidance = None
+    if state == "subtree_add_required":
+        guidance = (
+            "Trees match but histories are unrelated; run `git subtree add` (or restore trailer-linked "
+            "history) before treating the checkout as linked to this monorepo prefix."
+        )
     on_mainline = None
     if mainline is not None:
         main_sha = _rev_commit(root, mainline)
@@ -2937,12 +3284,13 @@ def subtree_sync_status(root=".", prefix=None, other_root=None, *, revision="HEA
         if truncated:
             raise GitInspectionError("rev-list exceeds output limit")
         on_mainline = split["source"] in _git_decode(raw).split()
-    return {**base, "other_head": other_head, "split_in_other": split["sha"] in other_set,
+    return {**base, "other_head": other_head, "history_related": history_related,
+            "split_in_other": split["sha"] in other_set,
             "source_on_first_parent": on_mainline,
             "other_head_in_split": other_head in mono_set,
             "monorepo_ahead": len(mono_extra), "other_ahead": len(other_extra), "other_only_ignored": len(ignored),
             "monorepo_ahead_commits": mono_extra[:max_listed], "other_ahead_commits": other_extra[:max_listed],
-            "state": state, "reason": None}
+            "state": state, "guidance": guidance, "reason": None}
 
 
 def _parse_split_trailer(message):
@@ -2972,6 +3320,7 @@ def sync_provenance(root=".", prefix=None, other_root=None, *, revision="HEAD", 
     record = {"schema": "gh-identity-sync-provenance/1", "write": False, "prefix": status["prefix"],
               "monorepo": ident(root, status["source"]), "split_sha": status["split_sha"],
               "other": ident(other_root, status.get("other_head")), "state": status["state"],
+              "trees_match": status["trees_match"], "history_related": status["history_related"],
               "direction": direction, "squash": bool(squash),
               "generated_at": generated_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
               "reason": status["reason"]}
@@ -3053,6 +3402,167 @@ def _git_blobs(root, specs, max_bytes=64 * 1024 * 1024):
     return out
 
 
+def _subtree_branch(branch):
+    if (not isinstance(branch, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", branch)
+            or ".." in branch or "//" in branch or branch.endswith(("/", ".", ".lock"))
+            or any(part.startswith(".") for part in branch.split("/"))):
+        raise ValueError("invalid branch")
+    return branch
+
+
+_SUBTREE_PROTECTED_BRANCHES = ("main", "master")
+
+
+def _subtree_push_split_tree_gate(root, source, prefix, split_sha):
+    """Require a tree-validated split SHA immediately before `git push` of that commit."""
+    check = _subtree_split_matches_prefix_tree(root, source, prefix, split_sha or "")
+    if not split_sha or not check["trees_match"]:
+        raise Error("stale_subtree_split")
+    return check
+
+
+def subtree_sync(root=".", prefix=None, remote=None, branch=None, *, direction=None, squash=False,
+                 write=False, message=None, timeout=600, remote_compare_ref=None):
+    """Plan or run subtree sync for `prefix` against `remote` `branch`.
+
+    Without write=True the checkout is left unchanged (refs, index, work tree,
+    FETCH_HEAD): planning uses ls-remote and temporary clones for push guards.
+    The split itself still writes unreferenced commit objects into the object
+    database (as `git subtree split` does); no ref points at them.
+    The planned git command, split SHA (push) or remote tip (pull), and
+    Subtree-Split provenance are returned.
+    push uses `git push --force-with-lease=refs/heads/<branch>: <remote>
+    <split_sha>:refs/heads/<branch>` (the empty lease requires the branch to be
+    absent, so a concurrently created branch is never fast-forwarded) with a
+    tree-validated split SHA (not `git subtree push`, which re-splits internally).
+    Before push, the remote compare ref (default branch unless
+    `remote_compare_ref`) must be an ancestor of the split commit and must not
+    contain paths absent from the split tree. An explicit `remote_compare_ref`
+    that the remote lacks is an error (no fallback to main/master/trunk). push only creates a NEW branch on
+    the remote: main/master, the remote default
+    branch and existing branches are refused. pull merges into the current
+    branch of a clean checkout. After a write the result is verified (pushed
+    branch == split SHA; pulled tip reachable from / recorded in HEAD).
+    All arguments are validated before checking that git subtree is installed.
+    Network git uses the caller's own git credential configuration
+    (gh_identity never reads or passes tokens); remotes with credentials are refused.
+    """
+    prefix = _subtree_prefix(prefix)
+    if remote is None:
+        raise ValueError("remote required")
+    remote = _validate_remote(remote)
+    branch = _subtree_branch(branch)
+    if direction not in ("push", "pull"):
+        raise ValueError("direction must be push or pull")
+    if squash and direction == "push":
+        raise ValueError("--squash applies to pull only")
+    if type(write) is not bool:
+        raise ValueError("write must be a boolean")
+    if message is not None and (not isinstance(message, str) or not message.strip() or "\0" in message):
+        raise ValueError("invalid message")
+    if direction == "push" and branch in _SUBTREE_PROTECTED_BRANCHES:
+        raise ValueError("refusing to push to main/master; use a new branch")
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("timeout must be positive and finite")
+    source = _rev_commit(root, "HEAD")
+    raw, _, code = _git_run(root, ["cat-file", "-t", source + ":" + prefix], max_bytes=4096, ok=(0, 1, 128))
+    if code != 0 or _git_decode(raw).strip() != "tree":
+        raise ValueError("prefix not found at HEAD" + ("; use git subtree add first" if direction == "pull" else ""))
+    if not _git_subtree_available(root):
+        raise Error("subtree_unavailable")
+
+    def net(args, ok=(0,)):
+        return _git_run(root, args, max_bytes=1024 * 1024, ok=ok, timeout=timeout, inherit_auth=True)
+
+    raw, _, code = net(["ls-remote", "--symref", "--", remote, "HEAD", "refs/heads/" + branch], ok=tuple(range(256)))
+    if code != 0:
+        raise Error("git_remote_unavailable")
+    listing = _git_decode(raw)
+    m = re.search(r"^ref: refs/heads/(\S+)\s+HEAD$", listing, re.M)
+    remote_default = m.group(1) if m else None
+    m = re.search(r"^([0-9a-f]{40})\s+refs/heads/" + re.escape(branch) + r"$", listing, re.M)
+    remote_tip = m.group(1) if m else None
+    base = {"schema": "gh-identity-subtree-sync-run/1", "direction": direction, "prefix": prefix,
+            "remote": remote, "branch": branch, "squash": bool(squash), "write": write,
+            "source": source, "remote_default_branch": remote_default}
+
+    if direction == "push":
+        if branch == remote_default:
+            raise ValueError("refusing to push to the remote default branch; use a new branch")
+        if remote_tip is not None:
+            raise ValueError("remote branch already exists; push creates a new branch only")
+        split = git_subtree_split(root, prefix, source, timeout=timeout)
+        if split["reason"]:
+            raise Error(split["reason"])
+        refspec = split["sha"] + ":refs/heads/" + branch
+        lease = _subtree_push_lease(branch)
+        command = ["git", "push", lease, "--", remote, refspec]
+        provenance = {"trailer": f"{_SUBTREE_TRAILER}: {source} {split['sha']} {prefix}",
+                      "monorepo_sha": source, "split_sha": split["sha"]}
+        push_guard = _subtree_push_guards(
+            root, remote, prefix, split["sha"], remote_default, net, compare_ref=remote_compare_ref,
+            timeout=timeout)
+        split_info = {
+            "method": split.get("method"),
+            "warning": split.get("warning"),
+            "subtree_sha": split.get("subtree_sha"),
+            "fallback_used": split.get("fallback_used", False),
+            "fallback_elapsed_seconds": split.get("fallback_elapsed_seconds", 0.0),
+        }
+        plan = {**base, "split_sha": split["sha"], "command": command, "provenance": provenance,
+                "push_guard": push_guard, "split": split_info}
+        if not write:
+            return {**plan, "state": "planned"}
+        tree_check = _subtree_push_split_tree_gate(root, source, prefix, split["sha"])
+        plan = {**plan, "prefix_tree": tree_check["prefix_tree"], "split_tree": tree_check["split_tree"]}
+        try:
+            net(["push", lease, "--", remote, refspec])
+        except GitInspectionError:
+            raise Error("subtree_push_failed") from None
+        raw, _, _ = net(["ls-remote", "--", remote, "refs/heads/" + branch])
+        pushed = (_git_decode(raw).split() or [None])[0]
+        if pushed != split["sha"]:
+            raise Error("post_write_verification_failed")
+        return {**plan, "state": "pushed", "verified": {"remote_branch_sha": pushed, "ok": True}}
+
+    if remote_tip is None:
+        raise ValueError("remote branch not found")
+    raw, _, _ = _git_run(root, ["status", "--porcelain", "--untracked-files=no"], max_bytes=1024 * 1024)
+    if _git_decode(raw).strip():
+        raise ValueError("working tree has uncommitted changes")
+    raw, _, code = _git_run(root, ["symbolic-ref", "-q", "--short", "HEAD"], max_bytes=4096, ok=(0, 1))
+    if code != 0:
+        raise ValueError("HEAD is detached; check out a branch first")
+    local_branch = _git_decode(raw).strip()
+    command = ["git", "subtree", "pull", "--prefix=" + prefix, *(["--squash"] if squash else []),
+               *(["-m", message] if message else []), remote, branch]
+    plan = {**base, "local_branch": local_branch, "remote_tip": remote_tip, "command": command}
+    if not write:
+        return {**plan, "state": "planned"}
+    try:
+        with _subtree_cache_cleanup(root):
+            net(["subtree", "pull", "--prefix=" + prefix, *(["--squash"] if squash else []),
+                 *(["-m", message] if message else []), "--", remote, branch])
+    except GitInspectionError:
+        raise Error("subtree_pull_failed") from None
+    head = _rev_commit(root, "HEAD")
+    if squash:
+        raw, _, _ = _git_run(root, ["log", "-3", "--format=%B", head], max_bytes=256 * 1024)
+        ok = head != source and f"git-subtree-split: {remote_tip}" in _git_decode(raw)
+    else:
+        _, _, code = _git_run(root, ["merge-base", "--is-ancestor", remote_tip, head], max_bytes=4096, ok=(0, 1))
+        ok = code == 0
+    if not ok:
+        raise Error("post_write_verification_failed")
+    existing = verify_sync_provenance(root, remote_tip, monorepo_root=root, timeout=timeout)
+    split = git_subtree_split(root, prefix, head, timeout=timeout)
+    provenance = {"trailer": f"{_SUBTREE_TRAILER}: {head} {split['sha']} {prefix}" if split["sha"] else None,
+                  "monorepo_sha": head, "split_sha": split["sha"],
+                  "existing": {"ok": existing["ok"], "reason": existing["reason"], "trailers": existing["trailers"]}}
+    return {**plan, "state": "pulled", "head": head, "provenance": provenance,
+            "verified": {"remote_tip_in_head": True, "ok": True}}
+
+
 def split_preflight(root=".", prefix=None, revision="HEAD", *, timeout=600, max_listed=200):
     """Read-only checklist before splitting `prefix` out of a monorepo.
 
@@ -3129,16 +3639,25 @@ def split_preflight(root=".", prefix=None, revision="HEAD", *, timeout=600, max_
             outbound.append({"file": path, "line": line, "kind": "sys.path" if "sys.path" in text else "path",
                              "target": text.strip()[:200]})
     split = git_subtree_split(root, prefix, source, timeout=timeout)
+    tree_check = (_subtree_split_matches_prefix_tree(root, source, prefix, split["sha"])
+                  if split["sha"] else {"trees_match": False, "prefix_tree": split.get("prefix_tree"),
+                                        "split_tree": split.get("split_tree")})
     history = len(_rev_list(root, split["sha"])) if split["sha"] else None
     config_refs = sorted({f"{r['file']}:{r['line']}" for r in inbound if r["kind"] == "config"})
     checks = [
         {"id": "split", "ok": split["sha"] is not None, "detail": split["reason"]},
+        {"id": "split_tree", "ok": tree_check["trees_match"],
+         "detail": None if tree_check["trees_match"] else "prefix_tree_split_tree_mismatch"},
         {"id": "inbound_refs", "ok": not inbound, "detail": len(inbound)},
         {"id": "outbound_refs", "ok": not outbound, "detail": len(outbound)},
         {"id": "third_party_imports", "ok": not third, "detail": sorted(third)},
         {"id": "syntax", "ok": not syntax, "detail": syntax[:max_listed]},
     ]
     return {**base, "split_sha": split["sha"], "history_commits": history,
+            "prefix_tree": tree_check.get("prefix_tree"), "split_tree": tree_check.get("split_tree"),
+            "split_method": split.get("method"), "split_warning": split.get("warning"),
+            "fallback_used": split.get("fallback_used", False),
+            "fallback_elapsed_seconds": split.get("fallback_elapsed_seconds", 0.0),
             "files": len(inside), "inbound_refs": inbound[:max_listed], "outbound_refs": outbound[:max_listed],
             "inbound_total": len(inbound), "outbound_total": len(outbound),
             "third_party_imports": sorted(third), "config_refs": config_refs,
@@ -3326,10 +3845,130 @@ def vendor_lock_check(root=".", lock="vendor.lock.json", rules=None, parent_ref=
             "counts": dict(Counter(r["status"] for r in rows)), "ok": ok}
 
 
-def _remote_file(repository, path, commit, transport="auto", timeout=30, max_bytes=8 * 1024 * 1024):
-    """Bytes of repository@commit:path via the contents and git/blobs API (read-only)."""
+_PUBLIC_ATOM_COMMIT = re.compile(
+    r"<id>tag:github\.com,2008:(?:Grit::Commit|Commit)/([0-9a-f]{40})</id>", re.IGNORECASE)
+
+
+def _public_github_get(url, *, timeout=30, max_bytes=8 * 1024 * 1024, accept="*/*"):
+    """GET a public github.com or raw.githubusercontent.com URL (no token)."""
+    req = urllib.request.Request(url, headers={"User-Agent": "gh_identity/0.1", "Accept": accept})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            status = response.getcode()
+            if status == 404:
+                raise Error("not_found_or_inaccessible")
+            if status == 429:
+                raise Error("rate_limit")
+            if status in (401, 403):
+                raise Error("permission_or_rate_limit")
+            if status != 200:
+                raise Error("server_error" if status >= 500 else "invalid_response")
+            data = response.read(max_bytes + 1)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise Error("not_found_or_inaccessible") from None
+        if exc.code == 429:
+            raise Error("rate_limit") from None
+        if exc.code in (401, 403):
+            raise Error("permission_or_rate_limit") from None
+        raise Error("server_error" if exc.code >= 500 else "invalid_response") from None
+    except urllib.error.URLError as exc:
+        code = "operation_timeout" if isinstance(exc.reason, TimeoutError) else "transport_error"
+        raise Error(code) from None
+    except TimeoutError:
+        raise Error("operation_timeout") from None
+    except OSError:
+        raise Error("transport_error") from None
+    if len(data) > max_bytes:
+        raise Error("file_too_large")
+    budget = _BUDGET.get()
+    if budget is not None:
+        budget.charge("bytes", len(data))
+    return data
+
+
+def public_github_branch_commits(repository, branch="main", *, timeout=30, max_bytes=512 * 1024):
+    """Recent commit SHAs on a branch from the public commits Atom feed (read-only, no token)."""
     r = repo(repository)
-    meta = request("GET", f"repos/{r}/contents/{urllib.parse.quote(_vendor_path(path))}?ref={commit}",
+    owner, name = r.split("/", 1)
+    url = f"https://github.com/{owner}/{name}/commits/{urllib.parse.quote(branch, safe='')}.atom"
+    text = _public_github_get(url, timeout=timeout, max_bytes=max_bytes, accept="application/atom+xml").decode("utf-8", "replace")
+    return [m.group(1).lower() for m in _PUBLIC_ATOM_COMMIT.finditer(text)]
+
+
+def public_github_branch_head(repository, branch="main", *, timeout=30, max_bytes=512 * 1024):
+    """Tip commit SHA on a branch via the public commits Atom feed (read-only, no token)."""
+    commits = public_github_branch_commits(repository, branch, timeout=timeout, max_bytes=max_bytes)
+    if not commits:
+        raise Error("not_found_or_inaccessible")
+    return commits[0]
+
+
+def _pinned_commit_ref(ref):
+    return isinstance(ref, str) and re.fullmatch(r"[0-9a-f]{40}", ref, re.I) and set(ref.lower()) != {"0"}
+
+
+_REMOTE_FILE_RAW_FALLBACK = frozenset({
+    "not_found_or_inaccessible", "permission_or_rate_limit", "rate_limit", "server_error",
+    "operation_timeout", "transport_error",
+})
+
+
+def public_github_raw_bytes(repository, path, ref, *, timeout=30, max_bytes=8 * 1024 * 1024):
+    """File bytes at repository@ref:path via raw.githubusercontent.com (read-only, no token)."""
+    r = repo(repository)
+    owner, name = r.split("/", 1)
+    clean = _vendor_path(path)
+    segments = [urllib.parse.quote(part, safe="") for part in clean.split("/") if part]
+    ref_part = urllib.parse.quote(ref, safe="")
+    url = f"https://raw.githubusercontent.com/{owner}/{name}/{ref_part}/{'/'.join(segments)}"
+    return _public_github_get(url, timeout=timeout, max_bytes=max_bytes)
+
+
+def public_github_repository_check(repository, commit, *, branch="main", source=None, timeout=30, max_bytes=8 * 1024 * 1024):
+    """Generic read-only pin check using public GitHub URLs (no token).
+
+    The commit must appear among recent commits on ``branch`` in the Atom feed.
+    When ``source`` is set, the file at ``repository@commit:source`` must be readable from raw.githubusercontent.com.
+    """
+    if not re.fullmatch(r"[0-9a-f]{40}", commit or "") or set(commit) == {"0"}:
+        raise ValueError("commit must be a 40-character lowercase hex SHA")
+    recent = []
+    atom = {"status": "unavailable", "recent_commits": recent, "in_recent": False}
+    try:
+        recent[:] = public_github_branch_commits(repository, branch, timeout=timeout)
+        atom["status"] = "ok"
+        atom["in_recent"] = commit.lower() in recent
+    except Error as exc:
+        atom["detail"] = exc.code
+    file_row = None
+    if source is not None:
+        file_row = {"path": _vendor_path(source), "status": "unavailable"}
+        try:
+            body = public_github_raw_bytes(repository, source, commit, timeout=timeout, max_bytes=max_bytes)
+            file_row["status"] = "ok"
+            file_row["bytes"] = len(body)
+            file_row["blob_sha"] = git_blob_sha(body)
+            file_row["sha256"] = hashlib.sha256(body).hexdigest()
+        except Error as exc:
+            file_row["detail"] = exc.code
+    ok = atom.get("in_recent") is True and (file_row is None or file_row.get("status") == "ok")
+    return {"schema": "gh-identity-public-repo-check/1", "write": False, "repository": repo(repository),
+            "commit": commit.lower(), "branch": branch, "atom": atom, "source": file_row, "ok": ok}
+
+
+def _remote_file(repository, path, commit, transport="auto", timeout=30, max_bytes=8 * 1024 * 1024):
+    """Bytes of repository@commit:path via raw.githubusercontent.com, else the contents API (read-only)."""
+    r = repo(repository)
+    clean = _vendor_path(path)
+    if (transport == "auto" and request is _DEFAULT_REQUEST
+            and _REQUEST.get() is None and _pinned_commit_ref(commit)):
+        try:
+            return public_github_raw_bytes(r, clean, commit, timeout=timeout, max_bytes=max_bytes)
+        except Error as exc:
+            if exc.code not in _REMOTE_FILE_RAW_FALLBACK:
+                raise
+    meta = request("GET", f"repos/{r}/contents/{urllib.parse.quote(clean)}?ref={commit}",
                    transport=transport, timeout=timeout)
     if not isinstance(meta, dict) or meta.get("type") != "file" or not isinstance(meta.get("sha"), str):
         raise Error("not_a_file")
@@ -3570,7 +4209,7 @@ def _repo_tree(full, branch, transport, timeout):
         raise Error("invalid_tree_response")
     files = {e["path"]: e["sha"] for e in d["tree"] if isinstance(e, dict) and e.get("type") == "blob"
              and e.get("mode") in ("100644", "100755") and isinstance(e.get("path"), str) and isinstance(e.get("sha"), str)}
-    return head["sha"], files, bool(d.get("truncated"))
+    return head["sha"], files, d.get("truncated")
 
 
 def _repo_lock(full, ref, paths, lock_paths, transport, timeout):
@@ -3583,8 +4222,36 @@ def _repo_lock(full, ref, paths, lock_paths, transport, timeout):
     return None, None
 
 
+def _duplicate_repo_locks(full, ref, paths, lock_paths, transport, timeout):
+    """Read every present lock; conflicting destinations or bad reads fail closed.
+
+    Unlike enrollment_progress's single-lock lookup, duplicate-files needs a
+    complete provenance map across supported layouts in each repository.
+    """
+    found, entries, folded = [], {}, {}
+    for lp in dict.fromkeys(lock_paths):
+        if lp not in paths:
+            continue
+        meta = request("GET", f"repos/{full}/contents/{lp}?ref={ref}", transport=transport, timeout=timeout)
+        if not isinstance(meta, dict) or meta.get("encoding") != "base64" or not isinstance(meta.get("content"), str):
+            raise Error("invalid_vendor_lock_response")
+        try:
+            lock = validate_vendor_lock(json.loads(base64.b64decode("".join(meta["content"].split()), validate=True)))
+        except (ValueError, TypeError, KeyError, UnicodeDecodeError) as exc:
+            raise Error("invalid_vendor_lock") from exc
+        for entry in lock["files"]:
+            dest = entry["destination"]
+            key = dest.casefold()
+            if key in folded and (folded[key] != dest or entries[dest] != entry):
+                raise Error("conflicting_vendor_lock")
+            folded[key] = dest
+            entries[dest] = entry
+        found.append(lp)
+    return found, entries
+
+
 def duplicate_files(owner, repos=None, *, ignore=DUPLICATE_IGNORE, extra_ignore=(), min_repos=2,
-                    lock_paths=("vendor.lock.json", "tool/python/vendor.lock.json"), include_forks=False,
+                    lock_paths=("vendor.lock.json", "tool/python/vendor.lock.json", "python/vendor.lock.json"), include_forks=False,
                     heads=None, transport="auto", timeout=30):
     """Same basename in several repositories of one owner, with vendor-lock provenance.
 
@@ -3602,13 +4269,18 @@ def duplicate_files(owner, repos=None, *, ignore=DUPLICATE_IGNORE, extra_ignore=
         full = repo(f"{owner}/{t['name']}")
         try:
             sha, files, truncated = _repo_tree(full, (heads or {}).get(full) or t["default_branch"] or "HEAD", transport, timeout)
-            lp, lock = _repo_lock(full, sha, files, lock_paths, transport, timeout)
+            if type(truncated) is not bool:
+                raise Error("invalid_tree_response")
+            if truncated:
+                raise Error("truncated_tree")
+            found_locks, lock_entries = _duplicate_repo_locks(full, sha, files, lock_paths, transport, timeout)
         except (Error, ValueError, json.JSONDecodeError) as e:
             errors.append({"repository": full, "detail": getattr(e, "code", str(e))})
             continue
-        scanned[full] = {"commit": sha, "files": len(files), "truncated": truncated, "lock": lp,
+        scanned[full] = {"commit": sha, "files": len(files), "truncated": truncated,
+                         "lock": found_locks[0] if found_locks else None, "lock_paths": found_locks,
                          "from_heads": full in (heads or {})}
-        locks[full] = {f["destination"]: f for f in (lock or {"files": []})["files"]}
+        locks[full] = lock_entries
         for path, blob in files.items():
             base = path.rsplit("/", 1)[-1]
             if any(fnmatch.fnmatchcase(base, p) or fnmatch.fnmatchcase(path, p) for p in patterns):
@@ -3656,7 +4328,8 @@ def duplicate_files(owner, repos=None, *, ignore=DUPLICATE_IGNORE, extra_ignore=
     groups.sort(key=lambda g_: (-g_["repositories"], g_["basename"]))
     all_rows = [r for g_ in groups for r in g_["files"]]
     return {"schema": "gh-identity-duplicate-files/1", "write": False, "owner": owner, "scanned": scanned,
-            "errors": errors, "redacted": redacted, "ignore": list(patterns), "groups": groups,
+            "errors": errors, "complete": not errors, "aggregation_scope": "complete_repositories_only",
+            "redacted": redacted, "ignore": list(patterns), "groups": groups,
             "counts": {"groups": len(groups), "copies": len(all_rows),
                        "null_provenance": sum(r["provenance"] is None for r in all_rows),
                        "null_provenance_non_origin": sum(r["provenance"] is None and not r["origin"] for r in all_rows),
@@ -3672,6 +4345,7 @@ def render_duplicates_markdown(o, top=30):
              f"(non-origin {c['null_provenance_non_origin']}), stale pins {c['stale']}, "
              f"groups with warnings {c['groups_with_warnings']}", ""]
     if o["errors"]:
+        lines += [f"**INCOMPLETE: {len(o['errors'])} repositories failed. Counts cover only complete repositories; absence of duplicates or stale pins is not an all-repository result.**", ""]
         lines += ["errors: " + ", ".join(f"{e['repository']} ({e['detail']})" for e in o["errors"]), ""]
     lines += ["| basename | repos | versions | null provenance | stale | origin | warnings |", "|---|---|---|---|---|---|---|"]
     for grp in o["groups"][:max(0, top)]:
@@ -4074,6 +4748,448 @@ def render_pin_audit(o):
 _REQUEST = contextvars.ContextVar("ghi_request", default=None)
 
 
+# ---------------------------------------------------------------------------
+# Fleet: the same question asked of several local clones, one row per clone.
+# ---------------------------------------------------------------------------
+FLEET_IGNORE = ("copilot-pull-request-reviewer",)
+_FLEET_NOISE = re.compile(r"ubuntu-latest label will migrate|^Process completed with exit code")
+
+
+def _upstream(root):
+    raw, _, code = _git_run(root, ["rev-parse", "--abbrev-ref", "@{upstream}"], max_bytes=4096, ok=(0, 128))
+    return _git_decode(raw).strip() if code == 0 else None
+
+
+def fleet_status(roots, *, fix_tracking=False, write=False, remote="origin", timeout=120):
+    """Branch, upstream ahead/behind and local changes of each clone (local; fetch only to fix tracking).
+
+    A pushed branch whose clone lacks ``branch.<b>.remote/merge`` or a fetch refspec
+    for it (shallow single-branch clones) has no upstream, so hooks report it as
+    unpushed. ``fix_tracking`` plans the same config git-work writes (remote, merge,
+    refspec) when the remote branch exists; ``write=True`` applies it and fetches.
+    """
+    if isinstance(roots, (str, os.PathLike)):
+        roots = [roots]
+    rows = []
+    for root in roots:
+        row = {"root": os.fspath(root)}
+        try:
+            head = checkout_head(root)
+            status = git_status(root)
+            kinds = Counter("untracked" if r["kind"] == "?" else "changed" for r in status["records"])
+            branch, upstream = head["branch"], _upstream(root)
+            row.update(repository=remote_repository(root, remote)["full_name"], branch=branch,
+                       head_sha=head["sha"], changed=kinds.get("changed", 0), untracked=kinds.get("untracked", 0))
+            if upstream is None and fix_tracking and branch:
+                listed = _git_decode(_git_run(root, ["ls-remote", "--heads", remote, branch], timeout=timeout,
+                                              inherit_auth=True, max_bytes=64 * 1024)[0]).strip()
+                refspec = f"+refs/heads/{branch}:refs/remotes/{remote}/{branch}"
+                existing = _git_decode(_git_run(root, ["config", "--local", "--get-all", f"remote.{remote}.fetch"],
+                                                ok=(0, 1))[0]).split()
+                steps = [["config", "--local", f"branch.{branch}.remote", remote],
+                         ["config", "--local", f"branch.{branch}.merge", f"refs/heads/{branch}"]]
+                if refspec not in existing and f"+refs/heads/*:refs/remotes/{remote}/*" not in existing:
+                    steps.append(["config", "--local", "--add", f"remote.{remote}.fetch", refspec])
+                steps.append(["fetch", "--no-tags", remote, branch])
+                if not listed:
+                    row["tracking_fix"] = {"status": "remote_branch_missing"}
+                elif not write:
+                    row["tracking_fix"] = {"status": "planned", "commands": [["git", *s] for s in steps]}
+                else:
+                    for step in steps:
+                        _git_run(root, step, timeout=timeout if step[0] == "fetch" else None,
+                                 inherit_auth=step[0] == "fetch")
+                    upstream = _upstream(root)
+                    row["tracking_fix"] = {"status": "verified" if upstream else "verification_mismatch"}
+            if upstream:
+                counts = _git_decode(_git_run(root, ["rev-list", "--left-right", "--count",
+                                                     f"{upstream}...HEAD"])[0]).split()
+                row.update(upstream=upstream, behind=int(counts[0]), ahead=int(counts[1]))
+            else:
+                row.update(upstream=None, behind=None, ahead=None)
+            row["ok"] = bool(upstream) and row["ahead"] == 0 and not kinds
+        except (GitInspectionError, ValueError, OSError) as error:
+            row.update(ok=False, error=str(error))
+        rows.append(row)
+    return {"schema": "gh-identity-fleet-status/1", "ok": all(r["ok"] for r in rows), "rows": rows,
+            "observed_at": now()}
+
+
+def render_fleet_status(o):
+    out = []
+    for r in o["rows"]:
+        name = os.path.basename(os.path.abspath(r["root"]))
+        if "error" in r:
+            out.append(f"error {name}: {r['error']}")
+            continue
+        track = f"{r['upstream']} +{r['ahead']}/-{r['behind']}" if r["upstream"] else "no upstream"
+        fix = f" tracking:{r['tracking_fix']['status']}" if "tracking_fix" in r else ""
+        out.append(f"{'ok  ' if r['ok'] else 'todo'} {name} {r['branch'] or '(detached)'}@{r['head_sha'][:7]} {track}"
+                   f" changed={r['changed']} untracked={r['untracked']}{fix}")
+    return "\n".join(out)
+
+
+def fleet_checks(roots, *, ignore=FLEET_IGNORE, steps=False, transport="auto", timeout=30):
+    """Checks of each clone's checked-out HEAD; with steps, failed job steps and failure/warning annotations."""
+    if isinstance(roots, (str, os.PathLike)):
+        roots = [roots]
+    rows = []
+    for root in roots:
+        row = {"root": os.fspath(root)}
+        try:
+            full = remote_repository(root)["full_name"]
+            if not full:
+                raise ValueError("origin is not a GitHub remote")
+            sha = checkout_head(root)["sha"]
+            observed = checks_for_sha(full, sha, transport=transport, timeout=timeout)
+            kept = [c for c in observed["checks"] if c["name"] not in set(ignore)]
+            summary = summarize_checks(kept, len(kept)) if kept else {"state": "pending", "checks": []}
+            failed = [c for c in kept if c["status"] == "completed"
+                      and c["conclusion"] not in ("success", "skipped", "neutral")]
+            row.update(repository=full, sha=sha, state=summary["state"], count=len(kept),
+                       pending=sum(c["status"] != "completed" for c in kept),
+                       failed=[{"id": c["id"], "name": c["name"], "conclusion": c["conclusion"]} for c in failed])
+            if steps:
+                for item in row["failed"]:
+                    try:
+                        job = request("GET", f"repos/{full}/actions/jobs/{item['id']}", transport=transport, timeout=timeout)
+                        item["failed_steps"] = [s.get("name") for s in job.get("steps") or [] if s.get("conclusion") == "failure"]
+                    except Error:
+                        item["failed_steps"] = None
+                    notes = request("GET", f"repos/{full}/check-runs/{item['id']}/annotations", transport=transport,
+                                    timeout=timeout) or []
+                    item["annotations"] = [
+                        {"level": n.get("annotation_level"), "path": n.get("path"), "line": n.get("start_line"),
+                         "message": " ".join((n.get("message") or "").split())[:300]}
+                        for n in notes if n.get("annotation_level") in ("failure", "warning")
+                        and not _FLEET_NOISE.search(" ".join((n.get("message") or "").split()))]
+        except (GitInspectionError, ValueError, Error) as error:
+            row.update(state="error", error=str(getattr(error, "code", "")) or str(error))
+        rows.append(row)
+    states = {r["state"] for r in rows}
+    state = "error" if "error" in states else "failed" if "failed" in states else "pending" if states - {"green"} else "green"
+    return {"schema": "gh-identity-fleet-checks/1", "state": state, "rows": rows, "observed_at": now()}
+
+
+def render_fleet_checks(o):
+    out = []
+    for r in o["rows"]:
+        if r["state"] == "error":
+            out.append(f"error   {r['root']}: {r['error']}")
+            continue
+        out.append(f"{r['state']:7} {r['repository']}@{r['sha'][:7]} runs={r['count']} pending={r['pending']} failed={len(r['failed'])}")
+        for item in r["failed"]:
+            out.append(f"   x {item['name']} ({item['conclusion']})")
+            for name in item.get("failed_steps") or []:
+                out.append(f"     step: {name}")
+            for n in item.get("annotations") or []:
+                out.append(f"     {n['level']}: {n['path']}:{n['line']} {n['message'][:200]}")
+    return "\n".join(out)
+
+
+def fleet_pr(roots, title, body, *, base="main", draft=False, write=False, transport="auto", timeout=30):
+    """Open a PR for each clone's current branch (planned unless write=True); an open PR is reported, not duplicated."""
+    if not isinstance(title, str) or not title.strip() or not isinstance(body, str):
+        raise ValueError("title and body are required")
+    if isinstance(roots, (str, os.PathLike)):
+        roots = [roots]
+    rows = []
+    for root in roots:
+        row = {"root": os.fspath(root)}
+        try:
+            full = remote_repository(root)["full_name"]
+            branch = checkout_head(root)["branch"]
+            if not full or not branch:
+                raise ValueError("needs a GitHub origin and a checked-out branch")
+            row.update(repository=full, head=branch, base=base)
+            open_prs = request("GET", f"repos/{full}/pulls?state=open&head={full.split('/')[0]}:{branch}",
+                               transport=transport, timeout=timeout) or []
+            if open_prs:
+                row.update(status="already_exists", number=open_prs[0]["number"], url=open_prs[0].get("html_url"))
+            elif not write:
+                row["status"] = "planned"
+            else:
+                made = request("POST", f"repos/{full}/pulls", {"title": title, "head": branch, "base": base,
+                                                               "body": body, "draft": bool(draft)},
+                               transport=transport, timeout=timeout, mutating=True)
+                row.update(status="verified" if made.get("number") else "verification_mismatch",
+                           number=made.get("number"), url=made.get("html_url"))
+        except (GitInspectionError, ValueError, Error) as error:
+            row.update(status="error", error=str(getattr(error, "code", "")) or str(error))
+        rows.append(row)
+    ok = all(r["status"] in ("planned", "already_exists", "verified") for r in rows)
+    return {"schema": "gh-identity-fleet-pr/1", "status": "verified" if write and ok else "planned" if ok else "error",
+            "rows": rows, "observed_at": now()}
+
+def render_fleet_pr(o):
+    return "\n".join(f"{r['status']} {r.get('repository') or r['root']}"
+                     f"{' #' + str(r['number']) if r.get('number') else ''} {r.get('url') or r.get('error') or ''}".rstrip()
+                     for r in o["rows"])
+
+
+def merge_preview(repository, numbers=None, *, all_open=False, base=None, pairs=True, max_prs=15,
+                  transport="auto", timeout=300, remote_base="https://github.com/", remote=None):
+    """Would these open PRs merge together? Read-only: a temporary repository, nothing pushed.
+
+    Fetches the base branch and the exact PR head SHAs reported by the API into a
+    temporary partial clone (blobs fetched on demand), verifies the fetched commits,
+    and uses those immutable SHAs with ``git merge-tree --write-tree``:
+
+    * ``alone``: each PR against the base tip (what GitHub's mergeability reports);
+    * ``sequence``: the PRs merged one after another in the given order, as when they
+      are first combined on one integration branch; a conflicting PR is reported with
+      its files and skipped, so the later steps still say something;
+    * ``pairs`` (optional): every pair of PR heads against their merge base, to tell
+      which PRs collide with each other.
+
+    PR numbers come from ``numbers`` or, with ``all_open``, every open PR into
+    ``base`` (default: the repository's default branch), oldest first.
+    """
+    r = repo(repository)
+    if all_open == bool(numbers):
+        raise ValueError("give PR numbers or all_open, not both")
+    info = request("GET", f"repos/{r}", transport=transport, timeout=30)
+    base = base or info.get("default_branch")
+    if all_open:
+        listed = request("GET", f"repos/{r}/pulls?state=open&base={urllib.parse.quote(base)}&sort=created&direction=asc&per_page=100",
+                         transport=transport, timeout=30) or []
+        numbers = [p["number"] for p in listed]
+    numbers = list(numbers)
+    if any(type(n) is not int or n < 1 for n in numbers):
+        raise ValueError("PR numbers must be positive integers")
+    if len(numbers) > max_prs:
+        raise ValueError(f"at most {max_prs} PRs (pairs grow quadratically)")
+    prs = []
+    for number in numbers:
+        pr = request("GET", f"repos/{r}/pulls/{number}", transport=transport, timeout=30)
+        head_sha = (pr.get("head") or {}).get("sha")
+        if not isinstance(head_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", head_sha):
+            raise Error("invalid_pr_head_sha")
+        prs.append({"number": number, "title": pr.get("title"), "state": pr.get("state"),
+                    "base": (pr.get("base") or {}).get("ref"), "head_sha": head_sha})
+    url = _validate_remote(remote if remote is not None else remote_base.rstrip("/") + "/" + r)
+    out = {"schema": "gh-identity-merge-preview/1", "write": False, "repository": r, "base": base, "prs": prs,
+           "alone": [], "sequence": [], "pairs": [], "observed_at": now()}
+    if not prs:
+        out["ok"] = True
+        return out
+    with tempfile.TemporaryDirectory(prefix="ghi-merge-preview-") as tmp:
+        def git(*args, ok=(0,)):
+            raw, _, code = _git_run(tmp, list(args), max_bytes=16 * 1024 * 1024, ok=ok, timeout=timeout,
+                                    inherit_auth=args[:1] == ("fetch",))
+            return _git_decode(raw), code
+        git("init", "-q", "--bare")
+        git("remote", "add", "origin", url)
+        git("config", "remote.origin.promisor", "true")
+        git("config", "remote.origin.partialclonefilter", "blob:none")
+        git("config", "user.name", "merge-preview")  # commit-tree in this throwaway repository only
+        git("config", "user.email", "merge-preview@invalid")
+        refspecs = [f"+refs/heads/{base}:refs/heads/{base}"] + [f"+{p['head_sha']}:refs/pr/{p['number']}" for p in prs]
+        git("fetch", "-q", "--no-tags", "--filter=blob:none", "origin", *refspecs)
+        # Verify every fetched commit before producing any comparison. A missing
+        # snapshot or moved ref must fail, never silently compare a newer PR head.
+        for p in prs:
+            fetched = git("rev-parse", "--verify", f"refs/pr/{p['number']}^{{commit}}")[0].strip()
+            if fetched != p["head_sha"]:
+                raise Error("pr_head_sha_mismatch")
+        tip = git("rev-parse", f"refs/heads/{base}")[0].strip()
+        out["base_sha"] = tip
+
+        def merge(a, b):
+            text, code = git("merge-tree", "--write-tree", "--name-only", "--no-messages", a, b, ok=(0, 1))
+            lines = [l for l in text.splitlines() if l]
+            return code == 0, lines[0] if lines else None, lines[1:]
+
+        for p in prs:
+            clean, _, files = merge(tip, p["head_sha"])
+            out["alone"].append({"number": p["number"], "status": "clean" if clean else "conflict", "files": files})
+        current = tip
+        for p in prs:
+            clean, tree, files = merge(current, p["head_sha"])
+            if clean:
+                current = git("commit-tree", tree, "-p", current, "-p", p["head_sha"],
+                              "-m", f"preview #{p['number']}")[0].strip()
+            out["sequence"].append({"number": p["number"], "status": "clean" if clean else "conflict_skipped",
+                                    "files": files})
+        if pairs:
+            for i, a in enumerate(prs):
+                for b in prs[i + 1:]:
+                    clean, _, files = merge(a["head_sha"], b["head_sha"])
+                    out["pairs"].append({"a": a["number"], "b": b["number"], "status": "clean" if clean else "conflict",
+                                         "files": files})
+    out["ok"] = all(s["status"] == "clean" for s in out["sequence"])
+    return out
+
+
+def render_merge_preview(o):
+    out = [f"{o['repository']} base {o['base']}@{(o.get('base_sha') or '')[:7]}: {len(o['prs'])} PR(s), "
+           f"{'all merge cleanly in order' if o['ok'] else 'conflicts'}"]
+    alone = {a["number"]: a for a in o["alone"]}
+    for step in o["sequence"]:
+        a = alone[step["number"]]
+        extra = "" if a["status"] == "clean" else f" (also conflicts with {o['base']} alone)"
+        files = f" {', '.join(step['files'][:5])}" if step["files"] else ""
+        out.append(f"  {step['status']:16} #{step['number']}{extra}{files}")
+    for pair in o["pairs"]:
+        if pair["status"] != "clean":
+            out.append(f"  pair conflict    #{pair['a']} x #{pair['b']} {', '.join(pair['files'][:5])}")
+    return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------
+# Merge readiness: review findings that are easy to miss before merging.
+# ---------------------------------------------------------------------------
+_FINDING_ORDER = ("Must", "Blocking", "Should")
+
+
+def _when(text):
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")) if isinstance(text, str) else None
+    except ValueError:
+        return None
+
+
+def _ccr_review_threads(r, n, obs, *, transport, timeout):
+    """Fill review threads from the REST route Claude Code sessions offer when GraphQL is unavailable."""
+    try:
+        rows = request("GET", f"repos/{r}/pulls/{n}/ccr/review_threads", transport=transport, timeout=timeout)
+    except Error:
+        return
+    if not isinstance(rows, list) or any(not isinstance(x, dict) or type(x.get("resolved")) is not bool for x in rows):
+        return
+    threads = []
+    for x in rows:
+        ids = [i for i in x.get("comment_ids") or [] if type(i) is int]
+        threads.append({"kind": "review_thread", "id": f"ccr:{ids[0] if ids else len(threads)}", "is_resolved": x["resolved"],
+                        "is_outdated": bool(x.get("outdated")), "path": x.get("path"), "line": x.get("line"),
+                        "comment_ids": ids, "url": None})
+    mapping = {i: t["id"] for t in threads for i in t["comment_ids"]}
+    urls = {c["id"]: c.get("url") for c in obs["inline_comment"]}
+    for t in threads:
+        t["url"] = next((urls[i] for i in t["comment_ids"] if urls.get(i)), None)
+    for c in obs["inline_comment"]:
+        c["thread_id"] = mapping.get(c["id"])
+    obs["review_thread"] = threads
+    obs["components"]["review_thread"] = {"complete": True, "truncated": False, "limit_reason": None, "source": "ccr"}
+
+
+def merge_readiness(repository, number, *, max_items=100, max_pages=10, transport="auto", timeout=30):
+    """What a reviewer asked for that the PR head may not have answered yet. Read-only.
+
+    Collects Must/Blocking/Should findings (explicit labels only, as in
+    review_observations) from review bodies, conversation and inline comments,
+    the latest CHANGES_REQUESTED per reviewer, unresolved review threads and
+    whether the head moved after the last human review. Each finding says whether
+    it came after the head commit (the code has not changed since) and whether
+    the same reviewer approved later (superseded).
+
+    ``verdict``: ``blocked`` (Must/Blocking or changes requested with no newer
+    code, or an unresolved thread carrying one), ``attention`` (anything else
+    listed: confirm before merging) or ``clear``. An observation, not a gate.
+    """
+    r = repo(repository)
+    n = _review_limits(number, max_items, max_pages)
+    head = pr(r, n, transport=transport, timeout=timeout)
+    sha = head["head_sha"]
+    commit = request("GET", f"repos/{r}/commits/{sha}", transport=transport, timeout=timeout) or {}
+    head_at = ((commit.get("commit") or {}).get("committer") or {}).get("date")
+    obs = review_observations(r, n, max_items=max_items, max_pages=max_pages, transport=transport, timeout=timeout)
+    if obs["components"]["review_thread"].get("error"):
+        _ccr_review_threads(r, n, obs, transport=transport, timeout=timeout)
+    threads = {t["id"]: t for t in obs["review_thread"]}
+    human = [x for x in obs["review_submission"] if not (x.get("author") or "").endswith("[bot]")]
+    approved_at = {}
+    for x in human:
+        if x.get("state") == "APPROVED":
+            approved_at[x["author"]] = max(filter(None, (approved_at.get(x["author"]), _when(x.get("submitted_at")))),
+                                           default=None)
+    findings = []
+    for kind, rows, field in (("review_submission", obs["review_submission"], "submitted_at"),
+                              ("conversation", obs["conversation"], "created_at"),
+                              ("inline_comment", obs["inline_comment"], "created_at")):
+        for x in rows:
+            labels = [l for l in x.get("severity_labels") or [] if l["label"] in _FINDING_ORDER]
+            if not labels:
+                continue
+            at = _when(x.get(field))
+            thread = threads.get(x.get("thread_id")) if kind == "inline_comment" else None
+            later = approved_at.get(x.get("author"))
+            for lab in labels:
+                findings.append({
+                    "kind": kind, "author": x.get("author"), "at": x.get(field), "url": x.get("url"),
+                    "label": lab["label"],
+                    "text": " ".join(lab["text"].split())[:200],
+                    "after_head": bool(at and _when(head_at) and at > _when(head_at)),
+                    "superseded_by_approval": bool(at and later and later > at),
+                    "thread": None if thread is None else {"resolved": thread["is_resolved"], "outdated": thread["is_outdated"]}})
+    latest = {}
+    for x in human:
+        if x.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED"):
+            latest[x["author"]] = x
+    changes_requested = [{"author": a, "at": x.get("submitted_at"), "commit_id": x.get("commit_id"), "url": x.get("url")}
+                         for a, x in latest.items() if x.get("state") == "CHANGES_REQUESTED"]
+    open_threads = [{"path": t.get("path"), "line": t.get("line"), "url": t.get("url"), "outdated": t["is_outdated"]}
+                    for t in obs["review_thread"] if not t["is_resolved"]]
+    last_review = human[-1] if human else None
+    moved = None
+    if last_review and last_review.get("commit_id") and last_review["commit_id"] != sha:
+        try:
+            cmp = request("GET", f"repos/{r}/compare/{last_review['commit_id']}...{sha}", transport=transport, timeout=timeout)
+            moved = {"author": last_review.get("author"), "reviewed": last_review["commit_id"], "commits": cmp.get("ahead_by"),
+                     "messages": [(((c.get("commit") or {}).get("message") or "").splitlines() or [""])[0][:100]
+                                  for c in (cmp.get("commits") or [])][-5:]}
+        except Error:
+            moved = {"author": last_review.get("author"), "reviewed": last_review["commit_id"], "commits": None, "messages": []}
+    live = [f for f in findings if not f["superseded_by_approval"] and not (f["thread"] and f["thread"]["resolved"])]
+    blockers = [f for f in live if f["label"] in ("Must", "Blocking") and (f["after_head"] or (f["thread"] and not f["thread"]["outdated"]))]
+    blockers += [c for c in changes_requested if c["commit_id"] == sha]
+    reasons = []
+    if head["state"] != "open":
+        reasons.append("merged" if head["merged"] else f"PR is {head['state']}")
+    if head["draft"]:
+        reasons.append("draft")
+    if head["mergeable_state"] in ("dirty", "blocked", "behind", "unstable"):
+        reasons.append(f"mergeable_state {head['mergeable_state']}")
+    if live:
+        reasons.append(f"{len(live)} Must/Blocking/Should finding(s) to confirm")
+    if changes_requested:
+        reasons.append("changes requested by " + ", ".join(c["author"] for c in changes_requested))
+    if [t for t in open_threads if not t["outdated"]]:
+        reasons.append(f"{sum(not t['outdated'] for t in open_threads)} unresolved thread(s)")
+    if moved:
+        reasons.append(f"head moved {moved['commits'] if moved['commits'] is not None else '?'} commit(s) after {moved['author']}'s review")
+    if not human:
+        reasons.append("no human review")
+    gaps = [f"{k} {v.get('error') or v.get('limit_reason')}" for k, v in obs["components"].items() if not v["complete"]]
+    if gaps:
+        reasons.append("unobserved: " + ", ".join(gaps))
+    verdict = "blocked" if blockers else "attention" if reasons else "clear"
+    return {"schema": "gh-identity-merge-readiness/1", "repository": r, "number": n, "verdict": verdict,
+            "reasons": reasons, "head_sha": sha, "head_committed_at": head_at,
+            "pr": {k: head[k] for k in ("state", "draft", "mergeable_state", "head_ref", "base_ref", "url")},
+            "findings": findings, "changes_requested": changes_requested, "open_threads": open_threads,
+            "head_moved_after_review": moved, "complete": not gaps, "observed_at": now()}
+
+
+def render_merge_readiness(o):
+    out = [f"{o['repository']}#{o['number']} {o['pr']['head_ref']}@{o['head_sha'][:7]} -> {o['pr']['base_ref']}: "
+           f"{o['verdict']}" + (f" ({'; '.join(o['reasons'])})" if o["reasons"] else "")]
+    for f in o["findings"]:
+        state = ("superseded by approval" if f["superseded_by_approval"] else
+                 "thread resolved" if f["thread"] and f["thread"]["resolved"] else
+                 "newer than head" if f["after_head"] else "code changed since")
+        out.append(f"  {f['label']:8} {f['kind']} by {f['author']} [{state}] {f['text'][:120]} {f['url'] or ''}".rstrip())
+    for c in o["changes_requested"]:
+        out.append(f"  changes requested by {c['author']} at {(c['commit_id'] or '')[:7]} {c['url'] or ''}".rstrip())
+    for t in o["open_threads"]:
+        out.append(f"  open thread{' (outdated)' if t['outdated'] else ''} {t['path']}:{t['line']} {t['url'] or ''}".rstrip())
+    moved = o["head_moved_after_review"]
+    if moved:
+        out.append(f"  head moved after {moved['author']}'s review of {moved['reviewed'][:7]}: "
+                   + ("; ".join(moved["messages"]) or "?"))
+    return "\n".join(out)
+
+
 @contextlib.contextmanager
 def request_stub(handler):
     """Temporarily replace GitHub `request` for tests (stdlib ContextVar)."""
@@ -4471,17 +5587,243 @@ def overview():
   except (OSError,ValueError,Error,GitInspectionError):pass
  return out
 
-def _main(argv=None):
- argv=list(sys.argv[1:] if argv is None else argv)
- if not argv:argv=["overview"]
+REPO_NAME_EXTENSIONS = (".py", ".js", ".mjs", ".sh", ".dart")
+REPO_NAME_FLAGS = ("unregistered_source", "catalog_default_mismatch", "consumed_uncatalogued",
+                   "fleet_missing", "needs_bundle")
+
+
+def repo_name_candidates(name):
+    """Candidate paths named after repository `name`: top level first, then src/<pkg>/.
+
+    Stems: the name as written, lowercased, with '-' and '.' replaced by '_',
+    and that lowercased; each crossed with REPO_NAME_EXTENSIONS. Order is stable."""
+    if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or name in (".", ".."):
+        raise ValueError("invalid repository name")
+    snake = re.sub(r"[-.]", "_", name)
+    stems = list(dict.fromkeys((name, name.lower(), snake, snake.lower())))
+    packages = list(dict.fromkeys((snake, snake.lower())))
+    top = [stem + ext for stem in stems for ext in REPO_NAME_EXTENSIONS]
+    nested = [f"src/{pkg}/{stem}{ext}" for pkg in packages for stem in stems for ext in REPO_NAME_EXTENSIONS]
+    return top + nested
+
+
+def classify_python_imports(source, path, files):
+    """Static import classification (never executed): stdlib, local or external.
+
+    stdlib uses sys.stdlib_module_names; a module is local when the scanned tree has
+    `<dir><module>.py` or a `<dir><module>/` package next to the file, at the top
+    level or under src/. Relative imports are always local."""
+    try:
+        names, relative = _python_imports(source)
+    except (SyntaxError, ValueError):
+        return {"status": "syntax_error", "stdlib": [], "local": [], "external": [], "relative": False}
+    stdlib = _stdlib_names()
+    here = path.rsplit("/", 1)[0] + "/" if "/" in path else ""
+    dirs = tuple(dict.fromkeys(("", here, "src/")))
+    out = {"status": "ok", "stdlib": [], "local": [], "external": [], "relative": relative}
+    for module in sorted(names):
+        if module in stdlib:
+            kind = "stdlib"
+        elif any(d + module + ".py" in files or any(p.startswith(d + module + "/") for p in files) for d in dirs):
+            kind = "local"
+        else:
+            kind = "external"
+        out[kind].append(module)
+    return out
+
+
+def _rnf_json(repository, path, commit, timeout):
+    data = public_github_raw_bytes(repository, path, commit, timeout=timeout)
+    try:
+        return json.loads(data.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        raise Error("invalid_json") from None
+
+
+def _rnf_pairs(document, key):
+    """(repository casefold, source) pairs from a vendor-lock/1 `files` or registry `entries` list."""
+    rows = document.get(key) if isinstance(document, dict) else None
+    if not isinstance(rows, list):
+        raise Error("invalid_json")
+    out = []
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get("repository"), str) or not isinstance(row.get("source"), str):
+            raise Error("invalid_json")
+        out.append((row["repository"].casefold(), row["source"]))
+    return out
+
+
+def _rnf_parent(parent, parent_ref, timeout, transport):
+    """Parent catalog/registry/child-heads at one resolved commit; errors are recorded, not raised."""
+    commit = resolve_ref(parent, parent_ref, transport=transport, timeout=timeout)["sha"]
+    state = {"repository": parent, "ref": parent_ref, "commit": commit, "errors": {},
+             "catalog": None, "consumed": set(), "heads": None}
+    try:
+        doc = _rnf_json(parent, "vendor-catalog.json", commit, timeout)
+        tools = doc.get("tools") if isinstance(doc, dict) else None
+        if not isinstance(tools, list) or not all(
+                isinstance(t, dict) and isinstance(t.get("repository"), str)
+                and ("source" not in t or isinstance(t["source"], str)) for t in tools):
+            raise Error("invalid_json")
+        state["catalog"] = [{"repository": t["repository"].casefold(),
+                             "source": t.get("source", t["repository"].split("/")[-1] + ".py"),
+                             "explicit": "source" in t} for t in tools]
+    except Error as exc:
+        state["errors"]["vendor-catalog.json"] = exc.code
+    try:
+        doc = _rnf_json(parent, "vendor-consumers.json", commit, timeout)
+        consumers = doc.get("consumers") if isinstance(doc, dict) else None
+        if not isinstance(consumers, list):
+            raise Error("invalid_json")
+        for consumer in consumers:
+            state["consumed"].update((r, s, "vendor-consumers.json") for r, s in _rnf_pairs(consumer, "entries"))
+    except Error as exc:
+        state["errors"]["vendor-consumers.json"] = exc.code
+    try:
+        doc = _rnf_json(parent, "child-heads.json", commit, timeout)
+        if not isinstance(doc, dict) or not isinstance(doc.get("heads"), dict):
+            raise Error("invalid_json")
+        state["heads"] = {name.casefold() for name in doc["heads"]}
+    except Error as exc:
+        state["errors"]["child-heads.json"] = exc.code
+    return state
+
+
+def repo_name_files(owner, repos=None, *, parent=None, parent_ref="main", include_forks=False, fetch_raw=True,
+                    transport="auto", timeout=30):
+    """Find files named after each public, non-archived (non-fork) repository and cross-check the parent.
+
+    Read-only: search, existence checks and fetches only (no bundling, no writes).
+    Each candidate (see repo_name_candidates) is checked in the default-branch tree;
+    a hit reports its raw.githubusercontent.com URL, fetch status and blob SHA, and
+    Python hits get a static import classification. Consumption comes from every
+    vendor.lock.json in every scanned tree (nested ones included) plus the parent's
+    vendor-consumers.json."""
+    if not isinstance(owner, str) or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})", owner):
+        raise ValueError("invalid owner")
+    parent = repo(parent if parent is not None else owner + "/" + owner)
+    if not isinstance(parent_ref, str) or not parent_ref:
+        raise ValueError("parent_ref is required")
+    targets, redacted = _public_targets(owner, repos, include_forks=include_forks, transport=transport, timeout=timeout)
+    state = _rnf_parent(parent, parent_ref, timeout, transport)
+    consumed = set(state["consumed"])
+    lock_errors = []
+    raw_errors = []
+    scanned = []
+    for target in targets:
+        name = target["name"]
+        full = owner + "/" + name
+        branch = target.get("default_branch") or "main"
+        row = {"name": name, "full_name": full, "default_branch": branch, "commit": None, "found": [],
+               "vendor_locks": [], "other_lock_schemas": [], "flags": [], "details": {}}
+        scanned.append(row)
+        try:
+            commit, files, truncated = _repo_tree(full, branch, transport, timeout)
+        except Error as exc:
+            row["error"] = exc.code
+            continue
+        row["commit"] = commit
+        row["truncated"] = bool(truncated)
+        row["files"] = files
+        for path in sorted(p for p in files if p.rsplit("/", 1)[-1] == "vendor.lock.json"):
+            row["vendor_locks"].append(path)
+            try:
+                document = _rnf_json(full, path, commit, timeout)
+                schema = document.get("schema") if isinstance(document, dict) else None
+                if isinstance(schema, str) and not schema.startswith("vendor-lock/"):
+                    # Same file name, different contract (e.g. html-import-vendor/1): listed, not parsed.
+                    row["other_lock_schemas"].append({"path": path, "schema": schema})
+                    continue
+                pairs = _rnf_pairs(document, "files")
+            except Error as exc:
+                lock_errors.append({"repository": full, "path": path, "error": exc.code})
+                continue
+            consumed.update((r, s, full + ":" + path) for r, s in pairs)
+    catalog = state["catalog"]
+    catalogued = None if catalog is None else {(t["repository"], t["source"]) for t in catalog}
+    for row in scanned:
+        files = row.pop("files", None)
+        if files is None:
+            continue
+        full, name = row["full_name"], row["name"]
+        key = full.casefold()
+        for path in repo_name_candidates(name):
+            if path not in files:
+                continue
+            quoted = "/".join(urllib.parse.quote(p, safe="") for p in path.split("/"))
+            url, commit_url = ("https://raw.githubusercontent.com/{}/{}/{}".format(
+                full, urllib.parse.quote(ref, safe=""), quoted) for ref in (row["default_branch"], row["commit"]))
+            # raw_url follows the branch; raw_commit_url names the exact commit whose tree and bytes were read.
+            hit = {"path": path, "location": "top" if "/" not in path else "src", "blob_sha": files[path],
+                   "raw_url": url, "raw_commit_url": commit_url, "raw_status": "not_fetched", "raw_blob_sha": None, "raw_blob_match": None,
+                   "catalogued": None if catalogued is None else (key, path) in catalogued,
+                   "imports": None, "needs_bundle": None if path.endswith(".py") else False}
+            data = None
+            if fetch_raw:
+                try:
+                    # Fetch at the commit whose tree was read, so bytes and blob SHA describe one state.
+                    data = public_github_raw_bytes(full, path, row["commit"], timeout=timeout)
+                    hit["raw_status"] = "ok"
+                    hit["raw_blob_sha"] = git_blob_sha(data)
+                    hit["raw_blob_match"] = hit["raw_blob_sha"] == files[path]
+                except Error as exc:
+                    hit["raw_status"] = exc.code
+                    raw_errors.append({"repository": full, "path": path, "error": exc.code})
+                if hit["raw_blob_match"] is False:
+                    raw_errors.append({"repository": full, "path": path, "error": "blob_mismatch"})
+                    data = None
+            if data is not None and path.endswith(".py"):
+                imports = classify_python_imports(data, path, files)
+                hit["imports"] = imports
+                hit["needs_bundle"] = bool(imports["local"] or imports["external"] or imports["relative"])
+            row["found"].append(hit)
+        details = row["details"]
+        if catalogued is not None:
+            missing = [h["path"] for h in row["found"] if not h["catalogued"]]
+            if missing:
+                details["unregistered_source"] = missing
+            mismatch = [t["source"] for t in catalog
+                        if t["repository"] == key and not t["explicit"] and t["source"] not in files]
+            if mismatch:
+                details["catalog_default_mismatch"] = mismatch
+            used = sorted({(s, where) for r, s, where in consumed
+                           if r == key and s.endswith(REPO_NAME_EXTENSIONS) and (key, s) not in catalogued})
+            if used:
+                sources = {}
+                for source, where in used:
+                    sources.setdefault(source, []).append(where)
+                details["consumed_uncatalogued"] = [{"source": s, "consumed_by": w} for s, w in sources.items()]
+        if state["heads"] is not None and key != parent.casefold() and key not in state["heads"]:
+            details["fleet_missing"] = True
+        bundles = [h["path"] for h in row["found"] if h["needs_bundle"]]
+        if bundles:
+            details["needs_bundle"] = bundles
+        row["flags"] = [flag for flag in REPO_NAME_FLAGS if flag in details]
+    errors = [r for r in scanned if "error" in r]
+    complete = not errors and not lock_errors and not raw_errors and not state["errors"] and not redacted \
+        and not any(r.get("truncated") for r in scanned)
+    summary = {flag: [r["name"] for r in scanned if flag in r["flags"]] for flag in REPO_NAME_FLAGS}
+    parent_out = {k: state[k] for k in ("repository", "ref", "commit", "errors")}
+    return {"schema": "gh-identity-repo-name-files/1", "write": False, "owner": owner, "parent": parent_out,
+            "extensions": list(REPO_NAME_EXTENSIONS), "repositories": scanned, "count": len(scanned),
+            "redacted": redacted, "lock_errors": lock_errors, "raw_errors": raw_errors, "flags": summary, "complete": complete,
+            "observed_at": now()}
+
+
+_CLI_PARSER=None
+def _argv_transport(argv):
  transport="auto"
  if "--transport" in argv:
   i=argv.index("--transport")
-  if i+1>=len(argv): print(json.dumps({"status":"error","error":"invalid_argument"}),file=sys.stderr);return 2
+  if i+1>=len(argv):raise ValueError("missing transport")
   transport=argv[i+1]
-  if transport not in ("auto","gh","urllib"): print(json.dumps({"status":"error","error":"invalid_argument"}),file=sys.stderr);return 2
+  if transport not in ("auto","gh","urllib"):raise ValueError("invalid transport")
   del argv[i:i+2]
- a=argparse.ArgumentParser(epilog="Global options: --transport auto|gh|urllib, --max-pages N (100), --max-items N (10000), --max-bytes N (10000000), --timeout SECONDS (30). Limits are cumulative per operation.");s=a.add_subparsers(dest="cmd",required=True)
+ return transport
+def _cli_parser():
+ global _CLI_PARSER
+ if _CLI_PARSER is not None:return _CLI_PARSER
+ a=argparse.ArgumentParser(allow_abbrev=False,epilog="Global options: --transport auto|gh|urllib, --max-pages N (100), --max-items N (10000), --max-bytes N (10000000), --timeout SECONDS (30). Limits are cumulative per operation.");s=a.add_subparsers(dest="cmd",required=True)
  x=s.add_parser("html-content");x.add_argument("file");x.add_argument("--selector",action="append",required=True);x.add_argument("--source-kind",choices=("html","dom"),default="html");x.add_argument("--input-bytes",type=int,default=10_000_000);x.add_argument("--include-controls",action="store_true")
  s.add_parser("capabilities")
  s.add_parser("overview",help="best-effort local and GitHub workspace summary (default)")
@@ -4496,10 +5838,17 @@ def _main(argv=None):
   if command=="git-ignore":x.add_argument("paths",nargs="+")
  x=s.add_parser("git-work",help="work branch from a PR head (#N) or remote branch, with branch.<name>.remote/merge set (planned unless --write)");x.add_argument("--root",default=".");x.add_argument("source",metavar="#N|pr/N|BRANCH");x.add_argument("branch",metavar="WORK_BRANCH");x.add_argument("--upstream",metavar="REMOTE_BRANCH");x.add_argument("--remote",default="origin");x.add_argument("--depth",type=int);x.add_argument("--fetch-timeout",type=float,default=120);x.add_argument("--write",action="store_true")
  x=s.add_parser("git-switch");x.add_argument("--root",default=".");x.add_argument("branch",nargs="?",help='existing branch, or "-" for the previous branch');x.add_argument("-c","--create",metavar="NEW_BRANCH");x.add_argument("--write",action="store_true")
+ x=s.add_parser("fleet-status",help="branch, upstream +ahead/-behind, changes of several clones (local; --fix-tracking plans upstream config, --write applies)");x.add_argument("roots",nargs="+");x.add_argument("--fix-tracking",action="store_true");x.add_argument("--write",action="store_true");x.add_argument("--text",action="store_true")
+ x=s.add_parser("fleet-checks",allow_abbrev=False,help="checks of each clone's HEAD; --steps adds failed steps and failure/warning annotations (read-only)");x.add_argument("roots",nargs="+");x.add_argument("--steps",action="store_true");x.add_argument("--ignore",action="append",metavar="CHECK_NAME");x.add_argument("--wait",type=float,default=0);x.add_argument("--interval",type=float,default=30);x.add_argument("--text",action="store_true");x.add_argument("--poll-timeout",type=float,default=30,help=argparse.SUPPRESS)
+ x=s.add_parser("merge-readiness",help="review findings (Must/Blocking/Should), changes requested, open threads and head moves to confirm before merging; exit 0 clear, 1 blocked, 3 attention");x.add_argument("repository");x.add_argument("number",type=int);x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
+ x=s.add_parser("fleet-pr",help="open a PR for each clone's current branch, or report the open one (planned unless --write)");x.add_argument("roots",nargs="+");x.add_argument("--title",required=True);x.add_argument("--body-file",required=True);x.add_argument("--base",default="main");x.add_argument("--draft",action="store_true");x.add_argument("--write",action="store_true");x.add_argument("--text",action="store_true")
+ x=s.add_parser("merge-preview",help="would these open PRs merge together (alone, in sequence, pairwise)? temporary repository, nothing pushed");x.add_argument("repository");x.add_argument("--pr",type=int,action="append",dest="numbers");x.add_argument("--all-open",action="store_true");x.add_argument("--base");x.add_argument("--no-pairs",action="store_true");x.add_argument("--git-timeout",type=float,default=300);x.add_argument("--remote-base",default="https://github.com/");x.add_argument("--text",action="store_true")
  x=s.add_parser("local-position",help="cwd, Git top level, checkout HEAD, change counts, GitHub remote (local only)");x.add_argument("--root",default=".")
+ x=s.add_parser("subtree-sync",help="plan (default) or run git subtree push/pull with provenance; push only to a NEW branch");x.add_argument("--root",default=".");x.add_argument("--prefix",required=True);x.add_argument("--remote",required=True);x.add_argument("--branch",required=True);x.add_argument("--direction",choices=("push","pull"),required=True);x.add_argument("--squash",action="store_true");x.add_argument("--message","-m");x.add_argument("--remote-compare-ref",help="remote branch to compare before push (default: remote HEAD symref)");x.add_argument("--write",action="store_true",help="actually push/pull and verify; without it only the plan is printed");x.add_argument("--git-timeout",type=float,default=600)
  x=s.add_parser("subtree-split",help="read-only git subtree split --prefix: print the split commit SHA (no refs changed)");x.add_argument("--root",default=".");x.add_argument("--prefix",required=True);x.add_argument("--revision",default="HEAD");x.add_argument("--timeout",type=float,default=600)
  x=s.add_parser("subtree-sync-status",help="compare subtree split of a monorepo with a split-out checkout (local, read-only)");x.add_argument("--root",default=".");x.add_argument("--prefix",required=True);x.add_argument("--revision",default="HEAD");x.add_argument("--other-root",required=True);x.add_argument("--other-ref",default="HEAD");x.add_argument("--other-only-path",action="append",default=[],metavar="GLOB");x.add_argument("--mainline",help="also check the source is on this ref's first-parent history");x.add_argument("--timeout",type=float,default=600)
  x=s.add_parser("sync-provenance",help="record or verify which monorepo SHA a subtree sync came from (read-only)");x.add_argument("--root",default=".");x.add_argument("--prefix");x.add_argument("--revision",default="HEAD");x.add_argument("--other-root");x.add_argument("--other-ref",default="HEAD");x.add_argument("--other-only-path",action="append",default=[],metavar="GLOB");x.add_argument("--direction",choices=("push","pull"));x.add_argument("--squash",action="store_true");x.add_argument("--generated-at");x.add_argument("--output-dir");x.add_argument("--verify",metavar="COMMIT",help="check Subtree-Split trailers of COMMIT in --root");x.add_argument("--monorepo-root",help="with --verify: recompute the split there");x.add_argument("--timeout",type=float,default=600)
+ x=s.add_parser("repo-name-files",help="read-only: files named after each public repository, with raw URL, blob SHA, imports and parent catalog flags");x.add_argument("owner");x.add_argument("--repos",help="comma-separated names (default: all public, non-archived, non-fork)");x.add_argument("--parent",help="parent OWNER/REPO (default OWNER/OWNER)");x.add_argument("--parent-ref",default="main");x.add_argument("--include-forks",action="store_true");x.add_argument("--no-raw",action="store_true",help="skip raw.githubusercontent.com fetches")
  x=s.add_parser("split-preflight",help="read-only checklist before splitting a directory into its own repository");x.add_argument("--root",default=".");x.add_argument("--prefix",required=True);x.add_argument("--revision",default="HEAD");x.add_argument("--timeout",type=float,default=600)
  x=s.add_parser("vendor-lock-check",help="compare vendor.lock.json (vendor-lock/1) with files on disk; optional vendor-rules/1 (local, read-only)");x.add_argument("--root",default=".");x.add_argument("--lock",default="vendor.lock.json");x.add_argument("--rules");x.add_argument("--parent-ref",help="parent-pr.ref.json path (default: templates/ then root; required when given)");x.add_argument("--ci-check",action="store_true",help="CI gate: exit 1 unless ok");x.add_argument("--markdown",action="store_true",help="Markdown table (for GITHUB_STEP_SUMMARY) instead of JSON")
  x=s.add_parser("vendor-lock-verify-remote",help="check vendor.lock.json entries against upstream repository@commit (read-only)");x.add_argument("--root",default=".");x.add_argument("--lock",default="vendor.lock.json");x.add_argument("--upstream",action="store_true",help="also report the latest upstream commit touching each source");x.add_argument("--first-parent",action="store_true",help="pins must be on the source default branch first-parent history");x.add_argument("--check-parent-ref",action="store_true",help="verify parent-pr.ref.json repository_id and PR merge/head commit");x.add_argument("--parent-ref");x.add_argument("--ci-check",action="store_true",help="CI gate: exit 1 unless ok (with --upstream, also when upstream moved)");x.add_argument("--markdown",action="store_true",help="Markdown table (for GITHUB_STEP_SUMMARY) instead of JSON")
@@ -4551,7 +5900,14 @@ def _main(argv=None):
  x=s.add_parser("variable-set");x.add_argument("repo");x.add_argument("name");x.add_argument("value");x.add_argument("--write",action="store_true")
  x=s.add_parser("labels",help="add/remove existing labels on one Issue/PR (planned unless --write)");x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("--add",action="append",default=[],metavar="LABEL");x.add_argument("--remove",action="append",default=[],metavar="LABEL");x.add_argument("--write",action="store_true")
  x=s.add_parser("comment");x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("body");x.add_argument("--operation-key");x.add_argument("--sanitize-mentions",action="store_true");x.add_argument("--write",action="store_true")
- try:ns=a.parse_args(argv)
+ _CLI_PARSER=a;return a
+def _main(argv=None):
+ argv=list(sys.argv[1:] if argv is None else argv)
+ if not argv:argv=["overview"]
+ try:transport=_argv_transport(argv)
+ except ValueError:
+  print(json.dumps({"status":"error","error":"invalid_argument"}),file=sys.stderr);return 2
+ try:ns=_cli_parser().parse_args(argv)
  except SystemExit as e:return int(e.code)
  try:
   if ns.cmd=="capabilities":o=capabilities()
@@ -4572,6 +5928,16 @@ def _main(argv=None):
    else:raise ValueError("branch required")
   elif ns.cmd=="git-work":o=git_work(ns.root,ns.source,ns.branch,upstream=ns.upstream,remote=ns.remote,depth=ns.depth,fetch_timeout=ns.fetch_timeout,write=ns.write)
   elif ns.cmd=="local-position":o=local_position(ns.root)
+  elif ns.cmd=="merge-preview":o=merge_preview(ns.repository,ns.numbers,all_open=ns.all_open,base=ns.base,pairs=not ns.no_pairs,transport=transport,timeout=ns.git_timeout,remote_base=ns.remote_base)
+  elif ns.cmd=="fleet-status":o=fleet_status(ns.roots,fix_tracking=ns.fix_tracking,write=ns.write)
+  elif ns.cmd=="fleet-checks":
+   ignore=tuple(ns.ignore) if ns.ignore is not None else FLEET_IGNORE;deadline=time.monotonic()+ns.wait
+   while True:
+    o=fleet_checks(ns.roots,ignore=ignore,steps=ns.steps,transport=transport,timeout=ns.poll_timeout)
+    if o["state"]!="pending" or time.monotonic()+ns.interval>deadline:break
+    time.sleep(ns.interval)
+  elif ns.cmd=="merge-readiness":o=merge_readiness(ns.repository,ns.number,max_items=ns.limit,max_pages=ns.page_limit,transport=transport)
+  elif ns.cmd=="fleet-pr":o=fleet_pr(ns.roots,ns.title,Path(ns.body_file).read_text(encoding="utf-8"),base=ns.base,draft=ns.draft,write=ns.write,transport=transport)
   elif ns.cmd=="subtree-sync-status":o=subtree_sync_status(ns.root,ns.prefix,ns.other_root,revision=ns.revision,other_ref=ns.other_ref,other_only_paths=ns.other_only_path,timeout=ns.timeout,mainline=ns.mainline)
   elif ns.cmd=="sync-provenance":
    if ns.verify:o=verify_sync_provenance(ns.root,ns.verify,monorepo_root=ns.monorepo_root,timeout=ns.timeout)
@@ -4579,6 +5945,7 @@ def _main(argv=None):
     if not ns.prefix or not ns.other_root:raise ValueError("--prefix and --other-root required")
     o=sync_provenance(ns.root,ns.prefix,ns.other_root,revision=ns.revision,other_ref=ns.other_ref,direction=ns.direction,squash=ns.squash,generated_at=ns.generated_at,other_only_paths=ns.other_only_path,timeout=ns.timeout)
     if ns.output_dir:write_sync_provenance(o,ns.output_dir)
+  elif ns.cmd=="repo-name-files":o=repo_name_files(ns.owner,[x.strip() for x in ns.repos.split(",") if x.strip()] if ns.repos else None,parent=ns.parent,parent_ref=ns.parent_ref,include_forks=ns.include_forks,fetch_raw=not ns.no_raw,transport=transport)
   elif ns.cmd=="split-preflight":o=split_preflight(ns.root,ns.prefix,ns.revision,timeout=ns.timeout)
   elif ns.cmd=="duplicate-files":
    if ns.min_repos<2:raise ValueError("--min-repos must be at least 2")
@@ -4594,6 +5961,7 @@ def _main(argv=None):
   elif ns.cmd=="vendor-plan":o=vendor_plan(ns.root,ns.candidate,ns.rules,transport=transport)
   elif ns.cmd=="vendor-matrix":o=vendor_matrix(ns.owner,[x.strip() for x in ns.repos.split(",") if x.strip()] if ns.repos else None,lock_paths=tuple(ns.lock_path) if ns.lock_path else ("vendor.lock.json","tool/python/vendor.lock.json"),heads=load_child_heads(ns.heads) if ns.heads else None,transport=transport)
   elif ns.cmd=="enrollment-progress":o=enrollment_progress(ns.owner,provider=ns.provider,source=ns.source,repos=[x.strip() for x in ns.repos.split(",") if x.strip()] if ns.repos else None,heads=load_child_heads(ns.heads) if ns.heads else None,include_forks=ns.include_forks,transport=transport)
+  elif ns.cmd=="subtree-sync":o=subtree_sync(ns.root,ns.prefix,ns.remote,ns.branch,direction=ns.direction,squash=ns.squash,write=ns.write,message=ns.message,timeout=ns.git_timeout,remote_compare_ref=ns.remote_compare_ref)
   elif ns.cmd=="subtree-split":o=git_subtree_split(ns.root,ns.prefix,ns.revision,timeout=ns.timeout)
   elif ns.cmd=="repo-metadata":
    if not ns.repository:raise ValueError("--repository or GITHUB_REPOSITORY required")
@@ -4660,9 +6028,21 @@ def _main(argv=None):
  elif ns.cmd=="get" and ns.text:print(render_get(o))
  elif ns.cmd in ("vendor-lock-check","vendor-lock-verify-remote") and ns.markdown:print(render_vendor_markdown(o))
  elif ns.cmd=="pin-audit" and ns.text:print(render_pin_audit(o))
+ elif ns.cmd=="merge-preview" and ns.text:print(render_merge_preview(o))
+ elif ns.cmd=="fleet-status" and ns.text:print(render_fleet_status(o))
+ elif ns.cmd=="fleet-checks" and ns.text:print(render_fleet_checks(o))
+ elif ns.cmd=="fleet-pr" and ns.text:print(render_fleet_pr(o))
+ elif ns.cmd=="merge-readiness" and ns.text:print(render_merge_readiness(o))
  elif ns.cmd=="duplicate-files" and ns.markdown:print(render_duplicates_markdown(o,top=ns.top))
  else:print(json.dumps(o,ensure_ascii=False))
+ if ns.cmd=="duplicate-files":return 0 if o["complete"] else 1
+ if ns.cmd=="repo-name-files":return 0 if o["complete"] else 1
  if ns.cmd=="pin-audit":return 0 if o["ok"] else 1
+ if ns.cmd=="merge-preview":return 0 if o["ok"] else 1
+ if ns.cmd=="fleet-status":return 0 if o["ok"] else 1
+ if ns.cmd=="fleet-checks":return 0 if o["state"]=="green" else 3 if o["state"]=="pending" else 1
+ if ns.cmd=="merge-readiness":return {"clear":0,"blocked":1}.get(o["verdict"],3)
+ if ns.cmd=="fleet-pr":return 0 if o["status"] in ("planned","verified") else 1
  if ns.cmd in ("vendor-lock-check","vendor-lock-verify-remote") and ns.ci_check:
   drift=any(r.get("upstream_changed") for r in o["files"])
   return 0 if o["ok"] and not drift else 1
@@ -4674,6 +6054,14 @@ def _main(argv=None):
  if ns.cmd in ("comment","variable-set","git-switch","git-work","labels"):
   return 0 if o.get("status") in ("planned","already_exists","already_satisfied","verified") else 1
  return 0
+def _fleet_checks_wait_value(argv):
+ if not argv or argv[0]!="fleet-checks":return None
+ argv=list(argv)
+ try:_argv_transport(argv)
+ except ValueError:return 0.0
+ try:ns=_cli_parser().parse_args(argv)
+ except SystemExit:return 0.0
+ return ns.wait if ns.cmd=="fleet-checks" else None
 def main(argv=None):
  args=list(sys.argv[1:] if argv is None else argv);limits={}
  try:
@@ -4687,6 +6075,11 @@ def main(argv=None):
   if args[:1]==["wait-checks"]:
    if set(limits)-{"timeout"}:raise ValueError("wait-checks accepts --timeout only (per poll)")
    return _main(args+(["--poll-timeout",str(limits["timeout"])] if "timeout" in limits else []))
+  # fleet-checks --wait polls for minutes: each poll gets its own budget, not one shared 30 s scope.
+  wait=_fleet_checks_wait_value(args)
+  if wait is not None and wait>0:
+   if set(limits)-{"timeout"}:raise ValueError("fleet-checks --wait accepts --timeout only (per poll)")
+   return _main(args+(["--poll-timeout",str(limits["timeout"])] if "timeout" in limits else []))
   with operation(**limits):return _main(args)
  except (ValueError,Error,GitInspectionError) as e:
   print(json.dumps({"status":"error","error":getattr(e,"code","git_inspection_failed" if isinstance(e,GitInspectionError) else "invalid_argument")}),file=sys.stderr)
@@ -4697,8 +6090,11 @@ for _name in ("_gh","_url","request","pages","repository","repositories","reposi
               "issue","content","content_from_hit","issues","search","pull_requests","run_history","workflow_run_discovery","runs","variable","set_variable","post_comment",
               "resolve_ref","tree","source_identity","get","checks_for_sha","observe_pr","workflow","run","jobs","job_log","artifacts","artifact_file",
               "pages_bounded","item_status","vendor_lock_verify_remote","vendor_matrix","owner_repositories","verify_parent_ref",
-              "enrollment_progress","repo_identity","list_owner_repositories","pr_identity","commit_pulls","first_parent_check"):
+               "enrollment_progress","repo_identity","merge_preview","merge_readiness","fleet_checks","fleet_pr","list_owner_repositories","pr_identity","commit_pulls","first_parent_check","repo_name_files"):
  globals()[_name]=_bounded(globals()[_name])
+# Capture the final bounded function, so injected request replacements are respected.
+_DEFAULT_REQUEST = request
+
 if __name__=="__main__":
  raise SystemExit(_http_worker() if sys.argv[1:]==["--_http-worker"] else
                   _job_log_worker() if sys.argv[1:]==["--_job-log-worker"] else main())
