@@ -1,7 +1,7 @@
 import io
 import json
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 import ci_status as ci
 from pathlib import Path
@@ -84,7 +84,7 @@ class StatusTests(unittest.TestCase):
                 self.assertEqual(ci.main(["Ironmate", "--json"]), 0)
         self.assertEqual(json.loads(out.getvalue())["schema"], "ci-observation/1")
 
-    def test_check_cli_flag(self):
+    def test_ci_check_cli_flag(self):
         for state, expected_code in [
             ("COMPLETE", 0),
             ("NO CHECKS", 0),
@@ -105,8 +105,13 @@ class StatusTests(unittest.TestCase):
                 with patch.object(ci, "observe", return_value=mock_obs):
                     out = io.StringIO()
                     with redirect_stdout(out):
-                        code = ci.main(["Ironmate", "--check"])
+                        code = ci.main(["Ironmate", "--ci-check"])
                     self.assertEqual(code, expected_code)
+
+    def test_plain_check_is_not_an_alias(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
+            ci.main(["Ironmate", "--check"])
+        self.assertEqual(raised.exception.code, 2)
 
 if __name__ == "__main__":
     unittest.main()

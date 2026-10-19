@@ -83,7 +83,7 @@ def main(argv=None):
     p.add_argument("--pr", type=int)
     p.add_argument("--refresh", action="store_true", help="Force fresh API observation (default already fresh)")
     p.add_argument("--json", action="store_true")
-    p.add_argument("--check", action="store_true", help="Exit with 1 if any observed repository state is not COMPLETE or NO CHECKS")
+    p.add_argument("--ci-check", action="store_true", help="Exit with 1 if any observed repository state is not COMPLETE or NO CHECKS")
     p.add_argument("--repos", default="Ironmate,flutter_navigation_basic,markdown,ascii_artist",
                    help="Comma-separated repositories for the all-repositories view")
     a = p.parse_args(argv)
@@ -108,7 +108,7 @@ def main(argv=None):
             print(f'{error["repository"]}  UNKNOWN ({error["error"]})')
     if errors:
         return 2
-    if a.check and any(r["state"] not in ("COMPLETE", "NO CHECKS") for r in rows):
+    if a.ci_check and any(r["state"] not in ("COMPLETE", "NO CHECKS") for r in rows):
         return 1
     return 0
 
