@@ -895,6 +895,86 @@ def issue_comment_create(repo: str, number: int, *, body: str, write: bool = Fal
             "reason": "" if verified else "comment was posted but body verification differed; inspect before retrying"}
 
 
+_VARIABLE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
+
+
+def _variable_state(client: Client, path: str) -> str:
+    """``present`` / ``absent`` (HTTP 404 only) / raise for anything else, e.g. 403."""
+    try:
+        client.get(path)
+    except GhOpsError as error:
+        if error.http_status == 404:
+            return "absent"
+        raise
+    return "present"
+
+
+def variable_delete(repo: str, name: str, *, write: bool = False, client: Client | None = None) -> dict:
+    """Delete one repository Actions variable, dry-run by default.
+
+    Only a clear HTTP 404 counts as "absent". A 403 or any other failure is never
+    read as "already deleted": invisible is not the same as gone. After DELETE the
+    variable is read again and the receipt is ``verified`` only on a 404.
+    ``name`` is the variable's name; its value is never fetched into the result.
+    """
+    if not _VARIABLE_NAME.match(name or ""):
+        raise GhOpsError(f"invalid variable name: {name!r}")
+    client, repo = _client(client), _repo(repo)
+    path = f"/repos/{repo}/actions/variables/{urllib.parse.quote(name, safe='')}"
+    try:
+        before = _variable_state(client, path)
+    except GhOpsError as error:
+        return {"ok": False, "dry_run": not write, "deleted": False, "name": name, "status": "inaccessible",
+                "http_status": error.http_status, "reason": f"cannot confirm the variable exists: {error}"}
+    if before == "absent":
+        return {"ok": True, "dry_run": not write, "deleted": False, "name": name, "status": "already_absent"}
+    if not write:
+        return {"ok": True, "dry_run": True, "deleted": False, "name": name, "status": "would_delete",
+                "would_delete": {"path": path}}
+    client.request("DELETE", path, expect=(204,))
+    try:
+        after = _variable_state(client, path)
+    except GhOpsError as error:
+        return {"ok": False, "dry_run": False, "deleted": True, "name": name, "status": "verification_uncertain",
+                "verified": False, "http_status": error.http_status,
+                "reason": f"DELETE succeeded but the read-back was not a 404; inspect before retrying: {error}"}
+    verified = after == "absent"
+    return {"ok": verified, "dry_run": False, "deleted": True, "name": name,
+            "status": "verified" if verified else "verification_failed", "verified": verified,
+            "reason": "" if verified else "variable is still present after DELETE"}
+
+
+def issue_comment_upsert(repo: str, number: int, *, body: str, marker: str, author: str,
+                         write: bool = False, client: Client | None = None) -> dict:
+    """Update the newest comment by ``author`` whose body starts with ``marker``, or create one.
+
+    Comments by anyone else that carry the same marker are ignored, so another
+    user's copy can never turn the PATCH into a 403. ``body`` must start with ``marker``.
+    """
+    if not marker or not body.startswith(marker):
+        raise GhOpsError("body must start with the marker")
+    if not author:
+        raise GhOpsError("author must not be empty")
+    client, repo, number = _client(client), _repo(repo), int(number)
+    comments = client.paginate(f"/repos/{repo}/issues/{number}/comments")
+    mine = [c for c in comments
+            if (c.get("user") or {}).get("login") == author and (c.get("body") or "").startswith(marker)]
+    if not mine:
+        result = issue_comment_create(repo, number, body=body, write=write, client=client)
+        return {**result, "action": "create"}
+    comment_id = int(mine[-1]["id"])
+    path = f"/repos/{repo}/issues/comments/{comment_id}"
+    if (mine[-1].get("body") or "") == body:
+        return {"ok": True, "dry_run": not write, "action": "unchanged", "comment_id": comment_id}
+    if not write:
+        return {"ok": True, "dry_run": True, "action": "update", "comment_id": comment_id,
+                "would_patch": {"path": path, "body_chars": len(body)}}
+    client.request("PATCH", path, {"body": body})
+    verified = (client.get(path).get("body") or "") == body
+    return {"ok": verified, "dry_run": False, "action": "update", "comment_id": comment_id, "verified": verified,
+            "reason": "" if verified else "comment was updated but body verification differed"}
+
+
 def workflow_dispatch(repo: str, workflow: str, *, ref: str, inputs: dict | None = None, write: bool = False,
                       client: Client | None = None) -> dict:
     """Trigger ``workflow_dispatch`` after confirming the workflow is active."""
@@ -2358,6 +2438,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--file", required=True, help="UTF-8 file containing the comment body (one trailing newline ignored)")
     p.add_argument("--write", action="store_true")
 
+    p = sub.add_parser("issue-comment-upsert",
+                       help="update AUTHOR's newest comment starting with MARKER, else create one (needs --write)")
+    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("--file", required=True, help="UTF-8 file with the comment body; it must start with --marker")
+    p.add_argument("--marker", required=True)
+    p.add_argument("--author", required=True, help="only this login's comments are updated, e.g. github-actions[bot]")
+    p.add_argument("--write", action="store_true")
+
+    p = sub.add_parser("variable-delete",
+                       help="delete one repository Actions variable; verified only by a 404 read-back (needs --write)")
+    p.add_argument("repo"); p.add_argument("name")
+    p.add_argument("--write", action="store_true")
+
     p = sub.add_parser("pr-body-replace", help="replace an anchor that occurs exactly once (needs --write)")
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--old", required=True, help="file with the exact anchor text (one trailing newline ignored)")
@@ -2511,6 +2604,11 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
     if command == "issue-comment":
         return issue_comment_create(args.repo, args.number, body=_read_text(args.file),
                                     write=args.write, client=client)
+    if command == "issue-comment-upsert":
+        return issue_comment_upsert(args.repo, args.number, body=_read_text(args.file), marker=args.marker,
+                                    author=args.author, write=args.write, client=client)
+    if command == "variable-delete":
+        return variable_delete(args.repo, args.name, write=args.write, client=client)
     if command == "pr-body-replace":
         return pr_body_replace(args.repo, args.number, old=_read_text(args.old), new=_read_text(args.new),
                                write=args.write, client=client)
