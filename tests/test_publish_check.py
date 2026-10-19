@@ -1,4 +1,4 @@
-"""publish_check: deploy/http/bytes/text checks, waiting, and the unreachable verdict."""
+"""publish_check: deploy/http/bytes/text/regex checks and exit-code contracts."""
 import functools
 import http.server
 import importlib.util
@@ -86,6 +86,77 @@ def test_regex_matching_and_filtering(site, capsys):
     out = capsys.readouterr().out
     assert code == 0, out
     assert "ok regex: 'v = 2'" in out
+    assert out.count("ok regex:") == 1
+
+
+@pytest.mark.parametrize("patterns, expected, states", [
+    ([r"v = \d+", "export"], 0, ["ok", "ok"]),
+    (["export", "absent"], 1, ["ok", "fail"]),
+    (["["], 1, ["fail"]),
+    (["a{4294967296}", "export"], 1, ["fail", "ok"]),
+    (["(" * 1000, "export"], 1, ["fail", "ok"]),
+    (["[", "export", "(", "absent"], 1, ["fail", "ok", "fail", "fail"]),
+    (["(?i)EXPORT", ""], 0, ["ok", "ok"]),
+])
+def test_regex_verdicts(patterns, expected, states, capsys):
+    argv = ["https://example.test/panel.js", "--no-bust"]
+    for pattern in patterns:
+        argv.extend(["--regex", pattern])
+    code = run(argv, get=lambda url: (200, b"export const v = 2;\n", ""))
+    captured = capsys.readouterr()
+    lines = [line for line in captured.out.splitlines() if " regex:" in line]
+    assert code == expected
+    assert [line.split()[0] for line in lines] == states
+    assert captured.err == ""
+    assert "Traceback" not in captured.out
+    if "[" in patterns:
+        assert "fail regex: invalid pattern '['" in captured.out
+    assert captured.out.strip().endswith("verdict=" + ("ok" if expected == 0 else "not-yet-or-failed"))
+
+
+def test_invalid_regex_diagnostic_is_one_line(capsys):
+    code = run(["https://example.test/", "--regex", "(?x)\n["],
+               get=lambda url: (200, b"body", ""))
+    captured = capsys.readouterr()
+    assert code == 1
+    assert len(captured.out.splitlines()) == 3  # HTTP, regex, summary
+    assert "fail regex: invalid pattern" in captured.out
+
+
+def test_regex_on_filters_exact_targets_and_is_repeatable(capsys):
+    bodies = {"https://example.test/a": b"wanted", "https://example.test/b": b"wanted",
+              "https://example.test/c": b"absent"}
+    code = run(["--site", "https://example.test/", "a", "b", "c", "--no-bust",
+                "--regex", "wanted", "--regex-on", "a", "--regex-on", "b"],
+               get=lambda url: (200, bodies[url], ""))
+    out = capsys.readouterr().out
+    assert code == 0
+    assert out.count("ok regex:") == 2
+    assert "regex: 'wanted' in https://example.test/c" not in out
+
+
+@pytest.mark.parametrize("status, error, expected, line", [
+    (None, "connect_rejected", 3, "unreachable http:"),
+    (404, "", 1, "fail http 404:"),
+    (503, "", 1, "fail http 503:"),
+])
+@pytest.mark.parametrize("pattern", ["body", "["])
+def test_regex_skipped_when_http_fails(status, error, expected, line, pattern, capsys):
+    code = run(["https://example.test/", "--regex", pattern],
+               get=lambda url: (status, b"body", error))
+    captured = capsys.readouterr()
+    assert code == expected
+    assert line in captured.out
+    assert "regex:" not in captured.out
+    assert captured.err == ""
+
+
+def test_regex_failure_takes_precedence_over_other_unreachable_target(capsys):
+    code = run(["https://example.test/good", "https://example.test/blocked", "--regex", "["],
+               get=lambda url: (None, b"", "blocked") if "/blocked" in url else (200, b"body", ""))
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "fail regex: invalid pattern" in out and "unreachable http:" in out
 
 
 def test_usage_errors():

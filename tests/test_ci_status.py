@@ -108,6 +108,39 @@ class StatusTests(unittest.TestCase):
                         code = ci.main(["Ironmate", "--ci-check"])
                     self.assertEqual(code, expected_code)
 
+    def test_check_contract_across_repositories_and_output_modes(self):
+        def observation(name, state):
+            return {"repository": name, "target": "main", "head_sha": "0" * 40,
+                    "state": state, "completed": 0, "total": 0, "checks": []}
+
+        for json_mode in (False, True):
+            for check_mode in (False, True):
+                for states, expected in [
+                    (("COMPLETE", "NO CHECKS"), 0),
+                    (("COMPLETE", "FAILED"), 1 if check_mode else 0),
+                    (("FAILED", "ERROR"), 2),
+                    (("ERROR", "COMPLETE"), 2),
+                ]:
+                    with self.subTest(json=json_mode, check=check_mode, states=states):
+                        def observe(name, pr):
+                            state = dict(zip(("one", "two"), states))[name]
+                            if state == "ERROR":
+                                raise RuntimeError("API unavailable")
+                            return observation(name, state)
+
+                        argv = ["--repos", "one,two"]
+                        if json_mode:
+                            argv.append("--json")
+                        if check_mode:
+                            argv.append("--ci-check")
+                        out = io.StringIO()
+                        with patch.object(ci, "observe", side_effect=observe), redirect_stdout(out):
+                            self.assertEqual(ci.main(argv), expected)
+                        if json_mode:
+                            payload = json.loads(out.getvalue())
+                            self.assertEqual(payload["schema"], "ci-observation/1")
+                            self.assertEqual(len(payload["errors"]), states.count("ERROR"))
+
     def test_plain_check_is_not_an_alias(self):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
             ci.main(["Ironmate", "--check"])

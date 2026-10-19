@@ -13,7 +13,13 @@ Replaces ``sleep 60; curl -s -o /dev/null -w '%{http_code}' URL``, which only sa
 * ``http``  per URL: status code, with a cache-busting query (``--no-bust`` to disable);
 * ``bytes`` when ``--local-root`` has the same path: sha256 of served vs local bytes, so a
   stale CDN copy shows as ``stale`` instead of passing as 200;
-* ``text``  for each ``--contains`` string: present in the body.
+* ``text``  for each ``--contains`` string: present in the body;
+* ``regex`` for each ``--regex`` pattern: a Python regular expression must match the
+  UTF-8 decoded body (invalid bytes are replaced). Repeat for multiple required patterns;
+  ``--regex-on`` limits checks to the exact target argument (repeatable, like
+  ``--contains-on``). Patterns use ``re.search`` defaults; use inline flags such as
+  ``(?i)`` or ``(?s)`` when needed. Invalid patterns produce ``fail regex:`` (exit 1).
+  Body checks are skipped if HTTP is unreachable or returns status 300 or higher.
 
 ``--wait SECONDS`` repeats until every check is ok (``--interval``), so it also replaces the
 blind ``sleep``. PATHs are joined to ``--site``; full URLs are used as given. Stdlib only;
@@ -121,7 +127,11 @@ def url_checks(url: str, local: str | None, contains: list[str], bust: bool, get
                    ("fail", f"fail text: {needle!r} not in {url}"))
     if regexes:
         for pattern in regexes:
-            matched = bool(re.search(pattern, text))
+            try:
+                matched = bool(re.search(pattern, text))
+            except (re.error, OverflowError, RecursionError) as exc:
+                out.append(("fail", f"fail regex: invalid pattern {pattern!r} for {url}: {str(exc)!r}"))
+                continue
             out.append(("ok", f"ok regex: {pattern!r} in {url}") if matched else
                        ("fail", f"fail regex: {pattern!r} not in {url}"))
     return out
@@ -165,8 +175,8 @@ def main(argv: list[str] | None = None, get=fetch, api=github_json, sleep=time.s
     parser.add_argument("--local-root", help="checkout whose files the site serves (enables the bytes check)")
     parser.add_argument("--contains", action="append", default=[], help="text that must appear (repeatable)")
     parser.add_argument("--contains-on", action="append", help="limit --contains to these targets")
-    parser.add_argument("--regex", action="append", default=[], help="regex pattern that must match in body (repeatable)")
-    parser.add_argument("--regex-on", action="append", help="limit --regex to these targets")
+    parser.add_argument("--regex", action="append", default=[], help="Python regex required in the decoded body (repeatable, all must match; invalid pattern = failed check)")
+    parser.add_argument("--regex-on", action="append", help="apply --regex only to these exact target arguments (repeatable; default: all targets)")
     parser.add_argument("--repo", help="OWNER/REPO: also check the newest github-pages deployment")
     parser.add_argument("--commit", help="deployment commit prefix to expect (default: local HEAD)")
     parser.add_argument("--wait", type=float, default=0, help="retry for up to this many seconds")

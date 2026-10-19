@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Read-only GitHub CI status index. Python stdlib only."""
+"""Read-only GitHub CI status index. Python stdlib only.
+
+Exit codes: 0 = observation succeeded (with --ci-check, all states are COMPLETE or
+NO CHECKS); 1 = --ci-check observed a non-passing state; 2 = observation or usage error.
+Observation errors take precedence over --ci-check failures. --json uses the same codes.
+"""
 import argparse
 import datetime
 import json
