@@ -31,6 +31,7 @@ jobs:
       exclude-globs: |
         tests/**
         .github/workflows/vendor-consumers-compat.yml
+        docs/evidence/vendor-triage-20261019.json
 
   reusable-layout-smoke:
     runs-on: ubuntu-latest
