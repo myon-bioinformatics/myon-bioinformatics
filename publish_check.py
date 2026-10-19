@@ -34,6 +34,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -98,7 +99,7 @@ def deploy_check(repo: str, commit: str | None, api=github_json) -> tuple[str, s
     return "ok", f"ok deploy: {sha[:7]} success"
 
 
-def url_checks(url: str, local: str | None, contains: list[str], bust: bool, get=fetch) -> list[tuple[str, str]]:
+def url_checks(url: str, local: str | None, contains: list[str], bust: bool, get=fetch, regexes: list[str] | None = None) -> list[tuple[str, str]]:
     target = url
     if bust:
         target += ("&" if "?" in url else "?") + "publish_check=" + str(int(time.time()))
@@ -118,6 +119,11 @@ def url_checks(url: str, local: str | None, contains: list[str], bust: bool, get
     for needle in contains:
         out.append(("ok", f"ok text: {needle!r} in {url}") if needle in text else
                    ("fail", f"fail text: {needle!r} not in {url}"))
+    if regexes:
+        for pattern in regexes:
+            matched = bool(re.search(pattern, text))
+            out.append(("ok", f"ok regex: {pattern!r} in {url}") if matched else
+                       ("fail", f"fail regex: {pattern!r} not in {url}"))
     return out
 
 
@@ -138,7 +144,8 @@ def run_once(args, get=fetch, api=github_json) -> list[tuple[str, str]]:
                 candidate = os.path.join(candidate, "index.html")
             local = candidate if os.path.isfile(candidate) else None
         contains = args.contains if (not args.contains_on or item in args.contains_on) else []
-        results.extend(url_checks(url, local, contains, not args.no_bust, get))
+        regexes = getattr(args, "regex", []) if (not getattr(args, "regex_on", None) or item in args.regex_on) else []
+        results.extend(url_checks(url, local, contains, not args.no_bust, get, regexes=regexes))
     return results
 
 
@@ -158,6 +165,8 @@ def main(argv: list[str] | None = None, get=fetch, api=github_json, sleep=time.s
     parser.add_argument("--local-root", help="checkout whose files the site serves (enables the bytes check)")
     parser.add_argument("--contains", action="append", default=[], help="text that must appear (repeatable)")
     parser.add_argument("--contains-on", action="append", help="limit --contains to these targets")
+    parser.add_argument("--regex", action="append", default=[], help="regex pattern that must match in body (repeatable)")
+    parser.add_argument("--regex-on", action="append", help="limit --regex to these targets")
     parser.add_argument("--repo", help="OWNER/REPO: also check the newest github-pages deployment")
     parser.add_argument("--commit", help="deployment commit prefix to expect (default: local HEAD)")
     parser.add_argument("--wait", type=float, default=0, help="retry for up to this many seconds")

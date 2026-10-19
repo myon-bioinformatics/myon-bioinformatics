@@ -70,6 +70,24 @@ def test_unreachable_is_its_own_verdict_and_does_not_wait(capsys):
     assert code == 3 and sleeps == [] and "unreachable http: https://blocked.example/x (connect_rejected)" in out
 
 
+def test_regex_matching_and_filtering(site, capsys):
+    base, _served = site
+    code = run(["--site", base, "tools/panel.js", "--regex", r"export const v = \d+;"])
+    out = capsys.readouterr().out
+    assert code == 0, out
+    assert r"ok regex: 'export const v = \\d+;'" in out
+
+    code = run(["--site", base, "tools/panel.js", "--regex", r"nonexistent_pattern_\d+"])
+    out = capsys.readouterr().out
+    assert code == 1, out
+    assert "fail regex:" in out
+
+    code = run(["--site", base, "tools/panel.js", "", "--regex", "v = 2", "--regex-on", "tools/panel.js"])
+    out = capsys.readouterr().out
+    assert code == 0, out
+    assert "ok regex: 'v = 2'" in out
+
+
 def test_usage_errors():
     with pytest.raises(SystemExit):
         pc.main([])

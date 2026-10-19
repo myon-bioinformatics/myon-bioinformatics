@@ -84,5 +84,29 @@ class StatusTests(unittest.TestCase):
                 self.assertEqual(ci.main(["Ironmate", "--json"]), 0)
         self.assertEqual(json.loads(out.getvalue())["schema"], "ci-observation/1")
 
+    def test_check_cli_flag(self):
+        for state, expected_code in [
+            ("COMPLETE", 0),
+            ("NO CHECKS", 0),
+            ("FAILED", 1),
+            ("RUNNING", 1),
+            ("INCOMPLETE", 1),
+        ]:
+            with self.subTest(state=state):
+                mock_obs = {
+                    "repository": "o/r",
+                    "target": "main",
+                    "head_sha": "0" * 40,
+                    "state": state,
+                    "completed": 0,
+                    "total": 0,
+                    "checks": [],
+                }
+                with patch.object(ci, "observe", return_value=mock_obs):
+                    out = io.StringIO()
+                    with redirect_stdout(out):
+                        code = ci.main(["Ironmate", "--check"])
+                    self.assertEqual(code, expected_code)
+
 if __name__ == "__main__":
     unittest.main()
