@@ -262,7 +262,8 @@ def _npm_member(tarball: bytes, path: str) -> bytes:
         return archive.extractfile(member).read()
 
 
-def _npm_fetch(package: str, version: str, path: str, fetch=download) -> tuple[dict, str, bytes]:
+def _npm_fetch(package: str, version: str, path: str, fetch=download,
+               *, locked_integrity: str | None = None) -> tuple[dict, str, bytes]:
     meta = json.loads(fetch(f"{NPM_REGISTRY}{quote(package, safe='@')}/{version}").decode("utf-8"))
     dist = meta.get("dist") if isinstance(meta, dict) else None
     if not isinstance(dist, dict) or meta.get("name") != package or meta.get("version") != version:
@@ -270,9 +271,13 @@ def _npm_fetch(package: str, version: str, path: str, fetch=download) -> tuple[d
     tarball, integrity = dist.get("tarball"), dist.get("integrity")
     if not isinstance(tarball, str) or not tarball.startswith(NPM_REGISTRY) or not isinstance(integrity, str):
         raise ValueError("registry metadata lacks a registry.npmjs.org tarball and integrity")
+    if locked_integrity is not None and integrity != locked_integrity:
+        raise ValueError(f"{package}@{version} tarball integrity differs from the lock")
+    expected = locked_integrity if locked_integrity is not None else integrity
     raw = fetch(tarball)
-    if not _npm_integrity(raw, integrity):
-        raise ValueError(f"{package}@{version} tarball does not match the registry integrity")
+    if not _npm_integrity(raw, expected):
+        label = "lock" if locked_integrity is not None else "registry"
+        raise ValueError(f"{package}@{version} tarball does not match the {label} integrity")
     return meta, tarball, _npm_member(raw, path)
 
 
@@ -324,8 +329,13 @@ def check(lock: dict, root: Path, *, remote: bool = False, fetch=download) -> li
         if not license_ok(e["license"], strict=True) and not e.get("license_reviewed"):
             problems.append(f"{e['name']}: license {e['license']} not allowed")
         if remote and e.get("source") == "npm":
+            locked = e.get("tarball_integrity")
+            if not isinstance(locked, str):
+                problems.append(f"{e['name']}: lock lacks tarball_integrity for npm entry")
+                continue
             try:
-                _, tarball, data = _npm_fetch(e["package"], e["version"], e["path"], fetch)
+                _, tarball, data = _npm_fetch(e["package"], e["version"], e["path"], fetch,
+                                              locked_integrity=locked)
             except ValueError as exc:
                 problems.append(f"{e['name']}: {exc}")
             else:

@@ -207,6 +207,17 @@ def test_check_remote_reports_a_changed_npm_release(tmp_path):
     lock = ja.load_lock(tmp_path / "x.json")
     ja.add_npm(lock, tmp_path, "js-yaml", "5.5.0", "dist/a.js", "vendor/js", license="MIT", fetch=fetch)
     changed, _ = npm_release({"dist/a.js": BODY + b"//"})
-    assert ja.check(lock, tmp_path, remote=True, fetch=changed) == ["js-yaml: js-yaml@5.5.0 now serves different bytes"]
+    assert ja.check(lock, tmp_path, remote=True, fetch=changed) == [
+        "js-yaml: js-yaml@5.5.0 tarball integrity differs from the lock"]
     tampered, _ = npm_release({"dist/a.js": BODY}, tamper=True)
-    assert "registry integrity" in ja.check(lock, tmp_path, remote=True, fetch=tampered)[0]
+    assert "lock integrity" in ja.check(lock, tmp_path, remote=True, fetch=tampered)[0]
+
+
+def test_check_remote_detects_tarball_change_when_adopted_file_is_unchanged(tmp_path):
+    """Remote check must pin the whole tarball, not only the extracted file bytes."""
+    fetch, _ = npm_release({"dist/a.js": BODY, "README.md": b"one"})
+    lock = ja.load_lock(tmp_path / "x.json")
+    ja.add_npm(lock, tmp_path, "js-yaml", "5.5.0", "dist/a.js", "vendor/js", license="MIT", fetch=fetch)
+    repacked, _ = npm_release({"dist/a.js": BODY, "README.md": b"two"})
+    assert ja.check(lock, tmp_path, remote=True, fetch=repacked) == [
+        "js-yaml: js-yaml@5.5.0 tarball integrity differs from the lock"]
