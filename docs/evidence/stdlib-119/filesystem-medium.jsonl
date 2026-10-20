@@ -1,0 +1,1 @@
+{"branches_and_shared_leaves": 150, "modules": 301, "references": 22650, "legacy": {"median_seconds": 26.21737367300375, "samples_seconds": [26.89192200699472, 26.21737367300375, 25.100607369997306], "peak_bytes": 2701769}, "deque": {"median_seconds": 26.69805600300606, "samples_seconds": [26.69805600300606, 27.104205618001288, 23.950966336007696], "peak_bytes": 2509907}}
