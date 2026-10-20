@@ -15,8 +15,12 @@
 | 計測 | モジュール / 参照 | 旧 / 新 中央値(s) | 旧 / 新 peak(bytes) |
 |---|---:|---:|---:|
 | ファイルシステムを含む小規模探索 | 41 / 420 | 0.080298 / 0.077566 | 147618 / 144668 |
+| ファイルシステムを含む共有依存探索 | 301 / 22650 | 26.217374 / 26.698056 | 2701769 / 2509907 |
 | 探索部分、固定ソース・解決結果 | 201 / 10100 | 0.115822 / 0.078599 | 1216361 / 1133506 |
 | 探索部分、固定ソース・解決結果 | 701 / 122850 | 1.926878 / 1.163783 | 13509290 / 12501471 |
+
+ファイル入力301モジュールではPythonピーク割当が約7.1%減った。時間は約1.8%遅い
+中央値で、CLI全体の高速化を実証していない。
 
 大きい局所計測では約39.6%の時間減と約7.5%のPythonピーク割当減を観測した。
 `--isolate-io`はこの固定fixtureについて`_find`と`_read_source`を差し替え、
@@ -34,12 +38,12 @@
 ```bash
 # shallow checkoutの場合は比較元のコミットを別途取得しておく。
 python -S tests/benchmark_minpy_queue.py \
-  --baseline e5e7df176f570a7a8fa74b448912d11fca12ef04 --sizes 20 --repeat 3
+  --baseline e5e7df176f570a7a8fa74b448912d11fca12ef04 --sizes 20 150 --repeat 3
 python -S tests/benchmark_minpy_queue.py \
   --baseline e5e7df176f570a7a8fa74b448912d11fca12ef04 --sizes 100 350 --repeat 3 --isolate-io
 python -m pytest -q tests/test_minpy.py tests/test_minpy_dependency_queue.py
 ```
 
-生データは`small.jsonl`（通常のファイル入力）、`component.jsonl`と
-`component-large.jsonl`（局所計測）。予備実行の未完了な大規模ファイル入力の
-計測値は含めていない。
+生データは`small.jsonl`と`filesystem-medium.jsonl`（通常のファイル入力）、`component.jsonl`と
+`component-large.jsonl`（局所計測）。301モジュールのファイル入力は予備スクリプトの同じcollector比較から記録した。
+未完了の701モジュールのファイル入力計測値は含めていない。
