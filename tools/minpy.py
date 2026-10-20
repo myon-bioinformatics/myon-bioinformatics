@@ -17,6 +17,7 @@ import subprocess
 import sys
 import sysconfig
 import textwrap
+from collections import deque
 from pathlib import Path, PurePosixPath
 
 __version__ = "0.1.0"
@@ -986,13 +987,18 @@ def _collect(
     allow: set[str],
 ) -> _Graph:
     graph = _Graph()
-    queue = [entry_name]
-    seen: set[str] = set()
+    queue = deque([entry_name])
+    scheduled = {entry_name}
+
+    def enqueue(name: str) -> None:
+        # First discovery fixes FIFO order, including modules that fail to scan.
+        # Shared dependencies and package parents need only one queue slot each.
+        if name not in scheduled:
+            scheduled.add(name)
+            queue.append(name)
+
     while queue:
-        name = queue.pop(0)
-        if name in seen:
-            continue
-        seen.add(name)
+        name = queue.popleft()
         if any(part.startswith(PREFIX) or not part.isidentifier() for part in name.split(".")):
             graph.problems.append(name + ": invalid or reserved module name")  # minpy: uncovered
             continue
@@ -1073,21 +1079,16 @@ def _collect(
                 if not resolved or resolved == name:
                     continue
                 if name.startswith(resolved + "."):
-                    if resolved not in graph.modules:
-                        queue.append(resolved)
+                    enqueue(resolved)
                     for parent in _parents(resolved):
-                        if parent not in graph.modules:
-                            queue.append(parent)
+                        enqueue(parent)
                     continue
                 graph.edges.setdefault(name, set()).add(resolved)
-                if resolved not in graph.modules:
-                    queue.append(resolved)
+                enqueue(resolved)
                 for parent in _parents(resolved):
-                    if parent not in graph.modules:
-                        queue.append(parent)
+                    enqueue(parent)
         for parent in _parents(name):
-            if parent not in graph.modules:
-                queue.append(parent)
+            enqueue(parent)
     graph.problems = list(dict.fromkeys(graph.problems))
     graph.library_external = sorted(graph.library_external)
     graph.script_external = sorted(graph.script_external)
