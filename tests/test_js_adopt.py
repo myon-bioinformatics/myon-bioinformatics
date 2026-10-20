@@ -121,3 +121,92 @@ def test_cli_runs_under_python_s(tmp_path):
     assert run("tag", "missing").returncode == 2
     (tmp_path / "vendor/js/purify.min.js").write_text("tampered")
     assert run("check").returncode == 1
+
+
+def npm_release(files, *, name="js-yaml", version="5.5.0", license="MIT", top="package", tamper=False):
+    """(fetch, seen) serving registry metadata and a gzip tarball built from ``files``."""
+    import gzip
+    import io
+    import tarfile
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as archive:
+        for path, data in files.items():
+            info = tarfile.TarInfo(f"{top}/{path}")
+            if data is None:
+                info.type, info.linkname = tarfile.SYMTYPE, "../../etc/passwd"
+                archive.addfile(info)
+                continue
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
+    tarball = gzip.compress(buffer.getvalue())
+    integrity = "sha512-" + base64.b64encode(hashlib.sha512(tarball).digest()).decode()
+    tar_url = f"https://registry.npmjs.org/{name}/-/{name.rsplit('/', 1)[-1]}-{version}.tgz"
+    meta = {"name": name, "version": version, "license": license, "dist": {"tarball": tar_url, "integrity": integrity}}
+    seen = []
+
+    def fetch(url):
+        seen.append(url)
+        if url == tar_url:
+            return tarball + (b"x" if tamper else b"")
+        return json.dumps(meta).encode()
+    return fetch, seen
+
+
+def test_add_npm_verifies_the_tarball_and_extracts_one_file(tmp_path):
+    fetch, seen = npm_release({"dist/browser/js-yaml.umd.min.js": BODY, "README.md": b"r"})
+    lock = ja.load_lock(tmp_path / "js.lock.json")
+    entry = ja.add_npm(lock, tmp_path, "js-yaml", "5.5.0", "dist/browser/js-yaml.umd.min.js", "vendor/js",
+                       license="MIT", fetch=fetch)
+    assert seen == ["https://registry.npmjs.org/js-yaml/5.5.0", "https://registry.npmjs.org/js-yaml/-/js-yaml-5.5.0.tgz"]
+    assert (tmp_path / "vendor/js/js-yaml.umd.min.js").read_bytes() == BODY
+    assert (entry["name"], entry["source"], entry["package"], entry["version"]) == ("js-yaml", "npm", "js-yaml", "5.5.0")
+    assert entry["sha256"] == hashlib.sha256(BODY).hexdigest() and entry["tarball_integrity"].startswith("sha512-")
+    assert ja.cdn_url(entry) == "https://cdn.jsdelivr.net/npm/js-yaml@5.5.0/dist/browser/js-yaml.umd.min.js"
+    assert ja.check(lock, tmp_path, remote=True, fetch=fetch) == []
+    assert "vendor/js/js-yaml.umd.min.js -text" in (tmp_path / ".gitattributes").read_text()
+    assert all(ja.cdn_url(entry) in line for line in ja.oneliners(entry))  # the file, not the tarball
+
+
+def test_add_npm_names_scoped_packages_and_renames_the_file(tmp_path):
+    fetch, seen = npm_release({"dist/index.cjs": BODY}, name="@scope/smol", license="BSD-3-Clause")
+    entry = ja.add_npm(ja.load_lock(tmp_path / "x.json"), tmp_path, "@scope/smol", "5.5.0", "dist/index.cjs",
+                       "vendor/js", license="BSD-3-Clause", file_name="smol.cjs", fetch=fetch)
+    assert seen[0] == "https://registry.npmjs.org/@scope%2Fsmol/5.5.0"
+    assert (entry["name"], entry["destination"]) == ("smol", "vendor/js/smol.cjs")
+
+
+@pytest.mark.parametrize(("kwargs", "message"), [
+    ({"version": "^5.5.0"}, "exact version"), ({"version": "latest"}, "exact version"),
+    ({"package": "../evil"}, "npm package"), ({"path": "../x.js"}, "invalid path"),
+    ({"file_name": "a/b.js"}, "file name"), ({"license": "BSD-3-Clause"}, "differs"),
+])
+def test_add_npm_refuses_bad_input_and_license_mismatch(tmp_path, kwargs, message):
+    fetch, _ = npm_release({"dist/a.js": BODY})
+    args = dict(package="js-yaml", version="5.5.0", path="dist/a.js", license="MIT")
+    args.update(kwargs)
+    with pytest.raises(ValueError, match=message):
+        ja.add_npm(ja.load_lock(tmp_path / "x.json"), tmp_path, args.pop("package"), args.pop("version"),
+                   args.pop("path"), "vendor/js", fetch=fetch, **args)
+
+
+@pytest.mark.parametrize(("files", "options", "message"), [
+    ({"dist/a.js": BODY}, {"tamper": True}, "registry integrity"),
+    ({"dist/b.js": BODY}, {}, "no regular file"),
+    ({"dist/a.js": None}, {}, "no regular file"),  # a symlink is never followed
+])
+def test_add_npm_fails_closed_before_writing(tmp_path, files, options, message):
+    fetch, _ = npm_release(files, **options)
+    with pytest.raises(ValueError, match=message):
+        ja.add_npm(ja.load_lock(tmp_path / "x.json"), tmp_path, "js-yaml", "5.5.0", "dist/a.js", "vendor/js",
+                   license="MIT", fetch=fetch)
+    assert not (tmp_path / "vendor").exists()
+
+
+def test_check_remote_reports_a_changed_npm_release(tmp_path):
+    fetch, _ = npm_release({"dist/a.js": BODY})
+    lock = ja.load_lock(tmp_path / "x.json")
+    ja.add_npm(lock, tmp_path, "js-yaml", "5.5.0", "dist/a.js", "vendor/js", license="MIT", fetch=fetch)
+    changed, _ = npm_release({"dist/a.js": BODY + b"//"})
+    assert ja.check(lock, tmp_path, remote=True, fetch=changed) == ["js-yaml: js-yaml@5.5.0 now serves different bytes"]
+    tampered, _ = npm_release({"dist/a.js": BODY}, tamper=True)
+    assert "registry integrity" in ja.check(lock, tmp_path, remote=True, fetch=tampered)[0]

@@ -30,6 +30,8 @@ CC0-1.0. Anything else (GPL, LGPL such as libheif, unknown) is refused unless
 
 ```bash
 python -S js_adopt.py add cure53/DOMPurify 3.4.17 dist/purify.min.js --dest vendor/js --license "MPL-2.0 OR Apache-2.0"
+python -S js_adopt.py add-npm js-yaml 5.5.0 dist/browser/js-yaml.umd.min.js --dest vendor/js --license MIT
+python -S js_adopt.py add-npm smol-toml 1.9.1 dist/index.cjs --dest vendor/js --as smol-toml.cjs --license BSD-3-Clause
 python -S js_adopt.py check [--remote]
 python -S js_adopt.py tag purify [--cdn] [--base ../]
 python -S js_adopt.py oneliners purify      # bounded curl / browser fetch + Web Crypto SRI / urllib
@@ -71,8 +73,29 @@ mismatch or license not allowed; 2 input error.
 - Some minified files drop the license header (seedrandom 3.0.5 keeps its MIT notice only
   in `seedrandom.js` and the README). When the notice must travel with the file, adopt the
   unminified file or also adopt the LICENSE file under the same `--dest`.
-- Many projects do not commit built files (axe-core, KaTeX, Leaflet build on publish).
-  Those need a GitHub release asset or the npm tarball; that path is not implemented yet.
+- Many projects do not commit built files (js-yaml 5, smol-toml, axe-core, KaTeX build on
+  publish). `add-npm` takes one file from the exact npm release instead; see below.
 - Loading and behaviour in every engine are checked by the consumer, for example
   browser-test-kit's platform-matrix: a page loads the adopted files with `integrity`, and a
   tampered copy must be refused.
+
+## From npm when nothing is committed (`add-npm`)
+
+`add-npm PACKAGE VERSION PATH` reads `https://registry.npmjs.org/PACKAGE/VERSION`, downloads
+that release's tarball (from registry.npmjs.org only) and checks it against the registry's
+`dist.integrity` (sha512) before opening it. It then extracts one **regular file** at `PATH`
+below the tarball's single top-level directory (links are never followed), writes it under
+`--dest` (renamed with `--as` when the file is called `index.cjs`), and records:
+
+| Field | Meaning |
+| --- | --- |
+| `source`, `package`, `version`, `path` | `npm`, the package, the exact version (no ranges or dist-tags), the file inside it |
+| `url`, `tarball_integrity` | the tarball and the registry's integrity for it |
+| `destination`, `bytes`, `sha256`, `sri`, `license` | as for GitHub files |
+
+The stated `--license` must equal the package's `license` field (or be reviewed with
+`--allow-license`). `check --remote` re-reads the metadata and tarball and compares the file.
+`tag --cdn` and `oneliners` use jsDelivr's npm mirror of the same file
+(`https://cdn.jsdelivr.net/npm/PACKAGE@VERSION/PATH`), so the SRI value is unchanged. Unpacking
+is bounded (100,000,000 bytes) as well as the download.
+
