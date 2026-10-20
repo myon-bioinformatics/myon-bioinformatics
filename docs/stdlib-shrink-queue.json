@@ -1,0 +1,404 @@
+{
+  "schema": "stdlib-shrink-queue/1",
+  "surveyed_at": "2026-10-20",
+  "listing": {
+    "endpoint": "https://api.github.com/users/myon-bioinformatics/repos?per_page=100&type=owner",
+    "org_endpoint": "https://api.github.com/orgs/myon-bioinformatics/repos",
+    "org_endpoint_status": 404,
+    "note": "myon-bioinformatics is a user account. The public user-repos listing is the complete public set returned by the API (Link header absent, 41 items). Every item had private=false. Unauthenticated listing does not include private repositories.",
+    "public_repositories": 41,
+    "archived_skipped": 18,
+    "surveyed_repositories": 23,
+    "clone": "git clone --depth 1 of each non-archived default branch",
+    "interpreter": "CPython 3.12 (sys.stdlib_module_names)"
+  },
+  "rules": {
+    "cdn_fetch": "Latest release publishes a py3-none-any or py2.py3-none-any wheel and has no runtime requires_dist outside extras and environment markers that are false on the repo's Python floor. Same gate as Aoi scripts/fetch_module.py (PR 87), plus marker evaluation, which that script does not do yet.",
+    "shrink_min": "No qualifying pure wheel, but the production call surface read from the source is small enough to reimplement in a stdlib <pkg>_min.py the way Aoi shrink/numpy_min.py covers load_overlap (PR 89). Attribute counts from AST under-count methods on returned values; those methods are included when the source was read.",
+    "not_handed_off": "Test harnesses, optional accelerators that already fall back to the stdlib, vendored copies of archived templates, frameworks that are the product, and Aoi packages owned by other agents."
+  },
+  "queue": [
+    {
+      "id": "dragowing-markdown",
+      "priority": 1,
+      "repo": "myon-bioinformatics/DRAgoWing",
+      "head": "360afbde2b55b54f205664eb4cf1a9cc17f9564a",
+      "package": "markdown",
+      "distribution": "markdown",
+      "ecosystem": "pypi",
+      "classification": "cdn_fetch",
+      "difficulty": "easy",
+      "declared": "markdown>=3.11.1",
+      "files": ["htmlout.py"],
+      "used_surface": ["markdown"],
+      "call": "htmlout.render_md -> importlib.import_module('markdown').markdown(source, extensions=['tables','fenced_code','attr_list','md_in_html'])",
+      "approach": "Additive experiment, same shape as Aoi PR 87. Resolve the latest py3-none-any wheel, check the sha256 PyPI publishes, put the wheel on sys.path, and run render_md. Leave the pyproject dependency in place. Re-resolve at implementation time; on 2026-10-20 the wheel was markdown 3.11.2, sha256 f80390747a2a0ff2ba54da074ce4f862f72a6685f608cd2637b646a6d83993f5, and requires_dist was empty.",
+      "dynamic_confirmation": {
+        "package_absent": "python -S, cwd outside the clones: htmlout.render_md('# t') raises ModuleNotFoundError: No module named 'markdown' at htmlout.py:77 inside _markdown_library.",
+        "wheel_import": "The same interpreter then imported markdown from that wheel and rendered a table, a fenced code block, and class=\"provenance\" (177 chars)."
+      },
+      "acceptance": "With markdown not installed by pip/uv, render_md on the sample above and on a real DRAgoWing markdown page returns the same HTML as an installed markdown of the fetched version."
+    },
+    {
+      "id": "nagoyaction-polars",
+      "priority": 2,
+      "repo": "myon-bioinformatics/NagoyAction",
+      "head": "1181e43508c9b2a9ad4cc4ce50f5ee38032bb678",
+      "package": "polars",
+      "distribution": "polars",
+      "ecosystem": "pypi",
+      "classification": "shrink_min",
+      "difficulty": "moderate",
+      "declared": "Imported at research_digest.py:18. This checkout has no pyproject.toml; polars is an undeclared import.",
+      "files": ["research_digest.py"],
+      "used_surface": ["DataFrame", "col", "explode", "filter", "join", "iter_rows", "is_not_null"],
+      "call": "research_digest.collect builds two DataFrames, explodes proposition_id, filters nulls, left-joins on proposition_id, and iterates named rows.",
+      "approach": "Write polars_min.py for that surface only and load it as sys.modules['polars'] before import research_digest. AST alias counts see DataFrame×2 and col×1; explode, filter, join, iter_rows, and is_not_null are methods on the returned frame and have to be read from collect(). Match null filtering and the left join, including missing exit codes. Do not CDN-fetch polars: the 2.0.0 py3-none-any wheel requires polars-runtime-32==2.0.0.",
+      "dynamic_confirmation": {
+        "package_absent": "import research_digest raises ModuleNotFoundError: No module named 'polars' at research_digest.py:18."
+      },
+      "acceptance": "A fixture of two research notes plus a propositions jsonl produces the same current_judgements with polars and with polars_min. The min module rejects any other polars name."
+    },
+    {
+      "id": "dragowing-numpy",
+      "priority": 3,
+      "repo": "myon-bioinformatics/DRAgoWing",
+      "head": "360afbde2b55b54f205664eb4cf1a9cc17f9564a",
+      "package": "numpy",
+      "distribution": "numpy",
+      "ecosystem": "pypi",
+      "classification": "shrink_min",
+      "difficulty": "moderate",
+      "declared": "numpy>=2.4.6 and numpy>=2.5.4 on Python >=3.12",
+      "files": ["overlap.py"],
+      "used_surface": ["asarray", "ones", "flatnonzero", "ndarray indexing", "shape", "sum", "bitwise and", "invert"],
+      "call": "overlap.load_overlap. The bitmask helpers it calls live in sibling PythDRagoras rule_search._mask and _masks_to_matrix, which import numpy at module level.",
+      "approach": "Port the already generated Aoi shrink/numpy_min.py (PR 89) rather than designing a new numeric subset. Preload it as sys.modules['numpy'] before overlap and before rule_search. Local overlap.py names are asarray, ones, and flatnonzero plus ndarray indexing, shape, sum, &=, and ~. The callee at PythDRagoras 6570f77f9735ddfe9b9043216cb7e5aef5b6322b also needs zeros, frombuffer, uint8, and unpackbits, which that min file already implements. Leave polars in place: load_overlap hands a DataFrame to rule_search._mask. This item is the overlap bitmask path. It is separate from the Aoi numpy linalg work.",
+      "dynamic_confirmation": {
+        "package_absent": "python -S loading overlap.py raises ModuleNotFoundError: No module named 'numpy' at overlap.py:11."
+      },
+      "acceptance": "Region counts for a synthetic bitmask match real numpy, and load_overlap against a sibling PythDRagoras checkout matches with numpy_min preloaded. polars stays installed for that full run."
+    },
+    {
+      "id": "ironmate-pypdf",
+      "priority": 4,
+      "repo": "myon-bioinformatics/Ironmate",
+      "head": "9839f8cd32ce991b3088f18f6df413594637e6f6",
+      "package": "pypdf",
+      "distribution": "pypdf",
+      "ecosystem": "pypi",
+      "classification": "cdn_fetch",
+      "difficulty": "easy",
+      "declared": "pypdf>=6 in the dev group and tests/requirements-preview.txt. Production import is inside pptx_preview.render_preview_html.",
+      "files": ["pptx_preview.py", "tests/test_pptx_preview.py"],
+      "used_surface": ["PdfReader", "errors.PdfReadError"],
+      "call": "len(PdfReader(pdf, strict=True).pages) compared with the slide count.",
+      "approach": "CDN-fetch the pure wheel for the page-count check only. On 2026-10-20, pypdf 6.21.1 py3-none-any, sha256 553e2d42f5bb3bb2a785a7d3de8ef90bb7df74b5413eff5a7b4388007ea9254b, imported PdfReader. The sole requires_dist entry is typing_extensions>=4.0 on Python <3.11. Ironmate requires >=3.11, so the marker is inactive. Aoi fetch_module.py treats every non-extra requires_dist line as fatal; evaluate the marker before rejecting. playwright is imported on the line above PdfReader and is a separate, not-feasible dependency. Prove PdfReader on a one-page PDF without launching a browser.",
+      "dynamic_confirmation": {
+        "package_absent": "from pypdf import PdfReader raises ModuleNotFoundError: No module named 'pypdf'. Calling render_preview_html with a real html file and output directory raises ModuleNotFoundError: No module named 'playwright' at pptx_preview.py:25, before the pypdf import on line 26.",
+        "wheel_import": "PdfReader and PdfReadError import from the wheel above."
+      },
+      "acceptance": "PdfReader(strict=True).pages on a one-page PDF has length 1 when pypdf is not pip-installed and the fetched wheel is on sys.path. The playwright import stays as it is."
+    }
+  ],
+  "inventory": [
+    {
+      "repo": "myon-bioinformatics/Aoi",
+      "head": "06b6235e3d20ac7dae7e1292ed3d6cdd9f27a7b1",
+      "handoff": "skip",
+      "reason": "Other agents own this repository: polars, numpy linalg, selectolax, and httpx. markdown CDN-fetch (PR 87) and the load_overlap numpy_min (PR 89) are already merged.",
+      "packages": [
+        {"import": "polars", "role": "prod", "files": 15, "uses": 1866, "names": 26, "classification": "not_feasible", "why": "DataFrame expression engine across the monorepo. The pure wheel depends on polars-runtime-32."},
+        {"import": "numpy", "role": "prod", "files": 8, "uses": 478, "names": 66, "classification": "already_covered", "why": "Wide surface including linalg.norm and random. The overlap subset is already shrink/numpy_min.py. Linalg is assigned to another agent."},
+        {"import": "httpx", "role": "prod", "files": 3, "uses": 6, "names": 2, "classification": "already_covered", "why": "Client only. Assigned to another agent. The pure wheel depends on anyio, certifi, httpcore, and idna."},
+        {"import": "selectolax", "role": "prod", "files": 3, "uses": 11, "names": 1, "classification": "already_covered", "why": "lexbor.LexborHTMLParser only, and the wheels are compiled. Assigned to another agent."},
+        {"import": "markdown", "role": "prod", "classification": "already_covered", "why": "pyproject depends on markdown>=3.7. dragowing/htmlout.py:77 calls importlib.import_module('markdown'). A markdown.py elsewhere in the tree makes a top-level-name filter treat the name as local, so alias counts do not show it. PR 87 already fetches the pure wheel."},
+        {"import": "ortools", "role": "prod", "files": 2, "uses": 30, "names": 9, "classification": "not_feasible", "why": "CP-SAT (CpModel, CpSolver, status codes) in sakanalytics/season_exact.py and research/gpt-r001-score-allocation/preclinch_dates.py. Native solver; requires absl-py, numpy, pandas, protobuf."},
+        {"import": "pandas", "role": "prod", "files": 1, "uses": 2, "names": 2, "classification": "not_feasible", "why": "read_json in one research script. No pure wheel, and the repository is owned by the other Aoi agents."},
+        {"import": "pytest", "role": "dev", "files": 83, "uses": 1596, "names": 16, "classification": "test_harness", "why": "The test runner is the used surface."},
+        {"import": "coverage", "role": "dev", "files": 1, "uses": 2, "names": 2, "classification": "test_harness", "why": "Dev extra. A pure wheel exists; the harness is still the product of the coverage job."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/DRAgoWing",
+      "head": "360afbde2b55b54f205664eb4cf1a9cc17f9564a",
+      "packages": [
+        {"import": "markdown", "role": "prod", "classification": "cdn_fetch", "queue_id": "dragowing-markdown"},
+        {"import": "numpy", "role": "prod", "classification": "shrink_min", "queue_id": "dragowing-numpy"},
+        {"import": "polars", "role": "prod", "files": 1, "uses": 6, "names": 3, "classification": "not_feasible", "why": "overlap.load_overlap passes the DataFrame into PythDRagoras rule_search._mask. A local read_ndjson shim does not satisfy the callee."},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Dev group only."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/NagoyAction",
+      "head": "1181e43508c9b2a9ad4cc4ce50f5ee38032bb678",
+      "packages": [
+        {"import": "polars", "role": "prod", "classification": "shrink_min", "queue_id": "nagoyaction-polars"},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Tests only."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/Ironmate",
+      "head": "9839f8cd32ce991b3088f18f6df413594637e6f6",
+      "packages": [
+        {"import": "pypdf", "role": "prod", "classification": "cdn_fetch", "queue_id": "ironmate-pypdf"},
+        {"import": "numpy", "role": "optional", "files": 2, "names": 11, "classification": "already_stdlib_fallback", "why": "grid_tools and svg_raster select the stdlib backend when numpy cannot be imported. python -S reports both auto backends as stdlib, and grid_tools._runs_gcd(..., 'numpy') raises ModuleNotFoundError at grid_tools.py:73."},
+        {"import": "PIL", "role": "optional", "classification": "not_feasible", "why": "photo_grid.decode_png is stdlib. JPEG, WebP, and exotic PNG variants call Pillow and raise ImageDecodeError naming the optional package when it is absent. Pillow 13 publishes abi wheels only. browser-test-kit's required image_diff is a different repository."},
+        {"import": "playwright", "role": "prod", "classification": "not_feasible", "why": "pptx_preview launches Chromium. The Python package depends on pyee and greenlet and a browser driver."},
+        {"import": "exceljs", "ecosystem": "npm", "role": "prod", "classification": "not_feasible", "why": "scripts/xlsx_io.mjs writes and reads values, formulas, sheet names, and autofilter. exceljs 4.4.0 has 9 runtime dependencies. The script is an allowlisted OOXML engine."},
+        {"import": "pptxgenjs", "ecosystem": "npm", "role": "prod", "classification": "not_feasible", "why": "scripts/pptxgen_render.mjs calls defineLayout, addSlide, background, and writeFile to emit a package shell. pptxgenjs 4.0.1 depends on jszip and image-size. A faithful min is a PPTX writer."},
+        {"import": "xlsx", "ecosystem": "npm", "role": "prod", "classification": "already_cdn", "why": "package.json already pins https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz. SheetJS is the second engine in xlsx_io.mjs."},
+        {"import": "PySimpleGUI", "role": "vendor", "files": 6, "uses": 924, "names": 25, "classification": "vendored_archived_template", "why": "Pure no-dependency wheel, used by vendor copies of archived GUI scripts. The surface is the widget set."},
+        {"import": "FreeSimpleGUI", "role": "vendor", "files": 6, "uses": 52, "names": 9, "classification": "vendored_archived_template", "why": "Pure no-dependency wheel. Same archived GUI copies."},
+        {"import": "scapy", "role": "vendor", "files": 1, "uses": 136, "names": 30, "classification": "vendored_archived_template", "why": "Pure no-dependency wheel. vendor/scapy_gui.py uses send, sniff, sr, and protocol layers."},
+        {"import": "requests", "role": "vendor", "files": 4, "uses": 8, "names": 3, "classification": "vendored_archived_template", "why": "get and post in archived API templates. The pure wheel depends on urllib3, certifi, idna, and charset_normalizer."},
+        {"import": "matplotlib", "role": "vendor", "classification": "vendored_archived_template", "why": "vendor/cumlative_usage.py pyplot. Compiled, with a numeric dependency tree."},
+        {"import": "scipy", "role": "vendor", "classification": "vendored_archived_template", "why": "optimize.curve_fit in the same archived script."},
+        {"import": "pandas", "role": "vendor", "classification": "vendored_archived_template", "why": "read_csv in vendor/oci-cost-analysis.py."},
+        {"import": "nmap3", "role": "vendor", "classification": "vendored_archived_template", "why": "Distribution python3-nmap. Pure wheel depends on simplejson. GUI script."},
+        {"import": "fastapi", "role": "vendor", "classification": "vendored_archived_template", "why": "One vendored app. Framework plus starlette and pydantic."},
+        {"import": "uvicorn", "role": "vendor", "classification": "vendored_archived_template", "why": "Serves that vendored app."},
+        {"import": "pillow_heif", "role": "vendor", "classification": "vendored_archived_template", "why": "Compiled opener, depends on pillow."},
+        {"import": "yaml", "role": "test", "classification": "not_feasible", "why": "safe_load/load/BaseLoader in tests. PyYAML 6.0.3 publishes abi wheels and an sdist, and no py3-none-any wheel."},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Dev group."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/PythDRagoras",
+      "head": "6570f77f9735ddfe9b9043216cb7e5aef5b6322b",
+      "packages": [
+        {"import": "numpy", "role": "prod", "files": 4, "uses": 384, "names": 56, "classification": "not_feasible", "why": "littlebit_approx, littlebit_holdout (linalg.pinv), littlebit_prune (linalg.norm, packbits), and rule_search (frombuffer, ufuncs, errstate). python -S import rule_search raises ModuleNotFoundError at rule_search.py:33. One numpy_min cannot cover this surface. The bit-unpack subset used by DRAgoWing is the dragowing-numpy queue item."},
+        {"import": "polars", "role": "prod", "files": 6, "uses": 446, "names": 18, "classification": "not_feasible", "why": "Expression and frame API across the library modules."},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Dev group."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/QueRyu",
+      "head": "c8ca9621a405d751643e4de0bea51bad02a9290b",
+      "packages": [
+        {"import": "numpy", "role": "prod", "files": 1, "uses": 70, "names": 20, "classification": "already_covered", "why": "ask/suggest.py is byte-identical to Aoi queryu/ask/suggest.py (254 lines). Surface is linalg.norm, linalg.svd, packbits, and log. Owned by the Aoi numpy linalg agent. python -S import ask.suggest raises ModuleNotFoundError at suggest.py:18."},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Dev group."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/SakAnalytics",
+      "head": "33aaca9096716a7d042abb3e06791a3245462a2a",
+      "packages": [
+        {"import": "polars", "role": "prod", "files": 3, "uses": 1354, "names": 24, "classification": "not_feasible", "why": "sakanalytics.py is an expression-heavy frame program. python -S import sakanalytics raises ModuleNotFoundError at sakanalytics.py:125."},
+        {"import": "ortools", "role": "prod", "files": 1, "uses": 16, "names": 9, "classification": "not_feasible", "why": "season_exact.py CP-SAT. season-requirements.txt pins ortools>=9.15.6755."},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Dev group."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/BlueProbe",
+      "head": "f0763c4de0a2976bb243cd7d780c8b5ae0c22ba4",
+      "packages": [
+        {"import": "selectolax", "role": "test", "files": 1, "uses": 8, "names": 1, "classification": "already_covered", "why": "tests/test_blueprobe_html_parity.py LexborHTMLParser. Dev extra. Same compiled parser the Aoi agent owns. python -S import raises ModuleNotFoundError."},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Dev group."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/mcp-toolcall-lab",
+      "head": "bde35867f7b75df11b578288c53267bae658ca8e",
+      "packages": [
+        {"import": "fastmcp", "role": "prod", "files": 4, "uses": 50, "names": 7, "classification": "not_feasible", "why": "The server is a FastMCP app. The pure wheel depends on fastmcp-slim[client,server]."},
+        {"import": "mcp", "role": "prod", "files": 1, "uses": 17, "names": 3, "classification": "not_feasible", "why": "streamable HTTP client and ClientSession. Deep runtime dependency list, including httpx2 and pydantic."},
+        {"import": "pydantic", "role": "prod", "files": 1, "uses": 9, "names": 1, "classification": "not_feasible", "why": "Field(ge, le, description) on FastMCP tool annotations in github_ops_server.py. A stand-in Field would not feed the framework. pydantic-core is compiled."},
+        {"import": "httpx", "role": "prod", "files": 1, "uses": 44, "names": 9, "classification": "not_feasible", "why": "chat_ui.py calls httpx.post once. Tests use Client, AsyncClient, TimeoutException, TransportError, and options. The pure wheel has four runtime dependencies."},
+        {"import": "httpx2", "role": "test", "classification": "not_feasible", "why": "tests/test_sdk_transport_boundaries.py imports httpx2.AsyncClient. It is the HTTP stack mcp 2.3.0 requires."},
+        {"import": "gradio", "role": "prod", "classification": "not_feasible", "why": "Optional galleria UI. Gradio 6.30.0 has a large runtime dependency set."},
+        {"import": "playwright", "role": "prod", "classification": "not_feasible", "why": "Browser tests and one production sync_playwright import."},
+        {"import": "starlette", "role": "test", "classification": "not_feasible", "why": "Test app. Depends on anyio."},
+        {"import": "fastapi", "role": "test", "classification": "not_feasible", "why": "TestClient in tests."},
+        {"import": "uvicorn", "role": "test", "classification": "not_feasible", "why": "Test server."},
+        {"import": "yaml", "role": "test", "classification": "not_feasible", "why": "PyYAML 6.0.3 has no py3-none-any wheel."},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Test extra."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/markdown",
+      "head": "d9b99f2da1f49a013025dc3707911beff9cad184",
+      "packages": [
+        {"import": "gradio", "role": "prod", "files": 2, "uses": 30, "names": 9, "classification": "not_feasible", "why": "demos/chat_ui_demo.py and demos/gradio_app.py are Gradio apps."},
+        {"import": "streamlit", "role": "prod", "files": 1, "uses": 30, "names": 11, "classification": "not_feasible", "why": "demos/streamlit_app.py is a Streamlit app."},
+        {"import": "yaml", "role": "prod", "files": 2, "uses": 18, "names": 5, "classification": "not_feasible", "why": "safe_load in two scripts and safe_dump in tests. PyYAML 6.0.3 has no py3-none-any wheel, and the used names are the parser."},
+        {"import": "playwright", "role": "test", "classification": "not_feasible", "why": "Frontend browser test."},
+        {"import": "marked", "ecosystem": "npm", "role": "test", "classification": "cdn_fetch", "why": "tests/mirror/facts.mjs. marked 18.1.1 has zero runtime dependencies, so a jsDelivr/esm.sh URL can replace the npm install. Test mirror only, so it is not in the handoff queue."},
+        {"import": "smol-toml", "ecosystem": "npm", "role": "dev", "classification": "cdn_fetch", "why": "Declared in tests/mirror/package.json. smol-toml 1.9.1 has zero runtime dependencies. No static import in this checkout. Not handed off."},
+        {"import": "markdown-it", "ecosystem": "npm", "role": "test", "classification": "not_feasible", "why": "facts.mjs. markdown-it 15.0.3 has 6 runtime dependencies. It is the parser under comparison."},
+        {"import": "linkedom", "ecosystem": "npm", "role": "test", "classification": "not_feasible", "why": "facts.mjs. linkedom 0.18.13 has 5 runtime dependencies."},
+        {"import": "string-width", "ecosystem": "npm", "role": "test", "classification": "not_feasible", "why": "facts.mjs. string-width 8.3.0 depends on strip-ansi and get-east-asian-width."},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Dev group."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/browser-test-kit",
+      "head": "4dcc5aa6b1e376dae9b6150a4782b9c19848a6c1",
+      "packages": [
+        {"import": "PIL", "role": "prod", "files": 1, "uses": 29, "names": 11, "classification": "not_feasible", "why": "scripts/image_diff.py requires Pillow >=13. Used operations are open, convert, crop, ImageChops.difference, ImageChops.lighter, point, histogram, getbbox, and getextrema. python -S exits 2 with 'Pillow >=13 is required'."},
+        {"import": "playwright", "role": "prod", "files": 4, "classification": "not_feasible", "why": "Browser driver used by the kit's own scripts."},
+        {"import": "yaml", "role": "test", "classification": "not_feasible", "why": "Workflow YAML in tests. No py3-none-any wheel."},
+        {"import": "@playwright/test", "ecosystem": "npm", "role": "dev", "classification": "not_feasible", "why": "Runner. Depends on playwright."},
+        {"import": "exceljs", "ecosystem": "npm", "role": "dev", "classification": "declared_unused", "why": "devDependency. No static import in this checkout."},
+        {"import": "linkedom", "ecosystem": "npm", "role": "dev", "classification": "declared_unused", "why": "devDependency. No static import in this checkout."},
+        {"import": "markdown-it", "ecosystem": "npm", "role": "dev", "classification": "declared_unused", "why": "devDependency. No static import in this checkout."},
+        {"import": "marked", "ecosystem": "npm", "role": "dev", "classification": "declared_unused", "why": "devDependency with zero runtime dependencies, and no static import in this checkout."},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Dev group."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/flutter_navigation_basic",
+      "head": "ac7333d51f0f2b274f50775a249ae4db073a34db",
+      "packages": [
+        {"import": "PIL", "role": "optional", "classification": "not_feasible", "why": "python/generate_photo_import_fixtures.py imports Pillow inside a try and uses Image.open/save for one JPEG path. --check is stdlib. Pillow publishes abi wheels only."},
+        {"import": "yaml", "role": "test", "classification": "not_feasible", "why": "Nine test modules load workflow YAML. No py3-none-any wheel."},
+        {"import": "@playwright/test", "ecosystem": "npm", "role": "dev", "classification": "not_feasible", "why": "e2e/package.json. Browser runner."},
+        {"import": "crypto", "ecosystem": "pub", "classification": "outside_pattern", "why": "Dart package. This survey's fetch and shrink patterns are Python wheels and JS CDN scripts."},
+        {"import": "get", "ecosystem": "pub", "classification": "outside_pattern", "why": "Flutter state library isolated to historical patterns."},
+        {"import": "gal", "ecosystem": "pub", "classification": "outside_pattern", "why": "Flutter plugin."},
+        {"import": "image_picker", "ecosystem": "pub", "classification": "outside_pattern", "why": "Flutter plugin with platform code."},
+        {"import": "shared_preferences", "ecosystem": "pub", "classification": "outside_pattern", "why": "Flutter plugin."},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Declared in python/pyproject.toml dependencies because that project is the tooling env. The imports are the test suite."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/web-ui",
+      "head": "5e8b867a50c0d8cdaac522b20682a9b4f7b2bce8",
+      "packages": [
+        {"import": "playwright", "role": "prod", "files": 1, "uses": 29, "names": 2, "classification": "not_feasible", "why": "tool/layout_presets.py and the integration tests drive a browser. sync_api.expect and sync_playwright."},
+        {"import": "gradio", "role": "prod", "files": 1, "uses": 4, "names": 3, "classification": "not_feasible", "why": "tool/web_ui_serve_dom_lab.py builds a Blocks/HTML demo."},
+        {"import": "yaml", "role": "test", "classification": "not_feasible", "why": "Two test modules. No py3-none-any wheel."},
+        {"import": "stagehand", "role": "dev", "classification": "not_feasible", "why": "Dev group. stagehand 4.3.0 depends on browserbase, httpx, pydantic, and websockets."},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Dev group."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/gh_identity",
+      "head": "53a175309f27c68266eaf93c451b2a4cd192bcd7",
+      "packages": [
+        {"import": "gradio", "role": "optional", "files": 1, "uses": 6, "names": 4, "classification": "not_feasible", "why": "scripts/gh_identity_serve_dom_lab.py imports Blocks, Markdown, and HTML inside an optional guard."},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Dev group."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/ascii_artist",
+      "head": "afc94447dc627c0a56bb4fc105ac80c95706f199",
+      "packages": [
+        {"import": "playwright", "role": "prod", "files": 1, "uses": 6, "names": 2, "classification": "not_feasible", "why": "scripts/capture_pages.py."},
+        {"import": "yaml", "role": "test", "classification": "not_feasible", "why": "One vendor-automation test. No py3-none-any wheel."},
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Dev group."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/myon-bioinformatics.github.io",
+      "head": "b3ce221386ea1f0787b768b406b0a2e9f47bb401",
+      "packages": [
+        {"import": "@playwright/test", "ecosystem": "npm", "role": "dev", "classification": "not_feasible", "why": "Browser tests."},
+        {"import": "serve", "ecosystem": "npm", "role": "dev", "classification": "not_feasible", "why": "serve 14.2.6 has 11 runtime dependencies."},
+        {"import": "@browserbasehq/stagehand", "ecosystem": "npm", "role": "dev", "classification": "not_feasible", "why": "tests/stagehand-v4-node.mjs. Depends on zod and the Browserbase SDK."},
+        {"import": "pytest", "role": "test", "classification": "test_harness", "why": "tests/requirements.txt also pins stagehand."},
+        {"import": "web-ui repository-diagnostics.js", "ecosystem": "cdn", "role": "prod", "classification": "already_cdn", "why": "tools/mcp-toolcall-lab/repository-diagnostics.html loads CSS and JS from cdn.jsdelivr.net/gh/myon-bioinformatics/web-ui at a pinned commit. First-party, already a CDN script."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/xprobe",
+      "head": "401ab7eeac613531fbb3bb79da9cd21f23d3acd2",
+      "packages": [
+        {"import": "pytest", "role": "dev", "classification": "test_harness", "why": "Dev group, and one production pytest hook integration."},
+        {"import": "js-yaml", "ecosystem": "npm", "role": "dev", "classification": "declared_unused", "why": "tests/js/package.json. js-yaml 5.5.0 depends on argparse. No static import."},
+        {"import": "smol-toml", "ecosystem": "npm", "role": "dev", "classification": "declared_unused", "why": "Zero runtime dependencies. No static import in this checkout."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/myon-bioinformatics",
+      "head": "bfacb98da72633c8c70d22fcef6dbab26d3f9294",
+      "packages": [
+        {"import": "yaml", "role": "test", "files": 8, "uses": 31, "names": 4, "classification": "not_feasible", "why": "safe_load, load, and BaseLoader in tests. PyYAML 6.0.3 has no py3-none-any wheel."},
+        {"import": "pytest", "role": "test", "classification": "test_harness", "why": "tests/requirements.txt."},
+        {"import": "coverage", "role": "test", "classification": "test_harness", "why": "tests/requirements.txt. A pure wheel exists."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/Err-o-RoadRunner",
+      "head": "a38b889d83928784c6106cc9e6b3924d6f23ec5d",
+      "packages": [
+        {"import": "pytest", "role": "test", "files": 19, "uses": 444, "names": 16, "classification": "test_harness", "why": "Optional test extra. Custom marks are part of the harness."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/cli_args",
+      "head": "2f24639400d6ee222b06c563284925b07e6bc7bf",
+      "packages": [
+        {"import": "pytest", "role": "test", "classification": "test_harness", "why": "requirements.txt includes tests/requirements.txt, which is pytest."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/nvd_nist_known_vulns",
+      "head": "1b0408b201fc23f7164420959ffdecc9fb2cfbd8",
+      "packages": [
+        {"import": "yaml", "role": "test", "classification": "not_feasible", "why": "One test. No py3-none-any wheel."},
+        {"import": "pytest", "role": "vendor", "classification": "test_harness", "why": "Usage sits in a vendored pytest plugin shim."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/yourself",
+      "head": "45c66acf007d946f53503a0abaea273d2175446c",
+      "packages": [
+        {"import": "yaml", "role": "test", "classification": "not_feasible", "why": "Two tests. No py3-none-any wheel."},
+        {"import": "pytest", "role": "test", "classification": "test_harness", "why": "Dev group."}
+      ]
+    },
+    {
+      "repo": "myon-bioinformatics/search_seq_including_spaces",
+      "head": "060ab7156b6e17bd0459c0814771bc02480bc89c",
+      "packages": [
+        {"import": "pytest", "role": "vendor", "classification": "test_harness", "why": "Vendored pytest usage only. No production third-party import."}
+      ]
+    }
+  ],
+  "archived_skipped": [
+    "AttentionToJapaneseBeginners",
+    "audio_any2any_gui",
+    "convert_img_fmt_to_webp-CUI-",
+    "convert_img_fmt_to_webp-GUI-",
+    "cumlative_usage",
+    "GitHub_api_Template",
+    "HelpYouBuildServer",
+    "image_ext_converter_gui",
+    "LINENotifyAPI_Template",
+    "mock_server_JS",
+    "niconicoSearchAPI_Template",
+    "oci-cost-analysis",
+    "python3nmap_GUI_for_Beginners",
+    "Qiita_API_Template",
+    "scapy_GUI_for_Beginners",
+    "video2audio_gui",
+    "video_to_image_gui",
+    "vlm_ocr_jp_gui"
+  ],
+  "cross_checkout_imports": [
+    "Names such as ask, bank, rule_search, propositions, aoi_paths, blueprobe, queryu, and sakanalytics appear in AST as non-stdlib imports because the defining file is in a sibling checkout. They are first-party modules, not PyPI packages, and they are not queue items."
+  ],
+  "cdn_scripts_already_in_use": [
+    {
+      "repo": "myon-bioinformatics/DRAgoWing",
+      "url": "https://cdn.jsdelivr.net/npm/plotly.js-dist-min/plotly.min.js",
+      "note": "Documented in docs/figures.md. The Python plotly package is intentionally absent."
+    },
+    {
+      "repo": "myon-bioinformatics/Aoi",
+      "url": "https://cdn.jsdelivr.net/npm/plotly.js-dist-min/plotly.min.js",
+      "note": "Same Plotly CDN note in dragowing/docs/figures.md."
+    },
+    {
+      "repo": "myon-bioinformatics/myon-bioinformatics.github.io",
+      "url": "https://cdn.jsdelivr.net/gh/myon-bioinformatics/web-ui@adb23d7ba6ea94672b76457573f6655a081ee054/js/repository-diagnostics.js",
+      "note": "First-party file pinned on jsDelivr, with matching CSS links."
+    },
+    {
+      "repo": "myon-bioinformatics/Ironmate",
+      "url": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+      "note": "npm dependency URL, already a CDN tarball."
+    }
+  ]
+}
