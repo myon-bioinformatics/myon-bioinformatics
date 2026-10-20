@@ -4,6 +4,7 @@
 Exit codes: 0 = observation succeeded (with --ci-check, all states are COMPLETE or
 NO CHECKS); 1 = --ci-check observed a non-passing state; 2 = observation or usage error.
 Observation errors take precedence over --ci-check failures. --json uses the same codes.
+Both output formats include the UTC observation timestamp.
 """
 import argparse
 import datetime
@@ -108,6 +109,7 @@ def main(argv=None):
     if a.json:
         print(json.dumps(output, ensure_ascii=False, indent=2))
     else:
+        print(f'Observed at: {output["observed_at"]}')
         render(rows)
         for error in errors:
             print(f'{error["repository"]}  UNKNOWN ({error["error"]})')
