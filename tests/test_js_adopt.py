@@ -138,7 +138,7 @@ def npm_release(files, *, name="js-yaml", version="5.5.0", license="MIT", top="p
                 continue
             info.size = len(data)
             archive.addfile(info, io.BytesIO(data))
-    tarball = gzip.compress(buffer.getvalue())
+    tarball = gzip.compress(buffer.getvalue(), mtime=0)
     integrity = "sha512-" + base64.b64encode(hashlib.sha512(tarball).digest()).decode()
     tar_url = f"https://registry.npmjs.org/{name}/-/{name.rsplit('/', 1)[-1]}-{version}.tgz"
     meta = {"name": name, "version": version, "license": license, "dist": {"tarball": tar_url, "integrity": integrity}}
