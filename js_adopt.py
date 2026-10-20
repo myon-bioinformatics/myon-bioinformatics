@@ -1,6 +1,7 @@
 """Adopt a JS file from a public GitHub repository: pinned raw URL, sha256, SRI and license in one lock (js-adopt).
 
     python -S js_adopt.py add cure53/DOMPurify 3.4.17 dist/purify.min.js --dest vendor/js --license "MPL-2.0 OR Apache-2.0"
+    python -S js_adopt.py add-npm js-yaml 5.5.0 dist/browser/js-yaml.umd.min.js --dest vendor/js --license MIT
     python -S js_adopt.py check                      # every adopted file still matches its sha256 / SRI
     python -S js_adopt.py tag purify                 # <script src="vendor/js/..." integrity="sha384-..."> (local)
     python -S js_adopt.py tag purify --cdn           # the same file from jsDelivr's GitHub mirror, same integrity
@@ -13,6 +14,12 @@ can move, so the sha256 is what pins the bytes; `add` also marks the file `-text
 .gitattributes so Windows checkouts keep the exact bytes. `check` re-hashes the local copy, and
 `check --remote` re-downloads to detect a moved ref. The SRI value lets a page refuse a changed
 file (`<script integrity>` or `fetch(url, {integrity})`) whether it loads the local copy or the CDN.
+
+`add-npm` is for projects that build on publish and commit no dist files (js-yaml 5, smol-toml,
+axe-core, KaTeX): it reads https://registry.npmjs.org/PACKAGE/VERSION, downloads that exact
+tarball, checks it against the registry's `dist.integrity` (sha512) before reading it, and
+extracts one regular file. The lock keeps the tarball URL and integrity next to the file's own
+sha256 / SRI; the CDN form is jsDelivr's npm mirror of the same file.
 
 Stdlib only; runs under `python -S`. Exit codes: 0 OK; 1 mismatch or license not allowed; 2 input error.
 """
@@ -34,10 +41,14 @@ SCHEMA = "js-adopt/1"
 LOCK = "js.lock.json"
 TIMEOUT_SECONDS = 30  # fetch-guard: every download ends within a deadline
 MAX_BYTES = 10_000_000
+MAX_UNPACKED_BYTES = 100_000_000
 # Licenses that may be shipped without review; anything else needs --allow-license.
 ALLOWED = {"MIT", "ISC", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0", "MPL-2.0", "0BSD", "Unlicense", "CC0-1.0"}
 _REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 _NAME = re.compile(r"[a-z0-9][a-z0-9._-]*")
+_NPM_PACKAGE = re.compile(r"(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*")
+_NPM_VERSION = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")  # exact versions only: no ranges or dist-tags
+NPM_REGISTRY = "https://registry.npmjs.org/"
 
 
 class LicenseNotAllowed(Exception):
@@ -49,6 +60,8 @@ def raw_url(repository: str, ref: str, path: str) -> str:
 
 
 def cdn_url(entry: dict) -> str:
+    if entry.get("source") == "npm":
+        return f"https://cdn.jsdelivr.net/npm/{entry['package']}@{entry['version']}/{quote(entry['path'], safe='/')}"
     return f"https://cdn.jsdelivr.net/gh/{entry['repository']}@{quote(entry['ref'], safe='')}/{quote(entry['path'], safe='/')}"
 
 
@@ -219,6 +232,89 @@ def add(lock: dict, root: Path, repository: str, ref: str, path: str, dest: str,
     return entry
 
 
+def _npm_integrity(data: bytes, integrity: str) -> bool:
+    algorithm, _, value = integrity.partition("-")
+    if algorithm not in ("sha512", "sha384", "sha256"):
+        return False
+    return base64.b64encode(hashlib.new(algorithm, data).digest()).decode() == value
+
+
+def _npm_member(tarball: bytes, path: str) -> bytes:
+    """One regular file at PATH below the tarball's single top-level directory (usually package/)."""
+    import gzip
+    import io
+    import tarfile
+    with gzip.GzipFile(fileobj=io.BytesIO(tarball)) as stream:
+        unpacked = stream.read(MAX_UNPACKED_BYTES + 1)  # bounded: a small tarball can inflate a lot
+    if len(unpacked) > MAX_UNPACKED_BYTES:
+        raise ValueError("npm tarball unpacks beyond the byte limit")
+    with tarfile.open(fileobj=io.BytesIO(unpacked), mode="r:") as archive:
+        members = archive.getmembers()
+        tops = {m.name.split("/", 1)[0] for m in members}
+        if len(tops) != 1:
+            raise ValueError("npm tarball must have one top-level directory")
+        wanted = f"{tops.pop()}/{path}"
+        member = next((m for m in members if m.name == wanted), None)
+        if member is None or not member.isfile():
+            raise ValueError(f"no regular file {path!r} in the package")
+        if member.size > MAX_BYTES:
+            raise ValueError("file exceeds byte limit")
+        return archive.extractfile(member).read()
+
+
+def _npm_fetch(package: str, version: str, path: str, fetch=download,
+               *, locked_integrity: str | None = None) -> tuple[dict, str, bytes]:
+    meta = json.loads(fetch(f"{NPM_REGISTRY}{quote(package, safe='@')}/{version}").decode("utf-8"))
+    dist = meta.get("dist") if isinstance(meta, dict) else None
+    if not isinstance(dist, dict) or meta.get("name") != package or meta.get("version") != version:
+        raise ValueError(f"registry metadata does not describe {package}@{version}")
+    tarball, integrity = dist.get("tarball"), dist.get("integrity")
+    if not isinstance(tarball, str) or not tarball.startswith(NPM_REGISTRY) or not isinstance(integrity, str):
+        raise ValueError("registry metadata lacks a registry.npmjs.org tarball and integrity")
+    if locked_integrity is not None and integrity != locked_integrity:
+        raise ValueError(f"{package}@{version} tarball integrity differs from the lock")
+    expected = locked_integrity if locked_integrity is not None else integrity
+    raw = fetch(tarball)
+    if not _npm_integrity(raw, expected):
+        label = "lock" if locked_integrity is not None else "registry"
+        raise ValueError(f"{package}@{version} tarball does not match the {label} integrity")
+    return meta, tarball, _npm_member(raw, path)
+
+
+def add_npm(lock: dict, root: Path, package: str, version: str, path: str, dest: str, *, license: str,
+            name: str | None = None, file_name: str | None = None, allow_license: bool = False,
+            fetch=download) -> dict:
+    if not _NPM_PACKAGE.fullmatch(package) or len(package) > 214:
+        raise ValueError("expected an npm package name such as js-yaml or @scope/name")
+    if not _NPM_VERSION.fullmatch(version):
+        raise ValueError("expected an exact version such as 5.5.0 (no ranges or dist-tags)")
+    _safe_relative(path, "path")
+    _safe_relative(dest, "destination directory")
+    file_name = file_name or PurePosixPath(path).name
+    if "/" in file_name:
+        raise ValueError("--as is a file name, not a path")
+    _safe_relative(file_name, "file name")
+    name = name or package.rsplit("/", 1)[-1].lower()
+    if not _NAME.fullmatch(name):
+        raise ValueError(f"invalid name: {name!r}")
+    if not license_ok(license, strict=True) and not allow_license:
+        raise LicenseNotAllowed(f"license {license!r} is not in the allow list; review it and pass --allow-license")
+    meta, tarball, data = _npm_fetch(package, version, path, fetch)
+    declared = meta.get("license")
+    if isinstance(declared, str) and declared != license and not allow_license:
+        raise ValueError(f"stated license {license!r} differs from the package's {declared!r}")
+    destination = f"{dest.rstrip('/')}/{file_name}"
+    target = root / destination
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    entry = {"name": name, "source": "npm", "package": package, "version": version, "path": path,
+             "url": tarball, "tarball_integrity": meta["dist"]["integrity"], "destination": destination,
+             "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(), "sri": sri(data), "license": license}
+    lock["files"] = [e for e in lock["files"] if e["name"] != name and e["destination"] != destination] + [entry]
+    ensure_gitattributes(root, destination)
+    return entry
+
+
 def check(lock: dict, root: Path, *, remote: bool = False, fetch=download) -> list[str]:
     problems = []
     for e in lock["files"]:
@@ -232,7 +328,20 @@ def check(lock: dict, root: Path, *, remote: bool = False, fetch=download) -> li
             problems.append(f"{e['name']}: .gitattributes lacks '{e['destination']} -text' (CRLF would break SRI)")
         if not license_ok(e["license"], strict=True) and not e.get("license_reviewed"):
             problems.append(f"{e['name']}: license {e['license']} not allowed")
-        if remote and hashlib.sha256(fetch(e["url"])).hexdigest() != e["sha256"]:
+        if remote and e.get("source") == "npm":
+            locked = e.get("tarball_integrity")
+            if not isinstance(locked, str):
+                problems.append(f"{e['name']}: lock lacks tarball_integrity for npm entry")
+                continue
+            try:
+                _, tarball, data = _npm_fetch(e["package"], e["version"], e["path"], fetch,
+                                              locked_integrity=locked)
+            except ValueError as exc:
+                problems.append(f"{e['name']}: {exc}")
+            else:
+                if tarball != e["url"] or hashlib.sha256(data).hexdigest() != e["sha256"]:
+                    problems.append(f"{e['name']}: {e['package']}@{e['version']} now serves different bytes")
+        elif remote and hashlib.sha256(fetch(e["url"])).hexdigest() != e["sha256"]:
             problems.append(f"{e['name']}: {e['ref']} now serves different bytes (moved tag?)")
     return problems
 
@@ -294,10 +403,12 @@ def oneliners(entry: dict) -> list[str]:
         code = re.sub(r"\b(COMMAND|SECONDS|CAP|DIGEST|DEST)\b", lambda m: values[m[0]], _FETCH_EXAMPLE)
         return "python -S -c " + shlex.quote(code)
 
+    # An npm entry's url is the tarball; the single file comes from jsDelivr's npm mirror.
+    file_url = cdn_url(entry) if entry.get("source") == "npm" else entry["url"]
     curl = shell(repr(["curl", "-fsSL", "--max-time", str(TIMEOUT_SECONDS),
-                       "--max-filesize", str(MAX_BYTES), entry["url"]]))
+                       "--max-filesize", str(MAX_BYTES), file_url]))
     urllib = shell("[sys.executable, '-S', '-c', " + repr(_URLLIB_READ) + ", "
-                   + repr(entry["url"]) + ", " + repr(str(MAX_BYTES)) + ", "
+                   + repr(file_url) + ", " + repr(str(MAX_BYTES)) + ", "
                    + repr(str(TIMEOUT_SECONDS)) + "]")
     # fetch's integrity option may buffer the entire response before exposing a
     # stream. Verify SRI ourselves after the bounded read instead.
@@ -353,6 +464,15 @@ def main(argv=None) -> int:
     a.add_argument("--license", required=True, help="SPDX expression, e.g. MIT or \"MPL-2.0 OR Apache-2.0\"")
     a.add_argument("--name", help="short name for tag/oneliners (default: file stem)")
     a.add_argument("--allow-license", action="store_true", help="record a reviewed license outside the allow list")
+    n = sub.add_parser("add-npm", help="extract one file from an exact npm release tarball and record it")
+    n.add_argument("package", help="npm package, e.g. js-yaml or @scope/name")
+    n.add_argument("version", help="exact version, e.g. 5.5.0")
+    n.add_argument("path", help="file path inside the package, e.g. dist/browser/js-yaml.umd.min.js")
+    n.add_argument("--dest", required=True, help="directory to write into, relative to --root")
+    n.add_argument("--license", required=True, help="SPDX expression; must match the package's license field")
+    n.add_argument("--name", help="short name for tag/oneliners (default: package name)")
+    n.add_argument("--as", dest="file_name", help="file name to write (default: the file's own name)")
+    n.add_argument("--allow-license", action="store_true", help="record a reviewed license outside the allow list")
     c = sub.add_parser("check", help="verify local bytes, SRI and licenses")
     c.add_argument("--remote", action="store_true", help="also re-download to detect a moved ref")
     t = sub.add_parser("tag", help="print a <script> tag with integrity")
@@ -365,13 +485,19 @@ def main(argv=None) -> int:
     root, lock_path = Path(args.root), Path(args.root) / args.lock
     try:
         lock = load_lock(lock_path)
-        if args.command == "add":
-            entry = add(lock, root, args.repository, args.ref, args.path, args.dest, license=args.license,
-                        name=args.name, allow_license=args.allow_license)
+        if args.command in ("add", "add-npm"):
+            if args.command == "add":
+                entry = add(lock, root, args.repository, args.ref, args.path, args.dest, license=args.license,
+                            name=args.name, allow_license=args.allow_license)
+                origin = f"{entry['repository']}@{entry['ref']}"
+            else:
+                entry = add_npm(lock, root, args.package, args.version, args.path, args.dest, license=args.license,
+                                name=args.name, file_name=args.file_name, allow_license=args.allow_license)
+                origin = f"npm:{entry['package']}@{entry['version']}"
             if args.allow_license and not license_ok(entry["license"]):
                 entry["license_reviewed"] = True
             save_lock(lock_path, lock)
-            print(f"{entry['name']} {entry['repository']}@{entry['ref']} {entry['destination']} "
+            print(f"{entry['name']} {origin} {entry['destination']} "
                   f"{entry['bytes']} bytes sha256={entry['sha256']}")
             print(script_tag(entry))
             return 0
