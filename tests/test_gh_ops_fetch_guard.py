@@ -152,12 +152,15 @@ def test_default_openssh_disables_password_and_hostkey_prompts(monkeypatch, git_
     popen = subprocess.Popen
 
     def record(argv, **kwargs):
-        # Windows cleanup may invoke taskkill without an explicit env.\n        # Observe only Git transport calls; do not assume all Popen calls are Git.\n        if len(argv) > 1 and argv[1] == "ls-remote":\n            seen.append((argv, kwargs["env"]))
+        # Windows cleanup may invoke taskkill without an explicit env.
+        # Observe only Git transport calls; do not assume all Popen calls are Git.
+        if len(argv) > 1 and argv[0] == "git" and argv[1] == "ls-remote":
+            seen.append((argv, kwargs["env"]))
         return popen(argv, **kwargs)
 
     monkeypatch.setattr(subprocess, "Popen", record)
     remote_probe("ssh://git@127.0.0.1:1/absent.git", git_env)
-    (_, env), = [(a, e) for a, e in seen if a[1] == "ls-remote"]
+    (_, env), = seen
     assert env["GIT_SSH_COMMAND"] == "ssh -o BatchMode=yes"
     monkeypatch.setattr(subprocess, "Popen", popen)
     if not shutil.which("ssh"):
