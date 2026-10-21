@@ -42,11 +42,16 @@
       "use_case": "ページ・環境の対象選択を比較と要約まで通す",
       "entrypoint": "scripts/app_comparison.py / scripts/app_digest.py --list",
       "connection": "Ironmateの選択APIを呼び、対象外PNGをデコードしない",
-      "status": "pull_request_open",
-      "verification": "focused_tests_and_standalone_cli",
+      "status": "integrated",
+      "verification": "64 focused tests, actionlint, real Ironmate stdlib integration and final functional CI passed",
       "readme_blob": "9e09f55ca5a514d1a9e96d405a386c25769499f6",
       "source_url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/main/README.md",
-      "implementation_pr": "https://github.com/myon-bioinformatics/browser-test-kit/pull/110"
+      "implementation_pr": "https://github.com/myon-bioinformatics/browser-test-kit/pull/110",
+      "merge_commit": "b35370057de2d21e0306629787ad3d6668847fee",
+      "functional_checks_succeeded": 23,
+      "functional_checks_skipped": 0,
+      "independent_review": "no_remaining_findings_final_remote_blobs_verified",
+      "copilot_review": "service_error_no_code_review"
     },
     {
       "repository": "myon-bioinformatics/cli_args",
@@ -120,11 +125,16 @@
       "use_case": "必要な変換ケースだけ往復変換・差分比較する",
       "entrypoint": "scripts/converter_parity_report.py / scripts/converter_contract_audit.py --list",
       "connection": "種別付きcase keyで選択し、部分評価の範囲を報告へ残す",
-      "status": "pull_request_open",
-      "verification": "focused_tests_and_standalone_cli",
+      "status": "integrated",
+      "verification": "25 focused tests, standalone CLI/default JSON compatibility and final functional CI passed",
       "readme_blob": "436faa95a5c18ba2622e44da1c858d035d504f7d",
       "source_url": "https://github.com/myon-bioinformatics/markdown/blob/main/README.md",
-      "implementation_pr": "https://github.com/myon-bioinformatics/markdown/pull/117"
+      "implementation_pr": "https://github.com/myon-bioinformatics/markdown/pull/117",
+      "merge_commit": "0c818f116659adebaa2d4042d3b356e5f3094f14",
+      "functional_checks_succeeded": 24,
+      "functional_checks_skipped": 2,
+      "independent_review": "no_remaining_findings_final_remote_blobs_verified",
+      "copilot_review": "service_error_no_code_review"
     },
     {
       "repository": "myon-bioinformatics/mcp-toolcall-lab",
@@ -132,11 +142,16 @@
       "use_case": "offline fixtureを名前で選んで再生する",
       "entrypoint": "python -m mcp_toolcall_lab.prompt_experiment replay --list",
       "connection": "両replayで共通選択を使い、一覧時は読込・再生・出力をしない",
-      "status": "pull_request_open",
-      "verification": "focused_tests_and_standalone_cli",
+      "status": "integrated",
+      "verification": "57 focused tests, standalone CLI/default compatibility and final functional CI passed",
       "readme_blob": "01e8fda732cf838b68a5680528b36b2f8d311076",
       "source_url": "https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/main/README.md",
-      "implementation_pr": "https://github.com/myon-bioinformatics/mcp-toolcall-lab/pull/148"
+      "implementation_pr": "https://github.com/myon-bioinformatics/mcp-toolcall-lab/pull/148",
+      "merge_commit": "8a60c116237ede6deeeafbf4bea16e5b3f8845ee",
+      "functional_checks_succeeded": 8,
+      "functional_checks_skipped": 0,
+      "independent_review": "no_remaining_findings_final_remote_blobs_verified",
+      "copilot_review": "service_error_no_code_review"
     },
     {
       "repository": "myon-bioinformatics/myon-bioinformatics",

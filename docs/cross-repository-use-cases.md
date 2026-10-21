@@ -50,7 +50,7 @@
 - **markdown**: 2つの変換評価へ共通のケース選択を接続。25件の関連テストが成功。既定JSONは変更前と一致し、部分評価だけ選択範囲を追加する。parityの部分評価は`selected_cases_only`とする。
 - **gh_identity**: 既存`capabilities`を`python -S`で実行し、利用可能性とバージョンを観測できた。`overview`と`split-preflight`も既存入口として文書を確認した。追加の同等コマンドは作らない。
 
-実装PR: [browser-test-kit #110](https://github.com/myon-bioinformatics/browser-test-kit/pull/110)、[mcp-toolcall-lab #148](https://github.com/myon-bioinformatics/mcp-toolcall-lab/pull/148)、[markdown #117](https://github.com/myon-bioinformatics/markdown/pull/117)。独立レビュー済みで最終headのCI確認中。その他の接続候補は、利用場面を確認した段階であり実装完了ではない。
+実装PR: [browser-test-kit #110](https://github.com/myon-bioinformatics/browser-test-kit/pull/110)、[mcp-toolcall-lab #148](https://github.com/myon-bioinformatics/mcp-toolcall-lab/pull/148)、[markdown #117](https://github.com/myon-bioinformatics/markdown/pull/117)。3件とも最終headの機能・互換性CI成功後にmainへ統合した。Copilot自動レビューはサービスエラーだったため、その結果を成功とは扱わず、別エージェントによる最終headの独立レビューとblob照合を根拠に判断した。その他20件の接続候補は、既存入口と利用場面を確認した段階であり、追加接続の実装完了ではない。
 
 ## 続きの実装候補
 
@@ -58,4 +58,14 @@
 2. Flutterの完全性監査を維持しながら、監査結果から画面番号・責務・未分類状態を抽出できるようにする。
 3. ghiとyourselfの既存観測をNagoyActionのdoctorや失敗調査へ渡す。認証・通信の失敗と未確認を成功に扱わない。
 4. QueRyuの選択キャッシュ、BlueProbeの観測、SakAnalytics/PythDRagorasの解析、DRAgoWingの表示を、既存の入出力契約で接続する。
+
+## 統合記録
+
+| 実装 | mainの統合コミット | 成功した機能CI | 既定スキップ |
+| --- | --- | --- | --- |
+| browser-test-kit | [b353700](https://github.com/myon-bioinformatics/browser-test-kit/commit/b35370057de2d21e0306629787ad3d6668847fee) | 23 | 0 |
+| mcp-toolcall-lab | [8a60c11](https://github.com/myon-bioinformatics/mcp-toolcall-lab/commit/8a60c116237ede6deeeafbf4bea16e5b3f8845ee) | 8 | 0 |
+| markdown | [0c818f1](https://github.com/myon-bioinformatics/markdown/commit/0c818f116659adebaa2d4042d3b356e5f3094f14) | 24 | 2 |
+
+統合後の再確認でも、MCP 57件とMarkdown 25件の関連テスト、両CLIの一覧表示が成功した。browser-test-kitも統合後のtree照合、64件の関連テストと計画一覧の再確認が成功した。
 
