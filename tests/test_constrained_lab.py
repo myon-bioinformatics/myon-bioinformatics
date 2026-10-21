@@ -23,7 +23,13 @@ class CampaignTests(unittest.TestCase):
         rows = [case(0), case(1, "raise SystemExit(3)", 0), case(2)]
         stopped = constrained_lab.campaign(rows, rounds=3, seed=7)
         continued = constrained_lab.campaign(rows, rounds=3, seed=7, keep_going=True)
-        self.assertLess(stopped["rounds_completed"], 3)
+        shards = constrained_lab.plan(rows, 3, 7)
+        failing_round = next(i for i, shard in enumerate(shards, 1)
+                             if any(c["id"] == "1" for c in shard))
+        self.assertEqual(stopped["rounds_completed"], failing_round)
+        self.assertEqual(stopped["rounds_passed"], failing_round - 1)
+        self.assertEqual(stopped["cases_completed"], failing_round)
+        self.assertEqual(stopped["reports"][-1]["results"][0]["id"], "1")
         self.assertEqual(continued["rounds_completed"], 3)
         self.assertEqual(continued["rounds_passed"], 2)
     def test_invalid(self):
