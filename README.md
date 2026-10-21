@@ -226,3 +226,7 @@ individual `consumers` entries override it. When absent, the original
 `default_single_file_policy` enrollment remains unchanged. Archived applications,
 external-package applications and parent-managed vendor tools are not implicitly
 placed into consumer trees. See [catalog coverage](docs/vendor-catalog-coverage.md).
+
+## Discover production entry points
+
+[Convention-driven file and symbol discovery](docs/convention-discovery.md) gives verified one-liners for this repository. Supply filename/name rules to inspect production code, configuration and workflows with the shared stdlib-only xprobe tool.
