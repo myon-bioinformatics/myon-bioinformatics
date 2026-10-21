@@ -45,3 +45,16 @@ an energy or per-worker measurement. Non-Linux systems need a separate adapter.
 Future integration: wire immutable Ironmate pixel-grid fixtures and NagoyAction
 seeded shard fixtures into trusted case manifests, then compare sequential and
 concurrent runs under a **shared** cgroup budget. Avoid asserting speedup in CI.
+
+## Opt-in fail-closed budget preflight
+
+```sh
+python -S tools/constrained_lab_resources.py --verify-budget \
+  --max-memory-bytes 134217728 --max-cpu-fraction 1 \
+  python -S -c 'print(1)'
+```
+
+This checks the current cgroup's `memory.max` and `cpu.max` **before**
+launching the command, rejecting unbounded or weaker limits. The OS must still
+configure/enforce those limits. This does not prove network isolation,
+per-process memory peaks, or child-process containment.
