@@ -22,3 +22,26 @@ The GHA smoke runs only trusted self-tests under a five-minute job timeout.
 The runner is NOT a sandbox: network isolation, memory/CPU quotas, peak RSS,
 child CPU accounting, energy measurement and bounded streaming output remain future work.
 Do not run untrusted commands or assume the benchmark is an energy measurement.
+
+
+## Resource measurement (Linux cgroup v2)
+
+```sh
+python -S tools/constrained_lab_resources.py --timeout 10 python -S -c 'print(1)'
+```
+
+This is an **opt-in** cgroup-v2 measurement command; it reports the whole cgroup's
+CPU usage delta, throttled CPU time, current memory, historic memory peak and memory
+limit. It does **not** enforce quotas or block network access. Use an isolated
+cgroup/container with `memory.max=134217728`, a separately configured CPU quota,
+and network isolation before claiming a 128 MiB offline run.
+
+Important: `memory.peak` is the historical cgroup high-water mark, not necessarily
+the peak attributable to this invocation. It can include other processes and prior
+work. Likewise CPU usage includes every process in the cgroup. Run one workload
+per fresh isolated cgroup for meaningful measurements. These counters are not
+an energy or per-worker measurement. Non-Linux systems need a separate adapter.
+
+Future integration: wire immutable Ironmate pixel-grid fixtures and NagoyAction
+seeded shard fixtures into trusted case manifests, then compare sequential and
+concurrent runs under a **shared** cgroup budget. Avoid asserting speedup in CI.
