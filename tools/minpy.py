@@ -1102,22 +1102,30 @@ def _cycles(edges: dict[str, set[str]]) -> list[tuple[str, ...]]:
     stack: list[str] = []
     found: list[tuple[str, ...]] = []
 
-    def visit(node: str) -> None:
+    for node in nodes:
+        if color[node] != 0:
+            continue
         color[node] = 1
         stack.append(node)
-        for nxt in sorted(edges.get(node, ())):
+        # Keep each suspended neighbor iterator, just as recursive DFS does.
+        frames = [(node, iter(sorted(edges.get(node, ()))))]
+        while frames:
+            current, neighbors = frames[-1]
+            try:
+                nxt = next(neighbors)
+            except StopIteration:
+                frames.pop()
+                stack.pop()
+                color[current] = 2
+                continue
             state = color.get(nxt, 0)
             if state == 1:
                 start = stack.index(nxt)
                 found.append(_normalize_cycle(stack[start:]))
             elif state == 0:
-                visit(nxt)
-        stack.pop()
-        color[node] = 2
-
-    for node in nodes:
-        if color[node] == 0:
-            visit(node)
+                color[nxt] = 1
+                stack.append(nxt)
+                frames.append((nxt, iter(sorted(edges.get(nxt, ())))))
     return sorted(set(found))
 
 

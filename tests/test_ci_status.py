@@ -2,6 +2,7 @@ import io
 import json
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from datetime import datetime, timezone
 from unittest.mock import patch
 import ci_status as ci
 from pathlib import Path
@@ -83,6 +84,50 @@ class StatusTests(unittest.TestCase):
             with redirect_stdout(out):
                 self.assertEqual(ci.main(["Ironmate", "--json"]), 0)
         self.assertEqual(json.loads(out.getvalue())["schema"], "ci-observation/1")
+
+    def test_cli_observation_timestamp_is_shared_by_text_and_json(self):
+        observed = datetime(2026, 10, 20, 23, 0, 1, 123456, tzinfo=timezone.utc)
+        one = {"repository": "o/one", "target": "main", "head_sha": "a" * 40,
+               "state": "COMPLETE", "completed": 0, "total": 0, "checks": []}
+        two = dict(one, repository="o/two", state="RUNNING")
+        error = RuntimeError("not included in output")
+        for observations, names in [([one], "one"), ([one, two], "one,two"),
+                                    ([error], "one"), ([one, error], "one,two"), ([], "")]:
+            for json_mode in (False, True):
+                for check_mode in (False, True):
+                    with self.subTest(names=names, json=json_mode, check=check_mode):
+                        rows = [row for row in observations if isinstance(row, dict)]
+                        errors = [{"repository": name, "error": "RuntimeError"}
+                                  for name, row in zip(names.split(","), observations)
+                                  if isinstance(row, RuntimeError)]
+                        argv = ["--repos", names]
+                        if json_mode:
+                            argv.append("--json")
+                        if check_mode:
+                            argv.append("--ci-check")
+                        out = io.StringIO()
+                        with patch.object(ci, "observe", side_effect=observations), patch.object(
+                            ci.datetime, "datetime"
+                        ) as clock, redirect_stdout(out):
+                            clock.now.return_value = observed
+                            code = ci.main(argv)
+                        clock.now.assert_called_once_with(timezone.utc)
+                        self.assertEqual(code, 2 if errors else 1 if check_mode and two in rows else 0)
+                        if json_mode:
+                            self.assertEqual(json.loads(out.getvalue()), {
+                                "schema": "ci-observation/1", "observed_at": observed.isoformat(),
+                                "repositories": rows, "errors": errors,
+                            })
+                        else:
+                            lines = out.getvalue().splitlines()
+                            self.assertEqual(lines[0], "Observed at: " + observed.isoformat())
+                            self.assertEqual(out.getvalue().count("Observed at:"), 1)
+                            self.assertEqual(len(lines), 1 + len(rows) + len(errors))
+                            for row in rows:
+                                self.assertIn(row["repository"] + "  main  " + row["state"]
+                                              + "  0/0  aaaaaaaa", lines)
+                            for failure in errors:
+                                self.assertIn(failure["repository"] + "  UNKNOWN (RuntimeError)", lines)
 
     def test_ci_check_cli_flag(self):
         for state, expected_code in [

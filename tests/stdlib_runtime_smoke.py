@@ -13,6 +13,16 @@ import vendor_sync
 
 
 class StdlibRuntimeTests(unittest.TestCase):
+    def test_minpy_deep_dependency_cycles(self):
+        from tools import minpy
+        limit = sys.getrecursionlimit()
+        nodes = ["n%06d" % i for i in range(max(1500, limit + 100))]
+        edges = {left: {right} for left, right in zip(nodes, nodes[1:])}
+        self.assertEqual(minpy._cycles(edges), [])
+        edges[nodes[-1]] = {nodes[0]}
+        self.assertEqual(minpy._cycles(edges), [tuple(nodes)])
+        self.assertEqual(sys.getrecursionlimit(), limit)
+
     def test_vendor_materialization_and_rejection(self):
         data = b"VALUE = 42\n"
         entry = dict(repository="example/runtime", ref="main", commit="a" * 40,
