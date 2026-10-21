@@ -1,0 +1,263 @@
+{
+  "schema": "cross-repository-use-cases/1",
+  "observed_date": "2026-10-21",
+  "scope": "23 observed public non-archived repositories; repository search and visibility checks; no vendor enrollment or pin promotion",
+  "entries": [
+    {
+      "repository": "myon-bioinformatics/Aoi",
+      "stage": "実行前確認",
+      "use_case": "研究パイプラインの入力・変数・実行予定を確認する",
+      "entrypoint": "python nagoyaction/nagoyaction.py doctor cycles/c001-chunichi/pipeline.toml",
+      "connection": "子プロジェクトごとの依存調査へ対象パスを渡す",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "338a3884bd5a027c977821e3cb960c37d84629bf",
+      "source_url": "https://github.com/myon-bioinformatics/Aoi/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/ascii_artist",
+      "stage": "文字による図示",
+      "use_case": "端末やテキスト報告に処理関係を描く",
+      "entrypoint": "diagram(...) / render_diagram(...)",
+      "connection": "選択した実行計画を軽量な文字図へ整形する",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "c0cbc23720f1f92f7ac5f79d3c8bdc76c7902a39",
+      "source_url": "https://github.com/myon-bioinformatics/ascii_artist/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/BlueProbe",
+      "stage": "観測",
+      "use_case": "取得済みHTMLから構造と未抽出箇所を記録する",
+      "entrypoint": "blueprobe.py / HtmlSource / inspect_queryu_cache",
+      "connection": "QueRyuの選択キャッシュを観測入力へ渡す",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "286e14a9232691c4f446db91556ad53492edd867",
+      "source_url": "https://github.com/myon-bioinformatics/BlueProbe/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/browser-test-kit",
+      "stage": "比較・要約",
+      "use_case": "ページ・環境の対象選択を比較と要約まで通す",
+      "entrypoint": "scripts/app_comparison.py / scripts/app_digest.py --list",
+      "connection": "Ironmateの選択APIを呼び、対象外PNGをデコードしない",
+      "status": "pull_request_open",
+      "verification": "focused_tests_and_standalone_cli",
+      "readme_blob": "9e09f55ca5a514d1a9e96d405a386c25769499f6",
+      "source_url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/main/README.md",
+      "implementation_pr": "https://github.com/myon-bioinformatics/browser-test-kit/pull/110"
+    },
+    {
+      "repository": "myon-bioinformatics/cli_args",
+      "stage": "入力・実行",
+      "use_case": "引数検証と実行予定のdry-runを共通化する",
+      "entrypoint": "python -S examples/run_cli.py --format json --dry-run -- git status --short",
+      "connection": "選択した対象を既存コマンドへ明示的に渡す",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "ac2544fb3e3e5e51c23b20c2316de6c4db2eee19",
+      "source_url": "https://github.com/myon-bioinformatics/cli_args/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/DRAgoWing",
+      "stage": "可視化",
+      "use_case": "保存結果をID・列・条件で選んで表示する",
+      "entrypoint": "python -m dragowing --results <DIR> --out <OUT> --id <ID>",
+      "connection": "選択結果をweb-uiやMarkdownの報告へ渡す",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "4f0abe73df8f88e3fadf2bfd016871f1670ee4d2",
+      "source_url": "https://github.com/myon-bioinformatics/DRAgoWing/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/Err-o-RoadRunner",
+      "stage": "失敗調査",
+      "use_case": "失敗時だけstderr・終了コード・JUnitをまとめる",
+      "entrypoint": "python3 -S triage.py digest <artifacts.zip> --limit 5",
+      "connection": "選んだ失敗証跡をghiのrun/job識別子と一緒に渡す",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "852ff549a35ae77cb9470792dc3e608f44768b4a",
+      "source_url": "https://github.com/myon-bioinformatics/Err-o-RoadRunner/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/flutter_navigation_basic",
+      "stage": "画面監査",
+      "use_case": "画面の責務・到達性・未分類状態を抽出する",
+      "entrypoint": "python/pattern_responsibility_audit.py --json",
+      "connection": "完全性監査を維持したうえで結果表示に状態・画面番号の選択を加える",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "8511cd64d065a32000b27f15b8ac3d44f71ff627",
+      "source_url": "https://github.com/myon-bioinformatics/flutter_navigation_basic/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/gh_identity",
+      "stage": "GitHub前提確認",
+      "use_case": "checkout・Git/gh有無・対象PR/SHA/CIを確認する",
+      "entrypoint": "python -S gh_identity.py capabilities / overview / git-status",
+      "connection": "実行対象の同一性と前提観測を他ツールへ渡す",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "0cb68c0e01aaf5e9f5087ba9bbfc71fc20da4c86",
+      "source_url": "https://github.com/myon-bioinformatics/gh_identity/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/Ironmate",
+      "stage": "成果物変換",
+      "use_case": "ページ・環境を選んで画像比較シートを生成する",
+      "entrypoint": "python -S browser_matrix.py <ROOT> --page 'flutter-*' --env 'Linux-*' --list",
+      "connection": "browser-test-kitの比較・要約から同じ選択を渡す",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "88719ff18c8634735ea7617513a38712f99a1dfa",
+      "source_url": "https://github.com/myon-bioinformatics/Ironmate/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/markdown",
+      "stage": "比較・整形",
+      "use_case": "必要な変換ケースだけ往復変換・差分比較する",
+      "entrypoint": "scripts/converter_parity_report.py / scripts/converter_contract_audit.py --list",
+      "connection": "種別付きcase keyで選択し、部分評価の範囲を報告へ残す",
+      "status": "pull_request_open",
+      "verification": "focused_tests_and_standalone_cli",
+      "readme_blob": "436faa95a5c18ba2622e44da1c858d035d504f7d",
+      "source_url": "https://github.com/myon-bioinformatics/markdown/blob/main/README.md",
+      "implementation_pr": "https://github.com/myon-bioinformatics/markdown/pull/117"
+    },
+    {
+      "repository": "myon-bioinformatics/mcp-toolcall-lab",
+      "stage": "実験選択",
+      "use_case": "offline fixtureを名前で選んで再生する",
+      "entrypoint": "python -m mcp_toolcall_lab.prompt_experiment replay --list",
+      "connection": "両replayで共通選択を使い、一覧時は読込・再生・出力をしない",
+      "status": "pull_request_open",
+      "verification": "focused_tests_and_standalone_cli",
+      "readme_blob": "01e8fda732cf838b68a5680528b36b2f8d311076",
+      "source_url": "https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/main/README.md",
+      "implementation_pr": "https://github.com/myon-bioinformatics/mcp-toolcall-lab/pull/148"
+    },
+    {
+      "repository": "myon-bioinformatics/myon-bioinformatics",
+      "stage": "横断管理",
+      "use_case": "用途・入口・接続先・検証状態を継続して照合する",
+      "entrypoint": "vendor-catalog.json / vendor-consumers.json / 本一覧",
+      "connection": "各リポジトリの利用候補と実装PRを一か所から追跡する",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "41b562b6dc3c9810a4e5fdb95338c6b5823215bc",
+      "source_url": "https://github.com/myon-bioinformatics/myon-bioinformatics/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/myon-bioinformatics.github.io",
+      "stage": "公開導線",
+      "use_case": "取り込んだ実験ページとプロジェクトの入口を集約する",
+      "entrypoint": "python -S scripts/import_lab_pages.py --source <EXPORT>",
+      "connection": "検証済み成果物への導線をプロジェクト検索に載せる",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "29e862c1d21bdcb17d67ad5e25c181fc66a1b1c4",
+      "source_url": "https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/NagoyAction",
+      "stage": "実行計画",
+      "use_case": "定義済み処理を実行前にdoctor/showで確認する",
+      "entrypoint": "python nagoyaction.py doctor <pipeline.toml>",
+      "connection": "ghiとyourselfの前提観測を実行前に参照する",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "6cd163dc1370cce8194d2699fab583123d81abe4",
+      "source_url": "https://github.com/myon-bioinformatics/NagoyAction/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/nvd_nist_known_vulns",
+      "stage": "依存情報照合",
+      "use_case": "明示されたCPEとバージョンでCVE情報を取得する",
+      "entrypoint": "python nvd_nist_known_vulns.py --cpe '<CPE23>'",
+      "connection": "前提観測と明示CPE対応表を照合する。パッケージ名だけでCVEを断定しない",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "bd76c9055a1de39d7b9f98095f53998effe001af",
+      "source_url": "https://github.com/myon-bioinformatics/nvd_nist_known_vulns/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/PythDRagoras",
+      "stage": "仮説検証",
+      "use_case": "条件候補を比較し反例を残す",
+      "entrypoint": "pythdragoras.py / littlebit_approx.py",
+      "connection": "選択した結果データから条件候補を評価する",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "c8ba59ce75ab8a83b6f09255291f99ab4ab86b2b",
+      "source_url": "https://github.com/myon-bioinformatics/PythDRagoras/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/QueRyu",
+      "stage": "取得・共有",
+      "use_case": "キャッシュをgroup/key/timeで選んで共有する",
+      "entrypoint": "python cache_share.py --cache <CACHE> query --group <GROUP>",
+      "connection": "再取得せず選択キャッシュをBlueProbeへ渡す",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "bcd4f6bcae1199774ffcb0ea81241b4f14f3b81a",
+      "source_url": "https://github.com/myon-bioinformatics/QueRyu/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/SakAnalytics",
+      "stage": "集計",
+      "use_case": "観測JSONLと設定から指標を作る",
+      "entrypoint": "python sakanalytics.py --games <JSONL> --config <TOML> --out <OUT>",
+      "connection": "汎用設定に従って選択観測を集計する",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "f139be2761af3aceb8be24f5b2f80abe50fa229c",
+      "source_url": "https://github.com/myon-bioinformatics/SakAnalytics/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/search_seq_including_spaces",
+      "stage": "入力探索",
+      "use_case": "形式・圧縮拡張子・名前から配列候補を選ぶ",
+      "entrypoint": "python -S sequence_tool.py discover <ROOT> --format fasta --pattern 'sample*'",
+      "connection": "候補JSONを既存の読み取り・検証・解析コマンドへ渡す",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "b2c552ec864af16426391efc80c370bdd0fcc83e",
+      "source_url": "https://github.com/myon-bioinformatics/search_seq_including_spaces/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/web-ui",
+      "stage": "表示",
+      "use_case": "共通UIとHTML生成を報告画面へ再利用する",
+      "entrypoint": "from web_ui import render_document",
+      "connection": "選択済みの表・グラフ・報告を一枚のHTMLへ表示する",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "3bd50be4beb6bb74258d4a06393b77a34993d062",
+      "source_url": "https://github.com/myon-bioinformatics/web-ui/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/xprobe",
+      "stage": "ソース探索",
+      "use_case": "ファイル・Pythonシンボル・設定を規則で探す",
+      "entrypoint": "python -S xprobe.py --symbols <ROOT> --symbol-pattern '*Adapter' --brief",
+      "connection": "候補を静的に発見し、実行時登録や完全な動作証明とは区別する",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "850cf0e42d00cb000d3ed3e27491299c25ee340b",
+      "source_url": "https://github.com/myon-bioinformatics/xprobe/blob/main/README.md"
+    },
+    {
+      "repository": "myon-bioinformatics/yourself",
+      "stage": "実行環境確認",
+      "use_case": "OS・Python・runnerの観測値を確認する",
+      "entrypoint": "yourself.collect() / python yourself.py --runner-env --runner-env-json",
+      "connection": "ghiのGitHub観測と組み合わせ、ローカルとCIの環境差を確認する",
+      "status": "existing_entrypoint_integration_candidate",
+      "verification": "README_and_targeted_source_review_not_all_commands_executed",
+      "readme_blob": "5224e16b7127753afb20e4a29a87417f1e5f2aaf",
+      "source_url": "https://github.com/myon-bioinformatics/yourself/blob/main/README.md"
+    }
+  ]
+}
