@@ -1,0 +1,27 @@
+name: Constrained lab smoke
+on:
+  pull_request:
+    paths:
+      - 'tools/constrained_lab.py'
+      - 'tests/test_constrained_lab.py'
+      - '.github/workflows/constrained-lab.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: constrained-lab-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Offline stdlib smoke
+        run: |
+          PYTHONPATH=. python -S -m unittest discover -s tests -p test_constrained_lab.py -v
