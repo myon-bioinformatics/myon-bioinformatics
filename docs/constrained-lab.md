@@ -58,3 +58,16 @@ This checks the current cgroup's `memory.max` and `cpu.max` **before**
 launching the command, rejecting unbounded or weaker limits. The OS must still
 configure/enforce those limits. This does not prove network isolation,
 per-process memory peaks, or child-process containment.
+
+## Algorithm microbenchmarks (representative fixtures only)
+
+```sh
+python -S tools/constrained_lab_algorithms.py --seed 7 --width 1024 --trials 5
+```
+
+Compares set intersection against a pure-Python integer-bitset implementation on
+identical seeded inputs and checks output hashes. Also tests repeated tile
+deduplication and malformed/partial images. This does **not** yet execute
+Ironmate's own image algorithms or NagoyAction's own shard planner; do not
+claim repository-level performance gains from these synthetic fixtures.
+Precomputation, conversion and memory costs are not yet fully measured.

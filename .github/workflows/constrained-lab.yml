@@ -5,9 +5,11 @@ on:
       - 'tools/constrained_lab.py'
       - 'tools/constrained_lab_bench.py'
       - 'tools/constrained_lab_resources.py'
+      - 'tools/constrained_lab_algorithms.py'
       - 'tests/test_constrained_lab.py'
       - 'tests/test_constrained_lab_bench.py'
       - 'tests/test_constrained_lab_resources.py'
+      - 'tests/test_constrained_lab_algorithms.py'
       - '.github/workflows/constrained-lab.yml'
   workflow_dispatch:
 permissions:
