@@ -3,7 +3,9 @@ on:
   pull_request:
     paths:
       - 'tools/constrained_lab.py'
+      - 'tools/constrained_lab_bench.py'
       - 'tests/test_constrained_lab.py'
+      - 'tests/test_constrained_lab_bench.py'
       - '.github/workflows/constrained-lab.yml'
   workflow_dispatch:
 permissions:
@@ -24,4 +26,4 @@ jobs:
           python-version: '3.12'
       - name: Offline stdlib smoke
         run: |
-          PYTHONPATH=. python -S -m unittest discover -s tests -p test_constrained_lab.py -v
+          PYTHONPATH=. python -S -m unittest discover -s tests -p 'test_constrained_lab*.py' -v
