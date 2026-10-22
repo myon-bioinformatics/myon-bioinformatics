@@ -117,3 +117,20 @@ Ironmate or NagoyAction performance result**. Python tracemalloc tracks Python
 allocations, not RSS or whole-cgroup memory. Actual OSS measurements require
 staged files, pinned transitive imports, offline OS isolation, and a fresh
 cgroup with enforced budgets. No live source is fetched by this probe.
+
+## Staged two-repository sequential/parallel integration
+
+```sh
+python -S tools/constrained_lab_integrate.py --root /staged \
+  --nagoyaction /staged/NagoyAction/localci.py \
+  --ironmate /staged/Ironmate/browser_matrix.py --rounds 1 --workers 2
+```
+
+Runs two staged source entry points with SHA-pinned imports, compares the same
+cases with one and two workers, and checks status/output-hash equivalence.
+The bundled CI tests use minimal fixture modules; they are **not** real OSS
+performance results. Stage Ironmate's import dependencies alongside
+`browser_matrix.py`. This command does not enforce cgroup limits or
+network isolation, nor does it measure child RSS or total CPU time.
+For an actual 128 MiB offline claim, execute inside a fresh isolated
+cgroup with quotas and record the resource probe separately.
