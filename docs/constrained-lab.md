@@ -75,3 +75,15 @@ deduplication and malformed/partial images. This does **not** yet execute
 Ironmate's own image algorithms or NagoyAction's own shard planner; do not
 claim repository-level performance gains from these synthetic fixtures.
 Precomputation, conversion and memory costs are not yet fully measured.
+
+## Staged offline OSS fixture checks
+
+`python -S tools/constrained_lab_fixtures.py manifest.json --root /staged/snapshot`
+
+The manifest names trusted local commands and their expected exit codes and stdout
+SHA-256. A mismatch is reported as a failure. This enables checking real
+Ironmate/NagoyAction/GHI/xprobe source snapshots **after** they have been
+staged and pinned, without a runtime GitHub API call. The fixture runner does
+not fetch or build those projects; none of their actual workloads have yet
+been benchmarked by this PR. The caller must enforce offline isolation,
+memory/CPU quotas and trusted commands. Do not feed untrusted manifests.
