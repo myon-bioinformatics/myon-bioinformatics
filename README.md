@@ -1,5 +1,11 @@
 <!-- PRESENTATION:START title -->
+<p align="center">
+  <img src="./assets/brand/profile-icon.png" width="160" height="160" alt="myon-bioinformatics: a cat beside a DNA helix and a laptop" />
+</p>
 <h1 align="center">🐍 myon-bioinformatics 🎸</h1>
+<p align="center">
+  <a href="./assets/brand/">Brand assets</a> · <a href="./assets/brand/favicon.png">Favicon (PNG)</a> · <a href="./assets/brand/favicon.ico">Favicon (ICO)</a>
+</p>
 <!-- PRESENTATION:END title -->
 
 <!-- HEADER:START -->
