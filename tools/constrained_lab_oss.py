@@ -61,7 +61,7 @@ def ironmate(module, width=32, height=32):
     finally:
         tracemalloc.stop()
     elapsed = time.perf_counter() - start
-    valid = (png.startswith(b"\\x89PNG\\r\\n\\x1a\\n".decode("unicode_escape").encode("latin1"))
+    valid = (png.startswith(bytes.fromhex("89504e470d0a1a0a"))
              and png == module.encode_png(width, height, rgba))
     return {"project": "Ironmate", "pass": valid, "width": width, "height": height,
             "png_sha256": hashlib.sha256(png).hexdigest(), "png_bytes": len(png),

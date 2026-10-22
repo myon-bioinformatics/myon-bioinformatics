@@ -39,7 +39,7 @@ class StagedOSSTests(unittest.TestCase):
             def encode_png(width, height, rgba):
                 def chunk(tag, data):
                     return struct.pack(">I", len(data))+tag+data+struct.pack(">I", zlib.crc32(tag+data))
-                raw = b"".join(b"\\x00" + rgba[y*width*4:(y+1)*width*4] for y in range(height))
-                return (b"\\x89PNG\\r\\n\\x1a\\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width,height,8,6,0,0,0)) +
+                raw = b"".join(bytes([0]) + rgba[y*width*4:(y+1)*width*4] for y in range(height))
+                return (bytes.fromhex("89504e470d0a1a0a") + chunk(b"IHDR", struct.pack(">IIBBBBB", width,height,8,6,0,0,0)) +
                         chunk(b"IDAT",zlib.compress(raw)) + chunk(b"IEND",b""))
         self.assertTrue(oss.ironmate(Module)["pass"])
