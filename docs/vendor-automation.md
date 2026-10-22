@@ -128,9 +128,11 @@ on failure. Interpreter resolution order: explicit `python`, `process.env[envVar
 on Windows `py -3`. Python older than 3.9 is rejected with a clear message (exit
 2). `-S` is optional per tool via `noSite: true` (default off).
 
-Enroll with `vendor_sync.py` like any other catalog source (`destination`:
-`vendor/py_launch.cjs`, plus `blob_sha` and `sha256` from `inspect_source` or
-`vendor_catalog.py verify`). Thin consumer wrapper (three lines):
+Add the `vendor-catalog.json` recommendation only after the launcher is on
+default branch (merge commit pin), then enroll with `vendor_sync.py` like any
+other catalog source (`destination`: `vendor/py_launch.cjs`, plus `blob_sha`
+and `sha256` from `inspect_source` or `vendor_catalog.py verify`). Thin
+consumer wrapper (three lines):
 
 ```js
 "use strict";

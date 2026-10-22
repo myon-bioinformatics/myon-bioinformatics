@@ -90,8 +90,7 @@
         "git_inspector.py",
         "vendor_catalog.py",
         "vendor_stage.py",
-        "vendor_sync.py",
-        "py_launch.cjs"
+        "vendor_sync.py"
       ],
       "status": "catalogued"
     },

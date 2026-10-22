@@ -7,6 +7,7 @@
  *
  * Interpreter resolution (first match that runs Python 3.9+): opts.python, process.env[opts.envVar],
  * process.env.PYTHON, python3, python, and on Windows `py -3`.
+ * Explicit opts.python or a set opts.envVar value does not fall back to later candidates.
  *
  * `noSite` adds CPython `-S` (no site.py / no user site); default is off so tools opt in explicitly.
  */
@@ -15,20 +16,30 @@ const { platform } = require("node:os");
 
 const MIN_PYTHON = [3, 9];
 const DEFAULT_ENV_VAR = "PYTHON";
+const DEFAULT_PROBE_TIMEOUT_MS = 5_000;
 const VERSION_PROBE =
   "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}'); sys.exit(0 if sys.version_info >= (3, 9) else 1)";
 
-/** @typedef {{ cmd: string, prefix: string[], label: string }} ResolvedPython */
+/** @typedef {{ cmd: string, prefix: string[], label: string, strict?: boolean }} PythonCandidate */
 
 /**
  * @param {object} opts
- * @returns {ResolvedPython}
+ * @returns {PythonCandidate[]}
  */
-function resolvePython(opts = {}) {
-  const specs = [];
-  if (opts.python) specs.push({ cmd: opts.python, prefix: [], label: String(opts.python) });
+function buildCandidateSpecs(opts = {}) {
   const envVar = typeof opts.envVar === "string" && opts.envVar ? opts.envVar : DEFAULT_ENV_VAR;
-  if (process.env[envVar]) {
+  const explicitEnvVar = Object.hasOwn(opts, "envVar");
+  const plat = opts.platform ?? platform();
+
+  if (opts.python) {
+    return [{ cmd: opts.python, prefix: [], label: String(opts.python), strict: true }];
+  }
+  if (explicitEnvVar && process.env[envVar]) {
+    return [{ cmd: process.env[envVar], prefix: [], label: `$${envVar}`, strict: true }];
+  }
+
+  const specs = [];
+  if (!explicitEnvVar && process.env[envVar]) {
     specs.push({ cmd: process.env[envVar], prefix: [], label: `$${envVar}` });
   }
   if (envVar !== "PYTHON" && process.env.PYTHON) {
@@ -36,30 +47,81 @@ function resolvePython(opts = {}) {
   }
   specs.push({ cmd: "python3", prefix: [], label: "python3" });
   specs.push({ cmd: "python", prefix: [], label: "python" });
-  if (platform() === "win32") {
+  if (plat === "win32") {
     specs.push({ cmd: "py", prefix: ["-3"], label: "py -3" });
   }
+  return specs;
+}
 
+/**
+ * @param {PythonCandidate} spec
+ * @param {object} opts
+ */
+function probeCandidate(spec, opts) {
+  const timeout = opts.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
+  const result = spawnSync(spec.cmd, [...spec.prefix, "-c", VERSION_PROBE], {
+    encoding: "utf8",
+    timeout,
+  });
+  const line = String(result.stdout || "").trim().split(/\r?\n/)[0] || "";
+  return { result, version: line };
+}
+
+/**
+ * @param {object} opts
+ * @returns {{ cmd: string, prefix: string[], label: string }}
+ */
+function resolvePython(opts = {}) {
+  const specs = opts.candidates ?? buildCandidateSpecs(opts);
   let lastVersion = "";
   for (const spec of specs) {
-    const result = spawnSync(spec.cmd, [...spec.prefix, "-c", VERSION_PROBE], {
-      encoding: "utf8",
-      timeout: 30_000,
-    });
-    if (result.error) continue;
-    const line = String(result.stdout || "").trim().split(/\r?\n/)[0] || "";
-    if (line) lastVersion = line;
+    const { result, version } = probeCandidate(spec, opts);
+    if (version) lastVersion = version;
+    if (result.error) {
+      if (spec.strict) {
+        throw interpreterError(`py_launch: ${spec.label}: ${result.error.message}`, {
+          code: "ENOINTERPRETER",
+          label: spec.label,
+        });
+      }
+      continue;
+    }
     if (result.status === 0) {
       return { cmd: spec.cmd, prefix: spec.prefix, label: spec.label };
+    }
+    if (spec.strict) {
+      const detail = version
+        ? ` (found ${version}; Python ${MIN_PYTHON.join(".")}+ required)`
+        : ` (Python ${MIN_PYTHON.join(".")}+ required)`;
+      throw interpreterError(`py_launch: ${spec.label} is not suitable${detail}`, {
+        code: "ENOINTERPRETER",
+        label: spec.label,
+        version,
+      });
     }
   }
 
   const detail = lastVersion
     ? ` (found ${lastVersion}; Python ${MIN_PYTHON.join(".")}+ required)`
     : ` (Python ${MIN_PYTHON.join(".")}+ required; no interpreter responded)`;
-  const err = new Error(`py_launch: no suitable Python interpreter${detail}`);
-  err.code = "ENOINTERPRETER";
-  throw err;
+  throw interpreterError(`py_launch: no suitable Python interpreter${detail}`, { code: "ENOINTERPRETER" });
+}
+
+function interpreterError(message, extra = {}) {
+  const err = new Error(message);
+  Object.assign(err, extra);
+  return err;
+}
+
+function runFailure(message, result) {
+  const err = new Error(message);
+  if (result) {
+    err.status = result.status ?? null;
+    err.stdout = result.stdout ?? Buffer.alloc(0);
+    err.stderr = result.stderr ?? Buffer.alloc(0);
+    if (result.signal) err.signal = result.signal;
+  }
+  return err;
 }
 
 /**
@@ -89,16 +151,16 @@ function run(scriptPath, args, options = {}) {
     maxBuffer: options.maxBuffer,
   });
   if (result.error) {
-    const err = new Error(`py_launch: Python process failed: ${result.error.message}`);
+    const err = runFailure(`py_launch: Python process failed: ${result.error.message}`, result);
     err.cause = result.error;
     throw err;
   }
   if (result.signal) {
-    throw new Error(`py_launch: Python process terminated by signal ${result.signal}`);
+    throw runFailure(`py_launch: Python process terminated by signal ${result.signal}`, result);
   }
   if (result.status !== 0) {
     const msg = (result.stderr && result.stderr.toString("utf8").trim()) || "Python script failed";
-    throw new Error(msg);
+    throw runFailure(msg, result);
   }
   return result;
 }
@@ -119,14 +181,28 @@ function main(scriptPath, opts = {}) {
   const argv = opts.argv ?? process.argv.slice(2);
   const pyArgs = [...resolved.prefix, ...pythonArgv(scriptPath, argv, Boolean(opts.noSite))];
   const child = spawn(resolved.cmd, pyArgs, { stdio: "inherit" });
+  const forwardSignal = (signal) => {
+    if (!child.killed) child.kill(signal);
+  };
+  process.on("SIGINT", forwardSignal);
+  process.on("SIGTERM", forwardSignal);
   child.on("error", (error) => {
     process.stderr.write(`py_launch: ${error.message}\n`);
     process.exitCode = 2;
   });
   child.on("exit", (code, signal) => {
+    process.removeListener("SIGINT", forwardSignal);
+    process.removeListener("SIGTERM", forwardSignal);
     if (signal) process.exitCode = 2;
     else process.exitCode = code === null ? 2 : code;
   });
 }
 
-module.exports = { main, run, resolvePython };
+module.exports = {
+  main,
+  run,
+  resolvePython,
+  buildCandidateSpecs,
+  DEFAULT_PROBE_TIMEOUT_MS,
+  VERSION_PROBE,
+};

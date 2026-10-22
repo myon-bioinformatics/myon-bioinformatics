@@ -524,16 +524,6 @@
       }
     },
     {
-      "repository": "myon-bioinformatics/myon-bioinformatics",
-      "commit": "3c7ac5562a53ecb81009437ec7dfa61ab7f908e4",
-      "reason": "Shared Node stdlib launcher for vendored single-file Python tools (Ironmate flow_export/image_digest pattern). Catalog commit advances to the accepting main merge commit when this change lands; consumers lock destination vendor/py_launch.cjs with vendor-lock/1 path, blob_sha, and sha256 from vendor_sync inspect_source.",
-      "source": "py_launch.cjs",
-      "default_enrollment": {
-        "enrollment": "skipped",
-        "reason": "explicit_consumer_only"
-      }
-    },
-    {
       "repository": "myon-bioinformatics/browser-test-kit",
       "commit": "8d8512fefea38993e5b3695c0706075cf05071ad",
       "source": "scripts/browser_execution.mjs",
