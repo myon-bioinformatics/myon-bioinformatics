@@ -289,6 +289,12 @@ browser-test-kit, with its unit/parity tests owned here. See [the contract](docs
 Consumers enroll the source/LICENSE via `vendor_sync` and keep only integration
 checks, rather than maintain generic operation implementations or duplicate tests.
 
+For coordinated changes across repositories, `fleet-apply --manifest fleet.json`
+groups files per repository, reuses existing PRs and verifies explicitly listed
+source PRs before commenting/closing them. `pr-edit --append-body-file` updates
+metadata without discarding existing text; `git-push` sends an existing commit
+with destination readback. See [the operation guide](docs/gh-ops.md).
+
 ## Shared tooling and evidence
 
 This repository also owns reusable CI workflows and stdlib-only tooling for

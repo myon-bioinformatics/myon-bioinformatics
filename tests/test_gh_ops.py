@@ -873,7 +873,8 @@ def test_pr_edit_dry_run_reports_current_to_new_and_never_writes():
     result = gh_ops.pr_edit(REPO, 11, title="New title", base="develop", client=client)
     assert result == {"ok": True, "dry_run": True, "changed": False,
                       "fields": {"title": {"from": "Old title", "to": "New title"},
-                                 "base": {"from": "main", "to": "develop"}}}
+                                 "base": {"from": "main", "to": "develop"}},
+                      "status": "planned", "mutation_status": "not_attempted", "verification_status": "not_attempted"}
     assert stub.methods == ["GET"]
 
 

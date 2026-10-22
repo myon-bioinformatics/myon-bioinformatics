@@ -208,3 +208,123 @@ creates one commit on the current head and moves the branch fast-forward only
 the branch and the new tree and compares every blob SHA with the local bytes. A
 refused ref update leaves an unreferenced commit, which is harmless; re-plan and retry.
 At most 100 paths and 10 MiB per file. `file-put` remains the one-file contents-API path.
+
+## Coordinated updates and PR consolidation (`fleet-apply`)
+
+`fleet-apply` takes one JSON manifest for several repositories. Repeated entries
+for the same repository are grouped before network access: their files share one
+commit and one target PR. Conflicting contents for the same path, conflicting
+metadata, write/delete overlaps, missing local inputs and unknown entry fields
+are rejected before any remote request. Up to 100 repositories, 100 paths and
+100 explicit source PRs per repository are accepted; each file is at most 10 MiB.
+
+```json
+{
+  "schema": "gh-ops-fleet/1",
+  "repositories": [
+    {
+      "repository": "OWNER/project-a",
+      "target_pr": 149,
+      "sources": [150, 151],
+      "title": "Combine adapters, dependency override and documentation",
+      "append_body": "Validation: record the tests actually run here.",
+      "files": {
+        "README.md": {"from": "prepared/project-a/README.md"},
+        "docs/scope.txt": {"text": "Multiple changes, one PR.\n"}
+      },
+      "deletes": ["docs/obsolete.txt"]
+    },
+    {
+      "repository": "OWNER/project-b",
+      "branch": "work/coordinated-update",
+      "title": "Apply coordinated update",
+      "files": {"tool.py": {"from": "prepared/project-b/tool.py"}}
+    }
+  ]
+}
+```
+
+```sh
+# Inspect every repository before making changes.
+python -S gh_ops.py fleet-apply --manifest fleet.json
+# Run independent repositories in parallel; dependent steps within each stay ordered.
+python -S gh_ops.py --json fleet-apply --manifest fleet.json --jobs 4 --write > receipt.json
+```
+
+`from` paths are relative to the manifest's directory. File inputs are complete
+prepared file contents, grouped into the existing `commit-files` Git Data API
+operation; they are not unified-diff strings. `message` optionally sets that
+commit's message, and `base` defaults to `main`. `append_body` keeps existing PR
+text. Files do not need a local checkout of their destination repository.
+
+The workflow is:
+
+1. Plan every repository using read-only requests. Reuse the explicitly selected
+   `target_pr`, otherwise the PR for the requested branch, otherwise the sole
+   open PR against the selected base. With several candidates, require an
+   explicit target; unrelated PRs are never silently designated as sources.
+2. Create a work branch only when needed. Refuse the default/base branch and
+   refuse a branch already attached to another open PR. Merge each explicitly
+   listed source's captured **full head SHA** into the work branch, verifying
+   ancestry. A conflict stops that repository before any source PR is closed.
+3. Apply all grouped files in one verified commit. Reuse the target PR, or
+   re-query the branch immediately before creating one. Update title/body once
+   and record each source number/SHA in a consolidated-scope section.
+4. Re-read all sources and prove their captured heads are ancestors of the final
+   target head. For each still-open source, post and read back its consolidation
+   comment, re-check both heads, then close and read back that PR. Sources already
+   closed remain closed. The target remains open for review and CI.
+
+Exact repeats skip unchanged file commits, source merges, body blocks, existing
+comments and already-closed PRs. Re-running after a lost PR-create response first
+looks up the existing branch's PR. A failure in one repository does not stop
+independent repositories. Exit 1 means at least one repository is blocked or needs
+inspection; `--json` includes completed steps, closed PRs, the failed stage and
+remaining sources. The default output gives one compact status per repository.
+
+This is a resumable sequence, not a transaction across repositories. Earlier
+verified work is retained after failure. Inspect uncertain receipts before
+rerunning: the command never blindly retries a mutation. Parallel invocations on
+the same repository are unsupported; GitHub PR creation/PATCH and branch merges
+have no atomic compare-and-swap. Immediate re-reads detect observed changes but
+cannot exclude changes between the last check and the write. Source ancestry
+requires captured commits, so squash/cherry-pick equivalence without those commits
+is not accepted as closure evidence. Fork PR heads are currently refused.
+Dry runs list requested work; they do not predict every merge conflict. No CI is
+run by this command, and ancestry/receipt success does not mean CI success or a
+merge to the default branch.
+
+## Edit title and body together (`pr-edit`)
+
+```sh
+python -S gh_ops.py pr-edit OWNER/REPO 149 --title "Consolidated change" --append-body-file scope.md
+python -S gh_ops.py pr-edit OWNER/REPO 149 --title "Consolidated change" --append-body-file scope.md --write
+python -S gh_ops.py pr-edit OWNER/REPO 150 --state closed --write
+```
+
+`--body-file` replaces the body exactly, including UTF-8/CRLF/trailing newlines;
+`--append-body-file` instead preserves existing text and appends the exact block
+once, with a blank-line separator. The two flags are mutually exclusive. A repeat
+that is already satisfied does no PATCH. Appends re-read the snapshot immediately
+before PATCH and stop on observed changes; this is not atomic compare-and-swap.
+Mutation uncertainty, successful mutation with failed readback, and exact verified
+readback have separate receipts. Existing `pr-body-set`, `pr-body-replace` and
+`issue-comment --file` remain available.
+
+## Push an already committed branch (`git-push`)
+
+```sh
+python -S gh_ops.py git-push --root path/to/checkout
+python -S gh_ops.py git-push --root path/to/checkout --write
+```
+
+This pushes the captured HEAD SHA to the current branch on `origin`, without
+creating another commit. `--remote NAME` selects a configured named remote;
+`--branch NAME` sets the destination and is required for detached HEAD. The
+operation has one total `--timeout` budget (default 60 seconds), makes no force,
+tag or submodule push, and does not retry. Multiple push URLs are refused. The
+result verifies the destination tip against the **push URL**, which may differ
+from the fetch URL, and never emits credentials, remote URLs or raw transport
+output. A failed/uncertain push or failed readback exits nonzero. Use shell `&&`
+to proceed to metadata updates only after a verified push; do not pipe away its
+exit status with `tail`.
