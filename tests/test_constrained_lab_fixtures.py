@@ -33,7 +33,7 @@ class FixtureTests(unittest.TestCase):
             source = Path(directory) / "worker.py"
             source.write_text("print('hello')\\n".replace("\\n", "\n"), encoding="utf-8")
             spec = {"name": "staged", "argv": [sys.executable, "-S", "worker.py"],
-                    "expected_exit": 0, "sha256": hashlib.sha256(b"hello\\n").hexdigest(),
+                    "expected_exit": 0, "sha256": hashlib.sha256(b"hello\n").hexdigest(),
                     "sources": {"worker.py": hashlib.sha256(source.read_bytes()).hexdigest()}}
             self.assertTrue(fixtures.run([spec], directory)["results"][0]["pass"])
             source.write_text("print('changed')\\n".replace("\\n", "\n"), encoding="utf-8")
