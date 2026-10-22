@@ -4,6 +4,10 @@ Tracks #133. The runner assigns each trusted case to exactly one deterministic s
 Use `python -S tools/constrained_lab.py cases.json --rounds 10 --seed 7 --workers 2`.
 A round stops on failure by default, or continues with `--keep-going`.
 Empty shards are not independent evidence. A pass fraction is coverage, not a success probability.
+The case list must be nonempty and `--rounds` must not exceed the case count.
+Both the runner and comparison CLI reject these invalid inputs with exit 2 before
+executing any case or emitting a success report. For fewer than 10 cases, set the
+runner's `--rounds` explicitly (for example, `--rounds 1` for a single case).
 
 ## Compare sequential and concurrent runs
 

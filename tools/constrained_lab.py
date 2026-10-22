@@ -19,6 +19,10 @@ def plan(cases, rounds, seed):
     ids = [c["id"] for c in cases]
     if len(ids) != len(set(ids)):
         raise ValueError("duplicate case IDs")
+    if not ids:
+        raise ValueError("cases must not be empty")
+    if rounds > len(ids):
+        raise ValueError("rounds must not exceed the number of cases")
     order = list(cases)
     random.Random(seed).shuffle(order)
     return [order[i::rounds] for i in range(rounds)]
