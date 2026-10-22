@@ -304,7 +304,10 @@ python -S gh_ops.py pr-edit OWNER/REPO 150 --state closed --write
 
 `--body-file` replaces the body exactly, including UTF-8/CRLF/trailing newlines;
 `--append-body-file` instead preserves existing text and appends the exact block
-once, with a blank-line separator. The two flags are mutually exclusive. A repeat
+once, with a blank-line separator. A block counts as already appended only when
+it matches the whole body or a section bounded by body edges or blank lines
+(LF, CRLF or CR); `foo` inside `foobar` does not count. Internal block text and
+line endings must match exactly. The two flags are mutually exclusive. A repeat
 that is already satisfied does no PATCH. Appends re-read the snapshot immediately
 before PATCH and stop on observed changes; this is not atomic compare-and-swap.
 Mutation uncertainty, successful mutation with failed readback, and exact verified

@@ -1099,6 +1099,57 @@ def pr_body_set(repo: str, number: int, *, new: str, write: bool = False, client
 _PR_EDIT_STATES = ("open", "closed")
 
 
+def _skip_one_break(text: str, index: int, step: int) -> int:
+    """Move across one CR, LF, or CRLF from a break character."""
+    if step < 0:
+        if text[index] == "\n":
+            index -= 1
+            if index >= 0 and text[index] == "\r":
+                index -= 1
+        else:
+            index -= 1
+        return index
+    if text[index] == "\r":
+        index += 1
+        if index < len(text) and text[index] == "\n":
+            index += 1
+    else:
+        index += 1
+    return index
+
+
+def _block_boundary(text: str, index: int, before: bool) -> bool:
+    """True at a body edge or a blank line bordering this section."""
+    if before:
+        if index == 0:
+            return True
+        if text[index - 1] not in "\r\n":
+            return False
+        prev = _skip_one_break(text, index - 1, -1)
+        return prev < 0 or text[prev] in "\r\n"
+    if index == len(text):
+        return True
+    if text[index] not in "\r\n":
+        return False
+    nxt = _skip_one_break(text, index, 1)
+    return nxt >= len(text) or text[nxt] in "\r\n"
+
+
+def _block_already_appended(body: str, block: str) -> bool:
+    """True when the exact block is the whole body or a blank-line section.
+
+    A shorter overlap, including a match inside a longer line, does not count.
+    """
+    start = 0
+    while True:
+        found = body.find(block, start)
+        if found < 0:
+            return False
+        if _block_boundary(body, found, True) and _block_boundary(body, found + len(block), False):
+            return True
+        start = found + 1
+
+
 def pr_edit(repo: str, number: int, *, title: str | None = None, base: str | None = None,
             state: str | None = None, body: str | None = None, append_body: str | None = None,
             write: bool = False, client: Client | None = None) -> dict:
@@ -1134,7 +1185,7 @@ def pr_edit(repo: str, number: int, *, title: str | None = None, base: str | Non
     if append_body is not None:
         block = append_body.strip("\r\n")
         old = current["body"]
-        fields["body"] = old if block in old else (old.rstrip() + "\n\n" if old.strip() else "") + block
+        fields["body"] = old if _block_already_appended(old, block) else (old.rstrip() + "\n\n" if old.strip() else "") + block
     report = {key: {"from": current[key], "to": value} for key, value in fields.items()}
     out = {"ok": True, "dry_run": not write, "changed": False, "fields": report,
            "mutation_status": "not_attempted", "verification_status": "not_attempted"}
