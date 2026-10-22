@@ -1,7 +1,6 @@
 """Catalog pin for py_launch.cjs after parent PR #145 merge."""
 import hashlib
 import json
-import subprocess
 from pathlib import Path
 
 import vendor_sync
@@ -26,7 +25,8 @@ def test_py_launch_catalog_entry_uses_accepting_merge_commit():
 
 def test_py_launch_catalog_pin_contains_matching_bytes():
     tool = _catalog_tool()
-    at_pin = subprocess.check_output(["git", "show", f"{tool['commit']}:{SOURCE}"])
+    at_pin = vendor_sync.public_raw_bytes(tool["repository"], tool["commit"], tool["source"])
+    assert at_pin is not None
     inspected = vendor_sync.inspect_source(tool["repository"], tool["commit"], tool["source"])
     assert hashlib.sha256(at_pin).hexdigest() == inspected["sha256"]
     assert vendor_sync.git_blob(at_pin) == inspected["blob_sha"]

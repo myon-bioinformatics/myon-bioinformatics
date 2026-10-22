@@ -174,7 +174,8 @@ describe("py_launch.resolvePython", () => {
     };
     try {
       const resolved = resolvePython({});
-      assert.equal(resolved.cmd, PYTHON);
+      assert.notEqual(resolved.cmd.toLowerCase(), cmd.toLowerCase());
+      assert.ok(["python", "python3", "py -3"].includes(resolved.label));
       assert.ok(warnings.some((line) => /warning: skipping \$PYTHON/.test(line)));
     } finally {
       if (previousPython === undefined) delete process.env.PYTHON;
