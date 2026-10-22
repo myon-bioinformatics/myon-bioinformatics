@@ -126,8 +126,10 @@ input, timeout, maxBuffer, noSite, envVar })` with `spawnSync`, surfacing stderr
 on failure. Interpreter resolution order: explicit `python`, `process.env[envVar]`
 (for example Ironmate's `IRONMATE_PYTHON`), `PYTHON`, `python3`, `python`, and
 on Windows `py -3`. Python older than 3.9 is rejected with a clear message (exit
-2). Windows `.cmd`/`.bat` interpreter paths are rejected (exit 2); use `python.exe`
-or `py -3` instead of batch shims. `-S` is optional per tool via `noSite: true`
+2). Explicit `python` or a set `envVar` rejects Windows `.cmd`/`.bat` paths (exit 2).
+Non-strict `PYTHON` pointing at a batch shim is skipped with a warning so later
+candidates (`python3`, `python`, `py -3`) can run. `-S` is optional per tool via
+`noSite: true`
 (default off).
 
 Add the `vendor-catalog.json` recommendation only after the launcher is on
