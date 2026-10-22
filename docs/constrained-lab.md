@@ -1,6 +1,12 @@
 # Constrained lab: seeded campaigns and comparative benchmark
 
 Tracks #133. The runner assigns each trusted case to exactly one deterministic seeded shard.
+The shared [small-runtime-first principle](small-runtime-principles.md) explains
+why we start with Python/Node commands and reusable stdlib/built-in helpers,
+and how relevant PRs should report capability, quality and resource tradeoffs.
+The aim is to measure what a small environment can do, not to require a hardened
+sandbox or a full benchmark suite for every change. Isolation requirements below
+apply when making the corresponding offline/resource-bound claims.
 For repeatable post-merge ancestry and test verification in a disposable checkout,
 see [verify checkout](verify-checkout.md).
 Use `python -S tools/constrained_lab.py cases.json --rounds 10 --seed 7 --workers 2`.
