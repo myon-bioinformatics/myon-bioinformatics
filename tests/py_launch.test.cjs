@@ -149,7 +149,7 @@ describe("py_launch.resolvePython", () => {
     );
   });
 
-  it("rejects Windows .cmd and .bat interpreter paths", () => {
+  it("rejects Windows .cmd and .bat interpreter paths when explicit", () => {
     assert.throws(
       () => resolvePython({ python: "C:\\Tools\\python.cmd", platform: "win32" }),
       (error) => /\.cmd\/\.bat interpreters are not supported/.test(error.message),
@@ -158,6 +158,30 @@ describe("py_launch.resolvePython", () => {
       () => resolvePython({ python: "C:\\Tools\\launch.bat", platform: "win32" }),
       (error) => /\.cmd\/\.bat interpreters are not supported/.test(error.message),
     );
+  });
+
+  it("skips non-explicit PYTHON .cmd with a warning and continues", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-python-cmd-"));
+    const cmd = path.join(dir, "python.cmd");
+    fs.writeFileSync(cmd, "@echo off\r\n", "utf8");
+    const warnings = [];
+    const previousPython = process.env.PYTHON;
+    const previousWrite = process.stderr.write;
+    process.env.PYTHON = cmd;
+    process.stderr.write = (chunk, encoding, callback) => {
+      warnings.push(String(chunk));
+      return previousWrite.call(process.stderr, chunk, encoding, callback);
+    };
+    try {
+      const resolved = resolvePython({});
+      assert.notEqual(resolved.cmd.toLowerCase(), cmd.toLowerCase());
+      assert.ok(["python", "python3", "py -3"].includes(resolved.label));
+      assert.ok(warnings.some((line) => /warning: skipping \$PYTHON/.test(line)));
+    } finally {
+      if (previousPython === undefined) delete process.env.PYTHON;
+      else process.env.PYTHON = previousPython;
+      process.stderr.write = previousWrite;
+    }
   });
 
   it("fails clearly when no interpreter is available", () => {

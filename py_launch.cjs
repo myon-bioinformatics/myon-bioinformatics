@@ -8,7 +8,8 @@
  * Interpreter resolution (first match that runs Python 3.9+): opts.python, process.env[opts.envVar],
  * process.env.PYTHON, python3, python, and on Windows `py -3`.
  * Explicit opts.python or a set opts.envVar value does not fall back to later candidates.
- * Windows `.cmd`/`.bat` interpreter paths are rejected (never spawned with `shell: true`).
+ * Windows `.cmd`/`.bat` interpreter paths are never spawned with `shell: true`.
+ * Explicit `python` or a set `envVar` rejects them; non-strict `PYTHON` skips with a warning.
  *
  * `noSite` adds CPython `-S` (no site.py / no user site); default is off so tools opt in explicitly.
  */
@@ -54,8 +55,12 @@ function buildCandidateSpecs(opts = {}) {
   return specs;
 }
 
+function isCmdBatPath(cmd) {
+  return /\.(cmd|bat)$/i.test(cmd);
+}
+
 function rejectCmdBatInterpreter(cmd, label) {
-  if (/\.(cmd|bat)$/i.test(cmd)) {
+  if (isCmdBatPath(cmd)) {
     throw interpreterError(
       `py_launch: ${label}: Windows .cmd/.bat interpreters are not supported; use python.exe or py -3`,
       { code: "ENOINTERPRETER", label },
@@ -63,8 +68,20 @@ function rejectCmdBatInterpreter(cmd, label) {
   }
 }
 
+function warnSkippedCmdBat(spec) {
+  process.stderr.write(
+    `py_launch: warning: skipping ${spec.label} (${spec.cmd}): .cmd/.bat interpreters are not supported; use python.exe or py -3\n`,
+  );
+}
+
 function probeCandidate(spec, opts) {
-  rejectCmdBatInterpreter(spec.cmd, spec.label);
+  if (isCmdBatPath(spec.cmd)) {
+    if (spec.strict) {
+      rejectCmdBatInterpreter(spec.cmd, spec.label);
+    }
+    warnSkippedCmdBat(spec);
+    return { skip: true };
+  }
   const timeout = opts.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
   const result = spawnSync(spec.cmd, [...spec.prefix, "-c", VERSION_PROBE], {
     encoding: "utf8",
@@ -82,7 +99,9 @@ function resolvePython(opts = {}) {
   const specs = opts.candidates ?? buildCandidateSpecs(opts);
   let lastVersion = "";
   for (const spec of specs) {
-    const { result, version } = probeCandidate(spec, opts);
+    const probed = probeCandidate(spec, opts);
+    if (probed.skip) continue;
+    const { result, version } = probed;
     if (version) lastVersion = version;
     if (result.error) {
       if (spec.strict) {
