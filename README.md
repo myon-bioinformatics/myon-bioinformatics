@@ -297,6 +297,10 @@ with destination readback. See [the operation guide](docs/gh-ops.md).
 
 ## Shared tooling and evidence
 
+[Immutable checkout verification](docs/verify-checkout.md) reuses post-merge
+ancestry checks and ordered test commands across repositories, recording the
+tested commit/tree in a JSON receipt from a disposable detached worktree.
+
 This repository also owns reusable CI workflows and stdlib-only tooling for
 sibling repositories. It is both the profile README and the parent tooling repo.
 
