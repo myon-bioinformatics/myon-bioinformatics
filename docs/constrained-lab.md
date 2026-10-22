@@ -97,3 +97,23 @@ source bytes. This protects reproducibility of the checked files only; it is not
 an execution sandbox, nor a guarantee that all transitive imports are pinned.
 For real Ironmate/NagoyAction runs, stage snapshots outside the CI job's
 runtime network path and enumerate the executable entry point plus dependencies.
+
+## Optional staged real-code contract probe
+
+Stage immutable NagoyAction `localci.py` or Ironmate `browser_matrix.py`
+(and Ironmate's `image_compare.py` and `photo_grid.py`) **before**
+the offline run. Record and supply SHA-256 digests:
+
+```sh
+python -S tools/constrained_lab_oss.py nagoyaction /staged/NagoyAction/localci.py --sha256 DIGEST
+python -S tools/constrained_lab_oss.py ironmate /staged/Ironmate/browser_matrix.py \
+  --sha256 DIGEST --dependency /staged/Ironmate/image_compare.py:DIGEST \
+  --dependency /staged/Ironmate/photo_grid.py:DIGEST
+```
+
+The actual source module is imported after SHA verification. The tests bundled
+in this PR use small contract doubles and are **not evidence of an actual
+Ironmate or NagoyAction performance result**. Python tracemalloc tracks Python
+allocations, not RSS or whole-cgroup memory. Actual OSS measurements require
+staged files, pinned transitive imports, offline OS isolation, and a fresh
+cgroup with enforced budgets. No live source is fetched by this probe.
