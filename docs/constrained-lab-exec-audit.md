@@ -20,6 +20,23 @@ runtime dependency to the core constrained-lab runner. It intentionally
 omits potentially sensitive argv/environment and returns `unknown` when
 tracing is unavailable, partial or truncated; no observation is not evidence
 that no external command ran. Bounded trace retention defaults to 1 MiB.
+Raw trace is read through a private
+Linux `/proc/self/fd` pipe, not spooled to disk. Exceeding the retained byte cap
+returns `trace_limit`; deadline or cap violations trigger best-effort process-group
+termination. Escaped descendants can survive, but cannot hold the reader open
+past the deadline. This is output-retention control, not a host resource budget.
+The JSON `observed_external_count` counts retained external exec attempts,
+including failed attempts. `external_count` remains `null`: even a successful
+tracer exit does not establish a complete workload total. Coverage is always
+`partial-or-unknown` when events are present and `unknown` when none are present.
+A missing/denied tracer or empty trace is never reported as a clean workload.
+At most 1,000 events are returned; `events_truncated` signals an omitted event.
+`execveat` with a named path is classified by that path; descriptor-only calls,
+unfinished lines and unsupported formats remain unknown. Escaped or truncated
+path strings are retained as strace displayed them but classified as unknown. Raw argv/environment
+are not returned in the report, though the bounded transient trace buffer can
+contain them while parsing. Workload stdout and stderr are discarded separately.
+
 A traced shell invocation is still an external executable even if the
 command subsequently uses a shell builtin. Distinguish native Python/Node
 APIs from actual child process launches.
