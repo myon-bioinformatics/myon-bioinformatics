@@ -49,7 +49,7 @@ def test_retired_git_inspector_is_explicit_skip_not_new_registration():
     assert len(retired) == 1
     assert retired[0]["action"] == "skipped"
     assert retired[0]["reason"] == "retired_after_gh_identity_migration"
-    assert result["counts"]["needs_registration"] == 5
+    assert result["counts"]["needs_registration"] == 6
     assert result["counts"]["skipped"] == 30
 
 
@@ -87,6 +87,7 @@ def test_existing_pins_remain_sole_consumer_authority():
     assert {r["source"] for r in pins if r["enrollment"] == "enrolled" and
             r["comparison"] == "different"} == {
                 "gh_identity.py",
+                "scripts/image_diff.py",
                 "xprobe.py",
                 "yourself.py",
             }

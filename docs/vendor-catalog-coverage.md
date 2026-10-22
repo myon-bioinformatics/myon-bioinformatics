@@ -66,6 +66,13 @@ requested from other consumers.
 sources (image_diff: `skipped(requires_external_package)`, flutter only;
 interaction.mjs: `skipped(explicit_consumer_only)`, flutter only). The new parent-owned tools are staged as described below; no fleet-wide enrollment is requested.
 
+2026-10-22 pillow_min catalog (Ironmate #153): browser-test-kit `scripts/image_diff.py`
+is pinned to main merge `2ee9b584` (PR #112) and uses vendored `pillow_min` only;
+default enrollment is `skipped(requires_companion_tool)` because consumers must
+also lock Ironmate `pillow_min.py` at `b45ccd3e5` (PR #154). The Ironmate stdlib
+module is catalogued with `explicit_consumer_only` and enrolled overrides for
+browser-test-kit, flutter_navigation_basic, and myon-bioinformatics.github.io.
+
 ### Staged acceptance of the new parent tools
 
 PR #96 introduces `py_matrix.py`, `pytest_brief.py`, and `publish_check.py` without recommending an unmerged intermediate commit. PR #95 adds their catalog entries only after #96 merges, using its full first-parent main merge SHA. None has registered consumers yet. Flutter #197 keeps its reviewed parent `gh_ops.py` pin `1eda992aa6fa31a902e2c06428e53ab17e8fe3c1`; a later adoption of the new git-commit implementation must verify and materialize the accepted parent merge commit, never the PR head.

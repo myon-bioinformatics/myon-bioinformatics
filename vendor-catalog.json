@@ -439,8 +439,8 @@
     },
     {
       "repository": "myon-bioinformatics/browser-test-kit",
-      "commit": "725f35900021f2fa8beecafe850cd5f7062b1ae5",
-      "reason": "Pillow-backed image diff for browser evidence; enrolled only where the dependency is already accepted.",
+      "commit": "2ee9b584340954cb5a2618e6abd8f892544c467b",
+      "reason": "Browser evidence image diff loads vendored Ironmate pillow_min (stdlib only); reviewed default-branch merge for browser-test-kit #112. Enroll only with the companion pillow_min lock.",
       "source": "scripts/image_diff.py",
       "consumers": {
         "myon-bioinformatics/flutter_navigation_basic": {
@@ -450,7 +450,31 @@
       },
       "default_enrollment": {
         "enrollment": "skipped",
-        "reason": "requires_external_package"
+        "reason": "requires_companion_tool"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/Ironmate",
+      "commit": "b45ccd3e529aefe6519aa14e14bb63fa5873639d",
+      "reason": "Stdlib-only Pillow 13-compatible imaging surface (pillow_min.py) owned by Ironmate; reviewed default-branch merge for Ironmate #154 (Refs Ironmate #153).",
+      "source": "pillow_min.py",
+      "consumers": {
+        "myon-bioinformatics/browser-test-kit": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        },
+        "myon-bioinformatics/flutter_navigation_basic": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        },
+        "myon-bioinformatics/myon-bioinformatics.github.io": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        }
+      },
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
       }
     },
     {
