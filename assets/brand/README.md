@@ -15,4 +15,7 @@ This repository is a GitHub profile and shared-tooling repository. Its README
 cannot configure the favicon of github.com or change the GitHub account avatar.
 The portfolio website manages its own browser icons separately.
 
-The concept diagram is not included or updated in this asset-only change.
+The [concept diagram](concept-overview.jpg) is the supplied updated 1536 × 1024
+JPEG, copied without cropping, recompression, or other image modifications. Its
+reference to “this site” means the [portfolio website](https://myon-bioinformatics.github.io/),
+not this GitHub profile repository.

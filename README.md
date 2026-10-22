@@ -85,6 +85,16 @@ I design and build practical GUI/CLI tools in Python, plus backend services in G
 
 ---
 
+<!-- PRESENTATION:START concept -->
+## 活動の概念図
+
+[![生命科学のデータや課題を、解析・開発・検証を通じてツールやドキュメントとして公開し、研究・コミュニティ・安全性への貢献を目指す活動の流れ](./assets/brand/concept-overview.jpg)](./assets/brand/concept-overview.jpg)
+
+活動の流れと目指す価値をまとめた概念図です。図中の「本サイト」は[ポートフォリオ](https://myon-bioinformatics.github.io/)を指します。画像をクリックすると拡大できます。
+<!-- PRESENTATION:END concept -->
+
+---
+
 <!-- PROJECTS:START -->
 ## 📦 Featured Repositories
 
