@@ -368,3 +368,38 @@ def test_default_render_shows_partial_result_and_remaining_sources():
     result = gh_ops.fleet_apply(manifest(row()), write=True, client=remote.client())
     text = gh_ops._render('fleet-apply', result)
     assert '0/1 repositories' in text and 'closed=[150]' in text and 'remaining sources: [151]' in text
+
+
+def test_multi_repo_resume_skips_completed_repo_and_integrated_sources():
+    remote = FleetRemote()
+    a = remote.add('o/a', sources=[150, 151])
+    b = remote.add('o/b', sources=[150, 151])
+    remote.refusal.add('o/a')
+    data = manifest(row(), row('o/b'))
+    first = gh_ops.fleet_apply(data, write=True, jobs=2, client=remote.client())
+    assert not first['ok'] and first['succeeded'] == 1
+    assert first['repositories'][0]['failed_stage'] == 'commit_files'
+    assert first['repositories'][0]['remaining_sources'] == [150, 151]
+    assert all(a['prs'][n]['state'] == 'open' for n in [150, 151])
+    assert all(b['prs'][n]['state'] == 'closed' for n in [150, 151])
+    remote.refusal.clear()
+    remote.calls.clear()
+    resumed = gh_ops.fleet_apply(data, write=True, jobs=2, client=remote.client())
+    assert resumed['ok'] and resumed['succeeded'] == 2
+    assert a['created'] == b['created'] == 0
+    assert not any(repo == 'o/b' for repo, *_ in writes(remote))
+    assert not any(path == 'merges' for _, _, path, _ in writes(remote))
+    assert all(r['prs'][149]['state'] == 'open' for r in [a, b])
+    assert all(len(r['comments'][n]) == 1 for r in [a, b] for n in [150, 151])
+
+
+def test_fleet_append_partial_overlap_then_resume_has_one_complete_block():
+    remote = FleetRemote()
+    r = remote.add('o/a')
+    r['prs'][149]['body'] = 'foobar'
+    data = manifest(row(sources=[], append_body='foo'))
+    first = gh_ops.fleet_apply(data, write=True, client=remote.client())
+    assert first['ok'] and r['prs'][149]['body'] == 'foobar\n\nfoo'
+    remote.calls.clear()
+    assert gh_ops.fleet_apply(data, write=True, client=remote.client())['ok']
+    assert not writes(remote) and r['created'] == 0

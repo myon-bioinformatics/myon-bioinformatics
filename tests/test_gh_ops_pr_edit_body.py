@@ -87,3 +87,62 @@ def test_cli_append_file(tmp_path, capsys):
     client, _ = client_for(routes([BEFORE]))
     assert gh_ops.main(['--json', 'pr-edit', REPO, '11', '--append-body-file', str(path)], client=client) == 0
     assert json.loads(capsys.readouterr().out)['fields']['body']['to'] == AFTER['body']
+
+
+@pytest.mark.parametrize('old,block,present', [
+    ('foobar', 'foo', False), ('barfoo', 'foo', False),
+    ('foo\nbar', 'foo', False), ('bar\nfoo', 'foo', False),
+    ('foo', 'foo', True), ('foo\n', 'foo', True), ('\nfoo', 'foo', True),
+    ('foobar\n\nfoo\n\nLater', 'foo', True),
+    ('intro\n\nfirst\n\nsecond extended', 'first\n\nsecond', False),
+    ('intro\n\nfirst\n\nsecond\n\nLater', 'first\n\nsecond', True),
+    ('foo\r\nbar', 'foo', False), ('bar\r\nfoo', 'foo', False),
+    ('bar\rfoo', 'foo', False), ('foo\rbar', 'foo', False),
+    ('\r\nfoo\r\n', 'foo', True),
+])
+def test_append_requires_a_complete_block(old, block, present):
+    current = pr_payload(body=old)
+    expected = old if present else old.rstrip() + '\n\n' + block
+    client, stub = client_for(routes([current, current, pr_payload(body=expected)]))
+    result = gh_ops.pr_edit(REPO, 11, append_body=block, write=True, client=client)
+    assert result['ok']
+    assert result['fields']['body']['to'] == expected
+    assert result['status'] == ('already_satisfied' if present else 'verified')
+    assert stub.methods == (['GET'] if present else ['GET', 'GET', 'PATCH', 'GET'])
+
+
+@pytest.mark.parametrize('newline', ['\n', '\r\n', '\r'])
+def test_mult_paragraph_block_preserves_internal_newlines_and_retries(newline):
+    block = f'first{newline}{newline}日本語 🐍{newline}last'
+    old = f'prefix-{block}-suffix'  # Partial overlap must not suppress an append.
+    appended = old + '\n\n' + block
+    after = pr_payload(body=appended)
+    later = pr_payload(body=appended + newline * 2 + 'Later note')
+    client, stub = client_for(routes([pr_payload(body=old), pr_payload(body=old), after, later]))
+    result = gh_ops.pr_edit(REPO, 11, append_body=newline + block + newline, write=True, client=client)
+    assert result['verified'] and stub.calls[2]['body'] == {'body': appended}
+    retry = gh_ops.pr_edit(REPO, 11, append_body=block, write=True, client=client)
+    assert retry['status'] == 'already_satisfied'
+    assert stub.methods == ['GET', 'GET', 'PATCH', 'GET', 'GET']
+
+
+def test_concurrent_append_is_stale_then_retry_preserves_the_other_edit():
+    original = pr_payload(body='foobar')
+    concurrent = pr_payload(body='foobar\n\nSomeone else added this')
+    after = pr_payload(body=concurrent['body'] + '\n\nfoo')
+    client, stub = client_for(routes([original, concurrent, concurrent, concurrent, after, after]))
+    first = gh_ops.pr_edit(REPO, 11, append_body='foo', write=True, client=client)
+    assert first['status'] == 'stale' and stub.methods == ['GET', 'GET']
+    assert gh_ops.pr_edit(REPO, 11, append_body='foo', write=True, client=client)['verified']
+    assert gh_ops.pr_edit(REPO, 11, append_body='foo', write=True, client=client)['status'] == 'already_satisfied'
+    assert [c['body'] for c in stub.calls if c['method'] == 'PATCH'] == [{'body': after['body']}]
+
+
+def test_concurrent_change_at_readback_does_not_report_success():
+    current = pr_payload(body='foobar')
+    changed = pr_payload(body='foobar\n\nfoo\n\nConcurrent note')
+    client, stub = client_for(routes([current, current, changed]))
+    result = gh_ops.pr_edit(REPO, 11, append_body='foo', write=True, client=client)
+    assert not result['ok'] and result['status'] == 'verification_mismatch'
+    assert result['mutation_status'] == 'succeeded'
+    assert stub.methods == ['GET', 'GET', 'PATCH', 'GET']
