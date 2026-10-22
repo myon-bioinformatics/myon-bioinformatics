@@ -85,12 +85,52 @@ class _ActiveRSS:
         self._stop.set()
 
 
-def _read_bounded(pipe, limit, overflow):
+def _nonblocking_pipe_reader(pipe):
+    """Return a reader that never waits for a writer, including on Windows."""
+    fd = pipe.fileno()
+    if os.name != "nt":
+        os.set_blocking(fd, False)
+        return lambda: os.read(fd, 65536)
+
+    # select() cannot watch Windows pipes. PeekNamedPipe also works on the
+    # anonymous pipes created by Popen, including on Python before 3.12.
+    import ctypes
+    from ctypes import wintypes
+    import msvcrt
+    peek = ctypes.WinDLL("kernel32", use_last_error=True).PeekNamedPipe
+    peek.argtypes = [wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD,
+                     ctypes.POINTER(wintypes.DWORD), ctypes.POINTER(wintypes.DWORD),
+                     ctypes.POINTER(wintypes.DWORD)]
+    peek.restype = wintypes.BOOL
+    handle = msvcrt.get_osfhandle(fd)
+
+    def read():
+        available = wintypes.DWORD()
+        if not peek(handle, None, 0, None, ctypes.byref(available), None):
+            error = ctypes.get_last_error()
+            if error == 109:  # ERROR_BROKEN_PIPE: all writers have closed.
+                return b""
+            raise ctypes.WinError(error)
+        if not available.value:
+            raise BlockingIOError()
+        # This thread is the sole reader, so these bytes cannot be consumed
+        # between the peek and read by another reader.
+        return os.read(fd, min(available.value, 65536))
+
+    return read
+
+
+def _read_bounded(pipe, limit, overflow, cancel):
     """Read both pipes concurrently, retaining no more than limit bytes each."""
     kept = bytearray()
     try:
-        while True:
-            chunk = os.read(pipe.fileno(), 65536)
+        read = _nonblocking_pipe_reader(pipe)
+        while not cancel.is_set():
+            try:
+                chunk = read()
+            except BlockingIOError:
+                cancel.wait(_POLL_SECONDS)
+                continue
             if not chunk:
                 break
             remaining = limit - len(kept)
@@ -120,7 +160,7 @@ def _stop_process(proc):
 
 
 def _reap(proc):
-    """Wait for one child with exact wait4 CPU and peak RSS, if supported."""
+    """Reap a worker with OS wait4 usage, not direct-only/tree-wide accounting."""
     if os.name == "posix" and hasattr(os, "wait4"):
         try:
             pid, status, usage = os.wait4(proc.pid, os.WNOHANG)
@@ -145,7 +185,7 @@ def _resource_values(usage):
         peak = None
     return {"cpu_user_seconds": user, "cpu_system_seconds": system,
             "cpu_seconds": total, "peak_rss_bytes": peak,
-            "resource_source": "wait4/direct-child" if usage is not None else None}
+            "resource_source": "wait4/worker-with-reaped-descendants" if usage is not None else None}
 
 
 def execute(case, round_number, seed, timeout, max_output_bytes=DEFAULT_OUTPUT_LIMIT,
@@ -163,34 +203,56 @@ def execute(case, round_number, seed, timeout, max_output_bytes=DEFAULT_OUTPUT_L
     except OSError as exc:
         return {**row, "status": "spawn_error", "error": type(exc).__name__,
                 **_resource_values(None)}
-    if tracker is not None:
+    tracking = tracker is not None
+    if tracking:
         tracker.register(proc.pid)
     overflow = threading.Event()
+    cancel_reads = threading.Event()
     usage = None
     timed_out = False
+    readers = ThreadPoolExecutor(max_workers=2)
     try:
-        with ThreadPoolExecutor(max_workers=2) as readers:
-            out = readers.submit(_read_bounded, proc.stdout, max_output_bytes, overflow)
-            err = readers.submit(_read_bounded, proc.stderr, max_output_bytes, overflow)
-            finished = False
-            # A descendant can keep pipes open after the direct child exits:
-            # keep enforcing deadline and kill the original process group.
-            while not (finished and out.done() and err.done()):
-                if not finished:
-                    finished, current = _reap(proc)
-                    if finished:
-                        usage = current
-                if overflow.is_set():
-                    _stop_process(proc)
-                elif time.monotonic() - started >= timeout and not (out.done() and err.done()):
-                    timed_out = True
-                    _stop_process(proc)
-                if not (finished and out.done() and err.done()):
-                    time.sleep(_POLL_SECONDS)
-            stdout = out.result()
-            stderr = err.result()
+        out = readers.submit(_read_bounded, proc.stdout, max_output_bytes, overflow,
+                             cancel_reads)
+        err = readers.submit(_read_bounded, proc.stderr, max_output_bytes, overflow,
+                             cancel_reads)
+        finished = False
+        # A descendant can keep pipes open after the direct child exits:
+        # keep enforcing deadline and kill the original process group.
+        while not (finished and out.done() and err.done()):
+            for future in (out, err):
+                if future.done() and future.exception() is not None:
+                    future.result()  # Propagate a read error after cleanup.
+            if not finished:
+                finished, current = _reap(proc)
+                if finished:
+                    usage = current
+                    if tracking:
+                        # A dead PID must not suppress samples of other live
+                        # workers while inherited output pipes are still open.
+                        tracker.unregister(proc.pid)
+                        tracking = False
+            if overflow.is_set():
+                _stop_process(proc)
+                cancel_reads.set()
+            elif (time.monotonic() - started >= timeout and
+                  not (finished and out.done() and err.done())):
+                timed_out = True
+                _stop_process(proc)
+                # Descendants may leave the group while retaining pipes.
+                # Stop draining too; group termination alone is not enough.
+                cancel_reads.set()
+            if not (finished and out.done() and err.done()):
+                time.sleep(_POLL_SECONDS)
+        stdout = out.result()
+        stderr = err.result()
+    except BaseException:
+        _stop_process(proc)
+        raise
     finally:
-        if tracker is not None:
+        cancel_reads.set()
+        readers.shutdown(wait=True)
+        if tracking:
             tracker.unregister(proc.pid)
         if proc.returncode is None:
             _stop_process(proc)
@@ -236,7 +298,8 @@ def _summarize_resources(rows, tracker):
             "sampled_concurrent_child_rss_peak_bytes": tracker.peak,
             "rss_sample_count": tracker.samples,
             "aggregate_host_peak_rss_bytes": None,
-            "scope": "direct worker processes only; sum of individual peaks is not concurrent peak"}
+            "scope": "wait4 worker usage may include reaped descendants; not complete process-tree accounting; sum of individual peaks is not concurrent peak",
+            "sampled_rss_scope": "live direct worker processes only"}
 
 
 def campaign(cases, rounds=10, seed=7, workers=2, timeout=10, keep_going=False,

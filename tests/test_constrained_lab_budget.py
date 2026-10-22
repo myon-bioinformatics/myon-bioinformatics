@@ -6,8 +6,10 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
+from unittest.mock import patch
 from tools import constrained_lab as lab
 from tools import constrained_lab_bench as bench
 
@@ -66,6 +68,116 @@ class OutputBudgetTests(unittest.TestCase):
         report = lab.campaign(xs, rounds=1, workers=2, timeout=0.1)
         self.assertEqual({r["id"]: r["status"] for r in report["reports"][0]["results"]},
                          {"slow": "timeout", "bad": "fail"})
+
+    def test_timeout_still_applies_after_both_output_pipes_close(self):
+        x = case("closed", "import os,time;os.close(1);os.close(2);time.sleep(2)")
+        start = time.monotonic()
+        row = lab.campaign([x], rounds=1, timeout=0.3)["reports"][0]["results"][0]
+        self.assertEqual(row["status"], "timeout")
+        self.assertNotIn("stdout_sha256", row)
+        self.assertLess(time.monotonic() - start, 1.5)
+
+    @unittest.skipUnless(os.name == "posix", "POSIX detached process groups")
+    def test_detached_pipe_holder_cannot_delay_timeout_or_output_limit(self):
+        for status, tail, timeout in (
+            ("timeout", "", 0.4),
+            ("output_limit", ";import os;os.write(1,b'x'*4096)", 2),
+        ):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
+                pid_file = Path(tmp) / "detached.pid"
+                code = ("import subprocess,sys;from pathlib import Path;"
+                        "p=subprocess.Popen([sys.executable,'-S','-c',"
+                        "'import time;time.sleep(3)'],start_new_session=True);"
+                        "Path(%r).write_text(str(p.pid))") % str(pid_file)
+                before = set(threading.enumerate())
+                try:
+                    start = time.monotonic()
+                    row = lab.campaign([case("detached", code + tail)], rounds=1,
+                                       timeout=timeout, max_output_bytes=32)["reports"][0]["results"][0]
+                    self.assertEqual(row["status"], status)
+                    self.assertNotIn("stdout_sha256", row)
+                    if status == "output_limit":
+                        self.assertEqual(row["stdout_bytes"], 32)
+                    self.assertLess(time.monotonic() - start, 1.5)
+                    self.assertFalse(set(threading.enumerate()) - before)
+                    self.assertTrue(pid_file.exists(), "worker must start its detached child")
+                finally:
+                    if pid_file.exists():
+                        try:
+                            os.kill(int(pid_file.read_text()), 9)
+                        except ProcessLookupError:
+                            pass
+
+    def test_reader_error_cancels_other_reader_and_reaps_worker(self):
+        real_popen = subprocess.Popen
+        real_reader = lab._nonblocking_pipe_reader
+        launched = []
+        fail_first = iter((True, False))
+        def start(*args, **kwargs):
+            proc = real_popen(*args, **kwargs)
+            launched.append(proc)
+            return proc
+        def reader(pipe):
+            if next(fail_first):
+                raise OSError("reader failed")
+            return real_reader(pipe)
+        before = set(threading.enumerate())
+        started = time.monotonic()
+        with patch.object(lab.subprocess, "Popen", side_effect=start), \
+             patch.object(lab, "_nonblocking_pipe_reader", side_effect=reader):
+            with self.assertRaisesRegex(OSError, "reader failed"):
+                lab.campaign([case("read-error", "import time;time.sleep(2)")],
+                             rounds=1, timeout=5)
+        self.assertEqual(len(launched), 1)
+        self.assertIsNotNone(launched[0].poll())
+        self.assertFalse(set(threading.enumerate()) - before)
+        self.assertLess(time.monotonic() - started, 1.5)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux current RSS")
+    def test_reaped_worker_with_open_pipe_does_not_block_live_rss_samples(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pid_file = Path(tmp) / "detached.pid"
+            exited = case("exited", (
+                "import subprocess,sys;from pathlib import Path;"
+                "p=subprocess.Popen([sys.executable,'-S','-c',"
+                "'import time;time.sleep(3)'],start_new_session=True);"
+                "Path(%r).write_text(str(p.pid))") % str(pid_file))
+            live = case("live", "import time;time.sleep(.3);"
+                        "buf=bytearray(64*1024*1024);time.sleep(.4)")
+            try:
+                report = lab.campaign([exited, live], rounds=1, workers=2, timeout=1.5)
+                self.assertTrue(pid_file.exists())
+                self.assertEqual({r["id"]: r["status"]
+                                  for r in report["reports"][0]["results"]},
+                                 {"exited": "timeout", "live": "pass"})
+                self.assertGreater(report["resources"]["sampled_concurrent_child_rss_peak_bytes"],
+                                   64*1024*1024)
+            finally:
+                if pid_file.exists():
+                    try:
+                        os.kill(int(pid_file.read_text()), 9)
+                    except ProcessLookupError:
+                        pass
+
+    @unittest.skipUnless(os.name == "posix" and hasattr(os, "wait4"), "POSIX wait4")
+    def test_wait4_usage_is_labeled_as_including_reaped_descendants(self):
+        child = ("import time;buf=bytearray(16*1024*1024);start=time.process_time();"
+                 "\nwhile time.process_time()-start<0.15: pass")
+        code = ("import subprocess,sys,resource,json;"
+                "subprocess.run([sys.executable,'-S','-c',%r],check=True);"
+                "r=resource.getrusage(resource.RUSAGE_SELF);"
+                "print(json.dumps({'result':{},'measurements':"
+                "{'self_cpu':r.ru_utime+r.ru_stime}}))") % child
+        x = case("waited", code)
+        x["stdout_contract"] = "result-measurements/1"
+        report = lab.campaign([x], rounds=1)
+        row = report["reports"][0]["results"][0]
+        self.assertEqual(row["status"], "pass")
+        self.assertGreater(row["cpu_seconds"], row["measurements"]["self_cpu"] + 0.1)
+        self.assertEqual(row["resource_source"], "wait4/worker-with-reaped-descendants")
+        self.assertIn("not complete process-tree accounting", report["resources"]["scope"])
+        self.assertEqual(report["resources"]["sampled_rss_scope"],
+                         "live direct worker processes only")
 
     def test_invalid_limit_rejected_before_launch(self):
         for value in (0, -1, False, 1.0):

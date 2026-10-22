@@ -31,8 +31,9 @@ This comparison executes each case twice (once per configuration), whereas an in
 campaign executes each case once.
 
 The GHA smoke runs only trusted self-tests under a five-minute job timeout.
-The runner is NOT a sandbox: network isolation, memory/CPU quotas, peak RSS,
-child CPU accounting, energy measurement and bounded streaming output remain future work.
+The runner is NOT a sandbox: network isolation, memory/CPU quotas, complete
+process-tree accounting and energy measurement remain future work. Bounded output
+and limited worker resource measurements are described below.
 Do not run untrusted commands or assume the benchmark is an energy measurement.
 
 
@@ -149,25 +150,33 @@ and the probe's default flat JSON output is unchanged.
 The bundled CI tests use minimal fixture modules; they are **not** real OSS
 performance results. Stage Ironmate's import dependencies alongside
 `browser_matrix.py`. This command does not enforce cgroup limits or
-network isolation, nor does it measure child RSS or total CPU time.
+network isolation, nor does it measure complete process-tree RSS or total CPU time.
 For an actual 128 MiB offline claim, execute inside a fresh isolated
 cgroup with quotas and record the resource probe separately.
 
-## Bounded output and direct-worker resource accounting
+## Bounded output and worker resource accounting
 
 The runner and benchmark accept `--max-output-bytes N` (default **1 MiB per
 stream**) in addition to their existing CLI flags. Each worker streams stdout
 and stderr independently into bounded byte buffers. Exceeding either limit is
 a non-success `output_limit` status; the POSIX process group is killed (or
-the direct process on Windows). Timeouts apply through pipe draining as well.
-Only complete, non-truncated successful output receives SHA-256 digests or
+the direct process on Windows). Timeouts apply until both the worker and pipe
+draining finish, including workers that close stdout/stderr before exiting.
+Draining is cancellable: descendants holding inherited pipes cannot delay the
+timeout or output-limit result, even if they leave the original process group.
+Such escaped descendants are **not** terminated by the runner.
+Only complete output from non-timeout, non-output-limit runs receives SHA-256 digests or
 structured output validation. Jobs are trusted commands, **not a sandbox**.
 
-On platforms supporting POSIX `wait4`, direct child user/system CPU seconds
-are measured at reaping. Linux and macOS also expose per-worker peak RSS (Linux
-`ru_maxrss` KiB, macOS bytes). Where unavailable, report JSON `null`, not a
-tracemalloc or cgroup substitute. The `resources` summary contains sums of
-measured child CPU seconds and individual peak RSS values, with coverage counts.
+On platforms supporting POSIX `wait4`, worker user/system CPU seconds are
+measured at reaping. These OS counters **may include descendants that the worker
+waited for**; they are neither direct-process-only nor complete process-tree
+measurements. Linux and macOS also expose `wait4` peak RSS (Linux `ru_maxrss` KiB,
+macOS bytes); it can include a waited-for descendant's peak rather than the
+worker's own peak, and is not a sum of descendant peaks. The source label is
+`wait4/worker-with-reaped-descendants`. Where unavailable, report JSON `null`, not
+a tracemalloc or cgroup substitute. The `resources` summary contains sums of
+measured worker CPU seconds and individual `wait4` peak RSS values, with coverage counts.
 **The sum of individual RSS peaks is not the simultaneous peak.** Linux additionally
 samples concurrent current RSS of live direct children via `/proc` every 10 ms;
 short-lived peaks can be missed, shared pages can be double-counted, and neither
