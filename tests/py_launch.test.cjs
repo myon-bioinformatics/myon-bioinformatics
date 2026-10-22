@@ -7,7 +7,8 @@ const { describe, it } = require("node:test");
 const { main, run, resolvePython } = require("../py_launch.cjs");
 
 const FIXTURES = path.join(__dirname, "fixtures", "py_launch");
-const PYTHON = process.env.PY_LAUNCH_TEST_PYTHON || "python3";
+const PYTHON =
+  process.env.PY_LAUNCH_TEST_PYTHON || (process.platform === "win32" ? "python" : "python3");
 
 function runNodeMain(scriptRel, extraArgv, env = {}) {
   const wrapper = `
