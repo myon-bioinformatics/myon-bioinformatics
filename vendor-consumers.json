@@ -362,6 +362,11 @@
           "repository": "myon-bioinformatics/web-ui",
           "source": "js/flow-patch.cjs",
           "destination": "vendor/web_ui/js/flow-patch.cjs"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "py_launch.cjs",
+          "destination": "vendor/py_launch.cjs"
         }
       ]
     },
