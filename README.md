@@ -206,9 +206,9 @@ compatibility from development tooling and records the governed template boundar
 
 The parent's [Python tests workflow](.github/workflows/python-tests.yml) collects
 JUnit from four development/test Python versions (3.11–3.14) and three
-vendor-portability jobs (Linux 3.11, Windows 3.12, macOS 3.12). Separate
-stdlib-only runtime smoke jobs exercise vendor tools on Python 3.9/3.10 and
-the workflow wrapper on Python 3.10 using `python -S`, without installing pytest. Raw XML and compact failure identity are
+vendor-portability jobs (Linux 3.11, Windows 3.12, macOS 3.12). A separate
+stdlib-only runtime smoke job runs `tests/stdlib_runtime_smoke.py` with `python -S`
+on Python 3.9 and 3.10, without installing pytest. Raw XML and compact failure identity are
 separate artifacts: raw XML is retained for 14 days, while compact artifacts use
 repository-default retention. A complete collection does not turn a
 failed producer job green, and a green run may have an empty failure corpus.
@@ -217,7 +217,7 @@ Browser evidence currently provides a **contract only**. Shared Playwright and
 Stagehand execution adapters are not implemented here yet; consumer capture
 runners must remain until their replacement is verified. Repository metadata's
 contract/generator pair is still maintained in
-[Ironmate](https://github.com/myon-bioinformatics/Ironmate/blob/main/docs/repository-metadata-portability.md).
+[Ironmate](https://github.com/myon-bioinformatics/Ironmate).
 
 The organization-wide target survey is in [docs/vendor-target-inventory.json](docs/vendor-target-inventory.json).
 Single-file candidates are catalogued even when they require an explicit skip:
