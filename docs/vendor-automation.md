@@ -116,6 +116,35 @@ python vendor_sync.py promote --root . --manifest vendor.lock.json
 python vendor_sync.py evidence --root . --manifest vendor.lock.json --runtime-evidence vendor-promotion.json
 ```
 
+### Node launcher for vendored Python CLIs (`py_launch.cjs`)
+
+Parent-owned `py_launch.cjs` is a single CommonJS module (Node >= 18, `node:`
+builtins only) that spawns a stdlib Python script with argv passthrough, inherited
+stdio, and exit-code forwarding (exit code 2 on spawn failure, missing
+interpreter, or signal). Library callers use `run(scriptPath, args, { python,
+input, timeout, maxBuffer, noSite, envVar })` with `spawnSync`, surfacing stderr
+on failure. Interpreter resolution order: explicit `python`, `process.env[envVar]`
+(for example Ironmate's `IRONMATE_PYTHON`), `PYTHON`, `python3`, `python`, and
+on Windows `py -3`. Python older than 3.9 is rejected with a clear message (exit
+2). Windows `.cmd`/`.bat` interpreter paths are rejected (exit 2); use `python.exe`
+or `py -3` instead of batch shims. `-S` is optional per tool via `noSite: true`
+(default off).
+
+Add the `vendor-catalog.json` recommendation only after the launcher is on
+default branch (merge commit pin), then enroll with `vendor_sync.py` like any
+other catalog source (`destination`: `vendor/py_launch.cjs`, plus `blob_sha`
+and `sha256` from `inspect_source` or `vendor_catalog.py verify`). Thin
+consumer wrapper (three lines):
+
+```js
+"use strict";
+const { main } = require("./vendor/py_launch.cjs");
+if (require.main === module) main(__dirname + "/your_tool.py", { envVar: "IRONMATE_PYTHON", noSite: true });
+```
+
+Optional `package.json` `"bin"` can point at that wrapper for `npx
+github:owner/repo#commit` style invocation; the vendored launcher stays shared.
+
 `--help` exits before filesystem/network activity. `check` is offline and fails
 on missing or mismatching files. `materialize` reuses verified local copies or
 fetches raw bytes at the locked commit, verifies both hashes, then places them.
