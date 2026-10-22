@@ -29,7 +29,8 @@ def compare(cases, *, rounds=1, seed=7, workers=2, timeout=10):
     left, right = (r["campaign"] for r in reports)
     def identities(campaign):
         return sorted((row["id"], row["status"], row.get("exit"),
-                       row.get("stdout_sha256"), row.get("stderr_sha256"))
+                       row.get("result_sha256", row.get("stdout_sha256")),
+                       row.get("stderr_sha256"))
                       for part in campaign["reports"] for row in part["results"])
     equivalent = identities(left) == identities(right)
     return {"schema": "constrained-lab-comparison/1",

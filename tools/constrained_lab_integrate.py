@@ -23,8 +23,9 @@ def run_pair(root, nagoya, ironmate, *, rounds=10, seed=7, workers=2):
     for label, source in zip(("nagoyaction", "ironmate"), sources):
         digest = hashlib.sha256(source.read_bytes()).hexdigest()
         command = [sys.executable, "-S", "-m", "tools.constrained_lab_oss",
-                   label, str(source), "--sha256", digest]
-        manifest.append({"id": label, "argv": command, "expected_exit": 0})
+                   label, str(source), "--sha256", digest, "--structured-output"]
+        manifest.append({"id": label, "argv": command, "expected_exit": 0,
+                         "stdout_contract": "result-measurements/1"})
     started = time.perf_counter()
     report = constrained_lab_bench.compare(manifest, rounds=rounds, seed=seed, workers=workers)
     report["source_sha256"] = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}

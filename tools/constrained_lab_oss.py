@@ -88,6 +88,8 @@ def main():
     parser.add_argument("project", choices=("nagoyaction", "ironmate"))
     parser.add_argument("source")
     parser.add_argument("--sha256", required=True)
+    parser.add_argument("--structured-output", action="store_true",
+                        help="separate deterministic result from measurements")
     parser.add_argument("--dependency", action="append", default=[],
                         help="PATH:SHA256 (repeatable)")
     args = parser.parse_args()
@@ -99,7 +101,15 @@ def main():
     except (OSError, ValueError, ImportError, AttributeError) as exc:
         print(type(exc).__name__ + ": " + str(exc), file=sys.stderr)
         return 2
-    print(json.dumps(result, sort_keys=True))
+    if args.structured_output:
+        measurements = {key: result[key] for key in
+                        ("wall_seconds", "python_alloc_peak_bytes")}
+        output = {"result": {key: value for key, value in result.items()
+                             if key not in measurements},
+                  "measurements": measurements}
+    else:
+        output = result
+    print(json.dumps(output, sort_keys=True))
     return 0 if result["pass"] else 1
 
 if __name__ == "__main__":

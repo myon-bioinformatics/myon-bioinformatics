@@ -128,6 +128,15 @@ python -S tools/constrained_lab_integrate.py --root /staged \
 
 Runs two staged source entry points with SHA-pinned imports, compares the same
 cases with one and two workers, and checks status/output-hash equivalence.
+The integration opts into `stdout_contract: "result-measurements/1"` and the
+probe's `--structured-output`: stdout contains a `result` object and a separate
+`measurements` object. Only the canonical JSON hash of `result` is compared,
+alongside case ID, status, exit code and stderr hash. All deterministic fields
+(including pass, case/shard counts and PNG digest/size) remain in `result`.
+Wall time and Python allocation peak remain in each case's `measurements`;
+the raw stdout hash is also retained for audit. Malformed envelopes fail the
+case. Commands without this explicit contract retain whole-stdout comparison,
+and the probe's default flat JSON output is unchanged.
 The bundled CI tests use minimal fixture modules; they are **not** real OSS
 performance results. Stage Ironmate's import dependencies alongside
 `browser_matrix.py`. This command does not enforce cgroup limits or

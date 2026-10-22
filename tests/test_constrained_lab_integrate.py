@@ -32,3 +32,10 @@ class IntegrationTests(unittest.TestCase):
             result = integrate.run_pair(folder, n, i, rounds=1)
             self.assertTrue(result["equivalent"])
             self.assertEqual(result["runs"][0]["campaign"]["cases_completed"], 2)
+            for run in result["runs"]:
+                for part in run["campaign"]["reports"]:
+                    for row in part["results"]:
+                        self.assertEqual(row["status"], "pass")
+                        self.assertIn("result_sha256", row)
+                        self.assertGreaterEqual(row["measurements"]["wall_seconds"], 0)
+                        self.assertGreater(row["measurements"]["python_alloc_peak_bytes"], 0)

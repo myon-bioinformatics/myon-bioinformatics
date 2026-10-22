@@ -36,10 +36,24 @@ def execute(case, round_number, seed, timeout):
     try:
         result = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True,
                                 timeout=timeout, check=False)
-        return {"id": case["id"], "status": "pass" if result.returncode == case["expected_exit"] else "fail",
+        row = {"id": case["id"], "status": "pass" if result.returncode == case["expected_exit"] else "fail",
                 "exit": result.returncode, "elapsed": round(time.monotonic()-started, 6),
                 "stdout_sha256": hashlib.sha256(result.stdout).hexdigest(),
                 "stderr_sha256": hashlib.sha256(result.stderr).hexdigest()}
+        if case.get("stdout_contract") == "result-measurements/1":
+            try:
+                payload = json.loads(result.stdout)
+                if (not isinstance(payload, dict) or set(payload) != {"result", "measurements"}
+                    or not isinstance(payload["result"], dict)
+                    or not isinstance(payload["measurements"], dict)):
+                    raise ValueError("invalid result/measurements envelope")
+                normalized = json.dumps(payload["result"], sort_keys=True,
+                                        separators=(",", ":"), allow_nan=False)
+                row["result_sha256"] = hashlib.sha256(normalized.encode()).hexdigest()
+                row["measurements"] = payload["measurements"]
+            except (ValueError, UnicodeError):
+                row["status"] = "invalid_output"
+        return row
     except subprocess.TimeoutExpired:
         return {"id": case["id"], "status": "timeout", "elapsed": round(time.monotonic()-started, 6)}
     except OSError as exc:
@@ -54,6 +68,8 @@ def campaign(cases, rounds=10, seed=7, workers=2, timeout=10, keep_going=False):
             not isinstance(case.get("argv"), list) or not case["argv"] or
             any(type(x) is not str or not x for x in case["argv"])):
             raise ValueError("invalid case")
+        if case.get("stdout_contract") not in (None, "result-measurements/1"):
+            raise ValueError("unknown stdout contract")
     result = []
     for n, shard in enumerate(plan(cases, rounds, seed), 1):
         with ThreadPoolExecutor(max_workers=workers) as pool:
