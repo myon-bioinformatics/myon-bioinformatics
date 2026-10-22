@@ -1,5 +1,11 @@
 <!-- PRESENTATION:START title -->
+<p align="center">
+  <img src="./assets/brand/profile-icon.png" width="160" height="160" alt="myon-bioinformatics: a cat beside a DNA helix and a laptop" />
+</p>
 <h1 align="center">🐍 myon-bioinformatics 🎸</h1>
+<p align="center">
+  <a href="./assets/brand/">Brand assets</a> · <a href="./assets/brand/favicon.png">Favicon (PNG)</a> · <a href="./assets/brand/favicon.ico">Favicon (ICO)</a>
+</p>
 <!-- PRESENTATION:END title -->
 
 <!-- HEADER:START -->
@@ -76,6 +82,16 @@ I design and build practical GUI/CLI tools in Python, plus backend services in G
 
 [Portfolio](https://myon-bioinformatics.github.io/) • [GitHub](https://github.com/myon-bioinformatics) • [Twitter](https://twitter.com/myonitbusiness) • [lit.link](https://lit.link/myon123) • [Linktree](https://linktr.ee/myon123)
 <!-- PROFILE:END -->
+
+---
+
+<!-- PRESENTATION:START concept -->
+## 活動の概念図
+
+[![生命科学のデータや課題を、解析・開発・検証を通じてツールやドキュメントとして公開し、研究・コミュニティ・安全性への貢献を目指す活動の流れ](./assets/brand/concept-overview.jpg)](./assets/brand/concept-overview.jpg)
+
+活動の流れと目指す価値をまとめた概念図です。図中の「本サイト」は[ポートフォリオ](https://myon-bioinformatics.github.io/)を指します。画像をクリックすると拡大できます。
+<!-- PRESENTATION:END concept -->
 
 ---
 
