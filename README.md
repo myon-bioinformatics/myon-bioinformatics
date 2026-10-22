@@ -100,29 +100,29 @@ I design and build practical GUI/CLI tools in Python, plus backend services in G
 
 > **Selection source:** [projects.json](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/main/projects.json) · **Repository facts:** [api/repos.json](https://myon-bioinformatics.github.io/api/repos.json)
 
-### [python3nmap_GUI_for_Beginners](https://github.com/myon-bioinformatics/python3nmap_GUI_for_Beginners)
+### [search_seq_including_spaces](https://github.com/myon-bioinformatics/search_seq_including_spaces)
 
-Beginner-friendly Nmap GUI wrapper (Python + PySimpleGUI).
+Standard-library Python CLI for DNA and protein sequence search with CSV/JSONL output (CI-tested on Python 3.10–3.14).
 
-`python` `security` `gui` `nmap`
+`python` `bioinformatics` `dna` `cli`
 
-### [scapy_GUI_for_Beginners](https://github.com/myon-bioinformatics/scapy_GUI_for_Beginners)
+### [nvd_nist_known_vulns](https://github.com/myon-bioinformatics/nvd_nist_known_vulns)
 
-Packet crafting/inspection via GUI for newcomers.
+Single-file, standard-library client for the NVD CVE API 2.0 with deterministic JSON Lines output.
 
-`python` `scapy` `networking` `gui`
+`python` `security` `cve` `nvd`
 
-### [convert_img_fmt_to_webp-GUI-](https://github.com/myon-bioinformatics/convert_img_fmt_to_webp-GUI-)
+### [Ironmate](https://github.com/myon-bioinformatics/Ironmate)
 
-Batch image conversion to WebP with a friendly UI (FFmpeg wrapper).
+Markdown-to-PPTX conversion, PPTX text and color editing, and pixel-grid art prototypes.
 
-`python` `ffmpeg` `image` `gui`
+`python` `pptx` `markdown` `pixel-art`
 
-### [niconicoSearchAPI_Template](https://github.com/myon-bioinformatics/niconicoSearchAPI_Template)
+### [browser-test-kit](https://github.com/myon-bioinformatics/browser-test-kit)
 
-Template to kickstart API-based search clients.
+Cross-browser testing reference kit: Playwright Node and Python lanes on Chromium, Firefox and WebKit, with screenshot evidence.
 
-`template` `api` `starter`
+`playwright` `testing` `github-actions` `python`
 
 <details>
 <summary>🔎 More repos</summary>
