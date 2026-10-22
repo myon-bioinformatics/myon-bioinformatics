@@ -12,7 +12,7 @@ import sys
 import time
 
 def compare_fixture(spec, root):
-    if not isinstance(spec, dict) or set(spec) != {"name", "argv", "expected_exit", "sha256"}:
+    if not isinstance(spec, dict) or not {"name", "argv", "expected_exit", "sha256"} <= set(spec) or set(spec) - {"name", "argv", "expected_exit", "sha256", "sources"}:
         raise ValueError("invalid fixture")
     if type(spec["name"]) is not str or not spec["name"]:
         raise ValueError("invalid name")
@@ -26,6 +26,24 @@ def compare_fixture(spec, root):
         int(spec["sha256"], 16)
     except ValueError:
         raise ValueError("invalid sha256")
+    sources = spec.get("sources", {})
+    if not isinstance(sources, dict):
+        raise ValueError("invalid sources")
+    root_path = Path(root).resolve()
+    for relative, expected in sources.items():
+        if type(relative) is not str or type(expected) is not str or len(expected) != 64:
+            raise ValueError("invalid source entry")
+        if any(part in ("", ".", "..") for part in relative.split("/")) or Path(relative).is_absolute():
+            raise ValueError("invalid source path")
+        try:
+            int(expected, 16)
+        except ValueError:
+            raise ValueError("invalid source digest")
+        path = root_path.joinpath(*relative.split("/"))
+        if not path.resolve().is_relative_to(root_path) or not path.is_file() or path.is_symlink():
+            raise ValueError("source escapes root or is missing")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            raise ValueError("source SHA-256 mismatch")
     start = time.perf_counter()
     done = subprocess.run(spec["argv"], cwd=root, stdin=subprocess.DEVNULL,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,

@@ -87,3 +87,13 @@ staged and pinned, without a runtime GitHub API call. The fixture runner does
 not fetch or build those projects; none of their actual workloads have yet
 been benchmarked by this PR. The caller must enforce offline isolation,
 memory/CPU quotas and trusted commands. Do not feed untrusted manifests.
+
+### Source provenance for staged workloads
+
+Fixture entries may include an optional `sources` object mapping relative source
+paths to SHA-256 digests. The runner checks each file before launching the command,
+rejects parent-directory traversal and symlink targets, and fails closed on changed
+source bytes. This protects reproducibility of the checked files only; it is not
+an execution sandbox, nor a guarantee that all transitive imports are pinned.
+For real Ironmate/NagoyAction runs, stage snapshots outside the CI job's
+runtime network path and enumerate the executable entry point plus dependencies.
