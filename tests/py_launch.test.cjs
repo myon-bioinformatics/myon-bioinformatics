@@ -30,17 +30,17 @@ process.exit(0);
 `;
 }
 
-function makeExecutableStub(dir, name, source) {
+function makeProbeLauncher(dir, name, source) {
   const stub = path.join(dir, `${name}.cjs`);
   fs.writeFileSync(stub, source, "utf8");
   if (process.platform === "win32") {
-    const bat = path.join(dir, `${name}.cmd`);
-    fs.writeFileSync(bat, `@echo off\r\n"${process.execPath}" "${stub}" %*\r\n`, "utf8");
-    return bat;
+    const launcher = path.join(dir, `${name}.cmd`);
+    fs.writeFileSync(launcher, `@echo off\r\n"${process.execPath}" "${stub}" %*\r\n`, "utf8");
+    return launcher;
   }
-  const shim = path.join(dir, name);
-  fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${stub}" "$@"\n`, { mode: 0o755 });
-  return shim;
+  const launcher = path.join(dir, name);
+  fs.writeFileSync(launcher, `#!/bin/sh\nexec "${process.execPath}" "${stub}" "$@"\n`, { mode: 0o755 });
+  return launcher;
 }
 
 function resolveInSubprocess(code, env = {}) {
@@ -123,8 +123,8 @@ describe("py_launch.run (library mode)", () => {
 describe("py_launch.resolvePython", () => {
   it("prefers explicit envVar over PYTHON without opts.python", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-env-"));
-    const preferred = makeExecutableStub(dir, "preferred", probeStubSource("3.12", true));
-    const fallback = makeExecutableStub(dir, "fallback", probeStubSource("3.12", true));
+    const preferred = makeProbeLauncher(dir, "preferred", probeStubSource("3.12", true));
+    const fallback = makeProbeLauncher(dir, "fallback", probeStubSource("3.12", true));
     const result = resolveInSubprocess(
       `const { resolvePython } = require(${JSON.stringify(LAUNCHER)});
        const resolved = resolvePython({ envVar: "PY_LAUNCH_TEST_PREFERRED" });
@@ -144,7 +144,7 @@ describe("py_launch.resolvePython", () => {
 
   it("does not fall back when explicit envVar points at too-old python", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-old-"));
-    const old = makeExecutableStub(dir, "old", probeStubSource("3.8", false));
+    const old = makeProbeLauncher(dir, "old", probeStubSource("3.8", false));
     const key = "PY_LAUNCH_TEST_OLD";
     const previous = process.env[key];
     process.env[key] = old;
@@ -169,7 +169,7 @@ describe("py_launch.resolvePython", () => {
   it("uses probe timeout near five seconds by default", () => {
     assert.equal(DEFAULT_PROBE_TIMEOUT_MS, 5_000);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-slow-probe-"));
-    const slow = makeExecutableStub(dir, "slow", probeStubSource("3.12", true, 30_000));
+    const slow = makeProbeLauncher(dir, "slow", probeStubSource("3.12", true, 30_000));
     const started = Date.now();
     assert.throws(
       () =>
@@ -233,7 +233,7 @@ describe("py_launch.main (CLI passthrough)", () => {
 
   it("uses exit code 2 when explicit envVar python is too old", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-cli-old-"));
-    const old = makeExecutableStub(dir, "old-cli", probeStubSource("3.8", false));
+    const old = makeProbeLauncher(dir, "old-cli", probeStubSource("3.8", false));
     const script = path.join(FIXTURES, "echo_argv.py");
     const result = resolveInSubprocess(
       `require(${JSON.stringify(LAUNCHER)}).main(${JSON.stringify(script)}, { envVar: "PY_LAUNCH_TEST_OLD" });`,

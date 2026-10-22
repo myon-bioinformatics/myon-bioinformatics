@@ -57,11 +57,19 @@ function buildCandidateSpecs(opts = {}) {
  * @param {PythonCandidate} spec
  * @param {object} opts
  */
+function spawnOptionsFor(cmd) {
+  if (platform() === "win32" && /\.(cmd|bat)$/i.test(cmd)) {
+    return { shell: true };
+  }
+  return {};
+}
+
 function probeCandidate(spec, opts) {
   const timeout = opts.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
   const result = spawnSync(spec.cmd, [...spec.prefix, "-c", VERSION_PROBE], {
     encoding: "utf8",
     timeout,
+    ...spawnOptionsFor(spec.cmd),
   });
   const line = String(result.stdout || "").trim().split(/\r?\n/)[0] || "";
   return { result, version: line };
@@ -149,6 +157,7 @@ function run(scriptPath, args, options = {}) {
     input: options.input,
     timeout: options.timeout,
     maxBuffer: options.maxBuffer,
+    ...spawnOptionsFor(resolved.cmd),
   });
   if (result.error) {
     const err = runFailure(`py_launch: Python process failed: ${result.error.message}`, result);
@@ -180,7 +189,7 @@ function main(scriptPath, opts = {}) {
   }
   const argv = opts.argv ?? process.argv.slice(2);
   const pyArgs = [...resolved.prefix, ...pythonArgv(scriptPath, argv, Boolean(opts.noSite))];
-  const child = spawn(resolved.cmd, pyArgs, { stdio: "inherit" });
+  const child = spawn(resolved.cmd, pyArgs, { stdio: "inherit", ...spawnOptionsFor(resolved.cmd) });
   const forwardSignal = (signal) => {
     if (!child.killed) child.kill(signal);
   };
