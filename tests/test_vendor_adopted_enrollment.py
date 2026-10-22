@@ -14,7 +14,9 @@ def test_ironmate_registered_contract_ignores_recommendation_skips():
     registry = json.loads((ROOT / 'vendor-consumers.json').read_text())
     catalog = json.loads((ROOT / 'vendor-catalog.json').read_text())
     lock = json.loads((ROOT / 'tests/fixtures/ironmate-flow-workspace.lock.json').read_text())
-    assert not any(t['repository'].lower().endswith('/ironmate') for t in catalog['tools'])
+    ironmate_rows = [t for t in catalog['tools'] if t['repository'].casefold() == 'myon-bioinformatics/ironmate']
+    assert len(ironmate_rows) == 1 and ironmate_rows[0]['source'] == 'pillow_min.py'
+    assert 'myon-bioinformatics/Ironmate' not in ironmate_rows[0].get('consumers', {})
     assert sync.verify_child_lock_against_parent(registry, catalog, lock, 'myon-bioinformatics/Ironmate') == sync.validate(lock)
     changed = copy.deepcopy(lock)
     changed['files'].pop()
