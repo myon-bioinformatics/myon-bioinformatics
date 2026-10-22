@@ -10,6 +10,10 @@ const FIXTURES = path.join(__dirname, "fixtures", "py_launch");
 const PYTHON =
   process.env.PY_LAUNCH_TEST_PYTHON || (process.platform === "win32" ? "python" : "python3");
 
+function outText(buffer) {
+  return buffer.toString("utf8").replace(/\r\n/g, "\n").trim();
+}
+
 function runNodeMain(scriptRel, extraArgv, env = {}) {
   const wrapper = `
     const { main } = require(${JSON.stringify(path.join(__dirname, "..", "py_launch.cjs"))});
@@ -24,7 +28,7 @@ function runNodeMain(scriptRel, extraArgv, env = {}) {
 describe("py_launch.run (library mode)", () => {
   it("passes argv and returns stdout", () => {
     const result = run(path.join(FIXTURES, "echo_argv.py"), ["a", "b"], { python: PYTHON });
-    assert.equal(result.stdout.toString("utf8").trim(), "a\nb");
+    assert.equal(outText(result.stdout), "a\nb");
   });
 
   it("pipes stdin and reads stdout", () => {
@@ -42,7 +46,7 @@ describe("py_launch.run (library mode)", () => {
 
   it("honors noSite", () => {
     const result = run(path.join(FIXTURES, "check_nosite.py"), [], { python: PYTHON, noSite: true });
-    assert.equal(result.stdout.toString("utf8").trim(), "1");
+    assert.equal(outText(result.stdout), "1");
   });
 
   it("rejects a missing interpreter", () => {
@@ -151,6 +155,6 @@ if (require.main === module) main(__dirname + "/echo_argv.py", { python: process
       env: { ...process.env, PY_LAUNCH_TEST_PYTHON: PYTHON },
     });
     assert.equal(result.status, 0);
-    assert.equal(result.stdout.trim(), "x\ny");
+    assert.equal(outText(Buffer.from(result.stdout, "utf8")), "x\ny");
   });
 });
