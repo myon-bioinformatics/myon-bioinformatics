@@ -152,3 +152,31 @@ performance results. Stage Ironmate's import dependencies alongside
 network isolation, nor does it measure child RSS or total CPU time.
 For an actual 128 MiB offline claim, execute inside a fresh isolated
 cgroup with quotas and record the resource probe separately.
+
+## Bounded output and direct-worker resource accounting
+
+The runner and benchmark accept `--max-output-bytes N` (default **1 MiB per
+stream**) in addition to their existing CLI flags. Each worker streams stdout
+and stderr independently into bounded byte buffers. Exceeding either limit is
+a non-success `output_limit` status; the POSIX process group is killed (or
+the direct process on Windows). Timeouts apply through pipe draining as well.
+Only complete, non-truncated successful output receives SHA-256 digests or
+structured output validation. Jobs are trusted commands, **not a sandbox**.
+
+On platforms supporting POSIX `wait4`, direct child user/system CPU seconds
+are measured at reaping. Linux and macOS also expose per-worker peak RSS (Linux
+`ru_maxrss` KiB, macOS bytes). Where unavailable, report JSON `null`, not a
+tracemalloc or cgroup substitute. The `resources` summary contains sums of
+measured child CPU seconds and individual peak RSS values, with coverage counts.
+**The sum of individual RSS peaks is not the simultaneous peak.** Linux additionally
+samples concurrent current RSS of live direct children via `/proc` every 10 ms;
+short-lived peaks can be missed, shared pages can be double-counted, and neither
+descendant processes nor the runner's own memory are included. The
+`aggregate_host_peak_rss_bytes` field intentionally remains `null`.
+The benchmark preserves strict output/result identity while reporting both
+configurations' wall time and resource measurements. No deterministic speedup
+is required in CI.
+
+Outstanding: cgroup quota enforcement, complete descendant accounting, total
+host high-water mark, Windows process-tree termination/CPU-RSS adapter, network
+isolation, complete sandboxing and the four-repository comparative experiment.
