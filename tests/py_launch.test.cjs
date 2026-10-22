@@ -30,17 +30,10 @@ process.exit(0);
 `;
 }
 
-function makeProbeLauncher(dir, name, source) {
+function makeNodeCandidate(dir, name, source) {
   const stub = path.join(dir, `${name}.cjs`);
   fs.writeFileSync(stub, source, "utf8");
-  if (process.platform === "win32") {
-    const launcher = path.join(dir, `${name}.cmd`);
-    fs.writeFileSync(launcher, `@echo off\r\n"${process.execPath}" "${stub}" %*\r\n`, "utf8");
-    return launcher;
-  }
-  const launcher = path.join(dir, name);
-  fs.writeFileSync(launcher, `#!/bin/sh\nexec "${process.execPath}" "${stub}" "$@"\n`, { mode: 0o755 });
-  return launcher;
+  return { cmd: process.execPath, prefix: [stub], label: name };
 }
 
 function resolveInSubprocess(code, env = {}) {
@@ -122,17 +115,22 @@ describe("py_launch.run (library mode)", () => {
 
 describe("py_launch.resolvePython", () => {
   it("prefers explicit envVar over PYTHON without opts.python", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-env-"));
-    const preferred = makeProbeLauncher(dir, "preferred", probeStubSource("3.12", true));
-    const fallback = makeProbeLauncher(dir, "fallback", probeStubSource("3.12", true));
-    const result = resolveInSubprocess(
-      `const { resolvePython } = require(${JSON.stringify(LAUNCHER)});
-       const resolved = resolvePython({ envVar: "PY_LAUNCH_TEST_PREFERRED" });
-       console.log(resolved.cmd);`,
-      { PY_LAUNCH_TEST_PREFERRED: preferred, PYTHON: fallback },
-    );
-    assert.equal(result.status, 0);
-    assert.equal(result.stdout.trim(), preferred);
+    const key = "PY_LAUNCH_TEST_PREFERRED";
+    const previousPreferred = process.env[key];
+    const previousPython = process.env.PYTHON;
+    process.env[key] = "C:\\preferred\\python.exe";
+    process.env.PYTHON = "C:\\fallback\\python.exe";
+    try {
+      const specs = buildCandidateSpecs({ envVar: key });
+      assert.equal(specs.length, 1);
+      assert.equal(specs[0].cmd, process.env[key]);
+      assert.equal(specs[0].strict, true);
+    } finally {
+      if (previousPreferred === undefined) delete process.env[key];
+      else process.env[key] = previousPreferred;
+      if (previousPython === undefined) delete process.env.PYTHON;
+      else process.env.PYTHON = previousPython;
+    }
   });
 
   it("does not fall back when explicit python is missing", () => {
@@ -144,19 +142,22 @@ describe("py_launch.resolvePython", () => {
 
   it("does not fall back when explicit envVar points at too-old python", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-old-"));
-    const old = makeProbeLauncher(dir, "old", probeStubSource("3.8", false));
-    const key = "PY_LAUNCH_TEST_OLD";
-    const previous = process.env[key];
-    process.env[key] = old;
-    try {
-      assert.throws(
-        () => resolvePython({ envVar: key }),
-        (error) => /3\.9\+ required/.test(error.message),
-      );
-    } finally {
-      if (previous === undefined) delete process.env[key];
-      else process.env[key] = previous;
-    }
+    const old = makeNodeCandidate(dir, "old", probeStubSource("3.8", false));
+    assert.throws(
+      () => resolvePython({ candidates: [{ ...old, label: "$PY_LAUNCH_TEST_OLD", strict: true }] }),
+      (error) => /3\.9\+ required/.test(error.message),
+    );
+  });
+
+  it("rejects Windows .cmd and .bat interpreter paths", () => {
+    assert.throws(
+      () => resolvePython({ python: "C:\\Tools\\python.cmd", platform: "win32" }),
+      (error) => /\.cmd\/\.bat interpreters are not supported/.test(error.message),
+    );
+    assert.throws(
+      () => resolvePython({ python: "C:\\Tools\\launch.bat", platform: "win32" }),
+      (error) => /\.cmd\/\.bat interpreters are not supported/.test(error.message),
+    );
   });
 
   it("fails clearly when no interpreter is available", () => {
@@ -169,12 +170,12 @@ describe("py_launch.resolvePython", () => {
   it("uses probe timeout near five seconds by default", () => {
     assert.equal(DEFAULT_PROBE_TIMEOUT_MS, 5_000);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-slow-probe-"));
-    const slow = makeProbeLauncher(dir, "slow", probeStubSource("3.12", true, 30_000));
+    const slow = makeNodeCandidate(dir, "slow", probeStubSource("3.12", true, 30_000));
     const started = Date.now();
     assert.throws(
       () =>
         resolvePython({
-          candidates: [{ cmd: slow, prefix: [], label: "slow" }],
+          candidates: [{ ...slow, label: "slow" }],
           probeTimeoutMs: 500,
         }),
       (error) => /no suitable Python interpreter/.test(error.message),
@@ -232,15 +233,30 @@ describe("py_launch.main (CLI passthrough)", () => {
   });
 
   it("uses exit code 2 when explicit envVar python is too old", () => {
+    if (process.platform === "win32") return;
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-cli-old-"));
-    const old = makeProbeLauncher(dir, "old-cli", probeStubSource("3.8", false));
+    const old = makeNodeCandidate(dir, "old-cli", probeStubSource("3.8", false));
+    const shim = path.join(dir, "old-shim");
+    fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${old.prefix[0]}" "$@"\n`, { mode: 0o755 });
     const script = path.join(FIXTURES, "echo_argv.py");
     const result = resolveInSubprocess(
       `require(${JSON.stringify(LAUNCHER)}).main(${JSON.stringify(script)}, { envVar: "PY_LAUNCH_TEST_OLD" });`,
-      { PY_LAUNCH_TEST_OLD: old },
+      { PY_LAUNCH_TEST_OLD: shim },
     );
     assert.equal(result.status, 2);
     assert.match(result.stderr, /3\.9\+ required/);
+  });
+
+  it("uses exit code 2 when explicit python is a .cmd interpreter", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-cmd-"));
+    const cmd = path.join(dir, "python.cmd");
+    fs.writeFileSync(cmd, "@echo off\r\n", "utf8");
+    const script = path.join(FIXTURES, "echo_argv.py");
+    const result = resolveInSubprocess(
+      `require(${JSON.stringify(LAUNCHER)}).main(${JSON.stringify(script)}, { python: ${JSON.stringify(cmd)} });`,
+    );
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /\.cmd\/\.bat interpreters are not supported/);
   });
 
   it("uses exit code 2 when the child is signaled", () => {
@@ -264,6 +280,16 @@ describe("py_launch.main (CLI passthrough)", () => {
     child.kill("SIGTERM");
     const code = await new Promise((resolve) => child.on("close", resolve));
     assert.equal(code, 2);
+  });
+});
+
+describe("py_launch security", () => {
+  it("does not enable shell spawning in the launcher source", () => {
+    const source = fs
+      .readFileSync(LAUNCHER, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    assert.ok(!/shell\s*:\s*true/.test(source));
   });
 });
 

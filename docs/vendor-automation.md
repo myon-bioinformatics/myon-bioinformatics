@@ -126,7 +126,9 @@ input, timeout, maxBuffer, noSite, envVar })` with `spawnSync`, surfacing stderr
 on failure. Interpreter resolution order: explicit `python`, `process.env[envVar]`
 (for example Ironmate's `IRONMATE_PYTHON`), `PYTHON`, `python3`, `python`, and
 on Windows `py -3`. Python older than 3.9 is rejected with a clear message (exit
-2). `-S` is optional per tool via `noSite: true` (default off).
+2). Windows `.cmd`/`.bat` interpreter paths are rejected (exit 2); use `python.exe`
+or `py -3` instead of batch shims. `-S` is optional per tool via `noSite: true`
+(default off).
 
 Add the `vendor-catalog.json` recommendation only after the launcher is on
 default branch (merge commit pin), then enroll with `vendor_sync.py` like any

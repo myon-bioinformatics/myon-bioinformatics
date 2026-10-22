@@ -8,6 +8,7 @@
  * Interpreter resolution (first match that runs Python 3.9+): opts.python, process.env[opts.envVar],
  * process.env.PYTHON, python3, python, and on Windows `py -3`.
  * Explicit opts.python or a set opts.envVar value does not fall back to later candidates.
+ * Windows `.cmd`/`.bat` interpreter paths are rejected (never spawned with `shell: true`).
  *
  * `noSite` adds CPython `-S` (no site.py / no user site); default is off so tools opt in explicitly.
  */
@@ -53,23 +54,21 @@ function buildCandidateSpecs(opts = {}) {
   return specs;
 }
 
-/**
- * @param {PythonCandidate} spec
- * @param {object} opts
- */
-function spawnOptionsFor(cmd) {
-  if (platform() === "win32" && /\.(cmd|bat)$/i.test(cmd)) {
-    return { shell: true };
+function rejectCmdBatInterpreter(cmd, label) {
+  if (/\.(cmd|bat)$/i.test(cmd)) {
+    throw interpreterError(
+      `py_launch: ${label}: Windows .cmd/.bat interpreters are not supported; use python.exe or py -3`,
+      { code: "ENOINTERPRETER", label },
+    );
   }
-  return {};
 }
 
 function probeCandidate(spec, opts) {
+  rejectCmdBatInterpreter(spec.cmd, spec.label);
   const timeout = opts.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
   const result = spawnSync(spec.cmd, [...spec.prefix, "-c", VERSION_PROBE], {
     encoding: "utf8",
     timeout,
-    ...spawnOptionsFor(spec.cmd),
   });
   const line = String(result.stdout || "").trim().split(/\r?\n/)[0] || "";
   return { result, version: line };
@@ -152,12 +151,12 @@ function pythonArgv(scriptPath, args, noSite) {
  */
 function run(scriptPath, args, options = {}) {
   const resolved = resolvePython(options);
+  rejectCmdBatInterpreter(resolved.cmd, resolved.label);
   const pyArgs = [...resolved.prefix, ...pythonArgv(scriptPath, args, Boolean(options.noSite))];
   const result = spawnSync(resolved.cmd, pyArgs, {
     input: options.input,
     timeout: options.timeout,
     maxBuffer: options.maxBuffer,
-    ...spawnOptionsFor(resolved.cmd),
   });
   if (result.error) {
     const err = runFailure(`py_launch: Python process failed: ${result.error.message}`, result);
@@ -189,7 +188,8 @@ function main(scriptPath, opts = {}) {
   }
   const argv = opts.argv ?? process.argv.slice(2);
   const pyArgs = [...resolved.prefix, ...pythonArgv(scriptPath, argv, Boolean(opts.noSite))];
-  const child = spawn(resolved.cmd, pyArgs, { stdio: "inherit", ...spawnOptionsFor(resolved.cmd) });
+  rejectCmdBatInterpreter(resolved.cmd, resolved.label);
+  const child = spawn(resolved.cmd, pyArgs, { stdio: "inherit" });
   const forwardSignal = (signal) => {
     if (!child.killed) child.kill(signal);
   };
@@ -212,6 +212,7 @@ module.exports = {
   run,
   resolvePython,
   buildCandidateSpecs,
+  rejectCmdBatInterpreter,
   DEFAULT_PROBE_TIMEOUT_MS,
   VERSION_PROBE,
 };
