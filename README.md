@@ -89,11 +89,17 @@ I design and build practical CLI and browser tools: mostly single-file, standard
 ---
 
 <!-- PRESENTATION:START concept -->
-## 活動の概念図
+## Activity concept map
 
-[![生命科学のデータや課題を、解析・開発・検証を通じてツールやドキュメントとして公開し、研究・コミュニティ・安全性への貢献を目指す活動の流れ](./assets/brand/concept-overview.jpg)](./assets/brand/concept-overview.jpg)
+[![Concept map: life-science data and challenges are analyzed, built and verified, then published as tools and documentation to contribute to research, the community and safety](./assets/brand/concept-overview.jpg)](./assets/brand/concept-overview.jpg)
 
-活動の流れと目指す価値をまとめた概念図です。図中の「本サイト」は[ポートフォリオ](https://myon-bioinformatics.github.io/)を指します。画像をクリックすると拡大できます。
+The concept map summarizes the activity flow and the value it aims for. "This site" in the diagram refers to the [portfolio](https://myon-bioinformatics.github.io/). Click the image to enlarge it.
+
+<details>
+<summary>🇯🇵 日本語</summary>
+
+生命科学のデータや課題を、解析・開発・検証を通じてツールやドキュメントとして公開し、研究・コミュニティ・安全性への貢献を目指す活動の流れを示す概念図です。図中の「本サイト」は[ポートフォリオ](https://myon-bioinformatics.github.io/)を指します。画像をクリックすると拡大できます。
+</details>
 <!-- PRESENTATION:END concept -->
 
 ---
@@ -335,7 +341,7 @@ placed into consumer trees. See [catalog coverage](docs/vendor-catalog-coverage.
 
 [Convention-driven file and symbol discovery](docs/convention-discovery.md) gives verified one-liners for this repository. Supply filename/name rules to inspect production code, configuration and workflows with the shared stdlib-only xprobe tool.
 
-[リポジトリ横断の用途と接続候補](docs/cross-repository-use-cases.md)に、公開・非アーカイブ23リポジトリの入口と検証状態を記録しています。
+[Cross-repository use cases and connection candidates](docs/cross-repository-use-cases.md) record the entry points and verification status of the 23 public, non-archived repositories.
 
 Local prerequisite observations: `python -S preflight.py --root . --require git
 --python-min 3.11`. Optional `--runtime-facts` connects yourself's OS/runtime JSON
