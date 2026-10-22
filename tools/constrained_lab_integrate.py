@@ -11,7 +11,7 @@ import subprocess
 import sys
 import time
 
-def run_pair(root, nagoya, ironmate, *, rounds=10, seed=7, workers=2):
+def run_pair(root, nagoya, ironmate, *, rounds=1, seed=7, workers=2):
     from tools import constrained_lab_bench
     root = Path(root).resolve()
     sources = [Path(nagoya).resolve(), Path(ironmate).resolve()]

@@ -29,7 +29,7 @@ class IntegrationTests(unittest.TestCase):
                          " def chunk(t,b):return struct.pack('>I',len(b))+t+b+struct.pack('>I',zlib.crc32(t+b))\\n"
                          " raw=b''.join(bytes([0])+rgba[y*w*4:(y+1)*w*4] for y in range(h))\\n"
                          " return bytes.fromhex('89504e470d0a1a0a')+chunk(b'IHDR',struct.pack('>IIBBBBB',w,h,8,6,0,0,0))+chunk(b'IDAT',zlib.compress(raw))+chunk(b'IEND',b'')\\n".replace("\\n", "\n"))
-            result = integrate.run_pair(folder, n, i, rounds=1)
+            result = integrate.run_pair(folder, n, i)
             self.assertTrue(result["equivalent"])
             self.assertEqual(result["runs"][0]["campaign"]["cases_completed"], 2)
             for run in result["runs"]:

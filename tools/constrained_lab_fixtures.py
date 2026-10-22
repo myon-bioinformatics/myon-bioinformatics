@@ -55,8 +55,8 @@ def compare_fixture(spec, root):
             "wall_seconds": round(time.perf_counter()-start, 6)}
 
 def run(manifest, root):
-    if not isinstance(manifest, list):
-        raise ValueError("manifest must be list")
+    if not isinstance(manifest, list) or not manifest:
+        raise ValueError("manifest must be a nonempty list")
     results = [compare_fixture(item, root) for item in manifest]
     return {"schema": "constrained-lab-fixture/1", "results": results,
             "passed": sum(item["pass"] for item in results),

@@ -1,8 +1,10 @@
 import hashlib
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from tools import constrained_lab_fixtures as fixtures
 
 def case(text, expected=0):
@@ -22,6 +24,20 @@ class FixtureTests(unittest.TestCase):
     def test_invalid_manifest(self):
         with self.assertRaises(ValueError):
             fixtures.run({"not": "list"}, ".")
+    def test_empty_manifest_is_rejected_before_execution(self):
+        with mock.patch.object(fixtures, "compare_fixture") as execute:
+            with self.assertRaisesRegex(ValueError, "nonempty"):
+                fixtures.run([], ".")
+            execute.assert_not_called()
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "empty.json"
+            manifest.write_text("[]", encoding="utf-8")
+            script = Path(__file__).resolve().parents[1] / "tools/constrained_lab_fixtures.py"
+            result = subprocess.run(
+                [sys.executable, "-S", str(script), str(manifest)],
+                capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(result.stdout, "")
     def test_invalid_digest(self):
         item = case("ok")
         item["sha256"] = "x"*64
