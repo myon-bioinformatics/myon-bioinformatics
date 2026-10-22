@@ -1,6 +1,8 @@
 # Constrained lab: seeded campaigns and comparative benchmark
 
 Tracks #133. The runner assigns each trusted case to exactly one deterministic seeded shard.
+For repeatable post-merge ancestry and test verification in a disposable checkout,
+see [verify checkout](verify-checkout.md).
 Use `python -S tools/constrained_lab.py cases.json --rounds 10 --seed 7 --workers 2`.
 A round stops on failure by default, or continues with `--keep-going`.
 Empty shards are not independent evidence. A pass fraction is coverage, not a success probability.
