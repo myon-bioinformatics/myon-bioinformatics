@@ -22,7 +22,10 @@ equivalence check. Shallow clones may need an explicit fetch/deepen first.
 
 Only after these checks pass does the verifier create a disposable detached
 worktree. Commands run in order there, stopping at the first nonzero exit,
-timeout, or launch failure. A failed ancestry check launches nothing. The original
+timeout, launch failure, or worktree HEAD change. After each successful command,
+HEAD is read again. If it differs from the resolved commit, that command is
+recorded with status `head_changed` and later commands are not started. A failed
+ancestry check launches nothing. The original
 checkout may be dirty: its branch, index and files stay in place. The temporary
 worktree is removed, including test artifacts; arrange external artifact paths
 in trusted commands when preservation is needed. Submodules and Git LFS content
@@ -30,8 +33,9 @@ are not initialized. Dependencies must already exist in the invoking environment
 
 The single stdout JSON receipt (`checkout-verification/1`) records the requested
 ref, actual commit/tree, required ancestors, each attempted command and its status,
-exit code, and final 8 KiB of stdout/stderr with truncation flags. It also checks
-that the worktree HEAD still matches the tested revision after commands finish.
+exit code, and final 8 KiB of stdout/stderr with truncation flags. After the
+sequence stops, it checks again that the worktree HEAD still matches the tested
+revision, so a changed test HEAD cannot be reported as success.
 Git/Python path overrides are removed from the subprocess environment. Logs spool
 to disk, so output memory is bounded, but disk use is not capped.
 

@@ -34,6 +34,7 @@ def verify(root, ref, contains, commands, *, timeout=300):
 
     Commands are trusted code. No fetch, install, branch switch, push or merge is
     performed. The caller supplies dependencies in the current Python environment.
+    A command that changes the worktree HEAD stops the sequence immediately.
     """
     if not isinstance(ref, str) or not ref or ref.startswith("-"):
         raise ValueError("invalid ref")
@@ -90,6 +91,10 @@ def verify(root, ref, contains, commands, *, timeout=300):
                     row.update(exit=None, status="spawn_error", error=type(exc).__name__)
                 report["commands"].append(row)
                 if row["status"] != "pass":
+                    break
+                # Later commands must not run once this one leaves the resolved commit.
+                if _git(checkout, "rev-parse", "HEAD").stdout.strip() != head:
+                    row["status"] = "head_changed"
                     break
             report["final_head"] = _git(checkout, "rev-parse", "HEAD").stdout.strip()
             report["ok"] = (report["final_head"] == head

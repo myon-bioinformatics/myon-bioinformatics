@@ -115,6 +115,24 @@ def test_test_command_switching_head_cannot_report_success(repo):
         "import subprocess; subprocess.run(['git', 'checkout', '--detach', %r], check=True)" % base)])
     assert not report["ok"] and report["final_head"] == base
     assert report["head"] != base
+    assert report["commands"][0]["status"] == "head_changed"
+    assert git(repo, "worktree", "list", "--porcelain") == before
+
+
+def test_changed_head_does_not_start_later_commands(repo, tmp_path):
+    base = git(repo, "rev-parse", "HEAD")
+    (repo / "value.txt").write_text("new commit", encoding="utf-8")
+    git(repo, "commit", "-am", "second")
+    before = git(repo, "worktree", "list", "--porcelain")
+    marker = tmp_path / "must-not-run"
+    report = verifier.verify(repo, "main", [], [command(
+        "import subprocess; subprocess.run(['git', 'checkout', '--detach', %r], check=True)" % base),
+        command("from pathlib import Path; Path(%r).touch()" % str(marker))])
+    assert not report["ok"] and report["final_head"] == base and report["head"] != base
+    assert len(report["commands"]) == 1
+    assert report["commands"][0]["status"] == "head_changed"
+    assert report["commands"][0]["exit"] == 0
+    assert not marker.exists()
     assert git(repo, "worktree", "list", "--porcelain") == before
 
 
