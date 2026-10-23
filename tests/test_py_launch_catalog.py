@@ -13,8 +13,10 @@ REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
 SOURCE = "py_launch.cjs"
 PY_LAUNCH_CATALOG_PIN_BLOB_SHA = "5a90907aa0ed3e2afa5ef1519010136644af1658"
 PY_LAUNCH_CATALOG_PIN_SHA256 = "b43c88e4e635d888995cd33f121850fe2cae753b66a55c628891d6795429ab88"
-PY_LAUNCH_WORKTREE_BLOB_SHA = "5a90907aa0ed3e2afa5ef1519010136644af1658"
-PY_LAUNCH_WORKTREE_SHA256 = "b43c88e4e635d888995cd33f121850fe2cae753b66a55c628891d6795429ab88"
+# Worktree bytes move with this checkout. The catalog pin above stays the
+# accepted main merge until a reviewed promotion.
+PY_LAUNCH_WORKTREE_BLOB_SHA = "e11dcfd15e6da6d128c5d9ae7b1106b5a839938f"
+PY_LAUNCH_WORKTREE_SHA256 = "c1ca339fe3e967d64321d7a798a14fb790a1c5cdf616009048fa3e97bf94b27e"
 PY_LAUNCH_CATALOG_PIN_FIXTURE = ROOT / "tests" / "fixtures" / "py-launch-catalog-pin.lock.json"
 
 
