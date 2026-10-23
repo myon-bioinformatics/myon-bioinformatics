@@ -30,7 +30,9 @@ read-only; this migration does not execute network writes. GHI remains the owner
 of SHA comparison and pure checks classification. gh_ops owns the compatibility
 output, PR observation/diff, pagination and operation orchestration. Existing
 `gh_workflow.py` preflight/run-selection semantics are separate: this transfer
-does not replace it with the smaller legacy dispatch operation.
+does not replace it with the smaller legacy dispatch operation. The write-overlap
+audit in `docs/gh-ops-write-overlap.md` records the other parent files that still
+commit, push, or call the GitHub write API. None of those files was removed.
 
 The parent suite contains the former consumer unit tests plus #48/#49's useful
 coverage. It tests missing PR heads as unknown, SHA normalization/mismatch,
