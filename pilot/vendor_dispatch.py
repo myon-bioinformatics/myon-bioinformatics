@@ -6,6 +6,13 @@ three fields are the GitHub location: ``https://github.com/<repository>`` at
 commits are written back into the same ``commit`` fields. No second manifest
 and no ``uv.lock`` are produced.
 
+A child ``vendor-lock/1`` manifest is accepted too. Its ``files`` rows carry
+the same GitHub coordinates plus ``destination``, ``blob_sha`` and ``sha256``.
+For a lock, every reachable row is also fetched and checked against the
+recorded digest, and ``--record`` writes ``ref``, ``commit``, ``blob_sha`` and
+``sha256`` back into that same lock. A recorded digest that no longer matches
+its recorded commit is an error, not an update.
+
 ``vendor-catalog/1`` cannot store a branch next to the commit, and it cannot
 store a digest. ``--resolve-ref main`` is the dynamic selector. Fetch digests
 are printed, not stored. ``vendor.lock.json`` stays the enrolled digest record.
@@ -249,6 +256,26 @@ def load_probe(repository, ref, want_python, want_node, opener):
     return Probe(pyproject, package_json)
 
 
+def git_blob_sha(data):
+    return hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
+
+
+def fetch_bytes(repository, ref, source, opener):
+    if re.fullmatch(r"[0-9a-f]{40}", ref):
+        sha = ref
+    else:
+        status, body = opener(commit_url(repository, ref))
+        if status != 200:
+            raise RuntimeError("commit lookup failed with status " + str(status))
+        sha = json.loads(body.decode("utf-8")).get("sha")
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise RuntimeError("commit lookup did not return a sha")
+    status, body = opener(raw_url(repository, sha, source))
+    if status != 200:
+        raise RuntimeError("fetch failed with status " + str(status))
+    return sha, body
+
+
 def fetch_source(repository, ref, source, opener):
     if re.fullmatch(r"[0-9a-f]{40}", ref):
         sha = ref
@@ -336,8 +363,54 @@ def uv_install(repository, ref, modules):
         return commit, failures
 
 
+LOCK_SCHEMA = "vendor-lock/1"
+CATALOG_SCHEMA = "vendor-catalog/1"
+
+
+def entries_of(manifest):
+    if manifest.get("schema") == LOCK_SCHEMA:
+        return manifest["files"]
+    return manifest["tools"]
+
+
+def _key(tool):
+    return (tool["repository"], tool["source"], tool.get("destination"))
+
+
+def verify_lock(results, tools, opener):
+    """Fetch every non-offline lock row and compare with its recorded digest."""
+    by_key = {_key(tool): tool for tool in tools}
+    for row in results:
+        if row.get("offline"):
+            continue
+        tool = by_key[_key(row)]
+        if row["action"] == "error":
+            continue
+        try:
+            commit, body = fetch_bytes(row["repository"], row["ref"], row["source"], opener)
+        except (RuntimeError, URLError, json.JSONDecodeError, UnicodeError, OSError, KeyError) as exc:
+            row["action"] = "error"
+            row["reason"] = one_line(exc)
+            continue
+        if row["commit"] and row["commit"] != commit:
+            row["action"] = "error"
+            row["reason"] = "uv resolved " + row["commit"] + " but fetch resolved " + commit
+            continue
+        row["commit"] = commit
+        row["sha256"] = hashlib.sha256(body).hexdigest()
+        row["blob_sha"] = git_blob_sha(body)
+        if commit == tool.get("commit"):
+            if tool.get("sha256") != row["sha256"] or tool.get("blob_sha") != row["blob_sha"]:
+                row["action"] = "error"
+                row["reason"] = "recorded digest does not match the recorded commit"
+                continue
+            row["digest"] = "match"
+        else:
+            row["digest"] = "new commit"
+
+
 def dispatch(catalog, env, resolve_ref, opener, install, dry_run=False):
-    tools = catalog["tools"]
+    tools = entries_of(catalog)
     wanted = {}
     for tool in tools:
         if not needs_probe(tool["source"], env):
@@ -373,6 +446,10 @@ def dispatch(catalog, env, resolve_ref, opener, install, dry_run=False):
             "sha256": None,
             "recorded": False,
         }
+        if tool.get("destination") is not None:
+            row["destination"] = tool["destination"]
+        if env.offline:
+            row["offline"] = True
         if decision.action == "uv":
             row["spec"] = git_spec(tool["repository"], ref)
             if not dry_run:
@@ -406,14 +483,30 @@ def dispatch(catalog, env, resolve_ref, opener, install, dry_run=False):
                 continue
             row["commit"] = commit
             row["sha256"] = digest
+        if catalog.get("schema") == LOCK_SCHEMA:
+            verify_lock(results, tools, opener)
     return results
 
 
 def apply_record(catalog, results):
-    by_key = {(row["repository"], row["source"]): row for row in results}
+    by_key = {_key(row): row for row in results}
     changed = []
+    if catalog.get("schema") == LOCK_SCHEMA:
+        for tool in catalog["files"]:
+            row = by_key[_key(tool)]
+            if row.get("digest") not in ("match", "new commit"):
+                continue
+            update = {
+                "ref": row["commit"], "commit": row["commit"],
+                "blob_sha": row["blob_sha"], "sha256": row["sha256"],
+            }
+            if any(tool.get(name) != value for name, value in update.items()):
+                tool.update(update)
+                changed.append(tool["destination"])
+            row["recorded"] = True
+        return changed
     for tool in catalog["tools"]:
-        row = by_key[(tool["repository"], tool["source"])]
+        row = by_key[_key(tool)]
         if row["action"] not in ("uv", "fetch") or not row["commit"]:
             continue
         if tool["commit"] != row["commit"]:
@@ -433,7 +526,8 @@ def _validate_catalog(catalog):
 
 
 def write_catalog(path, catalog):
-    _validate_catalog(catalog)
+    if catalog.get("schema") == CATALOG_SCHEMA:
+        _validate_catalog(catalog)
     payload = (json.dumps(catalog, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_bytes(payload)
@@ -523,8 +617,10 @@ def main(argv=None):
         raise SystemExit("--record runs only for a real resolve on this interpreter")
     manifest = Path(args.manifest)
     catalog = json.loads(manifest.read_text(encoding="utf-8"))
-    if not isinstance(catalog, dict) or catalog.get("schema") != "vendor-catalog/1":
-        raise SystemExit("manifest must be vendor-catalog/1")
+    if not isinstance(catalog, dict) or catalog.get("schema") not in (CATALOG_SCHEMA, LOCK_SCHEMA):
+        raise SystemExit("manifest must be vendor-catalog/1 or vendor-lock/1")
+    if not isinstance(entries_of(catalog), list):
+        raise SystemExit("manifest has no entry list")
     env = current_env(args.assume_python, args.offline)
     results = dispatch(
         catalog, env, args.resolve_ref, http_get, uv_install, dry_run=args.dry_run,
