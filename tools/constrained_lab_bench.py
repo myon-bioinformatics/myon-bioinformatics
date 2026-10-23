@@ -14,7 +14,8 @@ except ModuleNotFoundError:
     import constrained_lab
 
 
-def compare(cases, *, rounds=1, seed=7, workers=2, timeout=10):
+def compare(cases, *, rounds=1, seed=7, workers=2, timeout=10,
+            max_output_bytes=constrained_lab.DEFAULT_OUTPUT_LIMIT):
     if type(workers) is not int or workers < 2:
         raise ValueError("workers must be >= 2")
     reports = []
@@ -22,10 +23,10 @@ def compare(cases, *, rounds=1, seed=7, workers=2, timeout=10):
         start = time.perf_counter()
         result = constrained_lab.campaign(
             cases, rounds=rounds, seed=seed, workers=count,
-            timeout=timeout, keep_going=True)
+            timeout=timeout, keep_going=True, max_output_bytes=max_output_bytes)
         elapsed = time.perf_counter() - start
         reports.append({"workers": count, "wall_seconds": round(elapsed, 6),
-                        "campaign": result})
+                        "resources": result["resources"], "campaign": result})
     left, right = (r["campaign"] for r in reports)
     def identities(campaign):
         return sorted((row["id"], row["status"], row.get("exit"),
@@ -47,11 +48,13 @@ def main(argv=None):
     p.add_argument("--seed", type=int, default=7)
     p.add_argument("--workers", type=int, default=2)
     p.add_argument("--timeout", type=float, default=10)
+    p.add_argument("--max-output-bytes", type=int, default=constrained_lab.DEFAULT_OUTPUT_LIMIT)
     args = p.parse_args(argv)
     try:
         cases = json.loads(Path(args.cases).read_text(encoding="utf-8"))
         report = compare(cases, rounds=args.rounds, seed=args.seed,
-                         workers=args.workers, timeout=args.timeout)
+                         workers=args.workers, timeout=args.timeout,
+                         max_output_bytes=args.max_output_bytes)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         print(type(exc).__name__, file=sys.stderr)
         return 2

@@ -27,13 +27,17 @@ class ComparisonTests(unittest.TestCase):
             constrained_lab_bench.compare([case(0)], workers=1)
 
     def compare_outputs(self, left, right, contract=True):
-        row = case(0)
-        if contract:
-            row["stdout_contract"] = "result-measurements/1"
-        outputs = [json.dumps(value).encode() for value in (left, right)]
-        from subprocess import CompletedProcess
-        completed = [CompletedProcess(row["argv"], 0, output, b"") for output in outputs]
-        with patch("tools.constrained_lab.subprocess.run", side_effect=completed):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = Path(tmp) / "seen"
+            payloads = [json.dumps(v) for v in (left, right)]
+            script = ("from pathlib import Path; p=Path(%r); "
+                      "i=1 if p.exists() else 0; p.write_text('x'); "
+                      "print([%r,%r][i])") % (str(marker), payloads[0], payloads[1])
+            row = case(0, script)
+            if contract:
+                row["stdout_contract"] = "result-measurements/1"
             return constrained_lab_bench.compare([row])
 
     def test_measurement_changes_do_not_change_result_identity(self):
