@@ -123,3 +123,12 @@ git URL. Single-file Python tools move when their own repository gains a
 project file; until then, copy the file from the GitHub repo if a standalone
 copy is what the child wants. This pull request does not retarget a child lock
 or the child workflow template.
+
+## Child lock dispatch
+
+`pilot/vendor_dispatch.py --manifest vendor.lock.json` also reads a
+`vendor-lock/1` file. Each row goes to uv or Node the same way, or is skipped
+with a reason. Every reachable row is also fetched and its `blob_sha` and
+`sha256` are checked against the recorded commit. `--record` writes `ref`,
+`commit`, `blob_sha`, and `sha256` back into that same lock. No `uv.lock` and no
+second manifest are written. A mismatch at the recorded commit is an error.

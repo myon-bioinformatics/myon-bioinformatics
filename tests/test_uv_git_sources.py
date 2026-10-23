@@ -262,3 +262,61 @@ def test_workflow_resolves_main_and_skips_other_lanes():
     assert "uv run pytest" not in text
     assert "python -m pytest" not in text
     assert "packages/" not in text
+
+
+def _lock_module():
+    spec = importlib.util.spec_from_file_location("vendor_dispatch_lock", ROOT / "pilot" / "vendor_dispatch.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_child_lock_rows_are_verified_and_recorded_in_the_same_lock():
+    import hashlib
+
+    vd = _lock_module()
+    body = b"print('hi')\n"
+    old = "a" * 40
+    new = "b" * 40
+    lock = {"schema": "vendor-lock/1", "files": [
+        {"repository": "o/r", "ref": old, "commit": old, "source": "tool.py",
+         "destination": "vendor/tool.py", "blob_sha": vd.git_blob_sha(body),
+         "sha256": hashlib.sha256(body).hexdigest()},
+        {"repository": "o/r", "ref": old, "commit": old, "source": "LICENSE",
+         "destination": "vendor/r-LICENSE", "blob_sha": "0" * 40, "sha256": "0" * 64},
+    ]}
+
+    def opener(url):
+        if url.endswith("/pyproject.toml"):
+            return 404, b""
+        if "/commits/main" in url:
+            return 200, json.dumps({"sha": new}).encode()
+        return 200, body
+
+    env = vd.Env((3, 12, 0), False, False, True, 24)
+    results = vd.dispatch(lock, env, None, opener, None)
+    assert results[0]["action"] == "skip" and results[0]["digest"] == "match"
+    assert results[1]["action"] == "error"
+    assert "recorded digest" in results[1]["reason"]
+
+    results = vd.dispatch(lock, env, "main", opener, None)
+    assert [row["digest"] for row in results] == ["new commit", "new commit"]
+    changed = vd.apply_record(lock, results)
+    assert changed == ["vendor/tool.py", "vendor/r-LICENSE"]
+    assert all(row["commit"] == new and row["ref"] == new for row in lock["files"])
+    assert lock["files"][1]["sha256"] == hashlib.sha256(body).hexdigest()
+
+
+def test_child_lock_offline_skips_without_fetching():
+    vd = _lock_module()
+    lock = {"schema": "vendor-lock/1", "files": [
+        {"repository": "o/r", "ref": "a" * 40, "commit": "a" * 40, "source": "tool.py",
+         "destination": "vendor/tool.py", "blob_sha": "0" * 40, "sha256": "0" * 64},
+    ]}
+
+    def opener(url):
+        raise AssertionError("offline must not fetch")
+
+    env = vd.Env((3, 12, 0), False, True, True, 24)
+    results = vd.dispatch(lock, env, None, opener, None)
+    assert results[0]["action"] == "skip" and "offline" in results[0]["reason"]
