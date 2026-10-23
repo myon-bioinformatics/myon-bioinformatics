@@ -77,8 +77,8 @@ browser-test-kit, flutter_navigation_basic, and myon-bioinformatics.github.io.
 
 PR #96 introduces `py_matrix.py`, `pytest_brief.py`, and `publish_check.py` without recommending an unmerged intermediate commit. PR #95 adds their catalog entries only after #96 merges, using its full first-parent main merge SHA. None has registered consumers yet. Flutter #197 keeps its reviewed parent `gh_ops.py` pin `1eda992aa6fa31a902e2c06428e53ab17e8fe3c1`; a later adoption of the new git-commit implementation must verify and materialize the accepted parent merge commit, never the PR head.
 
-`py_launch.cjs` landed in parent PR #145 and its catalog pin advanced with PR #149; the catalog entry uses accepting main
-merge `173124231fc171c251e35caef1fa67e76d0f8bae`. `tests/test_py_launch_catalog.py`
+`py_launch.cjs` landed in parent PR #145; catalog pins advanced with PR #149 and PR #151 (`isolated` mode). The catalog entry uses accepting main
+merge `c73821de8492b2394c718cb276cad9f683ff1910`. `tests/test_py_launch_catalog.py`
 checks the pin commit and verifies Git blob/SHA-256 via `vendor_sync.inspect_source`.
 
 2026-10-17 acceptance completed: Flutter #197 was squash-merged at

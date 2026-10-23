@@ -1,4 +1,4 @@
-"""Catalog pin for py_launch.cjs after parent PR #149 merge."""
+"""Catalog pin for py_launch.cjs after parent PR #151 merge."""
 import hashlib
 import json
 from pathlib import Path
@@ -8,11 +8,11 @@ import pytest
 import vendor_sync
 
 ROOT = Path(__file__).resolve().parents[1]
-PY_LAUNCH_MERGE_COMMIT = "173124231fc171c251e35caef1fa67e76d0f8bae"
+PY_LAUNCH_MERGE_COMMIT = "c73821de8492b2394c718cb276cad9f683ff1910"
 REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
 SOURCE = "py_launch.cjs"
-PY_LAUNCH_CATALOG_PIN_BLOB_SHA = "0b1d7cc5d7d1f71adbe49fe5c87d25415805153b"
-PY_LAUNCH_CATALOG_PIN_SHA256 = "63035549d0bce8035bc594e12df68591d8e58970aaeaa4409882ea3c3f2e6eaa"
+PY_LAUNCH_CATALOG_PIN_BLOB_SHA = "5a90907aa0ed3e2afa5ef1519010136644af1658"
+PY_LAUNCH_CATALOG_PIN_SHA256 = "b43c88e4e635d888995cd33f121850fe2cae753b66a55c628891d6795429ab88"
 PY_LAUNCH_WORKTREE_BLOB_SHA = "5a90907aa0ed3e2afa5ef1519010136644af1658"
 PY_LAUNCH_WORKTREE_SHA256 = "b43c88e4e635d888995cd33f121850fe2cae753b66a55c628891d6795429ab88"
 PY_LAUNCH_CATALOG_PIN_FIXTURE = ROOT / "tests" / "fixtures" / "py-launch-catalog-pin.lock.json"
