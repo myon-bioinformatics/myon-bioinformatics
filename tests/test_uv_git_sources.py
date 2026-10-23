@@ -1,190 +1,257 @@
-"""uv git-source pilot stays beside the vendor lock."""
+"""Catalog dispatch pilot: one JSON, no extra package projects."""
 import importlib.util
 import json
-import os
-import shutil
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGES = (
-    ROOT / "packages" / "gh_workflow",
-    ROOT / "packages" / "node_launch",
-    ROOT / "packages" / "gh_ops",
-)
-CONSUMERS = (
-    ROOT / "pilot" / "uv-upstream" / "pyproject.toml",
-    ROOT / "pilot" / "uv-parent" / "pyproject.toml",
-)
 WORKFLOW = ROOT / ".github" / "workflows" / "uv-git-sources.yml"
 SETUP_PYTHON = "actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0"
 SETUP_NODE = "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0"
 SETUP_UV = "astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2"
+INSTALLABLE = """
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "browser-test-kit-tools"
+version = "0.1.0"
+requires-python = ">=3.9"
+
+[dependency-groups]
+dev = ["pytest>=9"]
+"""
+PACKAGE_FALSE = """
+[project]
+name = "gh-identity-dev"
+version = "0.0.0"
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.uv]
+package = false
+"""
+WITH_DEPS = """
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcp-toolcall-lab"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["fastmcp>=4.1.1"]
+"""
 
 
-def _resolver():
+def _driver():
     spec = importlib.util.spec_from_file_location(
-        "resolve_sources", ROOT / "pilot" / "resolve_sources.py")
+        "vendor_dispatch", ROOT / "pilot" / "vendor_dispatch.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-def _uv():
-    path = shutil.which("uv")
-    if path is None:
-        pytest.fail("uv is required for the git-source pilot")
-    return path
-
-
-def test_package_projects_are_py311_lower_bounds_only():
-    for project in PACKAGES:
-        data = tomllib.loads((project / "pyproject.toml").read_text(encoding="utf-8"))
-        assert data["project"]["requires-python"] == ">=3.11"
-        assert data["project"]["dependencies"] == []
-        requires = data["build-system"]["requires"]
-        assert requires == ["setuptools>=69"]
-        assert "==" not in requires[0]
-
-
-def test_symlinks_point_at_standalone_files():
-    expected = {
-        ROOT / "packages" / "gh_workflow" / "gh_workflow.py": ROOT / "gh_workflow.py",
-        ROOT / "packages" / "node_launch" / "node_launch.py": ROOT / "node_launch.py",
-        ROOT / "packages" / "gh_ops" / "gh_ops.py": ROOT / "gh_ops.py",
-        ROOT / "packages" / "gh_ops" / "gh_identity.py": ROOT / "vendor" / "gh_identity.py",
+def _tool(repository, source, commit=None):
+    return {
+        "repository": repository,
+        "commit": commit or ("a" * 40),
+        "reason": "pilot fixture",
+        "source": source,
+        "consumers": {},
     }
-    for link, target in expected.items():
-        assert link.is_symlink()
-        assert link.resolve() == target
-        assert target.is_file()
-        assert not target.is_symlink()
 
 
-def test_consumers_track_branch_main_without_a_sha():
-    upstream = tomllib.loads(CONSUMERS[0].read_text(encoding="utf-8"))
-    parent = tomllib.loads(CONSUMERS[1].read_text(encoding="utf-8"))
-    for data in (upstream, parent):
-        assert data["project"]["requires-python"] == ">=3.11"
-        assert data["tool"]["uv"]["package"] is False
-        for spec in data["tool"]["uv"]["sources"].values():
-            assert spec["branch"] == "main"
-            assert "rev" not in spec
-            assert spec["git"].startswith("https://github.com/myon-bioinformatics/")
-            assert "==" not in spec["git"]
-    assert upstream["tool"]["uv"]["sources"]["browser-test-kit-tools"]["git"].endswith("/browser-test-kit")
-    sources = parent["tool"]["uv"]["sources"]
-    assert sources["gh-workflow"]["subdirectory"] == "packages/gh_workflow"
-    assert sources["node-launch"]["subdirectory"] == "packages/node_launch"
-    assert sources["gh-ops"]["subdirectory"] == "packages/gh_ops"
-    assert "subdirectory" not in upstream["tool"]["uv"]["sources"]["browser-test-kit-tools"]
+def _catalog():
+    return {
+        "schema": "vendor-catalog/1",
+        "tools": [
+            _tool("myon-bioinformatics/browser-test-kit", "scripts/check_evidence.py"),
+            _tool("myon-bioinformatics/gh_identity", "gh_identity.py"),
+            _tool("myon-bioinformatics/mcp-toolcall-lab", "src/mcp_toolcall_lab/github_public_resolver.py"),
+            _tool("myon-bioinformatics/myon-bioinformatics", "py_launch.cjs"),
+            _tool("myon-bioinformatics/browser-test-kit", "scripts/interaction.mjs"),
+        ],
+    }
 
 
-def test_vendor_lock_and_stdlib_contract_stay():
-    lock = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))
-    assert "\nbuild/\n" in (ROOT / ".gitignore").read_text(encoding="utf-8")
-    assert lock["schema"] == "vendor-lock/1"
-    assert any(item["source"] == "gh_identity.py" and item["destination"] == "vendor/gh_identity.py"
-               for item in lock["files"])
-    subprocess.run(
-        [sys.executable, "-S", "-c", "import gh_workflow, node_launch, gh_ops"],
-        cwd=ROOT, check=True,
+def _env(module, **overrides):
+    values = dict(python=(3, 12, 0), no_site=False, offline=False, uv=True, node=24)
+    values.update(overrides)
+    return module.Env(**values)
+
+
+def _opener(url):
+    if url.endswith("/pyproject.toml"):
+        if "/browser-test-kit/" in url:
+            return 200, INSTALLABLE.encode()
+        if "/gh_identity/" in url:
+            return 200, PACKAGE_FALSE.encode()
+        if "/mcp-toolcall-lab/" in url:
+            return 200, WITH_DEPS.encode()
+        return 404, b"missing"
+    if url.endswith("/package.json"):
+        if "/browser-test-kit/" in url:
+            return 200, b'{"private": true, "devDependencies": {"playwright": "1.64.0"}}'
+        return 404, b"missing"
+    if "/commits/" in url:
+        return 200, json.dumps({"sha": "b" * 40}).encode()
+    if url.endswith("/py_launch.cjs"):
+        return 200, b"console.log('ok')\n"
+    if url.endswith("/scripts/interaction.mjs"):
+        return 200, b"export {}\n"
+    return 404, b"missing"
+
+
+def test_git_spec_names_repository_ref_and_optional_subdirectory():
+    module = _driver()
+    assert module.git_spec("myon-bioinformatics/browser-test-kit", "main") == (
+        "git+https://github.com/myon-bioinformatics/browser-test-kit@main"
     )
-    note = (ROOT / "docs" / "uv-git-source-migration.md").read_text(encoding="utf-8")
-    assert 'branch = "main"' in note
-    assert "uv lock --upgrade" in note
-    assert "vendor.lock.json" in note
+    assert module.git_spec(
+        "myon-bioinformatics/browser-test-kit", "ab" * 20, subdirectory="scripts",
+    ).endswith("@" + ("ab" * 20) + "#subdirectory=scripts")
+
+
+def test_installable_project_and_explicit_skips():
+    module = _driver()
+    ok, reason = module.installable(INSTALLABLE, (3, 12, 0))
+    assert ok and "repository root" in reason
+    ok, reason = module.installable(PACKAGE_FALSE, (3, 12, 0))
+    assert not ok and "package is false" in reason
+    ok, reason = module.installable(WITH_DEPS, (3, 12, 0))
+    assert not ok and "third-party" in reason
+    high = INSTALLABLE.replace('requires-python = ">=3.9"', 'requires-python = ">=3.12"')
+    ok, reason = module.installable(high, (3, 11, 0))
+    assert not ok and "requires-python" in reason
+
+
+def test_environment_skips_are_explicit():
+    module = _driver()
+    assert module.classify("gh_ops.py", _env(module, no_site=True), None).reason.startswith("python -S")
+    low = module.classify("gh_ops.py", _env(module, python=(3, 9, 0)), None)
+    assert low.action == "skip" and "3.9" in low.reason and "uv was not invoked" in low.reason
+    missing_uv = module.classify("gh_ops.py", _env(module, uv=False), None)
+    assert missing_uv.reason == "uv is not on PATH"
+    old_node = module.classify("py_launch.cjs", _env(module, node=22), None)
+    assert old_node.action == "skip" and "older than 24" in old_node.reason
+    no_node = module.classify("py_launch.cjs", _env(module, node=None), None)
+    assert no_node.reason == "node is not on PATH"
+    asset = module.classify("LICENSE", _env(module), None)
+    assert asset.action == "skip" and "vendor lock" in asset.reason
+
+
+def test_dispatch_installs_fetches_and_records(tmp_path):
+    module = _driver()
+    catalog = _catalog()
+    calls = []
+
+    def install(repository, ref, modules):
+        calls.append((repository, ref, tuple(modules)))
+        return "c" * 40, {}
+
+    results = module.dispatch(catalog, _env(module), "main", _opener, install, dry_run=False)
+    by_source = {row["source"]: row for row in results}
+    assert calls == [(
+        "myon-bioinformatics/browser-test-kit",
+        "main",
+        ("check_evidence",),
+    )]
+    uv_row = by_source["scripts/check_evidence.py"]
+    assert uv_row["action"] == "uv"
+    assert uv_row["commit"] == "c" * 40
+    assert uv_row["spec"].endswith("browser-test-kit@main")
+    assert by_source["gh_identity.py"]["action"] == "skip"
+    assert "package is false" in by_source["gh_identity.py"]["reason"]
+    assert by_source["src/mcp_toolcall_lab/github_public_resolver.py"]["action"] == "skip"
+    fetched = by_source["py_launch.cjs"]
+    assert fetched["action"] == "fetch" and fetched["commit"] == "b" * 40
+    assert fetched["sha256"]
+    private = by_source["scripts/interaction.mjs"]
+    assert private["action"] == "fetch" and "private" in private["reason"]
+    changed = module.apply_record(catalog, results)
+    assert "scripts/check_evidence.py" in changed
+    assert "py_launch.cjs" in changed
+    assert catalog["tools"][1]["commit"] == "a" * 40
+    module._validate_catalog(catalog)
+    manifest = tmp_path / "vendor-catalog.json"
+    module.write_catalog(manifest, catalog)
+    reloaded = json.loads(manifest.read_text(encoding="utf-8"))
+    assert reloaded["tools"][0]["commit"] == "c" * 40
+    assert set(reloaded) == {"schema", "tools"}
+
+
+def test_dry_run_does_not_install():
+    module = _driver()
+
+    def install(repository, ref, modules):
+        raise AssertionError("dry-run must not install")
+
+    results = module.dispatch(_catalog(), _env(module), "main", _opener, install, dry_run=True)
+    assert any(row["action"] == "uv" and row["commit"] is None for row in results)
+    assert all(row["sha256"] is None for row in results)
+
+
+def test_cli_skip_lanes_do_not_rewrite_the_catalog():
+    before = (ROOT / "vendor-catalog.json").read_bytes()
+    locked = (ROOT / "vendor.lock.json").read_bytes()
+    for args in (
+        [sys.executable, "-S", "pilot/vendor_dispatch.py", "--dry-run", "--offline"],
+        [sys.executable, "pilot/vendor_dispatch.py", "--assume-python", "3.9", "--dry-run", "--offline"],
+    ):
+        completed = subprocess.run(args, cwd=ROOT, check=True, capture_output=True, text=True)
+        report = json.loads(completed.stdout)
+        assert report["schema"] == "vendor-dispatch/1"
+        python_rows = [row for row in report["entries"] if row["source"].endswith(".py")]
+        assert python_rows
+        if "-S" in args:
+            assert all(row["action"] == "skip" and row["reason"].startswith("python -S") for row in python_rows)
+        else:
+            assert all(row["action"] == "skip" and "3.9" in row["reason"] for row in python_rows)
+        node_rows = [row for row in report["entries"] if row["source"].endswith((".js", ".cjs", ".mjs"))]
+        assert node_rows
+        assert all(row["action"] == "skip" for row in node_rows)
+    assert (ROOT / "vendor-catalog.json").read_bytes() == before
+    assert (ROOT / "vendor.lock.json").read_bytes() == locked
+
+
+def test_vendor_lock_and_template_stay():
+    lock = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))
+    assert lock["schema"] == "vendor-lock/1"
+    assert any(
+        item["source"] == "gh_identity.py" and item["destination"] == "vendor/gh_identity.py"
+        for item in lock["files"]
+    )
+    tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
+    assert not any(path.startswith("packages/") for path in tracked)
+    assert "pilot/resolve_sources.py" not in tracked
+    assert not any(path.startswith("pilot/") and path.endswith("pyproject.toml") for path in tracked)
+    assert (ROOT / "pilot" / "vendor_dispatch.py").is_file()
+    driver = (ROOT / "pilot" / "vendor_dispatch.py").read_text(encoding="utf-8")
+    assert "git commit" not in driver
+    assert "git push" not in driver
     template = (ROOT / "templates" / "vendor-child-ci.workflow.yml").read_text(encoding="utf-8")
+    assert "vendor_dispatch" not in template
     assert "uv lock" not in template
+    note = (ROOT / "docs" / "uv-git-source-migration.md").read_text(encoding="utf-8")
+    assert "vendor-catalog.json" in note
+    assert "package = false" in note
+    assert "packages/" not in note
 
 
-def test_workflow_pins_and_dynamic_main():
+def test_workflow_resolves_main_and_skips_other_lanes():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "actions/checkout@v7" in text
-    assert "fetch-depth: 0" in text
     assert SETUP_PYTHON in text
     assert SETUP_NODE in text
     assert SETUP_UV in text
     assert 'node-version: "24"' in text
-    assert "uv lock --upgrade" not in text
-    assert "python pilot/resolve_sources.py upstream" in text
-    assert "python pilot/resolve_sources.py parent --exercise-node" in text
+    assert "python -S pilot/vendor_dispatch.py --dry-run --offline" in text
+    assert 'python pilot/vendor_dispatch.py --assume-python 3.9 --dry-run --offline' in text
+    assert "python pilot/vendor_dispatch.py --resolve-ref main --record" in text
+    assert "uv lock" not in text
     assert "uv run pytest" not in text
     assert "python -m pytest" not in text
-    resolver = (ROOT / "pilot" / "resolve_sources.py").read_text(encoding="utf-8")
-    assert '["uv", "lock", "--upgrade"]' in resolver
-    assert "HEAD:refs/heads/main" in resolver
-    assert "--rev" not in resolver
-
-
-def test_revision_parser_reads_resolved_git_commits():
-    module = _resolver()
-    found = module.revisions(
-        '\n'.join([
-            'name = "gh-workflow"',
-            'source = { git = "https://github.com/myon-bioinformatics/myon-bioinformatics?branch=main#aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }',
-            'name = "uv-parent-pilot"',
-            'source = { virtual = "." }',
-        ])
-    )
-    assert found == {"gh-workflow": "a" * 40}
-
-
-def test_path_install_matches_standalone_bytes(tmp_path):
-    uv = _uv()
-    env = tmp_path / "venv"
-    subprocess.run([uv, "venv", os.fspath(env), "--python", sys.executable], check=True)
-    python = env / "bin" / "python"
-    for project in PACKAGES:
-        subprocess.run([uv, "pip", "install", "--python", os.fspath(python), os.fspath(project)], check=True)
-    code = """
-import os
-import pathlib
-import gh_ops, gh_workflow, node_launch
-root = pathlib.Path(os.environ["ROOT"])
-assert pathlib.Path(gh_workflow.__file__).read_bytes() == (root / "gh_workflow.py").read_bytes()
-assert pathlib.Path(node_launch.__file__).read_bytes() == (root / "node_launch.py").read_bytes()
-assert pathlib.Path(gh_ops.__file__).read_bytes() == (root / "gh_ops.py").read_bytes()
-identity = pathlib.Path(gh_ops.gh_identity.__file__)
-assert identity.read_bytes() == (root / "vendor" / "gh_identity.py").read_bytes()
-assert identity.parent == pathlib.Path(gh_ops.__file__).parent
-"""
-    subprocess.run(
-        [os.fspath(python), "-c", code],
-        cwd=tmp_path, check=True, env={**os.environ, "ROOT": os.fspath(ROOT)},
-    )
-
-
-def test_local_branch_main_resolves_the_commit_under_test(tmp_path):
-    uv = _uv()
-    assert shutil.which("git")
-    previous = os.environ.get("PATH", "")
-    os.environ["PATH"] = os.path.dirname(uv) + os.pathsep + previous
-    for relative in ("gh_workflow.py", "node_launch.py", "gh_ops.py", "vendor/gh_identity.py"):
-        destination = tmp_path / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / relative, destination)
-    shutil.copytree(ROOT / "packages", tmp_path / "packages", symlinks=True)
-    shutil.copytree(ROOT / "pilot" / "uv-parent", tmp_path / "pilot" / "uv-parent")
-    subprocess.run(["git", "init"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(
-        ["git", "-c", "user.email=dev@localhost", "-c", "user.name=dev", "commit", "-m", "pilot"],
-        cwd=tmp_path, check=True,
-    )
-    head = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=tmp_path, check=True, capture_output=True, text=True,
-    ).stdout.strip()
-    try:
-        found = _resolver().resolve_parent(tmp_path, force_local=True, exercise_node=False)
-    finally:
-        os.environ["PATH"] = previous
-    assert found == {
-        "gh-ops": head,
-        "gh-workflow": head,
-        "node-launch": head,
-    }
+    assert "packages/" not in text
