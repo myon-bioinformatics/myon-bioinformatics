@@ -1,0 +1,23 @@
+{
+  "schema": "vendor-lock/1",
+  "files": [
+    {
+      "repository": "myon-bioinformatics/myon-bioinformatics",
+      "ref": "1eda992aa6fa31a902e2c06428e53ab17e8fe3c1",
+      "commit": "1eda992aa6fa31a902e2c06428e53ab17e8fe3c1",
+      "source": "LICENSE",
+      "destination": "vendor/myon-bioinformatics-LICENSE",
+      "blob_sha": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
+      "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
+    },
+    {
+      "repository": "myon-bioinformatics/myon-bioinformatics",
+      "ref": "c73821de8492b2394c718cb276cad9f683ff1910",
+      "commit": "c73821de8492b2394c718cb276cad9f683ff1910",
+      "source": "py_launch.cjs",
+      "destination": "vendor/py_launch.cjs",
+      "blob_sha": "5a90907aa0ed3e2afa5ef1519010136644af1658",
+      "sha256": "b43c88e4e635d888995cd33f121850fe2cae753b66a55c628891d6795429ab88"
+    }
+  ]
+}
