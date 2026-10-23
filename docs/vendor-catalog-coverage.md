@@ -81,6 +81,10 @@ PR #96 introduces `py_matrix.py`, `pytest_brief.py`, and `publish_check.py` with
 merge `c73821de8492b2394c718cb276cad9f683ff1910`. `tests/test_py_launch_catalog.py`
 checks the pin commit and verifies Git blob/SHA-256 via `vendor_sync.inspect_source`.
 
+`node_launch.py` landed in parent PR #158; the catalog pin uses accepting main merge
+`fe79d3441c225b9d460b92041e06c166e686abdf`. `tests/test_node_launch_catalog.py`
+checks the pin commit and verifies Git blob/SHA-256 via `vendor_sync.inspect_source`.
+
 2026-10-17 acceptance completed: Flutter #197 was squash-merged at
 `a9b19253fd9923ee4799e5178fd07b20de5a6ed4`; the reviewed lock and workflow
 blobs are unchanged. Parent #96 was merge-committed at

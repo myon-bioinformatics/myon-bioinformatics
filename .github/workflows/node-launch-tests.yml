@@ -24,11 +24,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.9"
-      - name: Import node_launch without third-party packages
-        run: python -S -c "import node_launch; assert node_launch.MIN_NODE_MAJOR == 24"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.9"
+          cache-python: true
+      - name: Run node_launch unit tests (Python 3.9)
+        run: uv run --python 3.9 --no-project --with pytest pytest -q tests/test_node_launch.py tests/test_node_launch_cli_args_parity.py
 
   node-test:
     runs-on: ${{ matrix.os }}

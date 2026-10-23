@@ -22,6 +22,8 @@ on:
       - "pyproject.toml"
       - "py_launch.cjs"
       - "node_launch.py"
+      - "tests/test_node_launch_catalog.py"
+      - "tests/fixtures/node-launch-catalog-pin.lock.json"
   push:
     branches: [main]
     paths:
@@ -44,6 +46,8 @@ on:
       - "pyproject.toml"
       - "py_launch.cjs"
       - "node_launch.py"
+      - "tests/test_node_launch_catalog.py"
+      - "tests/fixtures/node-launch-catalog-pin.lock.json"
   schedule:
     - cron: "0 14 * * 1"
 
@@ -134,6 +138,42 @@ jobs:
           delay=20
           for attempt in $(seq 1 "$attempts"); do
             if uv run pytest -q -m network tests/test_py_launch_catalog.py; then
+              echo "network catalog verification succeeded on attempt ${attempt}"
+              exit 0
+            fi
+            if [ "$attempt" -lt "$attempts" ]; then
+              echo "attempt ${attempt} failed; retrying in ${delay}s..."
+              sleep "$delay"
+              delay=$((delay * 2))
+            fi
+          done
+          echo "network catalog verification failed after ${attempts} attempts"
+          exit 1
+
+  node-launch-catalog-network:
+    name: node_launch catalog pin (network)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+          cache-python: true
+      - name: Verify node_launch vendor-catalog pin against GitHub
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          attempts=3
+          delay=20
+          for attempt in $(seq 1 "$attempts"); do
+            if uv run pytest -q -m network tests/test_node_launch_catalog.py; then
               echo "network catalog verification succeeded on attempt ${attempt}"
               exit 0
             fi
