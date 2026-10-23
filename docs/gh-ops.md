@@ -65,6 +65,11 @@ commits. A consumer repin is separate from this parent registry change.
 `gh_identity.py` remains read-oriented in child repositories: it does not replace
 `gh_ops.py` for REST writes or local `git add`/`commit`/`push` workflows.
 
+Other parent files that still perform a GitHub or git write are listed in
+[the write-overlap audit](gh-ops-write-overlap.md). None of those parent files
+was removed: each one still has a caller, and the ones enrolled by a child stay
+in place.
+
 ## Merge with verification (`pr-merge`)
 
 `pr-merge` merges only when the PR is open, `clean`, its head matches `--sha`, and
