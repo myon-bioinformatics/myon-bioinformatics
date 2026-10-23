@@ -11,6 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 PY_LAUNCH_MERGE_COMMIT = "2ea31034ca3caa60ed769806baf750d75e296552"
 REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
 SOURCE = "py_launch.cjs"
+PY_LAUNCH_CATALOG_PIN_BLOB_SHA = "f2c042b6f66810a4aaea503f13674678a78ca659"
+PY_LAUNCH_CATALOG_PIN_SHA256 = "a41acc4aa470849ba30a99922e3bb13eed9cc7fbea754d38154e3248981d6477"
+PY_LAUNCH_WORKTREE_BLOB_SHA = "0b1d7cc5d7d1f71adbe49fe5c87d25415805153b"
+PY_LAUNCH_WORKTREE_SHA256 = "63035549d0bce8035bc594e12df68591d8e58970aaeaa4409882ea3c3f2e6eaa"
+PY_LAUNCH_LOCK_FIXTURE = ROOT / "tests" / "fixtures" / "cli-args-pr26.lock.json"
 
 
 def _catalog_tool():
@@ -25,12 +30,18 @@ def test_py_launch_catalog_entry_metadata():
     assert tool["source"] == SOURCE
 
 
-def test_py_launch_local_source_identity():
+def test_py_launch_catalog_pin_digests_match_fixture_record():
+    lock = json.loads(PY_LAUNCH_LOCK_FIXTURE.read_text(encoding="utf-8"))
+    entry = next(item for item in lock["files"] if item.get("source") == SOURCE)
+    assert entry["commit"] == PY_LAUNCH_MERGE_COMMIT
+    assert entry["blob_sha"] == PY_LAUNCH_CATALOG_PIN_BLOB_SHA
+    assert entry["sha256"] == PY_LAUNCH_CATALOG_PIN_SHA256
+
+
+def test_py_launch_worktree_source_identity():
     data = (ROOT / SOURCE).read_bytes()
-    blob_sha = vendor_sync.git_blob(data)
-    sha256 = hashlib.sha256(data).hexdigest()
-    assert len(blob_sha) == 40
-    assert len(sha256) == 64
+    assert vendor_sync.git_blob(data) == PY_LAUNCH_WORKTREE_BLOB_SHA
+    assert hashlib.sha256(data).hexdigest() == PY_LAUNCH_WORKTREE_SHA256
 
 
 @pytest.mark.network
