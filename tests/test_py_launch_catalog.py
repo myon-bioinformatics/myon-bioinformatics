@@ -60,3 +60,5 @@ def test_py_launch_catalog_pin_contains_matching_bytes():
     inspected = vendor_sync.inspect_source(tool["repository"], tool["commit"], tool["source"])
     assert hashlib.sha256(at_pin).hexdigest() == inspected["sha256"]
     assert vendor_sync.git_blob(at_pin) == inspected["blob_sha"]
+    assert hashlib.sha256(at_pin).hexdigest() == PY_LAUNCH_CATALOG_PIN_SHA256
+    assert vendor_sync.git_blob(at_pin) == PY_LAUNCH_CATALOG_PIN_BLOB_SHA
