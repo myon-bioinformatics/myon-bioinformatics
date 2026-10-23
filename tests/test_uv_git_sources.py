@@ -105,6 +105,7 @@ def test_vendor_lock_and_stdlib_contract_stay():
 def test_workflow_pins_and_dynamic_main():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "actions/checkout@v7" in text
+    assert "fetch-depth: 0" in text
     assert SETUP_PYTHON in text
     assert SETUP_NODE in text
     assert SETUP_UV in text

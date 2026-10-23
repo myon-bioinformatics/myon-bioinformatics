@@ -85,15 +85,21 @@ def github_parent_packages_published() -> bool:
         raise
 
 
-def publish_head_as_main(root: Path) -> str:
-    bare = Path(tempfile.mkdtemp(prefix="uv-pilot-bare-")) / "repo.git"
-    subprocess.run(["git", "init", "--bare", os.fspath(bare)], check=True)
-    # Actions checkouts are shallow. An empty bare repo rejects that push
-    # unless it accepts a shallow update.
-    subprocess.run(
-        ["git", "-C", os.fspath(bare), "config", "receive.shallowUpdate", "true"],
-        check=True,
+def _unshallow(root: Path) -> None:
+    """uv looks up origin/main. A shallow bare push does not provide that rev."""
+    result = subprocess.run(
+        ["git", "-C", os.fspath(root), "rev-parse", "--is-shallow-repository"],
+        check=True, capture_output=True, text=True,
     )
+    if result.stdout.strip() != "true":
+        return
+    subprocess.run(["git", "-C", os.fspath(root), "fetch", "--unshallow"], check=True)
+
+
+def publish_head_as_main(root: Path) -> str:
+    _unshallow(root)
+    bare = Path(tempfile.mkdtemp(prefix="uv-pilot-bare-")) / "repo.git"
+    subprocess.run(["git", "init", "--bare", "-b", "main", os.fspath(bare)], check=True)
     subprocess.run(
         ["git", "-C", os.fspath(root), "push", os.fspath(bare), "HEAD:refs/heads/main"],
         check=True,
