@@ -156,6 +156,32 @@ if (require.main === module) main(__dirname + "/your_tool.py", { envVar: "IRONMA
 Optional `package.json` `"bin"` can point at that wrapper for `npx
 github:owner/repo#commit` style invocation; the vendored launcher stays shared.
 
+### Python launcher for vendored Node scripts (`node_launch.py`)
+
+Parent-owned `node_launch.py` is a single stdlib module (Python 3.9+) that spawns
+Node with argv passthrough, optional stdin/stdout capture as bytes, and inherited
+stdio in `main()`. Library callers use `run(target, *args, node=..., input=...,
+timeout=..., max_input_bytes=..., response_max_bytes=..., env=..., env_var=...)`
+or `run_argv(argv, ...)` for `-e` one-liners. `env` merges over `os.environ`
+case-insensitively on Windows. Node 24+ is required (`resolve_node` probes
+`node --version`). Resolution order: explicit `node`, `os.environ[env_var]`
+(for example `CLI_ARGS_NODE` or `NODE`), then `shutil.which("node")`. Explicit
+`node` or a set `env_var` value does not fall back. Windows `.cmd`/`.bat` shims
+are rejected (no `shell=True`). Size caps raise `EINPUTTOOLARGE`,
+`ERESPONSETOOLARGE`, or `ELAUNCHFAILURE` like `py_launch.cjs`.
+
+Add the `vendor-catalog.json` recommendation only after the launcher is on
+default branch (merge commit pin), then enroll with `vendor_sync.py` like any
+other catalog source (`destination`: `vendor/node_launch.py`, plus `blob_sha`
+and `sha256` from `inspect_source` or `vendor_catalog.py verify`). Thin
+consumer wrapper:
+
+```python
+import node_launch
+if __name__ == "__main__":
+    node_launch.main(__file__.replace("_wrapper.py", ".mjs"), {"env_var": "MYON_NODE"})
+```
+
 `--help` exits before filesystem/network activity. `check` is offline and fails
 on missing or mismatching files. `materialize` reuses verified local copies or
 fetches raw bytes at the locked commit, verifies both hashes, then places them.

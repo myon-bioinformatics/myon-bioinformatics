@@ -20,6 +20,7 @@ on:
       - ".github/workflows/parent-pin-check.yml"
       - "pytest.ini"
       - "py_launch.cjs"
+      - "node_launch.py"
   push:
     branches: [main]
     paths:
@@ -40,6 +41,7 @@ on:
       - ".github/workflows/parent-pin-check.yml"
       - "pytest.ini"
       - "py_launch.cjs"
+      - "node_launch.py"
   schedule:
     - cron: "0 14 * * 1"
 
