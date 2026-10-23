@@ -245,7 +245,7 @@ def test_real_401_disables_askpass_and_terminal_prompts(http_git, git_env, tmp_p
         cert, key = tmp_path / "cert.pem", tmp_path / "key.pem"
         subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
                         "-subj", "/CN=127.0.0.1", "-keyout", str(key), "-out", str(cert)],
-                       capture_output=True, check=True, timeout=10)
+                       capture_output=True, check=True, timeout=60)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(cert, key)
         server.socket = context.wrap_socket(server.socket, server_side=True)

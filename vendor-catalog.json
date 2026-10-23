@@ -525,8 +525,8 @@
     },
     {
       "repository": "myon-bioinformatics/myon-bioinformatics",
-      "commit": "2ea31034ca3caa60ed769806baf750d75e296552",
-      "reason": "Shared Node stdlib launcher for vendored single-file Python tools (parent PR #145 merge). Consumers lock vendor/py_launch.cjs with vendor-lock/1 blob_sha and sha256 from vendor_sync inspect_source.",
+      "commit": "173124231fc171c251e35caef1fa67e76d0f8bae",
+      "reason": "Shared Node stdlib launcher for vendored single-file Python tools (parent PR #149 merge). Consumers lock vendor/py_launch.cjs with vendor-lock/1 blob_sha and sha256 from vendor_sync inspect_source.",
       "source": "py_launch.cjs",
       "default_enrollment": {
         "enrollment": "skipped",
