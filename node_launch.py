@@ -11,16 +11,21 @@ shims are never spawned with ``shell=True``; explicit paths are rejected.
 
 ``env`` merges over ``os.environ`` case-insensitively on Windows. Optional
 ``max_input_bytes`` / ``response_max_bytes`` raise errors with stable ``code`` values:
-``EINPUTTOOLARGE``, ``ERESPONSETOOLARGE``, ``ELAUNCHFAILURE``.
+``EINPUTTOOLARGE``, ``ERESPONSETOOLARGE``, ``ELAUNCHFAILURE``, and
+``ELAUNCHSTDINCLOSED`` when stdin breaks (``EPIPE``) before the child finishes reading.
+Stdout is read incrementally when ``response_max_bytes`` is set (cap plus
+``HOST_RESPONSE_MARGIN_BYTES``, matching ``py_launch.cjs`` ``maxBuffer`` / ``ENOBUFS``).
 """
 from __future__ import annotations
 
+import errno
 import os
 import re
 import shutil
 import subprocess
 import sys
-from typing import Any, Mapping, MutableMapping, Optional, Sequence, Union
+import threading
+from typing import Any, Mapping, Optional, Sequence, Union
 
 MIN_NODE_MAJOR = 24
 DEFAULT_ENV_VAR = "NODE"
@@ -153,11 +158,14 @@ def _node_executable(
         explicit = True
     if explicit:
         path = os.fspath(node)
+        _reject_windows_batch_wrapper(path)
         return _probe_node_once(path, probe_timeout) if probe else path
 
     if not probe:
         discovered = shutil.which("node")
-        return discovered if discovered else "node"
+        path = discovered if discovered else "node"
+        _reject_windows_batch_wrapper(path)
+        return path
 
     discovered = shutil.which("node")
     if discovered:
@@ -175,7 +183,7 @@ def resolve_node(
     probe: bool = True,
     probe_timeout: float = DEFAULT_PROBE_TIMEOUT,
 ) -> str:
-    f"""Locate a Node {MIN_NODE_MAJOR}+ executable.
+    """Locate a Node 24+ executable.
 
     Explicit ``node`` or a set ``env_var`` environment value must work as given;
     auto-discovery uses ``shutil.which('node')`` on ``PATH``.
@@ -256,6 +264,203 @@ def _response_cap_bytes(response_max_bytes: int) -> int:
     return response_max_bytes + HOST_RESPONSE_MARGIN_BYTES
 
 
+def _launch_failure_from_returncode(
+    returncode: int,
+    stdout: bytes,
+    stderr: bytes,
+) -> LaunchError:
+    if returncode < 0:
+        signum = -returncode
+        return LaunchError(
+            f"node_launch: Node process terminated by signal {signum}",
+            code="ELAUNCHFAILURE",
+            signal=signum,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    message = _decode(stderr).strip() or "Node script failed"
+    return LaunchError(
+        message,
+        code="ELAUNCHFAILURE",
+        status=returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+
+def _exit_code_for_main(returncode: Optional[int]) -> None:
+    if returncode is None or returncode == 0:
+        return
+    if returncode < 0:
+        sys.exit(128 + (-returncode))
+    sys.exit(returncode)
+
+
+def _capped_communicate(
+    proc: subprocess.Popen,
+    input_bytes: Optional[bytes],
+    timeout: Optional[float],
+    response_max_bytes: int,
+) -> tuple[bytes, bytes, int]:
+    hard_limit = _response_cap_bytes(response_max_bytes)
+    stdout_chunks: list[bytes] = []
+    stderr_chunks: list[bytes] = []
+    stdout_len = 0
+    exceeded = threading.Event()
+    read_lock = threading.Lock()
+
+    def read_stdout() -> None:
+        nonlocal stdout_len
+        stream = proc.stdout
+        if stream is None:
+            return
+        try:
+            while True:
+                chunk = stream.read(65536)
+                if not chunk:
+                    break
+                with read_lock:
+                    stdout_len += len(chunk)
+                    if stdout_len > hard_limit:
+                        exceeded.set()
+                        try:
+                            proc.kill()
+                        except OSError:
+                            pass
+                        break
+                    stdout_chunks.append(chunk)
+        finally:
+            stream.close()
+
+    def read_stderr() -> None:
+        stream = proc.stderr
+        if stream is None:
+            return
+        try:
+            while True:
+                chunk = stream.read(65536)
+                if not chunk:
+                    break
+                stderr_chunks.append(chunk)
+        finally:
+            stream.close()
+
+    stdout_thread = threading.Thread(target=read_stdout, name="node_launch_stdout")
+    stderr_thread = threading.Thread(target=read_stderr, name="node_launch_stderr")
+    stdout_thread.start()
+    stderr_thread.start()
+
+    stdin_code: Optional[str] = None
+    try:
+        if input_bytes is not None and proc.stdin is not None:
+            proc.stdin.write(input_bytes)
+            proc.stdin.flush()
+        if proc.stdin is not None:
+            proc.stdin.close()
+    except BrokenPipeError:
+        stdin_code = "ELAUNCHSTDINCLOSED"
+    except OSError as exc:
+        if exc.errno == errno.EPIPE:
+            stdin_code = "ELAUNCHSTDINCLOSED"
+        else:
+            raise LaunchError(
+                f"node_launch: Node process failed: {exc}",
+                code="ELAUNCHFAILURE",
+            ) from exc
+
+    try:
+        returncode = proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        stdout_thread.join()
+        stderr_thread.join()
+        stdout = b"".join(stdout_chunks)
+        stderr = b"".join(stderr_chunks)
+        raise LaunchError(
+            "node_launch: Node process timed out",
+            code="ELAUNCHFAILURE",
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    stdout_thread.join()
+    stderr_thread.join()
+    stdout = b"".join(stdout_chunks)
+    stderr = b"".join(stderr_chunks)
+
+    if stdin_code == "ELAUNCHSTDINCLOSED":
+        raise LaunchError(
+            "node_launch: Node stdin pipe closed unexpectedly",
+            code="ELAUNCHSTDINCLOSED",
+            status=returncode,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    if exceeded.is_set() or len(stdout) > response_max_bytes:
+        raise LaunchError(
+            f"node_launch: response exceeds response_max_bytes ({response_max_bytes})",
+            code="ERESPONSETOOLARGE",
+            status=returncode,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    return stdout, stderr, returncode
+
+
+def _communicate(
+    proc: subprocess.Popen,
+    input_bytes: Optional[bytes],
+    timeout: Optional[float],
+    response_max_bytes: Optional[int],
+) -> tuple[bytes, bytes, int]:
+    if response_max_bytes is not None:
+        _nonnegative_int("response_max_bytes", response_max_bytes)
+        return _capped_communicate(proc, input_bytes, timeout, response_max_bytes)
+
+    stdin_code: Optional[str] = None
+    try:
+        stdout, stderr = proc.communicate(input=input_bytes, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        stdout, stderr = proc.communicate()
+        raise LaunchError(
+            "node_launch: Node process timed out",
+            code="ELAUNCHFAILURE",
+            stdout=stdout or b"",
+            stderr=stderr or b"",
+        )
+    except BrokenPipeError:
+        stdin_code = "ELAUNCHSTDINCLOSED"
+        stdout, stderr = proc.communicate()
+    except OSError as exc:
+        if exc.errno == errno.EPIPE:
+            stdin_code = "ELAUNCHSTDINCLOSED"
+            stdout, stderr = proc.communicate()
+        else:
+            raise LaunchError(
+                f"node_launch: Node process failed: {exc}",
+                code="ELAUNCHFAILURE",
+            ) from exc
+
+    returncode = proc.returncode
+    if returncode is None:
+        returncode = proc.wait()
+
+    if stdin_code == "ELAUNCHSTDINCLOSED":
+        raise LaunchError(
+            "node_launch: Node stdin pipe closed unexpectedly",
+            code="ELAUNCHSTDINCLOSED",
+            status=returncode,
+            stdout=stdout or b"",
+            stderr=stderr or b"",
+        )
+
+    return stdout or b"", stderr or b"", returncode
+
+
 def run_argv(
     argv: Sequence[Union[str, os.PathLike[str]]],
     *,
@@ -290,49 +495,28 @@ def run_argv(
     input_bytes = _normalize_input(input)
 
     try:
-        completed = subprocess.run(
+        proc = subprocess.Popen(
             command,
-            input=input_bytes,
-            capture_output=True,
-            timeout=timeout,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             shell=False,
             env=child_env,
-            check=False,
         )
-    except subprocess.TimeoutExpired as exc:
-        raise LaunchError(
-            "node_launch: Node process timed out",
-            code="ELAUNCHFAILURE",
-            stdout=exc.stdout or b"",
-            stderr=exc.stderr or b"",
-        ) from exc
     except OSError as exc:
         raise LaunchError(
             f"node_launch: Node process failed: {exc}",
             code="ELAUNCHFAILURE",
         ) from exc
 
-    if response_max_bytes is not None:
-        _nonnegative_int("response_max_bytes", response_max_bytes)
-        if len(completed.stdout) > response_max_bytes:
-            raise LaunchError(
-                f"node_launch: response exceeds response_max_bytes ({response_max_bytes})",
-                code="ERESPONSETOOLARGE",
-                status=completed.returncode,
-                stdout=completed.stdout,
-                stderr=completed.stderr,
-            )
+    stdout, stderr, returncode = _communicate(
+        proc, input_bytes, timeout, response_max_bytes
+    )
 
-    if completed.returncode != 0 and check:
-        message = _decode(completed.stderr).strip() or "Node script failed"
-        raise LaunchError(
-            message,
-            code="ELAUNCHFAILURE",
-            status=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
-        )
-    return completed
+    if returncode != 0 and check:
+        raise _launch_failure_from_returncode(returncode, stdout, stderr)
+
+    return subprocess.CompletedProcess(command, returncode, stdout, stderr)
 
 
 def run(
@@ -422,7 +606,7 @@ def main(
         sys.stderr.write(f"node_launch: {error}\n")
         sys.exit(2)
     if completed.returncode != 0:
-        sys.exit(completed.returncode if completed.returncode is not None else 2)
+        _exit_code_for_main(completed.returncode)
 
 
 def clear_probe_cache() -> None:

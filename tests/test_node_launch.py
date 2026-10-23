@@ -85,6 +85,21 @@ def test_max_input_bytes():
 
 @SKIP_NO_NODE
 @SKIP_OLD_NODE
+def test_stdin_pipe_closed():
+    node_launch.clear_probe_cache()
+    with pytest.raises(node_launch.LaunchError) as exc:
+        node_launch.run(
+            "-e",
+            "process.exit(0)",
+            node=NODE,
+            probe=False,
+            input=b"payload",
+        )
+    assert exc.value.code == "ELAUNCHSTDINCLOSED"
+
+
+@SKIP_NO_NODE
+@SKIP_OLD_NODE
 def test_response_max_bytes():
     node_launch.clear_probe_cache()
     with pytest.raises(node_launch.LaunchError) as exc:
@@ -96,6 +111,40 @@ def test_response_max_bytes():
             response_max_bytes=8,
         )
     assert exc.value.code == "ERESPONSETOOLARGE"
+
+
+@SKIP_NO_NODE
+@SKIP_OLD_NODE
+def test_response_max_bytes_streams_large_output():
+    """Capped reads must not buffer hundreds of MiB (regression for subprocess.run)."""
+    node_launch.clear_probe_cache()
+    with pytest.raises(node_launch.LaunchError) as exc:
+        node_launch.run(
+            "-e",
+            "for (let i = 0; i < 200; i++) process.stdout.write('x'.repeat(1024 * 1024));",
+            node=NODE,
+            probe=False,
+            timeout=120,
+            response_max_bytes=1024,
+        )
+    assert exc.value.code == "ERESPONSETOOLARGE"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="signal return codes are Unix-specific")
+@SKIP_NO_NODE
+@SKIP_OLD_NODE
+def test_signal_termination_sets_signal():
+    node_launch.clear_probe_cache()
+    with pytest.raises(node_launch.LaunchError) as exc:
+        node_launch.run(
+            "-e",
+            "process.kill(process.pid, 'SIGKILL')",
+            node=NODE,
+            probe=False,
+            timeout=10,
+        )
+    assert exc.value.signal is not None
+    assert "signal" in str(exc.value).lower()
 
 
 @SKIP_NO_NODE
