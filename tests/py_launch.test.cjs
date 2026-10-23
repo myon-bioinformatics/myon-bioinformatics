@@ -108,6 +108,27 @@ describe("py_launch.run (library mode)", () => {
     assert.equal(outText(result.stdout), "1");
   });
 
+  it("honors isolated and ignores PYTHONPATH stdlib shadowing", () => {
+    const shadowDir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-xml-shadow-"));
+    fs.writeFileSync(
+      path.join(shadowDir, "xml.py"),
+      'PY_LAUNCH_SHADOW = "shadow"\n',
+      "utf8",
+    );
+    const script = path.join(FIXTURES, "import_xml_shadow.py");
+    const shadowed = run(script, [], {
+      python: PYTHON,
+      env: { PYTHONPATH: shadowDir },
+    });
+    assert.equal(outText(shadowed.stdout), "shadow");
+    const isolated = run(script, [], {
+      python: PYTHON,
+      env: { PYTHONPATH: shadowDir },
+      isolated: true,
+    });
+    assert.equal(outText(isolated.stdout), "stdlib");
+  });
+
   it("times out long-running scripts", () => {
     assert.throws(
       () => run(path.join(FIXTURES, "sleep.py"), ["5"], { python: PYTHON, timeout: 200 }),
