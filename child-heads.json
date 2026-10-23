@@ -65,8 +65,9 @@
       "optional": {
         "repository_created_at": "2026-09-17T14:12:39Z"
       },
+      "pull_number": 125,
       "repository_id": 1374546518,
-      "sha": "024378b29bc3b087cabcbc5e2547a6e4444f3a04"
+      "sha": "ed7e2bd02e11391d2ee28491fd32b2c4b4950c65"
     },
     "myon-bioinformatics/mcp-toolcall-lab": {
       "optional": {
