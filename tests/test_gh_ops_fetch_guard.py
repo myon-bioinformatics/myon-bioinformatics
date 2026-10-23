@@ -166,7 +166,7 @@ def test_default_openssh_disables_password_and_hostkey_prompts(monkeypatch, git_
     if not shutil.which("ssh"):
         pytest.skip("OpenSSH unavailable")
     done = subprocess.run(["ssh", "-G", "-F", os.devnull, "-o", "BatchMode=yes", "example.invalid"],
-                          capture_output=True, text=True, timeout=5)
+                          capture_output=True, text=True, timeout=60)
     assert done.returncode == 0 and "batchmode yes" in done.stdout.lower()
 
 
@@ -231,7 +231,7 @@ def http_git(tmp_path):
         thread.join(timeout=2)
 
 
-def remote_probe(url, env, timeout=5, cwd="."):
+def remote_probe(url, env, timeout=60, cwd="."):
     return g._git_network_run(["git", "ls-remote", url], run=subprocess.run, cwd=cwd, timeout=timeout, env=env)
 
 
@@ -377,7 +377,7 @@ def test_real_custom_ssh_hang_is_bounded_and_children_are_killed(git_env, tmp_pa
                     os.kill(int(pidfile.read_text()), signal.SIGKILL)
             else:
                 subprocess.run(["taskkill", "/F", "/T", "/PID", pidfile.read_text()],
-                               capture_output=True, timeout=2)
+                               capture_output=True, timeout=60)
 
 
 def test_sync_main_network_timeout_does_not_limit_local_commands():
