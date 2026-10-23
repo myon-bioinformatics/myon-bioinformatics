@@ -15,7 +15,7 @@ PY_LAUNCH_CATALOG_PIN_BLOB_SHA = "0b1d7cc5d7d1f71adbe49fe5c87d25415805153b"
 PY_LAUNCH_CATALOG_PIN_SHA256 = "63035549d0bce8035bc594e12df68591d8e58970aaeaa4409882ea3c3f2e6eaa"
 PY_LAUNCH_WORKTREE_BLOB_SHA = "0b1d7cc5d7d1f71adbe49fe5c87d25415805153b"
 PY_LAUNCH_WORKTREE_SHA256 = "63035549d0bce8035bc594e12df68591d8e58970aaeaa4409882ea3c3f2e6eaa"
-PY_LAUNCH_LOCK_FIXTURE = ROOT / "tests" / "fixtures" / "cli-args-pr26.lock.json"
+PY_LAUNCH_CATALOG_PIN_FIXTURE = ROOT / "tests" / "fixtures" / "py-launch-catalog-pin.lock.json"
 
 
 def _catalog_tool():
@@ -31,7 +31,7 @@ def test_py_launch_catalog_entry_metadata():
 
 
 def test_py_launch_catalog_pin_digests_match_fixture_record():
-    lock = json.loads(PY_LAUNCH_LOCK_FIXTURE.read_text(encoding="utf-8"))
+    lock = json.loads(PY_LAUNCH_CATALOG_PIN_FIXTURE.read_text(encoding="utf-8"))
     entry = next(item for item in lock["files"] if item.get("source") == SOURCE)
     assert entry["commit"] == PY_LAUNCH_MERGE_COMMIT
     assert entry["blob_sha"] == PY_LAUNCH_CATALOG_PIN_BLOB_SHA
