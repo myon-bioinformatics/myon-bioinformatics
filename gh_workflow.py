@@ -256,6 +256,9 @@ def main(argv=None):
                                    inputs=inputs, timeout=args.timeout)
     except (WorkflowError, ValueError, RecursionError) as exc:
         receipt = {"status": "preflight_failed", "error": exc.code if isinstance(exc, WorkflowError) else "invalid_argument"}
+        if not isinstance(exc, WorkflowError):
+            # Do not copy the rejected value. It may contain a secret the caller pasted.
+            receipt["hint"] = "Pass one JSON object to --inputs. The rejected value is not copied into this receipt."
     output = json.dumps(receipt, ensure_ascii=False)
     print(output)
     if args.receipt:

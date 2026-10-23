@@ -1,4 +1,4 @@
-"""Parent topology follows cli_args PR #26 vendor.lock.json snapshot."""
+"""Parent topology follows cli_args PR #28 vendor.lock.json snapshot."""
 import copy
 import json
 from pathlib import Path
@@ -14,9 +14,9 @@ def load(path):
     return json.loads((ROOT / path).read_text())
 
 
-def test_cli_args_registry_matches_reviewed_pr26_lock():
+def test_cli_args_registry_matches_reviewed_pr28_lock():
     registry = load("vendor-consumers.json")
-    lock = load("tests/fixtures/cli-args-pr26.lock.json")
+    lock = load("tests/fixtures/cli-args-pr28.lock.json")
     assert len(lock["files"]) == 2
     assert vendor_consumers.compare(registry, lock, CONSUMER)["matches"]
     assert all(x["ref"] == x["commit"] for x in lock["files"])

@@ -5,11 +5,13 @@ on:
       - ".github/workflows/*junit*"
       - "tests/test_junit_collection.py"
       - "tests/junit-requirements.txt"
+      - "pyproject.toml"
   push:
     paths:
       - ".github/workflows/*junit*"
       - "tests/test_junit_collection.py"
       - "tests/junit-requirements.txt"
+      - "pyproject.toml"
 permissions:
   contents: read
   actions: read
@@ -27,8 +29,11 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - run: python -m pip install -r tests/junit-requirements.txt
-      - run: python -m pytest -q tests/test_junit_collection.py --junitxml=build/collector-tests.xml
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+          cache-python: true
+      - run: uv run pytest -q tests/test_junit_collection.py --junitxml=build/collector-tests.xml
         env:
           XPROBE_SOURCE: shared-xprobe/xprobe.py
       - name: Preserve raw JUnit

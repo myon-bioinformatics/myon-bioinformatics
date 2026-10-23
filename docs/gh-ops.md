@@ -9,8 +9,14 @@ separate copies of the generic operation/parity tests.
 python -S vendor_sync.py check --manifest vendor.lock.json
 python -S gh_ops.py --help
 python -S gh_ops.py --json pr-observe OWNER/REPO 24
+python -S gh_ops.py --json-errors pr-status OWNER/REPO 24
 python -S gh_ops.py comments-file comments.json --last 5
 ```
+
+Flags are matched in full. `--json` prints the result on stdout and leaves stdout
+empty when the command exits 2. `--json-errors` adds one object
+`{ok: false, error, exit_code, hint}` on stdout for that exit 2 and keeps the
+stderr line. Exit 1 is unchanged: the result object is printed and `ok` is false.
 
 The tool is stdlib-only. Its GHI dependency is canonically enrolled under
 `vendor/gh_identity.py` with a separate license and vendor lock. In a consumer,

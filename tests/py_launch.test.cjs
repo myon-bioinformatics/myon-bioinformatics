@@ -508,6 +508,23 @@ describe("py_launch.main (CLI passthrough)", () => {
     if (process.platform === "win32") return;
     const result = runNodeMain("sigterm.py", []);
     assert.equal(result.status, 2);
+    assert.match(result.stderr, /terminated by signal/);
+  });
+
+  it("emits one JSON object on stderr when PY_LAUNCH_ERROR_FORMAT=json", () => {
+    const script = path.join(FIXTURES, "echo_argv.py");
+    const missing = path.join(FIXTURES, "missing-interpreter");
+    const result = resolveInSubprocess(
+      `require(${JSON.stringify(LAUNCHER)}).main(${JSON.stringify(script)}, { python: ${JSON.stringify(missing)} });`,
+      { PY_LAUNCH_ERROR_FORMAT: "json" },
+    );
+    assert.equal(result.status, 2);
+    const payload = JSON.parse(result.stderr);
+    assert.equal(payload.ok, false);
+    assert.equal(payload.exit_code, 2);
+    assert.equal(payload.code, "ENOINTERPRETER");
+    assert.match(payload.message, /missing-interpreter/);
+    assert.match(payload.hint, /Python 3\.9\+/);
   });
 
   it("forwards SIGTERM to the python child on POSIX", async () => {
@@ -624,6 +641,10 @@ describe("py_launch.assertNodeVersion", () => {
     } else {
       assert.throws(() => assertNodeVersion(), /requires Node 24\+/);
     }
+    assert.throws(
+      () => assertNodeVersion("22.0.0"),
+      /requires Node 24\+ \(this process is Node 22\.0\.0\)/,
+    );
   });
 });
 
@@ -656,11 +677,15 @@ if (require.main === module) main(__dirname + "/echo_argv.py", { python: process
 `,
       "utf8",
     );
-    const result = spawnSync(process.execPath, [consumer, "x", "y"], {
-      encoding: "utf8",
-      env: { ...process.env, PY_LAUNCH_TEST_PYTHON: PYTHON },
-    });
-    assert.equal(result.status, 0);
-    assert.equal(outText(Buffer.from(result.stdout, "utf8")), "x\ny");
+    try {
+      const result = spawnSync(process.execPath, [consumer, "x", "y"], {
+        encoding: "utf8",
+        env: { ...process.env, PY_LAUNCH_TEST_PYTHON: PYTHON },
+      });
+      assert.equal(result.status, 0);
+      assert.equal(outText(Buffer.from(result.stdout, "utf8")), "x\ny");
+    } finally {
+      fs.rmSync(consumer, { force: true });
+    }
   });
 });

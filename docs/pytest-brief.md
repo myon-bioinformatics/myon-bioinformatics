@@ -37,6 +37,8 @@ python -S pytest_brief.py --requirements tool/python/requirements.txt -- tool/py
   It applies to both cases: a failed `pip install` (its stdout and stderr) and a pytest run that did
   not start or finish normally.
 - `--python PATH`: interpreter used for pip and pytest (default: `sys.executable`).
+- `--json`: print `{ok, exit_code, installed, lines, hint}` instead of text lines.
+  Exit 3 still means a requirement failed and pytest did not run. The pip tail stays on stderr.
 
 ## Exit status
 

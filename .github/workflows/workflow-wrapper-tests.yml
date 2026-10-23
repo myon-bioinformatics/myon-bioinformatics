@@ -5,6 +5,7 @@ on:
       - "gh_workflow.py"
       - "tests/test_gh_workflow.py"
       - "tests/workflow-requirements.txt"
+      - "pyproject.toml"
       - ".github/workflows/workflow-wrapper-tests.yml"
   push:
     branches: [main]
@@ -12,6 +13,7 @@ on:
       - "gh_workflow.py"
       - "tests/test_gh_workflow.py"
       - "tests/workflow-requirements.txt"
+      - "pyproject.toml"
       - ".github/workflows/workflow-wrapper-tests.yml"
 permissions:
   contents: read
@@ -27,9 +29,12 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install -r tests/workflow-requirements.txt
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: ${{ matrix.python }}
+          cache-python: true
       - run: python -m py_compile gh_workflow.py
-      - run: python -m pytest -q tests/test_gh_workflow.py --junitxml=reports/workflow-wrapper.xml
+      - run: uv run pytest -q tests/test_gh_workflow.py --junitxml=reports/workflow-wrapper.xml
       - name: Preserve JUnit report
         if: always()
         uses: actions/upload-artifact@v7
