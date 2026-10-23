@@ -29,11 +29,24 @@ def _tracked_files():
     return [item.decode("utf-8") for item in raw.split(b"\0") if item]
 
 
+def _reviewed_alias(path):
+    """Symlinks to an already reviewed file are the same write surface."""
+    if not path.is_symlink():
+        return False
+    try:
+        target = path.resolve().relative_to(ROOT).as_posix()
+    except ValueError:
+        return False
+    return target in ALLOW
+
+
 def _write_files():
     found = []
     for rel in _tracked_files():
         path = ROOT / rel
         if path.suffix not in SUFFIXES or rel.startswith(SKIP_PREFIXES) or not path.is_file():
+            continue
+        if _reviewed_alias(path):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         if any(pattern.search(text) for pattern in WRITE_PATTERNS):

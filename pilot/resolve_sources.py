@@ -88,6 +88,12 @@ def github_parent_packages_published() -> bool:
 def publish_head_as_main(root: Path) -> str:
     bare = Path(tempfile.mkdtemp(prefix="uv-pilot-bare-")) / "repo.git"
     subprocess.run(["git", "init", "--bare", os.fspath(bare)], check=True)
+    # Actions checkouts are shallow. An empty bare repo rejects that push
+    # unless it accepts a shallow update.
+    subprocess.run(
+        ["git", "-C", os.fspath(bare), "config", "receive.shallowUpdate", "true"],
+        check=True,
+    )
     subprocess.run(
         ["git", "-C", os.fspath(root), "push", os.fspath(bare), "HEAD:refs/heads/main"],
         check=True,
@@ -118,7 +124,7 @@ def run_uv(project: Path, exercises: list[str]) -> dict[str, str]:
         subprocess.run(["uv", "run", "python", "-c", exercise], cwd=project, check=True)
     found = revisions((project / "uv.lock").read_text(encoding="utf-8"))
     if not found:
-        raise SystemExit("uv lock did not record a git commit")
+        raise SystemExit("uv lock did not record a resolved revision")
     return found
 
 
