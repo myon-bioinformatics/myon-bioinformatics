@@ -3,12 +3,19 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 import vendor_sync
 
 ROOT = Path(__file__).resolve().parents[1]
 PY_LAUNCH_MERGE_COMMIT = "2ea31034ca3caa60ed769806baf750d75e296552"
 REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
 SOURCE = "py_launch.cjs"
+PY_LAUNCH_CATALOG_PIN_BLOB_SHA = "f2c042b6f66810a4aaea503f13674678a78ca659"
+PY_LAUNCH_CATALOG_PIN_SHA256 = "a41acc4aa470849ba30a99922e3bb13eed9cc7fbea754d38154e3248981d6477"
+PY_LAUNCH_WORKTREE_BLOB_SHA = "0b1d7cc5d7d1f71adbe49fe5c87d25415805153b"
+PY_LAUNCH_WORKTREE_SHA256 = "63035549d0bce8035bc594e12df68591d8e58970aaeaa4409882ea3c3f2e6eaa"
+PY_LAUNCH_LOCK_FIXTURE = ROOT / "tests" / "fixtures" / "cli-args-pr26.lock.json"
 
 
 def _catalog_tool():
@@ -16,13 +23,34 @@ def _catalog_tool():
     return next(tool for tool in catalog["tools"] if tool["source"] == SOURCE)
 
 
-def test_py_launch_catalog_entry_uses_accepting_merge_commit():
+def test_py_launch_catalog_entry_metadata():
     tool = _catalog_tool()
     assert tool["repository"] == REPOSITORY
     assert tool["commit"] == PY_LAUNCH_MERGE_COMMIT
+    assert tool["source"] == SOURCE
+
+
+def test_py_launch_catalog_pin_digests_match_fixture_record():
+    lock = json.loads(PY_LAUNCH_LOCK_FIXTURE.read_text(encoding="utf-8"))
+    entry = next(item for item in lock["files"] if item.get("source") == SOURCE)
+    assert entry["commit"] == PY_LAUNCH_MERGE_COMMIT
+    assert entry["blob_sha"] == PY_LAUNCH_CATALOG_PIN_BLOB_SHA
+    assert entry["sha256"] == PY_LAUNCH_CATALOG_PIN_SHA256
+
+
+def test_py_launch_worktree_source_identity():
+    data = (ROOT / SOURCE).read_bytes()
+    assert vendor_sync.git_blob(data) == PY_LAUNCH_WORKTREE_BLOB_SHA
+    assert hashlib.sha256(data).hexdigest() == PY_LAUNCH_WORKTREE_SHA256
+
+
+@pytest.mark.network
+def test_py_launch_catalog_entry_uses_accepting_merge_commit():
+    tool = _catalog_tool()
     vendor_sync.public_commit_exists(tool["repository"], tool["commit"], entry_label=SOURCE)
 
 
+@pytest.mark.network
 def test_py_launch_catalog_pin_contains_matching_bytes():
     tool = _catalog_tool()
     at_pin = vendor_sync.public_raw_bytes(tool["repository"], tool["commit"], tool["source"])

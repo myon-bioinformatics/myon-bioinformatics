@@ -18,6 +18,8 @@ on:
       - "tests/test_parent_pin_check.py"
       - ".github/workflows/reusable-parent-pin-check.yml"
       - ".github/workflows/parent-pin-check.yml"
+      - "pytest.ini"
+      - "py_launch.cjs"
   push:
     branches: [main]
     paths:
@@ -36,6 +38,10 @@ on:
       - "tests/test_parent_pin_check.py"
       - ".github/workflows/reusable-parent-pin-check.yml"
       - ".github/workflows/parent-pin-check.yml"
+      - "pytest.ini"
+      - "py_launch.cjs"
+  schedule:
+    - cron: "0 14 * * 1"
 
 permissions:
   contents: read
@@ -98,6 +104,41 @@ jobs:
           path: reports/
           if-no-files-found: error
           retention-days: 14
+
+  py-launch-catalog-network:
+    name: py_launch catalog pin (network)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+      - run: python -m pip install -r tests/requirements.txt
+      - name: Verify py_launch vendor-catalog pin against GitHub
+        continue-on-error: ${{ github.event_name == 'pull_request' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          attempts=3
+          delay=20
+          for attempt in $(seq 1 "$attempts"); do
+            if python -m pytest -q -m network tests/test_py_launch_catalog.py; then
+              echo "network catalog verification succeeded on attempt ${attempt}"
+              exit 0
+            fi
+            if [ "$attempt" -lt "$attempts" ]; then
+              echo "attempt ${attempt} failed; retrying in ${delay}s..."
+              sleep "$delay"
+              delay=$((delay * 2))
+            fi
+          done
+          echo "network catalog verification failed after ${attempts} attempts"
+          exit 1
 
   vendor-portability:
     runs-on: ${{ matrix.os }}
