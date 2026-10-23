@@ -76,16 +76,15 @@ Only named workflow operations are exposed, with argv arrays and `shell=False`.
 ## Verification
 
 ```bash
-python -m pip install -r tests/workflow-requirements.txt
-python -m pytest -q tests/test_gh_workflow.py --junitxml=reports/workflow-wrapper.xml
+uv run pytest -q tests/test_gh_workflow.py --junitxml=reports/workflow-wrapper.xml
 ```
 
 Tests mock the external process so CI never enables or dispatches workflows.
-PyYAML is installed only through the test requirements and serves as an
+PyYAML is installed only through the pytest dev group and serves as an
 independent YAML oracle for supported forms and valid forms outside the subset.
 Its non-constructing BaseLoader preserves `on` as a string (the default YAML 1.1
 loader would treat it as a boolean). The runtime module never imports PyYAML.
-The separate test requirements and workflow avoid depending on the pending Git
+This separate workflow avoids depending on the pending Git
 inspector PR. Development/test CI covers Python 3.11–3.14 and preserves JUnit with `if: always()`.
 A separate stdlib-only `python -S` smoke job exercises the Python 3.10 runtime contract.
 The existing reusable JUnit collection is available for subsequent rollout;

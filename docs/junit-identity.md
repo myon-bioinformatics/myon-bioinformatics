@@ -70,7 +70,6 @@ download limits are separate. Raw JUnit is never added to Pages by this workflow
 Local tests execute the workflow's actual Python body:
 
 ```sh
-python -m pip install -r tests/junit-requirements.txt
-XPROBE_SOURCE=/path/to/pinned/xprobe.py python -m pytest -q tests/test_junit_collection.py
+XPROBE_SOURCE=/path/to/pinned/xprobe.py uv run pytest -q tests/test_junit_collection.py
 actionlint .github/workflows/reusable-junit-identity.yml .github/workflows/junit-collector-test.yml
 ```
