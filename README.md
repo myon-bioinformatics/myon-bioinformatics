@@ -277,7 +277,7 @@ Python toolkit for converting documents and images: a Markdown-to-PPTX pipeline,
 <!-- FOOTER:START -->
 ## ℹ️ More about me
 
-😏 **More details** → <a href="https://myon-bioinformatics.github.io/">myon-bioinformatics.github.io</a>
+😏 **詳細はこちら** → <a href="https://myon-bioinformatics.github.io/">myon-bioinformatics.github.io</a>
 <!-- FOOTER:END -->
 
 ---
