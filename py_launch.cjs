@@ -13,7 +13,10 @@
  * Explicit `python` or a set `envVar` rejects them; non-strict `PYTHON` skips with a warning.
  *
  * `noSite` adds CPython `-S` (no site.py / no user site); default is off so tools opt in explicitly.
- * `isolated` adds CPython `-I` (ignore PYTHONPATH, user site, and cwd import shadowing); default is off.
+ * `isolated` adds CPython `-I` (implies `-E`, `-s`, and `-P`: ignore all `PYTHON*`
+ * environment variables—including values passed via `env`—and omit the script
+ * directory from `sys.path`). Sibling imports fail unless the script prepends its
+ * directory to `sys.path`; default is off.
  */
 const { spawn, spawnSync } = require("node:child_process");
 const { platform } = require("node:os");
