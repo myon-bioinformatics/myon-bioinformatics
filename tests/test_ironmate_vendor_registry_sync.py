@@ -34,7 +34,7 @@ def test_retired_sources_are_not_proposed_for_reenrollment():
                 'myon-bioinformatics/myon-bioinformatics' and x['source'] == source]
         assert len(rows) == 1 and rows[0]['action'] == 'skipped'
     assert result['counts']['registered'] == 29
-    assert result['counts']['skipped'] == 18
+    assert result['counts']['skipped'] == 19
     py_launch = [x for x in result['rows'] if x['source'] == 'py_launch.cjs']
     assert len(py_launch) == 1
     assert py_launch[0]['action'] == 'registered'

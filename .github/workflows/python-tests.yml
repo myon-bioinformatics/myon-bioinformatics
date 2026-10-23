@@ -21,6 +21,7 @@ on:
       - "pytest.ini"
       - "pyproject.toml"
       - "py_launch.cjs"
+      - "node_launch.py"
   push:
     branches: [main]
     paths:
@@ -42,6 +43,7 @@ on:
       - "pytest.ini"
       - "pyproject.toml"
       - "py_launch.cjs"
+      - "node_launch.py"
   schedule:
     - cron: "0 14 * * 1"
 
