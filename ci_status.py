@@ -4,11 +4,13 @@
 Exit codes: 0 = observation succeeded (with --ci-check, all states are COMPLETE or
 NO CHECKS); 1 = --ci-check observed a non-passing state; 2 = observation or usage error.
 Observation errors take precedence over --ci-check failures. --json uses the same codes.
-Both output formats include the UTC observation timestamp.
+Both output formats include the UTC observation timestamp. Exception text is omitted
+unless ``--explain`` is set; that flag adds detail (token values removed) and hint.
 """
 import argparse
 import datetime
 import json
+import os
 import urllib.error
 from urllib.parse import quote
 import importlib.util
@@ -77,6 +79,16 @@ def observe(name, pr=None):
     return {"repository": name, "target": target, "head_sha": sha, "state": state,
             "completed": len(rows) - pending, "total": len(rows), "checks": rows}
 
+def _detail(exc):
+    """Exception text for callers, with token values removed."""
+    text = str(exc).replace("\n", " ")
+    for name in ("GITHUB_TOKEN", "GH_TOKEN"):
+        secret = os.environ.get(name)
+        if secret:
+            text = text.replace(secret, "***")
+    return text[:500]
+
+
 def render(rows):
     for item in rows:
         print(f'{item["repository"]}  {item["target"]}  {item["state"]}  {item["completed"]}/{item["total"]}  {item["head_sha"][:8]}')
@@ -89,6 +101,8 @@ def main(argv=None):
     p.add_argument("--pr", type=int)
     p.add_argument("--refresh", action="store_true", help="Force fresh API observation (default already fresh)")
     p.add_argument("--json", action="store_true")
+    p.add_argument("--explain", action="store_true",
+                   help="include detail and hint on observation errors; default omits exception text")
     p.add_argument("--ci-check", action="store_true", help="Exit with 1 if any observed repository state is not COMPLETE or NO CHECKS")
     p.add_argument("--repos", default="Ironmate,flutter_navigation_basic,markdown,ascii_artist",
                    help="Comma-separated repositories for the all-repositories view")
@@ -102,7 +116,12 @@ def main(argv=None):
         try:
             rows.append(observe(name, a.pr))
         except (ValueError, KeyError, RuntimeError, OSError) as exc:
-            errors.append({"repository": name, "error": type(exc).__name__})
+            item = {"repository": name, "error": type(exc).__name__}
+            if a.explain:
+                item["detail"] = _detail(exc)
+                item["hint"] = ("Observation failed before a CI state was known. Exit 2 wins over --ci-check. "
+                                "detail is the exception text with token values removed.")
+            errors.append(item)
     output = {"schema": "ci-observation/1",
               "observed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "repositories": rows, "errors": errors}
@@ -113,6 +132,9 @@ def main(argv=None):
         render(rows)
         for error in errors:
             print(f'{error["repository"]}  UNKNOWN ({error["error"]})')
+            if a.explain:
+                print(f'  detail: {error["detail"]}')
+                print(f'  hint: {error["hint"]}')
     if errors:
         return 2
     if a.ci_check and any(r["state"] not in ("COMPLETE", "NO CHECKS") for r in rows):

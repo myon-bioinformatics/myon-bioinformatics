@@ -21,6 +21,7 @@ Stdlib only; runs under ``python -S`` (the child pytest runs without ``-S``)::
     python -S pytest_brief.py --requirements tool/python/requirements.txt -- tool/python/tests
 
 Exit code: pytest's own (0 passed, 1 failed, ...); 3 = installing a requirement failed.
+``--json`` prints ``{ok, exit_code, installed, lines, hint}`` instead of text lines.
 """
 from __future__ import annotations
 
@@ -84,10 +85,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--requirements", help="requirements file (default: tests/requirements.txt if present)")
     parser.add_argument("--tail", type=int, default=15, help="lines shown when pytest could not run")
     parser.add_argument("--python", default=sys.executable, help="interpreter for pip and pytest")
+    parser.add_argument("--json", action="store_true",
+                        help="print one JSON object instead of text lines")
+    parser.epilog = ("Exit codes: pytest's own (0 passed, 1 failed), "
+                     "3 a requirement failed to resolve or install so pytest did not run, "
+                     "2 invalid arguments. --json prints {ok, exit_code, installed, lines, hint}.")
     args = parser.parse_args(own)
     req = args.requirements or ("tests/requirements.txt" if os.path.exists("tests/requirements.txt") else None)
     if args.tail < 1:
         parser.error("--tail must be at least 1")
+    installed: list[str] = []
     if req:
         try:
             pip = [args.python, "-m", "pip", "install", "-q", "--disable-pip-version-check"]
@@ -95,19 +102,40 @@ def main(argv: list[str] | None = None) -> int:
                 pip.append("--break-system-packages")
             requirements = ["-r", req]
             need = resolve(pip, requirements)
+            installed = list(need)
             if need:
                 subprocess.run(pip + requirements, capture_output=True, text=True, check=True)
-                print("installed: " + ", ".join(need))
+                if not args.json:
+                    print("installed: " + ", ".join(need))
         except (OSError, subprocess.CalledProcessError, ValueError, KeyError, TypeError) as exc:
-            print(f"pytest_brief: dependency resolution/install failed: {exc}", file=sys.stderr)
+            message = f"pytest_brief: dependency resolution/install failed: {exc}"
+            print(message, file=sys.stderr)
+            tail_lines: list[str] = []
             if isinstance(exc, subprocess.CalledProcessError):
-                print("\n".join((exc.stdout + exc.stderr).strip().splitlines()[-args.tail:]),
-                      file=sys.stderr)
+                tail_lines = (exc.stdout + exc.stderr).strip().splitlines()[-args.tail:]
+                print("\n".join(tail_lines), file=sys.stderr)
+            if args.json:
+                print(json.dumps({
+                    "ok": False,
+                    "exit_code": 3,
+                    "error": message,
+                    "hint": "A requirement failed to resolve or install, so pytest did not run. Read the pip tail on stderr.",
+                    "installed": installed,
+                    "lines": tail_lines,
+                }, ensure_ascii=False))
             return 3
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     done = subprocess.run([args.python, "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider", *pytest_args],
                           capture_output=True, text=True, env=env)
-    print("\n".join(brief(done.stdout + done.stderr, done.returncode, args.tail)))
+    lines = brief(done.stdout + done.stderr, done.returncode, args.tail)
+    if args.json:
+        payload = {"ok": done.returncode == 0, "exit_code": done.returncode,
+                   "installed": installed, "lines": lines, "hint": ""}
+        if done.returncode != 0:
+            payload["hint"] = "pytest did not pass. lines keeps FAILED, ERROR, coverage, and the summary. The exit code is pytest's own."
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        print("\n".join(lines))
     return done.returncode
 
 

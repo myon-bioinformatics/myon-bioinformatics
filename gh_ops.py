@@ -31,7 +31,9 @@ is a thin adapter over them::
     python -S gh_ops.py url compare OWNER/REPO main feature   # no network; prints web + api URLs
 
 Exit codes: 0 = OK, 1 = a checked condition was not met, 2 = input or
-communication error.
+communication error. Flags are matched in full (no abbreviations).
+``--json-errors`` prints ``{"ok": false, "error", "exit_code", "hint"}``
+on stdout for exit 2. Without it, errors stay on stderr and stdout stays empty.
 """
 from __future__ import annotations
 
@@ -2902,12 +2904,71 @@ def _read_text(path: str) -> str:
     return text[:-1] if text.endswith("\n") else text
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="gh_ops.py", description=__doc__.split("\n\n")[0])
+def _error_hint(message: str) -> str:
+    """One next step for an exit-2 message. Does not repeat secrets."""
+    bracket = re.search(r"\[([^\[\]]+)\]\s*$", message)
+    if bracket:
+        return bracket.group(1)
+    rules = (
+        ("repository must look like",
+         "Pass OWNER/REPO using only letters, numbers, dot, underscore, and hyphen."),
+        ("SHA must be", "Pass 4 to 40 hexadecimal characters."),
+        ("--push requires --write", "Add --write. A dry run never pushes."),
+        ("pagination",
+         "The GitHub listing was incomplete. Narrow the query or retry; do not treat a partial list as complete."),
+        ("not found", "Check the repository, number, and token visibility, then retry."),
+    )
+    for needle, hint in rules:
+        if needle in message:
+            return hint
+    return ("Exit 2 is an input or communication error. Exit 1 means a checked condition failed. "
+            "Run: python -S gh_ops.py COMMAND --help")
+
+
+def _error_payload(message: str, *, exit_code: int = 2) -> dict:
+    return {"ok": False, "error": message, "exit_code": exit_code, "hint": _error_hint(message)}
+
+
+class GhOpsParser(argparse.ArgumentParser):
+    """Argument parser that can emit a JSON error object without changing the default stderr line."""
+
+    def __init__(self, *args, source_argv: list[str] | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.source_argv = list(source_argv or [])
+
+    def error(self, message: str):
+        if "--json-errors" not in self.source_argv:
+            super().error(message)
+        scrubbed = scrub(str(message))
+        self.print_usage(sys.stderr)
+        print(f"{self.prog}: error: {scrubbed}", file=sys.stderr)
+        print(json.dumps(_error_payload(scrubbed), ensure_ascii=False))
+        self.exit(2)
+
+
+def _command_parser(subparsers, *args, **kwargs):
+    kwargs.setdefault("allow_abbrev", False)
+    return subparsers.add_parser(*args, **kwargs)
+
+
+def build_parser(argv: list[str] | None = None) -> GhOpsParser:
+    source = list(sys.argv[1:] if argv is None else argv)
+    parser = GhOpsParser(
+        prog="gh_ops.py",
+        description=__doc__.split("\n\n")[0],
+        epilog=("Exit codes: 0 = ok, 1 = a checked condition was not met, "
+                "2 = input or communication error. Flags are not abbreviated. "
+                "--json prints the result on stdout. --json-errors prints "
+                "{ok:false, error, exit_code, hint} on stdout for exit 2 and keeps the stderr line."),
+        allow_abbrev=False,
+        source_argv=source,
+    )
     parser.add_argument("--json", action="store_true", help="print the full result as JSON")
+    parser.add_argument("--json-errors", action="store_true",
+                        help="on exit 2, also print {ok, error, exit_code, hint} as JSON on stdout")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p = sub.add_parser("issue-comments", help="digest an issue/PR conversation (index, time, author, size, preview)")
+    p = _command_parser(sub, "issue-comments", help="digest an issue/PR conversation (index, time, author, size, preview)")
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--since", help="ISO 8601; only comments updated at or after this time")
     p.add_argument("--last", type=int, help="keep only the last N rows")
@@ -2916,64 +2977,64 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--show", default="", help="comma-separated comment indexes to print in full")
     p.add_argument("--save", help="write the complete issue + comments JSON to this file")
 
-    p = sub.add_parser("comments-file", help="the same digest for comments already saved to a JSON file (offline)")
+    p = _command_parser(sub, "comments-file", help="the same digest for comments already saved to a JSON file (offline)")
     p.add_argument("path", help="JSON array of comments, or {\"comments\": [...]} from --save; - for stdin")
     p.add_argument("--last", type=int, help="keep only the last N rows")
     p.add_argument("--author", help="keep only comments by this login")
     p.add_argument("--preview", type=int, default=110, help="preview length in characters (default 110)")
     p.add_argument("--show", default="", help="comma-separated comment indexes to print in full")
 
-    p = sub.add_parser("open-prs", help="open PRs across all repositories of OWNER (none -> exit 1)")
+    p = _command_parser(sub, "open-prs", help="open PRs across all repositories of OWNER (none -> exit 1)")
     p.add_argument("owner"); p.add_argument("--org", action="store_true", help="OWNER is an organization")
     p.add_argument("--limit", type=int, default=50, help="rows to show (max 100)")
     p.add_argument("--repos", default="", help="comma-separated repository names: read each via /repos/OWNER/NAME/pulls instead of search")
 
     for command, help_text in (("repo-counts", "open Issue/PR counts and default-branch commit counts"),
                                ("open-issues", "all open Issues across repositories (excluding PRs)")):
-        p = sub.add_parser(command, help=help_text)
+        p = _command_parser(sub, command, help=help_text)
         p.add_argument("owner")
         p.add_argument("--org", action="store_true", help="OWNER is an organization")
         p.add_argument("--repos", default="", help="comma-separated repository names; bypass owner enumeration")
 
-    p = sub.add_parser("pr-for-branch", help="PRs whose head is BRANCH (none -> exit 1)")
+    p = _command_parser(sub, "pr-for-branch", help="PRs whose head is BRANCH (none -> exit 1)")
     p.add_argument("repo"); p.add_argument("branch", help="branch name, or owner:branch for a fork")
     p.add_argument("--state", choices=("open", "closed", "all"), default="all")
 
-    p = sub.add_parser("pr-status", help="one-line PR state")
+    p = _command_parser(sub, "pr-status", help="one-line PR state")
     p.add_argument("repo"); p.add_argument("number", type=int)
 
-    p = sub.add_parser("pr-observe", help="snapshot PR/head/check/review activity for later diffing")
+    p = _command_parser(sub, "pr-observe", help="snapshot PR/head/check/review activity for later diffing")
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--min", type=int, default=1, dest="min_checks")
 
-    p = sub.add_parser("pr-diff", help="compare two saved pr-observe JSON snapshots offline")
+    p = _command_parser(sub, "pr-diff", help="compare two saved pr-observe JSON snapshots offline")
     p.add_argument("before"); p.add_argument("after")
 
-    p = sub.add_parser("checks-wait", help="wait for check runs on a SHA and report conclusions/annotations")
+    p = _command_parser(sub, "checks-wait", help="wait for check runs on a SHA and report conclusions/annotations")
     p.add_argument("repo"); p.add_argument("sha")
     p.add_argument("--min", type=int, default=1, dest="min_checks")
     p.add_argument("--timeout", type=float, default=600.0)
     p.add_argument("--interval", type=float, default=15.0)
 
-    p = sub.add_parser("runs", help="list workflow runs by head SHA or workflow file")
+    p = _command_parser(sub, "runs", help="list workflow runs by head SHA or workflow file")
     p.add_argument("repo")
     group = p.add_mutually_exclusive_group(required=True)
     group.add_argument("--sha"); group.add_argument("--workflow")
 
-    p = sub.add_parser("workflow-state", help="show a workflow's state (active, disabled_inactivity, ...)")
+    p = _command_parser(sub, "workflow-state", help="show a workflow's state (active, disabled_inactivity, ...)")
     p.add_argument("repo"); p.add_argument("workflow")
 
-    p = sub.add_parser("workflow-dispatch", help="trigger workflow_dispatch (needs --write)")
+    p = _command_parser(sub, "workflow-dispatch", help="trigger workflow_dispatch (needs --write)")
     p.add_argument("repo"); p.add_argument("workflow")
     p.add_argument("--ref", required=True)
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("issue-comment", help="create a top-level PR conversation comment (needs --write)")
+    p = _command_parser(sub, "issue-comment", help="create a top-level PR conversation comment (needs --write)")
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--file", required=True, help="UTF-8 file containing the comment body (one trailing newline ignored)")
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("issue-comment-upsert",
+    p = _command_parser(sub, "issue-comment-upsert",
                        help="update AUTHOR's newest comment starting with MARKER, else create one (needs --write)")
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--file", required=True, help="UTF-8 file with the comment body; it must start with --marker")
@@ -2981,18 +3042,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--author", required=True, help="only this login's comments are updated, e.g. github-actions[bot]")
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("variable-delete",
+    p = _command_parser(sub, "variable-delete",
                        help="delete one repository Actions variable; verify absence via complete scoped listing (needs --write)")
     p.add_argument("repo"); p.add_argument("name")
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("pr-body-replace", help="replace an anchor that occurs exactly once (needs --write)")
+    p = _command_parser(sub, "pr-body-replace", help="replace an anchor that occurs exactly once (needs --write)")
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--old", required=True, help="file with the exact anchor text (one trailing newline ignored)")
     p.add_argument("--new", required=True, help="file with the replacement text (one trailing newline ignored)")
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("pr-merge", help="verify head/mergeability/checks, then merge (needs --write)")
+    p = _command_parser(sub, "pr-merge", help="verify head/mergeability/checks, then merge (needs --write)")
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--sha", required=True)
     p.add_argument("--min-checks", type=int, default=1)
@@ -3003,7 +3064,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--message-file")
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("git-commit", help="git add FILE... and commit from --message-file (needs --write)")
+    p = _command_parser(sub, "git-commit", help="git add FILE... and commit from --message-file (needs --write)")
     p.add_argument("--message-file", required=True, metavar="FILE", help="path to the commit message")
     p.add_argument("files", nargs="+", metavar="FILE", help="paths to stage and commit")
     p.add_argument("--trailer", action="append", default=[], metavar="KEY: VALUE",
@@ -3013,7 +3074,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--push", action="store_true", help="git push origin HEAD after committing (needs --write)")
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("subtree-push", help="push the tree-verified subtree split of --prefix to a NEW remote "
+    p = _command_parser(sub, "subtree-push", help="push the tree-verified subtree split of --prefix to a NEW remote "
                        "branch as <sha>:refs/heads/<branch> (planned unless --write)")
     p.add_argument("--root", default=".", help="monorepo checkout (default: .)")
     p.add_argument("--prefix", required=True); p.add_argument("--remote", required=True)
@@ -3025,27 +3086,27 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--timeout", type=float, default=600.0, help="seconds per git command (default: 600)")
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("git-push", help="push existing HEAD without a new commit; verify remote tip (needs --write)")
+    p = _command_parser(sub, "git-push", help="push existing HEAD without a new commit; verify remote tip (needs --write)")
     p.add_argument("--root", default="."); p.add_argument("--remote", default="origin")
     p.add_argument("--branch", help="target branch (default: current local branch)")
     p.add_argument("--timeout", type=float, default=60)
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("sync-main", help="merge origin/main into the checked-out PR branch (needs --write)")
+    p = _command_parser(sub, "sync-main", help="merge origin/main into the checked-out PR branch (needs --write)")
     p.add_argument("--base", default="main"); p.add_argument("--remote", default="origin")
     p.add_argument("--push", action="store_true"); p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("fleet-apply", help="coordinate multi-repository files/PR consolidation from a JSON manifest")
+    p = _command_parser(sub, "fleet-apply", help="coordinate multi-repository files/PR consolidation from a JSON manifest")
     p.add_argument("--manifest", required=True)
     p.add_argument("--jobs", type=int, default=1, help="independent repositories in parallel, 1..8")
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("pr-body-set", help="replace the whole PR body with a file's text (needs --write)")
+    p = _command_parser(sub, "pr-body-set", help="replace the whole PR body with a file's text (needs --write)")
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--file", required=True, help="file with the full replacement body (one trailing newline ignored)")
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("pr-edit", help="edit PR title/base/state/body together; append preserves existing text (needs --write)")
+    p = _command_parser(sub, "pr-edit", help="edit PR title/base/state/body together; append preserves existing text (needs --write)")
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--title"); p.add_argument("--base")
     p.add_argument("--state", choices=_PR_EDIT_STATES)
@@ -3054,7 +3115,7 @@ def build_parser() -> argparse.ArgumentParser:
     body_group.add_argument("--append-body-file", help="append UTF-8 text once, preserving existing body")
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("pr-retarget", help="change a stacked PR's base (planned unless --write)")
+    p = _command_parser(sub, "pr-retarget", help="change a stacked PR's base (planned unless --write)")
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--base", default="main", help="new base branch name (default: main)")
     p.add_argument("--allow-unmerged-commits", action="store_true",
@@ -3065,7 +3126,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="optional: refuse --write unless the PR head still matches this SHA before PATCH")
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("file-put", help="create or update one file via the contents API (needs --write)")
+    p = _command_parser(sub, "file-put", help="create or update one file via the contents API (needs --write)")
     p.add_argument("repo"); p.add_argument("path", help="path of the file inside the repository")
     p.add_argument("--from", dest="from_path", required=True, help="local file to read the new content from")
     p.add_argument("--branch", required=True)
@@ -3074,7 +3135,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="permit writing directly to the repository's default branch")
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("commit-files", help="ONE commit of several files via the Git Data API, no clone "
+    p = _command_parser(sub, "commit-files", help="ONE commit of several files via the Git Data API, no clone "
                                              "(planned unless --write; fast-forward only; verified)")
     p.add_argument("repo"); p.add_argument("--branch", required=True)
     p.add_argument("--file", action="append", default=[], metavar="PATH[=LOCAL]",
@@ -3086,33 +3147,33 @@ def build_parser() -> argparse.ArgumentParser:
                    help="permit writing directly to the repository's default branch")
     p.add_argument("--write", action="store_true")
 
-    p = sub.add_parser("url", help="build a github.com / api.github.com URL for something; no network access")
+    p = _command_parser(sub, "url", help="build a github.com / api.github.com URL for something; no network access")
     url_sub = p.add_subparsers(dest="url_kind", required=True)
 
-    up = url_sub.add_parser("pr", help="a pull request, or one of its checks/files/commits tabs")
+    up = _command_parser(url_sub, "pr", help="a pull request, or one of its checks/files/commits tabs")
     up.add_argument("repo"); up.add_argument("number", type=int)
     up.add_argument("--tab", choices=("checks", "files", "commits"))
 
-    up = url_sub.add_parser("compare", help="compare BASE...HEAD")
+    up = _command_parser(url_sub, "compare", help="compare BASE...HEAD")
     up.add_argument("repo"); up.add_argument("base"); up.add_argument("head")
 
-    up = url_sub.add_parser("blame", help="blame view of PATH at REF")
+    up = _command_parser(url_sub, "blame", help="blame view of PATH at REF")
     up.add_argument("repo"); up.add_argument("ref"); up.add_argument("path")
     up.add_argument("--line", type=int)
 
-    up = url_sub.add_parser("history", help="commit history of PATH at REF")
+    up = _command_parser(url_sub, "history", help="commit history of PATH at REF")
     up.add_argument("repo"); up.add_argument("ref"); up.add_argument("path")
 
-    up = url_sub.add_parser("runs", help="workflow run list, optionally filtered by branch/event/status")
+    up = _command_parser(url_sub, "runs", help="workflow run list, optionally filtered by branch/event/status")
     up.add_argument("repo")
     up.add_argument("--workflow", help="workflow file name, e.g. ci.yml")
     up.add_argument("--branch"); up.add_argument("--event"); up.add_argument("--status")
 
-    up = url_sub.add_parser("search", help="search results (pullrequests searches issues with is:pr added)")
+    up = _command_parser(url_sub, "search", help="search results (pullrequests searches issues with is:pr added)")
     up.add_argument("query")
     up.add_argument("--type", choices=tuple(_SEARCH_ENDPOINTS), default="code")
 
-    up = url_sub.add_parser("raw", help="raw file content of PATH at REF")
+    up = _command_parser(url_sub, "raw", help="raw file content of PATH at REF")
     up.add_argument("repo"); up.add_argument("ref"); up.add_argument("path")
     return parser
 
@@ -3223,11 +3284,14 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
 
 
 def main(argv: list[str] | None = None, *, client: Client | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    args = build_parser(argv).parse_args(argv)
     try:
         result = run_command(args, client)
     except (GhOpsError, gh_identity.GitInspectionError, OSError, ValueError) as error:
-        print(scrub(f"error: {error}"), file=sys.stderr)
+        message = scrub(str(error))
+        print(f"error: {message}", file=sys.stderr)
+        if args.json_errors:
+            print(json.dumps(_error_payload(message), ensure_ascii=False))
         return 2
     text = json.dumps(result, ensure_ascii=False, indent=2) if args.json else _render(args.command, result)
     print(scrub(text))

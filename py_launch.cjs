@@ -13,6 +13,11 @@
  * Explicit `python` or a set `envVar` rejects them; non-strict `PYTHON` skips with a warning.
  *
  * `noSite` adds CPython `-S` (no site.py / no user site); default is off so tools opt in explicitly.
+ * Launcher failures (Node floor, missing interpreter, spawn error, signal) exit 2.
+ * Text is the default. Set opts.jsonErrors or PY_LAUNCH_ERROR_FORMAT=json for one JSON
+ * object on stderr: {ok:false, code, message, hint, exit_code}. That switch does not
+ * read argv, so a child tool's own --json flag is forwarded unchanged.
+ * A signal also prints the signal name (text mode) instead of exiting 2 silently.
  * `isolated` adds CPython `-I` (implies `-E`, `-s`, and `-P`: ignore all `PYTHON*`
  * environment variables—including values passed via `env`—and omit the script
  * directory from `sys.path`). Sibling imports fail unless the script prepends its
@@ -158,11 +163,56 @@ function runFailure(message, result, extra = {}) {
   return err;
 }
 
-function assertNodeVersion() {
-  const major = Number.parseInt(String(process.versions.node).split(".")[0], 10);
+function assertNodeVersion(version = process.versions.node) {
+  const major = Number.parseInt(String(version).split(".")[0], 10);
   if (!Number.isFinite(major) || major < MIN_NODE[0]) {
-    throw new Error(`py_launch requires Node ${MIN_NODE[0]}+`);
+    const err = new Error(
+      `py_launch requires Node ${MIN_NODE[0]}+ (this process is Node ${version}). Install Node ${MIN_NODE[0]} or newer and rerun.`,
+    );
+    err.code = "ENODEVERSION";
+    err.hint = `Install Node ${MIN_NODE[0]} or newer and rerun. py_launch does not fall back to an older runtime.`;
+    throw err;
   }
+}
+
+function wantsJsonErrors(opts = {}) {
+  return opts.jsonErrors === true || process.env.PY_LAUNCH_ERROR_FORMAT === "json";
+}
+
+function launcherHint(error) {
+  if (error && error.hint) return String(error.hint);
+  const code = error && error.code ? String(error.code) : "";
+  if (code === "ENODEVERSION") {
+    return `Install Node ${MIN_NODE[0]} or newer and rerun. py_launch does not fall back to an older runtime.`;
+  }
+  if (code === "ENOINTERPRETER") {
+    return "Install Python 3.9+ or set opts.python / the tool envVar to that executable. Windows .cmd and .bat shims are rejected; use python.exe or py -3.";
+  }
+  if (code === "ESIGNAL") {
+    return "The launcher forwards SIGINT and SIGTERM to the child and exits 2. Rerun; a signal is not a Python traceback.";
+  }
+  return "Launcher failure (exit 2). The Python tool did not run. Read message and fix the interpreter, Node version, or signal.";
+}
+
+/**
+ * Write one launcher failure. Text is one line. JSON is one object on stderr.
+ * Does not inspect argv. error is an Error or string; opts may set jsonErrors.
+ */
+function writeLauncherError(error, opts = {}) {
+  const message = String(error && error.message ? error.message : error);
+  const line = message.endsWith("\n") ? message : `${message}\n`;
+  if (!wantsJsonErrors(opts)) {
+    process.stderr.write(line);
+    return;
+  }
+  const payload = {
+    ok: false,
+    code: error && error.code ? String(error.code) : "ELAUNCHFAILURE",
+    message: message.replace(/\s+$/, ""),
+    hint: launcherHint(error),
+    exit_code: 2,
+  };
+  process.stderr.write(`${JSON.stringify(payload)}\n`);
 }
 
 /**
@@ -444,12 +494,18 @@ function run(scriptPath, args, options = {}) {
  * @param {object} [opts]
  */
 function main(scriptPath, opts = {}) {
-  assertNodeVersion();
+  try {
+    assertNodeVersion();
+  } catch (error) {
+    writeLauncherError(error, opts);
+    process.exitCode = 2;
+    return;
+  }
   let resolved;
   try {
     resolved = resolvePython(opts);
   } catch (error) {
-    process.stderr.write(`${error.message}\n`);
+    writeLauncherError(error, opts);
     process.exitCode = 2;
     return;
   }
@@ -466,14 +522,22 @@ function main(scriptPath, opts = {}) {
   process.on("SIGINT", forwardSignal);
   process.on("SIGTERM", forwardSignal);
   child.on("error", (error) => {
-    process.stderr.write(`py_launch: ${error.message}\n`);
+    const wrapped = new Error(`py_launch: ${error.message}`);
+    wrapped.code = error.code || "ELAUNCHFAILURE";
+    wrapped.hint = "The Python executable was found but could not be spawned. Check the path and permissions.";
+    writeLauncherError(wrapped, opts);
     process.exitCode = 2;
   });
   child.on("exit", (code, signal) => {
     process.removeListener("SIGINT", forwardSignal);
     process.removeListener("SIGTERM", forwardSignal);
-    if (signal) process.exitCode = 2;
-    else process.exitCode = code === null ? 2 : code;
+    if (signal) {
+      const wrapped = new Error(`py_launch: Python process terminated by signal ${signal}`);
+      wrapped.code = "ESIGNAL";
+      wrapped.hint = launcherHint({ code: "ESIGNAL" });
+      writeLauncherError(wrapped, opts);
+      process.exitCode = 2;
+    } else process.exitCode = code === null ? 2 : code;
   });
 }
 
@@ -488,6 +552,9 @@ module.exports = {
   buildChildEnv,
   envLookup,
   assertNodeVersion,
+  writeLauncherError,
+  wantsJsonErrors,
+  launcherHint,
   hostMaxBufferBytes,
   inputByteLength,
   DEFAULT_PROBE_TIMEOUT_MS,

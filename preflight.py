@@ -73,6 +73,11 @@ def main(argv=None):
     parser.add_argument('--require-clean', action='store_true')
     parser.add_argument('--require-token', action='store_true', help='presence only, not authentication or permissions')
     parser.add_argument('--runtime-facts', type=Path, help='JSON emitted by yourself.collect(); never executes supplied code')
+    parser.add_argument('--explain', action='store_true',
+                        help='on failure, append a guiding message; git inspection errors still omit local paths')
+    parser.epilog = ('Exit codes: 0 ready, 1 a check failed, 2 input or git inspection error. '
+                     'Stdout is JSON on success. Without --explain, stderr is only the exception type '
+                     'so local paths are not printed.')
     args = parser.parse_args(argv)
     if args.python_min and not re.fullmatch(r'[0-9]+(?:\.[0-9]+){0,2}', args.python_min):
         parser.error('--python-min requires one to three numeric components')
@@ -82,8 +87,14 @@ def main(argv=None):
                          require_clean=args.require_clean, require_token=args.require_token,
                          reported_runtime=facts)
     except (ValueError, OSError, ghi.GitInspectionError) as error:
-        # Git errors may contain local paths; expose the category, not stderr.
-        print('preflight: ' + type(error).__name__, file=sys.stderr)
+        # Git errors may contain local paths; the default exposes the category, not stderr.
+        if not args.explain:
+            print('preflight: ' + type(error).__name__, file=sys.stderr)
+        elif isinstance(error, ghi.GitInspectionError):
+            print('preflight: GitInspectionError: local paths omitted; run git status in --root',
+                  file=sys.stderr)
+        else:
+            print('preflight: ' + type(error).__name__ + ': ' + str(error), file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False, sort_keys=True, indent=2))
     return 0 if result['ready'] else 1
