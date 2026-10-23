@@ -10,6 +10,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import socket
 import stat
 import subprocess
 import sys
@@ -78,9 +79,10 @@ def _public_fetch_max_attempts():
 
 
 def _log_public_fetch_retry(label, attempt, max_attempts, detail):
+    safe_label = _redact_secrets(label)
     sys.stderr.write(
         "vendor_sync: public fetch retry {}/{} for {}: {}\n".format(
-            attempt, max_attempts, label, detail,
+            attempt, max_attempts, safe_label, detail,
         )
     )
 
@@ -95,11 +97,7 @@ def _retry_transient_public_fetch(label, fn):
             raise
         except _TransientPublicFetchError as error:
             last_error = error
-        except (URLError, TimeoutError, subprocess.TimeoutExpired) as error:
-            last_error = error
-        except ValueError as error:
-            if str(error) != PUBLIC_GIT_FETCH_ERROR:
-                raise
+        except (URLError, TimeoutError, subprocess.TimeoutExpired, socket.timeout) as error:
             last_error = error
         if attempt < max_attempts:
             detail = PUBLIC_GIT_FETCH_ERROR
@@ -284,7 +282,7 @@ def _public_http_get(url):
             raise ValueError("download exceeds byte limit")
         return raw
 
-    return _retry_transient_public_fetch("HTTP GET " + url, attempt)
+    return _retry_transient_public_fetch(_redact_secrets("HTTP GET " + url), attempt)
 
 
 def public_ref_sha(repository, ref="main"):
@@ -423,7 +421,7 @@ def _public_git_snapshot(repository, ref, sources, *, remote=None):
                 files[source] = (blob, git("cat-file", "blob", obj))
             return commit, files
 
-    label = "public git snapshot " + repository
+    label = _redact_secrets("public git snapshot " + repository)
     return _retry_transient_public_fetch(label, attempt)
 
 
@@ -765,7 +763,7 @@ def _git_run(argv, *, timeout=120):
 def _default_branch_name(remote):
     argv = ["git"] + _git_http_config_args() + ["ls-remote", "--symref", remote, "HEAD"]
 
-    def attempt():
+    def fetch_symref_output():
         try:
             result = subprocess.run(
                 argv, env=_git_subprocess_env(), capture_output=True, timeout=120,
@@ -774,13 +772,14 @@ def _default_branch_name(remote):
             raise _TransientPublicFetchError() from error
         if result.returncode:
             raise _TransientPublicFetchError()
-        output = result.stdout.decode("utf-8", "replace")
-        for line in output.splitlines():
-            if line.startswith("ref: refs/heads/"):
-                return line.split("refs/heads/", 1)[1].split("\t", 1)[0]
-        raise ValueError(PUBLIC_GIT_FETCH_ERROR)
+        return result.stdout.decode("utf-8", "replace")
 
-    return _retry_transient_public_fetch("git ls-remote symref " + remote, attempt)
+    label = _redact_secrets("git ls-remote symref " + remote)
+    output = _retry_transient_public_fetch(label, fetch_symref_output)
+    for line in output.splitlines():
+        if line.startswith("ref: refs/heads/"):
+            return line.split("refs/heads/", 1)[1].split("\t", 1)[0]
+    raise ValueError(PUBLIC_GIT_FETCH_ERROR)
 
 
 def _git_branch_tip(remote, branch):
