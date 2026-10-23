@@ -12,11 +12,23 @@ Pytest/development jobs use Python 3.11 or newer. The main regression matrix run
 pytest jobs does not lower or replace any runtime contract. JUnit collection
 names match these development matrices; stdlib smoke results are separate jobs.
 
+Those pytest jobs install the `dev` group from `pyproject.toml` and invoke
+`uv run pytest`. The group lists lower bounds only. A generated `uv.lock` is
+not part of the contract and is gitignored. `requires-python` there is the
+pytest job floor, not the 3.9 runtime floor of the stdlib tools. `pytest.ini`
+puts the repository root on `pythonpath`, because `uv run pytest` starts the
+pytest console script and does not insert the working directory the way
+`python -m pytest` did. The dev group also includes `pip` so tools that resolve
+requirements in the same interpreter, such as `pytest_brief.py`, still can.
+`vendor_candidate.py` is started with `uv run python -S` so the pytest it
+launches is the one in that environment. Stdlib unittest lanes do not call uv.
+
 Active parent workflows pin current official setup releases by full commit SHA,
 with a version comment: setup-python v7.0.0 and setup-node v7.1.0 (verified
-2026-10-19). These actions use Node 24 and require runner v2.327.1 or newer;
-these jobs use GitHub-hosted runners. Future updates must verify official
-release tags rather than copy older pins from neighboring workflows.
+2026-10-19), and setup-uv v10.3.2 (verified 2026-10-23). These actions use
+Node 24 and require runner v2.327.1 or newer; these jobs use GitHub-hosted
+runners. Future updates must verify official release tags rather than copy
+older pins from neighboring workflows.
 
 The distributable `templates/vendor-child-ci.workflow.yml` is intentionally
 unchanged in this focused update. Its floating setup-python v7 currently

@@ -28,6 +28,7 @@ on:
       - "tests/test_vendor_child_heads.py"
       - "tests/test_vendor_child_bootstrap.py"
       - "tests/test_vendor_parent_evidence.py"
+      - "pyproject.toml"
 
 permissions:
   contents: read
@@ -67,6 +68,11 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         with:
           python-version: "3.12"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        if: steps.scope.outputs.run == 'true'
+        with:
+          python-version: "3.12"
+          cache-python: true
       - name: Validate child heads and parent vendor baseline
         if: steps.scope.outputs.run == 'true'
         env:
@@ -87,8 +93,7 @@ jobs:
       - name: Unit regressions (offline)
         if: steps.scope.outputs.run == 'true'
         run: |
-          python -m pip install -r tests/requirements.txt
-          python -m pytest -q tests/test_vendor_child_heads.py tests/test_vendor_child_bootstrap.py tests/test_vendor_parent_evidence.py
+          uv run pytest -q tests/test_vendor_child_heads.py tests/test_vendor_child_bootstrap.py tests/test_vendor_parent_evidence.py
 
   child-parent-pin-freshness:
     name: Strict parent pin rollout readiness (manual)

@@ -8,6 +8,7 @@ on:
       - "vendor_consumers.py"
       - "vendor-consumers.json"
       - "tests/test_vendor_consumers_compat.py"
+      - "pyproject.toml"
       - ".github/workflows/vendor-consumers-compat.yml"
   push:
     branches: [main]
@@ -17,6 +18,7 @@ on:
       - "vendor_consumers.py"
       - "vendor-consumers.json"
       - "tests/test_vendor_consumers_compat.py"
+      - "pyproject.toml"
       - ".github/workflows/vendor-consumers-compat.yml"
   workflow_dispatch:
 
@@ -60,14 +62,17 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+          cache-python: true
       - name: Check the original Ironmate lock and file bytes with both verifiers
         run: |
           python -S .compat/parent-old/vendor_sync.py check --root .compat/ironmate --manifest vendor.lock.json
           python -S vendor_sync.py check --root .compat/ironmate --manifest vendor.lock.json
       - name: Exercise all four tool/registry combinations and Ironmate compare
         run: |
-          python -m pip install pytest
-          python -m pytest -q tests/test_vendor_consumers_compat.py --junitxml=reports/vendor-consumers-compat.xml
+          uv run pytest -q tests/test_vendor_consumers_compat.py --junitxml=reports/vendor-consumers-compat.xml
       - name: Preserve compatibility results
         if: always()
         uses: actions/upload-artifact@v7

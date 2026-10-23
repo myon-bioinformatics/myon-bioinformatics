@@ -19,6 +19,7 @@ on:
       - ".github/workflows/reusable-parent-pin-check.yml"
       - ".github/workflows/parent-pin-check.yml"
       - "pytest.ini"
+      - "pyproject.toml"
       - "py_launch.cjs"
   push:
     branches: [main]
@@ -39,6 +40,7 @@ on:
       - ".github/workflows/reusable-parent-pin-check.yml"
       - ".github/workflows/parent-pin-check.yml"
       - "pytest.ini"
+      - "pyproject.toml"
       - "py_launch.cjs"
   schedule:
     - cron: "0 14 * * 1"
@@ -74,9 +76,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
-          cache: pip
-          cache-dependency-path: tests/requirements.txt
-      - run: python -m pip install -r tests/requirements.txt
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: ${{ matrix.python }}
+          cache-python: true
       - run: python -m py_compile git_inspector.py gh_ops.py vendor_consumers.py tools/parent_pin_check.py tools/minpy.py
       - name: Verify enrolled GitHub identity dependency (offline)
         run: python -S vendor_sync.py check --manifest vendor.lock.json
@@ -95,7 +98,7 @@ jobs:
             --root tests/fixtures/minpy_widget \
             --skip-head-check
       - name: Run tests with JUnit
-        run: python -m pytest -q --junitxml=reports/junit.xml
+        run: uv run pytest -q --junitxml=reports/junit.xml
       - name: Preserve JUnit report
         if: always()
         uses: actions/upload-artifact@v7
@@ -114,9 +117,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: tests/requirements.txt
-      - run: python -m pip install -r tests/requirements.txt
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+          cache-python: true
       - name: Verify py_launch vendor-catalog pin against GitHub
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         env:
@@ -127,7 +131,7 @@ jobs:
           attempts=3
           delay=20
           for attempt in $(seq 1 "$attempts"); do
-            if python -m pytest -q -m network tests/test_py_launch_catalog.py; then
+            if uv run pytest -q -m network tests/test_py_launch_catalog.py; then
               echo "network catalog verification succeeded on attempt ${attempt}"
               exit 0
             fi
@@ -160,7 +164,10 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install pytest
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: ${{ matrix.python }}
+          cache-python: true
       - name: Regenerate minpy fixture and compare
         shell: bash
         run: |
@@ -176,7 +183,7 @@ jobs:
             --root tests/fixtures/minpy_widget \
             --skip-head-check
       - name: Exercise changed public Git snapshots and rejection cases
-        run: python -m pytest -q tests/test_vendor_sync.py tests/test_vendor_stage.py tests/test_vendor_consumers.py tests/test_vendor_update_workflow.py tests/test_gh_ops.py tests/test_gh_ops_fetch_guard.py tests/test_minpy.py --junitxml=reports/vendor.xml
+        run: uv run pytest -q tests/test_vendor_sync.py tests/test_vendor_stage.py tests/test_vendor_consumers.py tests/test_vendor_update_workflow.py tests/test_gh_ops.py tests/test_gh_ops_fetch_guard.py tests/test_minpy.py --junitxml=reports/vendor.xml
       - name: Preserve vendor regression JUnit
         if: always()
         uses: actions/upload-artifact@v7

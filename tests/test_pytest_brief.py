@@ -80,7 +80,10 @@ class ResolverRegressionTests(unittest.TestCase):
             f"import sysconfig\nsysconfig.get_path = lambda name: {str(site)!r}\n",
             encoding="utf-8")
         with patch.dict(os.environ, {"PYTHONPATH": str(site)}):
-            self.assertTrue(pb.externally_managed(sys.executable))
+            # `uv run pytest` executes inside a virtualenv. PEP 668 exempts that
+            # environment, so the marker is probed on the base interpreter.
+            base = getattr(sys, "_base_executable", sys.executable)
+            self.assertTrue(pb.externally_managed(base))
             self.assertFalse(pb.externally_managed(self.python))
 
     def test_resolution_failure_stops_before_pytest(self):

@@ -1,0 +1,19 @@
+# Pytest jobs only. Parent runtime tools stay on the standard library and keep
+# their own floors. This file does not change those contracts.
+
+[project]
+name = "myon-bioinformatics"
+version = "0.0.0"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "PyYAML>=6",
+  "coverage>=7",
+  "pip>=23",
+]

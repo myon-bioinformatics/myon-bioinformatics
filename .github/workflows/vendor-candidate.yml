@@ -13,6 +13,7 @@ on:
       - "vendor/**"
       - "gh_ops.py"
       - "tests/**"
+      - "pyproject.toml"
       - ".github/workflows/vendor-candidate.yml"
   push:
     branches: [main]
@@ -22,6 +23,7 @@ on:
       - "vendor/**"
       - "gh_ops.py"
       - "tests/**"
+      - "pyproject.toml"
       - ".github/workflows/vendor-candidate.yml"
   workflow_dispatch:
 
@@ -42,14 +44,17 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install -r tests/requirements.txt
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: ${{ matrix.python }}
+          cache-python: true
       - name: Test candidate verifier offline
-        run: python -m pytest -q tests/test_vendor_candidate.py --junitxml=reports/verifier.xml
+        run: uv run pytest -q tests/test_vendor_candidate.py --junitxml=reports/verifier.xml
       - name: Verify recommended gh_identity in disposable consumer
         env:
           CANDIDATE_OUTPUT: ${{ runner.temp }}/vendor-candidate-py${{ matrix.python }}
         run: >-
-          python -S vendor_candidate.py --root .
+          uv run python -S vendor_candidate.py --root .
           --consumer myon-bioinformatics/myon-bioinformatics
           --repository myon-bioinformatics/gh_identity --source gh_identity.py
           --test tests/test_gh_ops.py --output "$CANDIDATE_OUTPUT"
