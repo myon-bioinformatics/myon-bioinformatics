@@ -34,5 +34,8 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+      - run: python -m pip install -r tests/requirements.txt
       - name: Run node_launch unit tests
         run: python -m pytest -q tests/test_node_launch.py tests/test_node_launch_cli_args_parity.py
