@@ -1,9 +1,10 @@
 "use strict";
 /**
- * Shared Node launcher for single-file stdlib Python tools (Node >= 18, node: builtins only).
+ * Shared Node launcher for single-file stdlib Python tools (Node >= 24, node: builtins only).
  *
  * CLI: require("./vendor/py_launch.cjs").main(__dirname + "/tool.py", { envVar: "IRONMATE_PYTHON", noSite: true })
- * Library: run(scriptPath, args, { python, input, timeout, maxBuffer, maxInputBytes, responseMaxBytes, env, noSite, envVar })
+ * Library: run(scriptPath, args, { python, input, timeout, maxBuffer, maxInputBytes, responseMaxBytes, env, noSite, envVar }).
+ * `maxBuffer` and `responseMaxBytes` are mutually exclusive. `env` merges over `process.env` (never injects PYTHONUTF8).
  *
  * Interpreter resolution (first match that runs Python 3.9+): opts.python, process.env[opts.envVar],
  * process.env.PYTHON, python3, python, and on Windows `py -3`.
@@ -16,7 +17,7 @@
 const { spawn, spawnSync } = require("node:child_process");
 const { platform } = require("node:os");
 
-const MIN_NODE = [18, 0];
+const MIN_NODE = [24, 0];
 const MIN_PYTHON = [3, 9];
 const DEFAULT_ENV_VAR = "PYTHON";
 const DEFAULT_PROBE_TIMEOUT_MS = 5_000;
@@ -188,6 +189,37 @@ function responseTooLargeError(message) {
   return err;
 }
 
+function launchFailureError(message, result, code = "ELAUNCHFAILURE") {
+  const err = runFailure(message, result, { code });
+  return err;
+}
+
+/**
+ * @param {NodeJS.ProcessEnv | undefined} overrides
+ * @returns {NodeJS.ProcessEnv | undefined}
+ */
+function buildChildEnv(overrides) {
+  if (overrides === undefined) return undefined;
+  return { ...process.env, ...overrides };
+}
+
+/**
+ * @param {Error} err
+ * @param {string} pythonProcessPrefix
+ */
+function relaunchError(err, pythonProcessPrefix) {
+  const msg = String(err.message || err);
+  let body = msg;
+  if (body.startsWith("py_launch: Python process failed: ")) {
+    body = body.slice("py_launch: Python process failed: ".length);
+  } else if (body.startsWith("py_launch: ")) {
+    body = body.slice("py_launch: ".length);
+  }
+  const out = new Error(pythonProcessPrefix + body);
+  if (err.code) out.code = err.code;
+  return out;
+}
+
 /**
  * @param {number} responseMaxBytes
  */
@@ -207,45 +239,86 @@ function spawnSyncErrorCode(error) {
 }
 
 /**
+ * Map spawnSync failure to a py_launch Error (pure; used by run and tests).
+ *
+ * @param {{ error?: Error }} result
+ * @param {{ responseMaxBytes?: number }} options
+ */
+function spawnSyncFailureError(result, options = {}) {
+  if (!result.error) return null;
+  const spawnCode = spawnSyncErrorCode(result.error);
+  if (spawnCode === "ENOBUFS") {
+    if (options.responseMaxBytes !== undefined) {
+      return responseTooLargeError(
+        `py_launch: response exceeds responseMaxBytes (${options.responseMaxBytes})`,
+      );
+    }
+    return launchFailureError(`py_launch: Python process failed: ${result.error.message}`, result);
+  }
+  if (spawnCode === "EPIPE") {
+    return launchFailureError(
+      "py_launch: Python process failed: stdin pipe closed unexpectedly",
+      result,
+      "ELAUNCHSTDINCLOSED",
+    );
+  }
+  return null;
+}
+
+/**
  * @param {unknown} err
  * @param {string} pythonProcessPrefix e.g. "tool Python process failed: "
  * @param {string} failureFallback when the child exits nonzero with empty stderr
- * @param {{ stdinPrechecked?: boolean, inputExceededMessage?: string }} [context]
+ * @param {{ inputKnownToExceed?: boolean, inputExceededMessage?: string, responseMaxBytes?: number }} [context]
  */
 function mapLaunchError(err, pythonProcessPrefix, failureFallback, context = {}) {
   const msg = String(err && err.message ? err.message : err);
   const code = err && err.code ? String(err.code) : "";
-  const causeCode = err && err.cause && err.cause.code ? String(err.cause.code) : "";
+  const causeCode =
+    err && err.cause && err.cause.code && !code ? String(err.cause.code) : "";
   const inputExceededMessage = context.inputExceededMessage || "input exceeds size limit";
 
-  if (code === "EINPUTTOOLARGE") {
-    throw new Error(pythonProcessPrefix + msg.replace(/^py_launch: /, ""));
+  if (code === "EINPUTTOOLARGE" || code === "ERESPONSETOOLARGE" || code === "ELAUNCHSTDINCLOSED") {
+    throw relaunchError(err, pythonProcessPrefix);
   }
-  if (code === "ERESPONSETOOLARGE") {
-    throw new Error(pythonProcessPrefix + msg.replace(/^py_launch: /, ""));
+  if (code === "ELAUNCHFAILURE") {
+    throw relaunchError(err, pythonProcessPrefix);
   }
   if (code === "EPIPE" || causeCode === "EPIPE" || /\bEPIPE\b/.test(msg)) {
-    if (context.stdinPrechecked) {
-      throw new Error(pythonProcessPrefix + "Python stdin pipe closed unexpectedly");
+    if (context.inputKnownToExceed) {
+      const out = new Error(inputExceededMessage);
+      out.code = "EINPUTTOOLARGE";
+      throw out;
     }
-    throw new Error(inputExceededMessage);
+    const out = new Error(pythonProcessPrefix + "Python stdin pipe closed unexpectedly");
+    out.code = "ELAUNCHSTDINCLOSED";
+    throw out;
   }
   if (code === "ENOBUFS" || /\bENOBUFS\b/.test(msg)) {
-    throw new Error(
-      pythonProcessPrefix +
-        "internal error: Python stdout exceeded the Node capture buffer despite responseMaxBytes (report as a py_launch consumer bug)",
-    );
+    const detail =
+      context.responseMaxBytes !== undefined
+        ? "internal error: Python stdout exceeded the Node capture buffer despite responseMaxBytes (report as a py_launch consumer bug)"
+        : "Python stdout exceeded the Node maxBuffer limit";
+    const out = new Error(pythonProcessPrefix + detail);
+    out.code = context.responseMaxBytes !== undefined ? "ERESPONSETOOLARGE" : "ELAUNCHFAILURE";
+    throw out;
   }
   if (msg.startsWith("py_launch: Python process failed: ")) {
-    throw new Error(pythonProcessPrefix + msg.slice("py_launch: Python process failed: ".length));
+    throw relaunchError(err, pythonProcessPrefix);
   }
   const spawn = msg.match(/^py_launch: ([^:]+): (spawnSync .+)$/);
-  if (spawn) throw new Error(pythonProcessPrefix + spawn[2]);
+  if (spawn) {
+    const out = new Error(pythonProcessPrefix + spawn[2]);
+    out.code = "ELAUNCHFAILURE";
+    throw out;
+  }
   if (msg.startsWith("py_launch: ")) {
-    throw new Error(pythonProcessPrefix + msg.slice("py_launch: ".length));
+    throw relaunchError(err, pythonProcessPrefix);
   }
   if (err && Object.hasOwn(err, "status") && err.status !== 0) {
-    throw new Error((err.stderr && err.stderr.toString("utf8").trim()) || failureFallback);
+    const out = new Error((err.stderr && err.stderr.toString("utf8").trim()) || failureFallback);
+    out.code = "ELAUNCHFAILURE";
+    throw out;
   }
   throw err;
 }
@@ -274,6 +347,10 @@ function run(scriptPath, args, options = {}) {
   rejectCmdBatInterpreter(resolved.cmd, resolved.label);
   const pyArgs = [...resolved.prefix, ...pythonArgv(scriptPath, args, Boolean(options.noSite))];
 
+  if (options.maxBuffer !== undefined && options.responseMaxBytes !== undefined) {
+    throw new Error("py_launch: cannot set both maxBuffer and responseMaxBytes; use one or the other");
+  }
+
   let maxBuffer = options.maxBuffer;
   if (options.responseMaxBytes !== undefined) {
     maxBuffer = hostMaxBufferBytes(options.responseMaxBytes);
@@ -294,31 +371,19 @@ function run(scriptPath, args, options = {}) {
     timeout: options.timeout,
     maxBuffer,
   };
-  if (options.env !== undefined) {
-    spawnOpts.env = options.env;
+  const childEnv = buildChildEnv(options.env);
+  if (childEnv !== undefined) {
+    spawnOpts.env = childEnv;
   }
 
   const result = spawnSync(resolved.cmd, pyArgs, spawnOpts);
   if (result.error) {
-    const spawnCode = spawnSyncErrorCode(result.error);
-    if (spawnCode === "ENOBUFS" && options.responseMaxBytes !== undefined) {
-      throw responseTooLargeError(
-        `py_launch: response exceeds responseMaxBytes (${options.responseMaxBytes})`,
-      );
+    const mapped = spawnSyncFailureError(result, options);
+    if (mapped) {
+      mapped.cause = result.error;
+      throw mapped;
     }
-    if (spawnCode === "EPIPE") {
-      if (options.maxInputBytes !== undefined && inputLen > options.maxInputBytes) {
-        throw inputTooLargeError(
-          `py_launch: input exceeds maxInputBytes (${options.maxInputBytes}; got ${inputLen} bytes)`,
-        );
-      }
-      if (options.maxInputBytes !== undefined) {
-        const err = runFailure("py_launch: Python process failed: stdin pipe closed unexpectedly", result);
-        err.cause = result.error;
-        throw err;
-      }
-    }
-    const err = runFailure(`py_launch: Python process failed: ${result.error.message}`, result);
+    const err = launchFailureError(`py_launch: Python process failed: ${result.error.message}`, result);
     err.cause = result.error;
     throw err;
   }
@@ -374,6 +439,8 @@ module.exports = {
   buildCandidateSpecs,
   rejectCmdBatInterpreter,
   mapLaunchError,
+  spawnSyncFailureError,
+  buildChildEnv,
   assertNodeVersion,
   hostMaxBufferBytes,
   inputByteLength,

@@ -118,12 +118,15 @@ python vendor_sync.py evidence --root . --manifest vendor.lock.json --runtime-ev
 
 ### Node launcher for vendored Python CLIs (`py_launch.cjs`)
 
-Parent-owned `py_launch.cjs` is a single CommonJS module (Node >= 18, `node:`
+Parent-owned `py_launch.cjs` is a single CommonJS module (Node >= 24, `node:`
 builtins only) that spawns a stdlib Python script with argv passthrough, inherited
 stdio, and exit-code forwarding (exit code 2 on spawn failure, missing
 interpreter, or signal). Library callers use `run(scriptPath, args, { python,
-input, timeout, maxBuffer, noSite, envVar })` with `spawnSync`, surfacing stderr
-on failure. Interpreter resolution order: explicit `python`, `process.env[envVar]`
+input, timeout, maxBuffer, maxInputBytes, responseMaxBytes, env, noSite, envVar })`
+with `spawnSync`, surfacing stderr on failure. `maxBuffer` and `responseMaxBytes`
+are mutually exclusive; `env` merges over `process.env` without injecting
+`PYTHONUTF8` / `PYTHONIOENCODING`. Requires Node 24+. Interpreter resolution
+order: explicit `python`, `process.env[envVar]`
 (for example Ironmate's `IRONMATE_PYTHON`), `PYTHON`, `python3`, `python`, and
 on Windows `py -3`. Python older than 3.9 is rejected with a clear message (exit
 2). Explicit `python` or a set `envVar` rejects Windows `.cmd`/`.bat` paths (exit 2).

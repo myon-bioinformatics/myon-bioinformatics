@@ -11,6 +11,8 @@ const {
   resolvePython,
   buildCandidateSpecs,
   mapLaunchError,
+  spawnSyncFailureError,
+  buildChildEnv,
   assertNodeVersion,
   hostMaxBufferBytes,
   inputByteLength,
@@ -23,6 +25,9 @@ const LAUNCHER = path.join(__dirname, "..", "py_launch.cjs");
 const FIXTURES = path.join(__dirname, "fixtures", "py_launch");
 const PYTHON =
   process.env.PY_LAUNCH_TEST_PYTHON || (process.platform === "win32" ? "python" : "python3");
+const NODE_MAJOR = Number.parseInt(String(process.versions.node).split(".")[0], 10);
+const skipBelowPyLaunchFloor =
+  NODE_MAJOR < MIN_NODE[0] ? `requires Node ${MIN_NODE[0]}+ (running ${process.versions.node})` : false;
 
 function outText(buffer) {
   return buffer.toString("utf8").replace(/\r\n/g, "\n").trim();
@@ -67,7 +72,7 @@ function runNodeMain(scriptRel, extraArgv, opts = {}) {
   });
 }
 
-describe("py_launch.run (library mode)", () => {
+describe("py_launch.run (library mode)", { skip: skipBelowPyLaunchFloor }, () => {
   it("passes argv and returns stdout", () => {
     const result = run(path.join(FIXTURES, "echo_argv.py"), ["a", "b"], { python: PYTHON });
     assert.equal(outText(result.stdout), "a\nb");
@@ -135,22 +140,22 @@ describe("py_launch.run (library mode)", () => {
     assert.equal(inputByteLength(input), 200);
   });
 
-  it("reports unexpected EPIPE when maxInputBytes pre-check passed", () => {
-    const input = "x".repeat(200_000);
+  it("rejects maxBuffer together with responseMaxBytes", () => {
     assert.throws(
       () =>
-        run(path.join(FIXTURES, "exit_immediate.py"), [], {
+        run(path.join(FIXTURES, "echo_argv.py"), [], {
           python: PYTHON,
-          input,
-          maxInputBytes: 1_000_000,
+          maxBuffer: 1024,
+          responseMaxBytes: 2048,
         }),
-      (error) =>
-        /stdin pipe closed unexpectedly/.test(error.message) &&
-        (error.cause?.code === "EPIPE" || /\bEPIPE\b/.test(String(error.cause?.message || error.message))),
+      /cannot set both maxBuffer and responseMaxBytes/,
     );
   });
 
-  it("passes env through without injecting PYTHONUTF8 or PYTHONIOENCODING", () => {
+  it("merges env over process.env without injecting PYTHONUTF8", () => {
+    const merged = buildChildEnv({ PYTHONUTF8: "0", PYTHONIOENCODING: "cp1252" });
+    assert.equal(merged.PYTHONUTF8, "0");
+    assert.ok(merged.PATH && merged.PATH.length > 0);
     const result = run(path.join(FIXTURES, "print_utf8_env.py"), [], {
       python: PYTHON,
       env: { PYTHONUTF8: "0", PYTHONIOENCODING: "cp1252" },
@@ -158,6 +163,19 @@ describe("py_launch.run (library mode)", () => {
     const seen = JSON.parse(result.stdout.toString("utf8"));
     assert.equal(seen.PYTHONUTF8, "0");
     assert.equal(seen.PYTHONIOENCODING, "cp1252");
+  });
+
+  it("inherits PATH when env overrides are merged (Windows-safe)", () => {
+    const result = run(path.join(FIXTURES, "print_path_env.py"), [], {
+      python: PYTHON,
+      env: { PY_LAUNCH_ENV_MARKER: "merged" },
+    });
+    const seen = JSON.parse(result.stdout.toString("utf8"));
+    assert.equal(seen.has_path, true);
+    assert.equal(seen.marker, "merged");
+    if (process.platform === "win32") {
+      assert.equal(seen.has_systemroot, true);
+    }
   });
 
   it("rejects when candidates list is empty", () => {
@@ -278,7 +296,7 @@ describe("py_launch.resolvePython", () => {
   });
 });
 
-describe("py_launch.main (CLI passthrough)", () => {
+describe("py_launch.main (CLI passthrough)", { skip: skipBelowPyLaunchFloor }, () => {
   it("forwards argv and exit code", () => {
     const ok = runNodeMain("exit_code.py", ["0"]);
     assert.equal(ok.status, 0);
@@ -370,52 +388,113 @@ describe("py_launch.main (CLI passthrough)", () => {
   });
 });
 
+describe("py_launch.spawnSyncFailureError", () => {
+  it("maps EPIPE to ELAUNCHSTDINCLOSED", () => {
+    const mapped = spawnSyncFailureError(
+      { error: Object.assign(new Error("spawnSync python3 EPIPE"), { code: "EPIPE" }) },
+      {},
+    );
+    assert.ok(mapped);
+    assert.equal(mapped.code, "ELAUNCHSTDINCLOSED");
+    assert.match(mapped.message, /stdin pipe closed unexpectedly/);
+  });
+
+  it("maps ENOBUFS with responseMaxBytes to ERESPONSETOOLARGE", () => {
+    const mapped = spawnSyncFailureError(
+      { error: Object.assign(new Error("maxBuffer exceeded"), { code: "ENOBUFS" }) },
+      { responseMaxBytes: 4096 },
+    );
+    assert.ok(mapped);
+    assert.equal(mapped.code, "ERESPONSETOOLARGE");
+  });
+
+  it("maps ENOBUFS without responseMaxBytes to ELAUNCHFAILURE", () => {
+    const mapped = spawnSyncFailureError(
+      { error: Object.assign(new Error("maxBuffer exceeded"), { code: "ENOBUFS" }) },
+      {},
+    );
+    assert.ok(mapped);
+    assert.equal(mapped.code, "ELAUNCHFAILURE");
+  });
+});
+
 describe("py_launch.mapLaunchError", () => {
   const PREFIX = "tool Python process failed: ";
 
-  it("rewrites py_launch spawn failures", () => {
-    const raw = new Error("py_launch: Python process failed: spawnSync ENOENT");
+  it("rewrites py_launch spawn failures and preserves code", () => {
+    const raw = Object.assign(new Error("py_launch: Python process failed: spawnSync ENOENT"), {
+      code: "ELAUNCHFAILURE",
+    });
     assert.throws(() => mapLaunchError(raw, PREFIX, "fallback"), (error) => {
       assert.equal(error.message, PREFIX + "spawnSync ENOENT");
+      assert.equal(error.code, "ELAUNCHFAILURE");
       return true;
     });
   });
 
-  it("maps EPIPE to input exceeded unless stdin was prechecked", () => {
+  it("maps bare EPIPE to launch failure unless inputKnownToExceed", () => {
     const raw = Object.assign(new Error("py_launch: Python process failed: write EPIPE"), { code: "EPIPE" });
     assert.throws(
       () => mapLaunchError(raw, PREFIX, "fallback"),
-      (error) => error.message === "input exceeds size limit",
+      (error) =>
+        error.message === PREFIX + "Python stdin pipe closed unexpectedly" &&
+        error.code === "ELAUNCHSTDINCLOSED",
     );
     assert.throws(
-      () => mapLaunchError(raw, PREFIX, "fallback", { stdinPrechecked: true }),
-      (error) => error.message === PREFIX + "Python stdin pipe closed unexpectedly",
+      () => mapLaunchError(raw, PREFIX, "fallback", { inputKnownToExceed: true }),
+      (error) => error.message === "input exceeds size limit" && error.code === "EINPUTTOOLARGE",
     );
   });
 
-  it("maps ENOBUFS to internal response buffer message", () => {
+  it("does not re-map EPIPE from cause when run marked ELAUNCHSTDINCLOSED", () => {
+    const cause = Object.assign(new Error("EPIPE"), { code: "EPIPE" });
+    const raw = Object.assign(
+      new Error("py_launch: Python process failed: stdin pipe closed unexpectedly"),
+      { code: "ELAUNCHSTDINCLOSED", cause },
+    );
+    assert.throws(() => mapLaunchError(raw, PREFIX, "fallback"), (error) => {
+      assert.equal(error.code, "ELAUNCHSTDINCLOSED");
+      assert.match(error.message, /stdin pipe closed unexpectedly/);
+      return true;
+    });
+  });
+
+  it("maps ENOBUFS messages based on responseMaxBytes context", () => {
     const raw = Object.assign(new Error("py_launch: Python process failed: maxBuffer exceeded"), {
       code: "ENOBUFS",
     });
     assert.throws(
       () => mapLaunchError(raw, PREFIX, "fallback"),
-      (error) => /responseMaxBytes/.test(error.message) && error.message.startsWith(PREFIX),
+      (error) =>
+        error.message === PREFIX + "Python stdout exceeded the Node maxBuffer limit" &&
+        error.code === "ELAUNCHFAILURE",
+    );
+    assert.throws(
+      () => mapLaunchError(raw, PREFIX, "fallback", { responseMaxBytes: 1024 }),
+      (error) => /responseMaxBytes/.test(error.message) && error.code === "ERESPONSETOOLARGE",
     );
   });
 });
 
 describe("py_launch.assertNodeVersion", () => {
-  it("accepts the current Node runtime", () => {
-    assertNodeVersion();
-    assert.ok(MIN_NODE[0] >= 18);
+  it("enforces the Node 24+ floor", () => {
+    assert.equal(MIN_NODE[0], 24);
+    if (NODE_MAJOR >= MIN_NODE[0]) {
+      assertNodeVersion();
+    } else {
+      assert.throws(() => assertNodeVersion(), /requires Node 24\+/);
+    }
   });
 });
 
 describe("py_launch security", () => {
   it("does not inject PYTHONUTF8 or PYTHONIOENCODING in launcher source", () => {
-    const source = fs.readFileSync(LAUNCHER, "utf8");
-    assert.ok(!/PYTHONUTF8/.test(source));
-    assert.ok(!/PYTHONIOENCODING/.test(source));
+    const source = fs
+      .readFileSync(LAUNCHER, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    assert.ok(!/\bPYTHONUTF8\b/.test(source));
+    assert.ok(!/\bPYTHONIOENCODING\b/.test(source));
   });
   it("does not enable shell spawning in the launcher source", () => {
     const source = fs
@@ -426,7 +505,7 @@ describe("py_launch security", () => {
   });
 });
 
-describe("py_launch consumer wrapper", () => {
+describe("py_launch consumer wrapper", { skip: skipBelowPyLaunchFloor }, () => {
   it("matches the documented three-line pattern", () => {
     const consumer = path.join(FIXTURES, "consumer.cjs");
     fs.writeFileSync(
