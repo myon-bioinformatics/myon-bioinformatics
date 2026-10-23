@@ -122,7 +122,7 @@ Parent-owned `py_launch.cjs` is a single CommonJS module (Node >= 24, `node:`
 builtins only) that spawns a stdlib Python script with argv passthrough, inherited
 stdio, and exit-code forwarding (exit code 2 on spawn failure, missing
 interpreter, or signal). Library callers use `run(scriptPath, args, { python,
-input, timeout, maxBuffer, maxInputBytes, responseMaxBytes, env, noSite, envVar })`
+input, timeout, maxBuffer, maxInputBytes, responseMaxBytes, env, noSite, isolated, envVar })`
 with `spawnSync`, surfacing stderr on failure. `maxBuffer` and `responseMaxBytes`
 are mutually exclusive; `env` merges over `process.env` without injecting
 `PYTHONUTF8` / `PYTHONIOENCODING`. Requires Node 24+. Interpreter resolution
@@ -133,7 +133,13 @@ on Windows `py -3`. Python older than 3.9 is rejected with a clear message (exit
 Non-strict `PYTHON` pointing at a batch shim is skipped with a warning so later
 candidates (`python3`, `python`, `py -3`) can run. `-S` is optional per tool via
 `noSite: true`
-(default off).
+(default off). `-I` is optional via `isolated: true` (default off). CPython
+treats `-I` as `-E` plus `-s` plus `-P`: every `PYTHON*` environment variable is
+ignored (including `PYTHONPATH` set through `env`), user site is disabled, and
+the script directory is not placed on `sys.path`, so sibling-module imports fail
+unless the script inserts its own directory (for example
+`sys.path.insert(0, os.path.dirname(__file__))`, as Ironmate `flow_workspace`
+did when invoking `python -I -S` directly).
 
 Add the `vendor-catalog.json` recommendation only after the launcher is on
 default branch (merge commit pin), then enroll with `vendor_sync.py` like any

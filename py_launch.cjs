@@ -3,7 +3,7 @@
  * Shared Node launcher for single-file stdlib Python tools (Node >= 24, node: builtins only).
  *
  * CLI: require("./vendor/py_launch.cjs").main(__dirname + "/tool.py", { envVar: "IRONMATE_PYTHON", noSite: true })
- * Library: run(scriptPath, args, { python, input, timeout, maxBuffer, maxInputBytes, responseMaxBytes, env, noSite, envVar }).
+ * Library: run(scriptPath, args, { python, input, timeout, maxBuffer, maxInputBytes, responseMaxBytes, env, noSite, isolated, envVar }).
  * `maxBuffer` and `responseMaxBytes` are mutually exclusive. `env` merges over `process.env` (never injects PYTHONUTF8).
  *
  * Interpreter resolution (first match that runs Python 3.9+): opts.python, process.env[opts.envVar],
@@ -13,6 +13,10 @@
  * Explicit `python` or a set `envVar` rejects them; non-strict `PYTHON` skips with a warning.
  *
  * `noSite` adds CPython `-S` (no site.py / no user site); default is off so tools opt in explicitly.
+ * `isolated` adds CPython `-I` (implies `-E`, `-s`, and `-P`: ignore all `PYTHON*`
+ * environment variables—including values passed via `env`—and omit the script
+ * directory from `sys.path`). Sibling imports fail unless the script prepends its
+ * directory to `sys.path`; default is off.
  */
 const { spawn, spawnSync } = require("node:child_process");
 const { platform } = require("node:os");
@@ -360,10 +364,12 @@ function mapLaunchError(err, pythonProcessPrefix, failureFallback, context = {})
  * @param {string} scriptPath
  * @param {string[]} args
  * @param {boolean} noSite
+ * @param {boolean} isolated
  */
-function pythonArgv(scriptPath, args, noSite) {
+function pythonArgv(scriptPath, args, noSite, isolated) {
   const argv = [];
   if (noSite) argv.push("-S");
+  if (isolated) argv.push("-I");
   argv.push(scriptPath);
   if (args && args.length) argv.push(...args);
   return argv;
@@ -378,7 +384,10 @@ function run(scriptPath, args, options = {}) {
   assertNodeVersion();
   const resolved = resolvePython(options);
   rejectCmdBatInterpreter(resolved.cmd, resolved.label);
-  const pyArgs = [...resolved.prefix, ...pythonArgv(scriptPath, args, Boolean(options.noSite))];
+  const pyArgs = [
+    ...resolved.prefix,
+    ...pythonArgv(scriptPath, args, Boolean(options.noSite), Boolean(options.isolated)),
+  ];
 
   if (options.maxBuffer !== undefined && options.responseMaxBytes !== undefined) {
     throw new Error("py_launch: cannot set both maxBuffer and responseMaxBytes; use one or the other");
@@ -445,7 +454,10 @@ function main(scriptPath, opts = {}) {
     return;
   }
   const argv = opts.argv ?? process.argv.slice(2);
-  const pyArgs = [...resolved.prefix, ...pythonArgv(scriptPath, argv, Boolean(opts.noSite))];
+  const pyArgs = [
+    ...resolved.prefix,
+    ...pythonArgv(scriptPath, argv, Boolean(opts.noSite), Boolean(opts.isolated)),
+  ];
   rejectCmdBatInterpreter(resolved.cmd, resolved.label);
   const child = spawn(resolved.cmd, pyArgs, { stdio: "inherit" });
   const forwardSignal = (signal) => {

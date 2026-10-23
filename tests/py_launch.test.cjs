@@ -32,6 +32,10 @@ function outText(buffer) {
   return buffer.toString("utf8").replace(/\r\n/g, "\n").trim();
 }
 
+function rmTempDir(dir) {
+  if (dir) fs.rmSync(dir, { recursive: true, force: true });
+}
+
 function probeStubSource(version, pass, slowMs = 0) {
   return `"use strict";
 if (process.argv.includes("-c")) {
@@ -106,6 +110,83 @@ describe("py_launch.run (library mode)", () => {
   it("honors noSite", () => {
     const result = run(path.join(FIXTURES, "check_nosite.py"), [], { python: PYTHON, noSite: true });
     assert.equal(outText(result.stdout), "1");
+  });
+
+  it("honors isolated and ignores PYTHONPATH stdlib shadowing", () => {
+    const shadowDir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-xml-shadow-"));
+    try {
+      fs.writeFileSync(
+        path.join(shadowDir, "xml.py"),
+        'PY_LAUNCH_SHADOW = "shadow"\n',
+        "utf8",
+      );
+      const script = path.join(FIXTURES, "import_xml_shadow.py");
+      const shadowed = run(script, [], {
+        python: PYTHON,
+        env: { PYTHONPATH: shadowDir },
+      });
+      assert.equal(outText(shadowed.stdout), "shadow");
+      const isolated = run(script, [], {
+        python: PYTHON,
+        env: { PYTHONPATH: shadowDir },
+        isolated: true,
+      });
+      assert.equal(outText(isolated.stdout), "stdlib");
+    } finally {
+      rmTempDir(shadowDir);
+    }
+  });
+
+  it("ignores PYTHONPATH from the env option when isolated", () => {
+    const shadowDir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-env-pythonpath-"));
+    try {
+      fs.writeFileSync(path.join(shadowDir, "xml.py"), 'PY_LAUNCH_SHADOW = "from-env"\n', "utf8");
+      const script = path.join(FIXTURES, "import_xml_shadow.py");
+      const without = run(script, [], { python: PYTHON, env: { PYTHONPATH: shadowDir } });
+      assert.equal(outText(without.stdout), "from-env");
+      const withIsolated = run(script, [], {
+        python: PYTHON,
+        env: { PYTHONPATH: shadowDir },
+        isolated: true,
+      });
+      assert.equal(outText(withIsolated.stdout), "stdlib");
+    } finally {
+      rmTempDir(shadowDir);
+    }
+  });
+
+  it("blocks sibling imports under isolated but allows sys.path self-insert", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-sibling-"));
+    try {
+      fs.writeFileSync(path.join(dir, "sib.py"), 'VALUE = "sib"\n', "utf8");
+      fs.writeFileSync(path.join(dir, "entry.py"), "import sib\nprint(sib.VALUE)\n", "utf8");
+      fs.writeFileSync(
+        path.join(dir, "entry_self_path.py"),
+        [
+          "import os",
+          "import sys",
+          "sys.path.insert(0, os.path.dirname(__file__))",
+          "import sib",
+          "print(sib.VALUE)",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+      const entry = path.join(dir, "entry.py");
+      const ok = run(entry, [], { python: PYTHON });
+      assert.equal(outText(ok.stdout), "sib");
+      assert.throws(
+        () => run(entry, [], { python: PYTHON, isolated: true }),
+        (error) => error.status !== 0,
+      );
+      const fixed = run(path.join(dir, "entry_self_path.py"), [], {
+        python: PYTHON,
+        isolated: true,
+      });
+      assert.equal(outText(fixed.stdout), "sib");
+    } finally {
+      rmTempDir(dir);
+    }
   });
 
   it("times out long-running scripts", () => {
@@ -207,10 +288,14 @@ describe("py_launch.run (library mode)", () => {
 
   it("runs script paths and args containing spaces", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-space-"));
-    const script = path.join(dir, "tool with spaces.py");
-    fs.writeFileSync(script, 'import sys\nprint(" ".join(sys.argv[1:]))\n', "utf8");
-    const result = run(script, ["arg one", "arg two"], { python: PYTHON });
-    assert.equal(outText(result.stdout), "arg one arg two");
+    try {
+      const script = path.join(dir, "tool with spaces.py");
+      fs.writeFileSync(script, 'import sys\nprint(" ".join(sys.argv[1:]))\n', "utf8");
+      const result = run(script, ["arg one", "arg two"], { python: PYTHON });
+      assert.equal(outText(result.stdout), "arg one arg two");
+    } finally {
+      rmTempDir(dir);
+    }
   });
 });
 
@@ -243,11 +328,15 @@ describe("py_launch.resolvePython", () => {
 
   it("does not fall back when explicit envVar points at too-old python", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-old-"));
-    const old = makeNodeCandidate(dir, "old", probeStubSource("3.8", false));
-    assert.throws(
-      () => resolvePython({ candidates: [{ ...old, label: "$PY_LAUNCH_TEST_OLD", strict: true }] }),
-      (error) => /3\.9\+ required/.test(error.message),
-    );
+    try {
+      const old = makeNodeCandidate(dir, "old", probeStubSource("3.8", false));
+      assert.throws(
+        () => resolvePython({ candidates: [{ ...old, label: "$PY_LAUNCH_TEST_OLD", strict: true }] }),
+        (error) => /3\.9\+ required/.test(error.message),
+      );
+    } finally {
+      rmTempDir(dir);
+    }
   });
 
   it("rejects Windows .cmd and .bat interpreter paths when explicit", () => {
@@ -263,25 +352,29 @@ describe("py_launch.resolvePython", () => {
 
   it("skips non-explicit PYTHON .cmd with a warning and continues", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-python-cmd-"));
-    const cmd = path.join(dir, "python.cmd");
-    fs.writeFileSync(cmd, "@echo off\r\n", "utf8");
-    const warnings = [];
-    const previousPython = process.env.PYTHON;
-    const previousWrite = process.stderr.write;
-    process.env.PYTHON = cmd;
-    process.stderr.write = (chunk, encoding, callback) => {
-      warnings.push(String(chunk));
-      return previousWrite.call(process.stderr, chunk, encoding, callback);
-    };
     try {
-      const resolved = resolvePython({});
-      assert.notEqual(resolved.cmd.toLowerCase(), cmd.toLowerCase());
-      assert.ok(["python", "python3", "py -3"].includes(resolved.label));
-      assert.ok(warnings.some((line) => /warning: skipping \$PYTHON/.test(line)));
+      const cmd = path.join(dir, "python.cmd");
+      fs.writeFileSync(cmd, "@echo off\r\n", "utf8");
+      const warnings = [];
+      const previousPython = process.env.PYTHON;
+      const previousWrite = process.stderr.write;
+      process.env.PYTHON = cmd;
+      process.stderr.write = (chunk, encoding, callback) => {
+        warnings.push(String(chunk));
+        return previousWrite.call(process.stderr, chunk, encoding, callback);
+      };
+      try {
+        const resolved = resolvePython({});
+        assert.notEqual(resolved.cmd.toLowerCase(), cmd.toLowerCase());
+        assert.ok(["python", "python3", "py -3"].includes(resolved.label));
+        assert.ok(warnings.some((line) => /warning: skipping \$PYTHON/.test(line)));
+      } finally {
+        if (previousPython === undefined) delete process.env.PYTHON;
+        else process.env.PYTHON = previousPython;
+        process.stderr.write = previousWrite;
+      }
     } finally {
-      if (previousPython === undefined) delete process.env.PYTHON;
-      else process.env.PYTHON = previousPython;
-      process.stderr.write = previousWrite;
+      rmTempDir(dir);
     }
   });
 
@@ -295,17 +388,21 @@ describe("py_launch.resolvePython", () => {
   it("uses probe timeout near five seconds by default", () => {
     assert.equal(DEFAULT_PROBE_TIMEOUT_MS, 5_000);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-slow-probe-"));
-    const slow = makeNodeCandidate(dir, "slow", probeStubSource("3.12", true, 30_000));
-    const started = Date.now();
-    assert.throws(
-      () =>
-        resolvePython({
-          candidates: [{ ...slow, label: "slow" }],
-          probeTimeoutMs: 500,
-        }),
-      (error) => /no suitable Python interpreter/.test(error.message),
-    );
-    assert.ok(Date.now() - started < 5_000);
+    try {
+      const slow = makeNodeCandidate(dir, "slow", probeStubSource("3.12", true, 30_000));
+      const started = Date.now();
+      assert.throws(
+        () =>
+          resolvePython({
+            candidates: [{ ...slow, label: "slow" }],
+            probeTimeoutMs: 500,
+          }),
+        (error) => /no suitable Python interpreter/.test(error.message),
+      );
+      assert.ok(Date.now() - started < 5_000);
+    } finally {
+      rmTempDir(dir);
+    }
   });
 
   it("includes py -3 on Windows candidate lists", () => {
@@ -322,6 +419,21 @@ describe("py_launch.main (CLI passthrough)", () => {
     assert.equal(ok.status, 0);
     const bad = runNodeMain("exit_code.py", ["7"]);
     assert.equal(bad.status, 7);
+  });
+
+  it("forwards isolated and ignores PYTHONPATH from env", () => {
+    const shadowDir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-main-isolated-"));
+    try {
+      fs.writeFileSync(path.join(shadowDir, "xml.py"), 'PY_LAUNCH_SHADOW = "shadow"\n', "utf8");
+      const result = runNodeMain("import_xml_shadow.py", [], {
+        isolated: true,
+        env: { PYTHONPATH: shadowDir },
+      });
+      assert.equal(result.status, 0);
+      assert.equal(outText(Buffer.from(result.stdout || "", "utf8")), "stdlib");
+    } finally {
+      rmTempDir(shadowDir);
+    }
   });
 
   it("inherits stdio for stdin", async () => {
@@ -360,28 +472,36 @@ describe("py_launch.main (CLI passthrough)", () => {
   it("uses exit code 2 when explicit envVar python is too old", () => {
     if (process.platform === "win32") return;
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-cli-old-"));
-    const old = makeNodeCandidate(dir, "old-cli", probeStubSource("3.8", false));
-    const shim = path.join(dir, "old-shim");
-    fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${old.prefix[0]}" "$@"\n`, { mode: 0o755 });
-    const script = path.join(FIXTURES, "echo_argv.py");
-    const result = resolveInSubprocess(
-      `require(${JSON.stringify(LAUNCHER)}).main(${JSON.stringify(script)}, { envVar: "PY_LAUNCH_TEST_OLD" });`,
-      { PY_LAUNCH_TEST_OLD: shim },
-    );
-    assert.equal(result.status, 2);
-    assert.match(result.stderr, /3\.9\+ required/);
+    try {
+      const old = makeNodeCandidate(dir, "old-cli", probeStubSource("3.8", false));
+      const shim = path.join(dir, "old-shim");
+      fs.writeFileSync(shim, `#!/bin/sh\nexec "${process.execPath}" "${old.prefix[0]}" "$@"\n`, { mode: 0o755 });
+      const script = path.join(FIXTURES, "echo_argv.py");
+      const result = resolveInSubprocess(
+        `require(${JSON.stringify(LAUNCHER)}).main(${JSON.stringify(script)}, { envVar: "PY_LAUNCH_TEST_OLD" });`,
+        { PY_LAUNCH_TEST_OLD: shim },
+      );
+      assert.equal(result.status, 2);
+      assert.match(result.stderr, /3\.9\+ required/);
+    } finally {
+      rmTempDir(dir);
+    }
   });
 
   it("uses exit code 2 when explicit python is a .cmd interpreter", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-cmd-"));
-    const cmd = path.join(dir, "python.cmd");
-    fs.writeFileSync(cmd, "@echo off\r\n", "utf8");
-    const script = path.join(FIXTURES, "echo_argv.py");
-    const result = resolveInSubprocess(
-      `require(${JSON.stringify(LAUNCHER)}).main(${JSON.stringify(script)}, { python: ${JSON.stringify(cmd)} });`,
-    );
-    assert.equal(result.status, 2);
-    assert.match(result.stderr, /\.cmd\/\.bat interpreters are not supported/);
+    try {
+      const cmd = path.join(dir, "python.cmd");
+      fs.writeFileSync(cmd, "@echo off\r\n", "utf8");
+      const script = path.join(FIXTURES, "echo_argv.py");
+      const result = resolveInSubprocess(
+        `require(${JSON.stringify(LAUNCHER)}).main(${JSON.stringify(script)}, { python: ${JSON.stringify(cmd)} });`,
+      );
+      assert.equal(result.status, 2);
+      assert.match(result.stderr, /\.cmd\/\.bat interpreters are not supported/);
+    } finally {
+      rmTempDir(dir);
+    }
   });
 
   it("uses exit code 2 when the child is signaled", () => {
