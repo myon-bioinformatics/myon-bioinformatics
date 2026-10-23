@@ -15,8 +15,10 @@ names match these development matrices; stdlib smoke results are separate jobs.
 Those pytest jobs install the `dev` group from `pyproject.toml` and invoke
 `uv run pytest`. The group lists lower bounds only. A generated `uv.lock` is
 not part of the contract and is gitignored. `requires-python` there is the
-pytest job floor, not the 3.9 runtime floor of the stdlib tools. Stdlib
-unittest lanes do not call uv.
+pytest job floor, not the 3.9 runtime floor of the stdlib tools. `pytest.ini`
+puts the repository root on `pythonpath`, because `uv run pytest` starts the
+pytest console script and does not insert the working directory the way
+`python -m pytest` did. Stdlib unittest lanes do not call uv.
 
 Active parent workflows pin current official setup releases by full commit SHA,
 with a version comment: setup-python v7.0.0 and setup-node v7.1.0 (verified

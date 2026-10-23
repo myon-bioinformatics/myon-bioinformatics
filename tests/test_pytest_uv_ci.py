@@ -36,6 +36,8 @@ def test_dev_group_matches_requirements_lower_bounds():
     for name in ("workflow-requirements.txt", "junit-requirements.txt"):
         assert set(_requirement_lines(ROOT / "tests" / name)) <= dev
     assert "uv.lock" in (ROOT / ".gitignore").read_text(encoding="utf-8")
+    ini = (ROOT / "pytest.ini").read_text(encoding="utf-8")
+    assert "pythonpath = ." in ini
 
 
 def test_pytest_workflows_use_uv_run_pytest():
