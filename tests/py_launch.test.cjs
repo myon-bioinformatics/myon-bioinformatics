@@ -5,7 +5,19 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { describe, it } = require("node:test");
-const { main, run, resolvePython, buildCandidateSpecs, DEFAULT_PROBE_TIMEOUT_MS } = require("../py_launch.cjs");
+const {
+  main,
+  run,
+  resolvePython,
+  buildCandidateSpecs,
+  mapLaunchError,
+  assertNodeVersion,
+  hostMaxBufferBytes,
+  inputByteLength,
+  DEFAULT_PROBE_TIMEOUT_MS,
+  HOST_RESPONSE_MARGIN_BYTES,
+  MIN_NODE,
+} = require("../py_launch.cjs");
 
 const LAUNCHER = path.join(__dirname, "..", "py_launch.cjs");
 const FIXTURES = path.join(__dirname, "fixtures", "py_launch");
@@ -90,11 +102,62 @@ describe("py_launch.run (library mode)", () => {
     );
   });
 
-  it("surfaces maxBuffer overflow", () => {
+  it("surfaces maxBuffer overflow without responseMaxBytes mapping", () => {
     assert.throws(
       () => run(path.join(FIXTURES, "big_stdout.py"), ["200000"], { python: PYTHON, maxBuffer: 1024 }),
       (error) => /maxBuffer|ENOBUFS/i.test(String(error.cause?.message || error.message)),
     );
+  });
+
+  it("maps responseMaxBytes overflow to ERESPONSETOOLARGE", () => {
+    assert.throws(
+      () =>
+        run(path.join(FIXTURES, "big_stdout.py"), ["200000"], {
+          python: PYTHON,
+          responseMaxBytes: 1024,
+        }),
+      (error) => error.code === "ERESPONSETOOLARGE" && /responseMaxBytes/.test(error.message),
+    );
+    assert.equal(hostMaxBufferBytes(1024), 1024 + HOST_RESPONSE_MARGIN_BYTES);
+  });
+
+  it("rejects input above maxInputBytes before spawn", () => {
+    const input = "x".repeat(200);
+    assert.throws(
+      () =>
+        run(path.join(FIXTURES, "echo_stdin.py"), [], {
+          python: PYTHON,
+          input,
+          maxInputBytes: 100,
+        }),
+      (error) => error.code === "EINPUTTOOLARGE" && /maxInputBytes/.test(error.message),
+    );
+    assert.equal(inputByteLength(input), 200);
+  });
+
+  it("reports unexpected EPIPE when maxInputBytes pre-check passed", () => {
+    const input = "x".repeat(200_000);
+    assert.throws(
+      () =>
+        run(path.join(FIXTURES, "exit_immediate.py"), [], {
+          python: PYTHON,
+          input,
+          maxInputBytes: 1_000_000,
+        }),
+      (error) =>
+        /stdin pipe closed unexpectedly/.test(error.message) &&
+        (error.cause?.code === "EPIPE" || /\bEPIPE\b/.test(String(error.cause?.message || error.message))),
+    );
+  });
+
+  it("passes env through without injecting PYTHONUTF8 or PYTHONIOENCODING", () => {
+    const result = run(path.join(FIXTURES, "print_utf8_env.py"), [], {
+      python: PYTHON,
+      env: { PYTHONUTF8: "0", PYTHONIOENCODING: "cp1252" },
+    });
+    const seen = JSON.parse(result.stdout.toString("utf8"));
+    assert.equal(seen.PYTHONUTF8, "0");
+    assert.equal(seen.PYTHONIOENCODING, "cp1252");
   });
 
   it("rejects when candidates list is empty", () => {
@@ -307,7 +370,53 @@ describe("py_launch.main (CLI passthrough)", () => {
   });
 });
 
+describe("py_launch.mapLaunchError", () => {
+  const PREFIX = "tool Python process failed: ";
+
+  it("rewrites py_launch spawn failures", () => {
+    const raw = new Error("py_launch: Python process failed: spawnSync ENOENT");
+    assert.throws(() => mapLaunchError(raw, PREFIX, "fallback"), (error) => {
+      assert.equal(error.message, PREFIX + "spawnSync ENOENT");
+      return true;
+    });
+  });
+
+  it("maps EPIPE to input exceeded unless stdin was prechecked", () => {
+    const raw = Object.assign(new Error("py_launch: Python process failed: write EPIPE"), { code: "EPIPE" });
+    assert.throws(
+      () => mapLaunchError(raw, PREFIX, "fallback"),
+      (error) => error.message === "input exceeds size limit",
+    );
+    assert.throws(
+      () => mapLaunchError(raw, PREFIX, "fallback", { stdinPrechecked: true }),
+      (error) => error.message === PREFIX + "Python stdin pipe closed unexpectedly",
+    );
+  });
+
+  it("maps ENOBUFS to internal response buffer message", () => {
+    const raw = Object.assign(new Error("py_launch: Python process failed: maxBuffer exceeded"), {
+      code: "ENOBUFS",
+    });
+    assert.throws(
+      () => mapLaunchError(raw, PREFIX, "fallback"),
+      (error) => /responseMaxBytes/.test(error.message) && error.message.startsWith(PREFIX),
+    );
+  });
+});
+
+describe("py_launch.assertNodeVersion", () => {
+  it("accepts the current Node runtime", () => {
+    assertNodeVersion();
+    assert.ok(MIN_NODE[0] >= 18);
+  });
+});
+
 describe("py_launch security", () => {
+  it("does not inject PYTHONUTF8 or PYTHONIOENCODING in launcher source", () => {
+    const source = fs.readFileSync(LAUNCHER, "utf8");
+    assert.ok(!/PYTHONUTF8/.test(source));
+    assert.ok(!/PYTHONIOENCODING/.test(source));
+  });
   it("does not enable shell spawning in the launcher source", () => {
     const source = fs
       .readFileSync(LAUNCHER, "utf8")
