@@ -13,6 +13,7 @@ const {
   mapLaunchError,
   spawnSyncFailureError,
   buildChildEnv,
+  envLookup,
   assertNodeVersion,
   hostMaxBufferBytes,
   inputByteLength,
@@ -26,8 +27,6 @@ const FIXTURES = path.join(__dirname, "fixtures", "py_launch");
 const PYTHON =
   process.env.PY_LAUNCH_TEST_PYTHON || (process.platform === "win32" ? "python" : "python3");
 const NODE_MAJOR = Number.parseInt(String(process.versions.node).split(".")[0], 10);
-const skipBelowPyLaunchFloor =
-  NODE_MAJOR < MIN_NODE[0] ? `requires Node ${MIN_NODE[0]}+ (running ${process.versions.node})` : false;
 
 function outText(buffer) {
   return buffer.toString("utf8").replace(/\r\n/g, "\n").trim();
@@ -72,7 +71,16 @@ function runNodeMain(scriptRel, extraArgv, opts = {}) {
   });
 }
 
-describe("py_launch.run (library mode)", { skip: skipBelowPyLaunchFloor }, () => {
+describe("py_launch Node runtime", () => {
+  it("requires Node 24+", () => {
+    assert.ok(
+      NODE_MAJOR >= MIN_NODE[0],
+      `requires Node ${MIN_NODE[0]}+ (running ${process.versions.node})`,
+    );
+  });
+});
+
+describe("py_launch.run (library mode)", () => {
   it("passes argv and returns stdout", () => {
     const result = run(path.join(FIXTURES, "echo_argv.py"), ["a", "b"], { python: PYTHON });
     assert.equal(outText(result.stdout), "a\nb");
@@ -154,8 +162,8 @@ describe("py_launch.run (library mode)", { skip: skipBelowPyLaunchFloor }, () =>
 
   it("merges env over process.env without injecting PYTHONUTF8", () => {
     const merged = buildChildEnv({ PYTHONUTF8: "0", PYTHONIOENCODING: "cp1252" });
-    assert.equal(merged.PYTHONUTF8, "0");
-    assert.ok(merged.PATH && merged.PATH.length > 0);
+    assert.equal(envLookup(merged, "PYTHONUTF8"), "0");
+    assert.ok(envLookup(merged, "PATH") && String(envLookup(merged, "PATH")).length > 0);
     const result = run(path.join(FIXTURES, "print_utf8_env.py"), [], {
       python: PYTHON,
       env: { PYTHONUTF8: "0", PYTHONIOENCODING: "cp1252" },
@@ -163,6 +171,18 @@ describe("py_launch.run (library mode)", { skip: skipBelowPyLaunchFloor }, () =>
     const seen = JSON.parse(result.stdout.toString("utf8"));
     assert.equal(seen.PYTHONUTF8, "0");
     assert.equal(seen.PYTHONIOENCODING, "cp1252");
+  });
+
+  it("merges PATH case-insensitively on Windows without duplicate keys", () => {
+    if (process.platform !== "win32") return;
+    const merged = buildChildEnv({ PATH: "C:\\py-launch-test-path" });
+    const pathKeys = Object.keys(merged).filter((key) => key.toLowerCase() === "path");
+    assert.equal(pathKeys.length, 1);
+    assert.equal(merged[pathKeys[0]], "C:\\py-launch-test-path");
+    const mergedUtf8 = buildChildEnv({ pythonutf8: "0" });
+    const utf8Keys = Object.keys(mergedUtf8).filter((key) => key.toLowerCase() === "pythonutf8");
+    assert.equal(utf8Keys.length, 1);
+    assert.equal(mergedUtf8[utf8Keys[0]], "0");
   });
 
   it("inherits PATH when env overrides are merged (Windows-safe)", () => {
@@ -296,7 +316,7 @@ describe("py_launch.resolvePython", () => {
   });
 });
 
-describe("py_launch.main (CLI passthrough)", { skip: skipBelowPyLaunchFloor }, () => {
+describe("py_launch.main (CLI passthrough)", () => {
   it("forwards argv and exit code", () => {
     const ok = runNodeMain("exit_code.py", ["0"]);
     assert.equal(ok.status, 0);
@@ -505,7 +525,7 @@ describe("py_launch security", () => {
   });
 });
 
-describe("py_launch consumer wrapper", { skip: skipBelowPyLaunchFloor }, () => {
+describe("py_launch consumer wrapper", () => {
   it("matches the documented three-line pattern", () => {
     const consumer = path.join(FIXTURES, "consumer.cjs");
     fs.writeFileSync(

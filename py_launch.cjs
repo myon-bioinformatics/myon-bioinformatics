@@ -194,13 +194,46 @@ function launchFailureError(message, result, code = "ELAUNCHFAILURE") {
   return err;
 }
 
+function envKeyFold(key) {
+  return String(key).toLowerCase();
+}
+
+/**
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} name
+ */
+function envLookup(env, name) {
+  const fold = envKeyFold(name);
+  for (const key of Object.keys(env)) {
+    if (envKeyFold(key) === fold) return env[key];
+  }
+  return undefined;
+}
+
 /**
  * @param {NodeJS.ProcessEnv | undefined} overrides
  * @returns {NodeJS.ProcessEnv | undefined}
  */
 function buildChildEnv(overrides) {
   if (overrides === undefined) return undefined;
-  return { ...process.env, ...overrides };
+  if (process.platform !== "win32") {
+    return { ...process.env, ...overrides };
+  }
+  const env = { ...process.env };
+  const index = new Map();
+  for (const key of Object.keys(env)) {
+    index.set(envKeyFold(key), key);
+  }
+  for (const [overrideKey, value] of Object.entries(overrides)) {
+    const fold = envKeyFold(overrideKey);
+    const existing = index.get(fold);
+    if (existing !== undefined) {
+      delete env[existing];
+    }
+    env[overrideKey] = value;
+    index.set(fold, overrideKey);
+  }
+  return env;
 }
 
 /**
@@ -441,6 +474,7 @@ module.exports = {
   mapLaunchError,
   spawnSyncFailureError,
   buildChildEnv,
+  envLookup,
   assertNodeVersion,
   hostMaxBufferBytes,
   inputByteLength,

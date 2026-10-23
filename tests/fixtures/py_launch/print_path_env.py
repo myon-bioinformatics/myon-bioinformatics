@@ -5,7 +5,7 @@ import os
 print(
     json.dumps(
         {
-            "has_path": "PATH" in os.environ,
+            "has_path": any(key.upper() == "PATH" for key in os.environ),
             "has_systemroot": "SYSTEMROOT" in os.environ,
             "marker": os.environ.get("PY_LAUNCH_ENV_MARKER"),
         }
