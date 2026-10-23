@@ -9,6 +9,7 @@ __pycache__/
 .coverage.*
 htmlcov/
 *.egg-info/
+build/
 .venv/
 venv/
 # `uv run` may write a lock. Pytest jobs keep lower bounds in pyproject.toml.

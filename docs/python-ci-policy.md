@@ -36,3 +36,15 @@ resolves to v7.0.0. Changing its bytes requires a coordinated review of enrolled
 child workflow copies and recorded baselines, because parent CI enforces exact
 copy identity. This change does not retarget child locks, reusable workflows,
 or child-head snapshots and does not claim that template rollout is complete.
+
+The end state is uv management for every Python tool, including stdlib-only
+single-file tools. A standalone copy is not a reason to leave a tool off uv.
+When a standalone file is wanted, copy the file from the GitHub repo.
+`pilot/vendor_dispatch.py` reads `vendor-catalog.json` and, for an installable
+repository root, runs `uv pip install` against the git URL at branch main.
+Resolved commits are written back into that catalog's `commit` fields in the
+CI workspace. There is no consumer project file and no committed `uv.lock`.
+Environments where uv does not apply (Python 3.9, `python -S`, uv missing)
+skip with a reason. `vendor.lock.json` and `child-heads.json` stay pinned. See
+`docs/uv-git-source-migration.md`. Child repositories and the child workflow
+template are unchanged.
