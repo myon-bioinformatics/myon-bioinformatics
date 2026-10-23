@@ -15,4 +15,5 @@ dev = [
   "pytest>=8",
   "PyYAML>=6",
   "coverage>=7",
+  "pip>=23",
 ]

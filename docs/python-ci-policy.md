@@ -18,7 +18,10 @@ not part of the contract and is gitignored. `requires-python` there is the
 pytest job floor, not the 3.9 runtime floor of the stdlib tools. `pytest.ini`
 puts the repository root on `pythonpath`, because `uv run pytest` starts the
 pytest console script and does not insert the working directory the way
-`python -m pytest` did. Stdlib unittest lanes do not call uv.
+`python -m pytest` did. The dev group also includes `pip` so tools that resolve
+requirements in the same interpreter, such as `pytest_brief.py`, still can.
+`vendor_candidate.py` is started with `uv run python -S` so the pytest it
+launches is the one in that environment. Stdlib unittest lanes do not call uv.
 
 Active parent workflows pin current official setup releases by full commit SHA,
 with a version comment: setup-python v7.0.0 and setup-node v7.1.0 (verified

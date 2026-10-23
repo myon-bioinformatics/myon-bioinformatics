@@ -54,7 +54,7 @@ jobs:
         env:
           CANDIDATE_OUTPUT: ${{ runner.temp }}/vendor-candidate-py${{ matrix.python }}
         run: >-
-          python -S vendor_candidate.py --root .
+          uv run python -S vendor_candidate.py --root .
           --consumer myon-bioinformatics/myon-bioinformatics
           --repository myon-bioinformatics/gh_identity --source gh_identity.py
           --test tests/test_gh_ops.py --output "$CANDIDATE_OUTPUT"
