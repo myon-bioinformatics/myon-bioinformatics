@@ -10,10 +10,12 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import socket
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -65,6 +67,45 @@ CHILD_CI_TEMPLATE = "templates/vendor-child-ci.workflow.yml"
 CHILD_CI_WORKFLOW_PATH = ".github/workflows/vendor-child-ci.yml"
 PUBLIC_GIT_FETCH_ERROR = "public Git fetch/read failed"
 PUBLIC_ACCESS_BLOCKED = "GitHub public access blocked (authentication or rate limit)"
+PUBLIC_FETCH_RETRY_DELAYS_SEC = (2, 4)
+
+
+class _TransientPublicFetchError(Exception):
+    """Retryable public GitHub fetch failure (network, rate limit, or git exit)."""
+
+
+def _public_fetch_max_attempts():
+    return 1 + len(PUBLIC_FETCH_RETRY_DELAYS_SEC)
+
+
+def _log_public_fetch_retry(label, attempt, max_attempts, detail):
+    safe_label = _redact_secrets(label)
+    sys.stderr.write(
+        "vendor_sync: public fetch retry {}/{} for {}: {}\n".format(
+            attempt, max_attempts, safe_label, detail,
+        )
+    )
+
+
+def _retry_transient_public_fetch(label, fn):
+    max_attempts = _public_fetch_max_attempts()
+    last_error = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return fn()
+        except (PublicGitNotFound, PublicGitAccessBlocked):
+            raise
+        except _TransientPublicFetchError as error:
+            last_error = error
+        except (URLError, TimeoutError, subprocess.TimeoutExpired, socket.timeout) as error:
+            last_error = error
+        if attempt < max_attempts:
+            detail = PUBLIC_GIT_FETCH_ERROR
+            if last_error is not None and not isinstance(last_error, ValueError):
+                detail = type(last_error).__name__
+            _log_public_fetch_retry(label, attempt, max_attempts, detail)
+            time.sleep(PUBLIC_FETCH_RETRY_DELAYS_SEC[attempt - 1])
+    raise ValueError(PUBLIC_GIT_FETCH_ERROR) from last_error
 PIN_NOT_MERGED_ERROR = "pin commit is not merged into source default branch"
 _COMMIT_ATOM_SHA = re.compile(r"Commit/([0-9a-f]{40})")
 _REPOSITORY_ID_META = re.compile(
@@ -217,26 +258,31 @@ class PublicGitAccessBlocked(ValueError):
 
 
 def _public_http_get(url):
-    headers = {"User-Agent": "vendor-sync/public-github"}
-    if url.startswith("https://api.github.com/"):
-        headers["Accept"] = "application/vnd.github+json"
-        token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-        if token:
-            headers["Authorization"] = "Bearer " + token
-    try:
-        with urlopen(Request(url, headers=headers), timeout=30) as response:
-            raw = response.read(MAX_BYTES + 1)
-    except HTTPError as error:
-        if error.code == 404:
-            raise PublicGitNotFound("not found") from error
-        if error.code in (401, 403):
-            raise PublicGitAccessBlocked(PUBLIC_ACCESS_BLOCKED) from error
-        raise ValueError(PUBLIC_GIT_FETCH_ERROR) from error
-    except URLError as error:
-        raise ValueError(PUBLIC_GIT_FETCH_ERROR) from error
-    if len(raw) > MAX_BYTES:
-        raise ValueError("download exceeds byte limit")
-    return raw
+    def attempt():
+        headers = {"User-Agent": "vendor-sync/public-github"}
+        if url.startswith("https://api.github.com/"):
+            headers["Accept"] = "application/vnd.github+json"
+            token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+            if token:
+                headers["Authorization"] = "Bearer " + token
+        try:
+            with urlopen(Request(url, headers=headers), timeout=30) as response:
+                raw = response.read(MAX_BYTES + 1)
+        except HTTPError as error:
+            if error.code == 404:
+                raise PublicGitNotFound("not found") from error
+            if error.code in (401, 403):
+                raise PublicGitAccessBlocked(PUBLIC_ACCESS_BLOCKED) from error
+            if error.code == 429 or error.code >= 500:
+                raise _TransientPublicFetchError() from error
+            raise ValueError(PUBLIC_GIT_FETCH_ERROR) from error
+        except URLError as error:
+            raise _TransientPublicFetchError() from error
+        if len(raw) > MAX_BYTES:
+            raise ValueError("download exceeds byte limit")
+        return raw
+
+    return _retry_transient_public_fetch(_redact_secrets("HTTP GET " + url), attempt)
 
 
 def public_ref_sha(repository, ref="main"):
@@ -337,36 +383,46 @@ def public_repository_page_record(repository):
 
 def _public_git_snapshot(repository, ref, sources, *, remote=None):
     """Read public Git objects in a temporary bare repo on API rate limits."""
-    with tempfile.TemporaryDirectory(prefix="vendor-public-git-") as directory:
-        # Do not inherit repository selectors or injected credential/config state.
-        env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
-        env.update(GIT_TERMINAL_PROMPT="0", GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
-        command = ["git", "-c", "credential.helper=", "-c", "core.askPass=",
-                   "-c", "http.extraHeader=", "-C", directory]
 
-        def git(*args):
-            result = subprocess.run(command + list(args), env=env, capture_output=True, timeout=60)
-            if result.returncode:
-                raise ValueError(PUBLIC_GIT_FETCH_ERROR)
-            return result.stdout
+    def attempt():
+        with tempfile.TemporaryDirectory(prefix="vendor-public-git-") as directory:
+            # Do not inherit repository selectors or injected credential/config state.
+            env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+            env.update(GIT_TERMINAL_PROMPT="0", GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
+            command = ["git", "-c", "credential.helper=", "-c", "core.askPass=",
+                       "-c", "http.extraHeader=", "-C", directory]
 
-        git("init", "--bare")
-        git("fetch", "--no-tags", "--depth=1", "--filter=blob:none", "--",
-            remote or "https://github.com/" + repository + ".git", ref)
-        commit = git("rev-parse", "FETCH_HEAD^{commit}").decode().strip()
-        _hex(commit, 40)
-        files = {}
-        for source in sources:
-            obj = commit + ":" + source
-            record = git("ls-tree", commit, "--", source).split(b"\t", 1)[0].split()
-            if len(record) != 3 or record[0] not in (b"100644", b"100755") or record[1] != b"blob":
-                raise ValueError("source must be a regular file")
-            blob = record[2].decode()
-            size = int(git("cat-file", "-s", obj))
-            if size > MAX_BYTES:
-                raise ValueError("download exceeds byte limit")
-            files[source] = (blob, git("cat-file", "blob", obj))
-        return commit, files
+            def git(*args):
+                try:
+                    result = subprocess.run(
+                        command + list(args), env=env, capture_output=True, timeout=60,
+                    )
+                except (subprocess.TimeoutExpired, OSError) as error:
+                    raise _TransientPublicFetchError() from error
+                if result.returncode:
+                    raise _TransientPublicFetchError()
+                return result.stdout
+
+            git("init", "--bare")
+            git("fetch", "--no-tags", "--depth=1", "--filter=blob:none", "--",
+                remote or "https://github.com/" + repository + ".git", ref)
+            commit = git("rev-parse", "FETCH_HEAD^{commit}").decode().strip()
+            _hex(commit, 40)
+            files = {}
+            for source in sources:
+                obj = commit + ":" + source
+                record = git("ls-tree", commit, "--", source).split(b"\t", 1)[0].split()
+                if len(record) != 3 or record[0] not in (b"100644", b"100755") or record[1] != b"blob":
+                    raise ValueError("source must be a regular file")
+                blob = record[2].decode()
+                size = int(git("cat-file", "-s", obj))
+                if size > MAX_BYTES:
+                    raise ValueError("download exceeds byte limit")
+                files[source] = (blob, git("cat-file", "blob", obj))
+            return commit, files
+
+    label = _redact_secrets("public git snapshot " + repository)
+    return _retry_transient_public_fetch(label, attempt)
 
 
 def inspect_source(repository, commit, source):
@@ -706,10 +762,20 @@ def _git_run(argv, *, timeout=120):
 
 def _default_branch_name(remote):
     argv = ["git"] + _git_http_config_args() + ["ls-remote", "--symref", remote, "HEAD"]
-    result = subprocess.run(argv, env=_git_subprocess_env(), capture_output=True, timeout=120)
-    if result.returncode:
-        raise ValueError(PUBLIC_GIT_FETCH_ERROR)
-    output = result.stdout.decode("utf-8", "replace")
+
+    def fetch_symref_output():
+        try:
+            result = subprocess.run(
+                argv, env=_git_subprocess_env(), capture_output=True, timeout=120,
+            )
+        except (subprocess.TimeoutExpired, OSError) as error:
+            raise _TransientPublicFetchError() from error
+        if result.returncode:
+            raise _TransientPublicFetchError()
+        return result.stdout.decode("utf-8", "replace")
+
+    label = _redact_secrets("git ls-remote symref " + remote)
+    output = _retry_transient_public_fetch(label, fetch_symref_output)
     for line in output.splitlines():
         if line.startswith("ref: refs/heads/"):
             return line.split("refs/heads/", 1)[1].split("\t", 1)[0]
@@ -2034,16 +2100,23 @@ def _commit_merged_via_git_bare_fetch(repository, commit, *, remotes=None):
     """Exact first-parent check via gh_identity.first_parent_check (blob-less bare fetch)."""
     ghi = _gh_identity()
     remote = _repository_remote(repository, remotes)
-    try:
-        result = ghi.first_parent_check(_normalize_repository(repository), commit.lower(), exact=True,
-                                        remote=remote, git_runner=_parent_git_runner, timeout=300)
-    except (ghi.Error, subprocess.SubprocessError, OSError):
-        raise ValueError(PUBLIC_GIT_FETCH_ERROR) from None
-    if result["reason"] == "commit_not_found":
-        raise ValueError(PUBLIC_GIT_FETCH_ERROR)
-    if result["contains"] is not True:
-        raise ValueError(PIN_NOT_MERGED_ERROR)
-    return True
+
+    def attempt():
+        try:
+            result = ghi.first_parent_check(
+                _normalize_repository(repository), commit.lower(), exact=True,
+                remote=remote, git_runner=_parent_git_runner, timeout=300,
+            )
+        except (ghi.Error, subprocess.SubprocessError, OSError) as error:
+            raise _TransientPublicFetchError() from error
+        if result["reason"] == "commit_not_found":
+            raise _TransientPublicFetchError()
+        if result["contains"] is not True:
+            raise ValueError(PIN_NOT_MERGED_ERROR)
+        return True
+
+    label = "first-parent check " + _normalize_repository(repository)
+    return _retry_transient_public_fetch(label, attempt)
 
 
 def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=None, token=None):
