@@ -6,6 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 SETUP_UV = "astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2"
 PYTEST_WORKFLOWS = (
+    "node-launch-tests.yml",
     "python-tests.yml",
     "vendor-candidate.yml",
     "vendor-consumers-compat.yml",
