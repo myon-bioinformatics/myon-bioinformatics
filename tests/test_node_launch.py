@@ -33,6 +33,7 @@ SKIP_OLD_NODE = pytest.mark.skipif(
     NODE_MAJOR is None or NODE_MAJOR < node_launch.MIN_NODE_MAJOR,
     reason=f"node {NODE_MAJOR} < {node_launch.MIN_NODE_MAJOR}",
 )
+LARGE_STDIN = b"x" * (8 * 1024 * 1024)
 
 
 @SKIP_NO_NODE
@@ -85,17 +86,39 @@ def test_max_input_bytes():
 
 @SKIP_NO_NODE
 @SKIP_OLD_NODE
-def test_stdin_pipe_closed():
+@pytest.mark.parametrize("response_max_bytes", [None, 1024], ids=["uncapped", "capped"])
+def test_stdin_pipe_closed(response_max_bytes):
     node_launch.clear_probe_cache()
+    kwargs = {
+        "node": NODE,
+        "probe": False,
+        "input": LARGE_STDIN,
+        "timeout": 60,
+    }
+    if response_max_bytes is not None:
+        kwargs["response_max_bytes"] = response_max_bytes
     with pytest.raises(node_launch.LaunchError) as exc:
-        node_launch.run(
-            "-e",
-            "process.exit(0)",
-            node=NODE,
-            probe=False,
-            input=b"payload",
-        )
+        node_launch.run(FIXTURES / "close_stdin.mjs", **kwargs)
     assert exc.value.code == "ELAUNCHSTDINCLOSED"
+
+
+@SKIP_NO_NODE
+@SKIP_OLD_NODE
+@pytest.mark.parametrize("response_max_bytes", [None, 1024], ids=["uncapped", "capped"])
+def test_stdin_write_timeout_when_child_never_reads(response_max_bytes):
+    node_launch.clear_probe_cache()
+    kwargs = {
+        "node": NODE,
+        "probe": False,
+        "input": LARGE_STDIN,
+        "timeout": 2,
+    }
+    if response_max_bytes is not None:
+        kwargs["response_max_bytes"] = response_max_bytes
+    with pytest.raises(node_launch.LaunchError) as exc:
+        node_launch.run(FIXTURES / "hang_no_stdin.mjs", **kwargs)
+    assert exc.value.code == "ELAUNCHFAILURE"
+    assert "timed out" in str(exc.value).lower()
 
 
 @SKIP_NO_NODE

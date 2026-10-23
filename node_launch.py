@@ -296,18 +296,26 @@ def _exit_code_for_main(returncode: Optional[int]) -> None:
     sys.exit(returncode)
 
 
-def _capped_communicate(
+def _stream_communicate(
     proc: subprocess.Popen,
     input_bytes: Optional[bytes],
     timeout: Optional[float],
-    response_max_bytes: int,
+    response_max_bytes: Optional[int],
 ) -> tuple[bytes, bytes, int]:
-    hard_limit = _response_cap_bytes(response_max_bytes)
+    hard_limit = None
+    cap: Optional[int] = None
+    if response_max_bytes is not None:
+        _nonnegative_int("response_max_bytes", response_max_bytes)
+        cap = response_max_bytes
+        hard_limit = _response_cap_bytes(response_max_bytes)
+
     stdout_chunks: list[bytes] = []
     stderr_chunks: list[bytes] = []
     stdout_len = 0
     exceeded = threading.Event()
     read_lock = threading.Lock()
+    stdin_code: list[Optional[str]] = [None]
+    stdin_os_error: list[Optional[OSError]] = [None]
 
     def read_stdout() -> None:
         nonlocal stdout_len
@@ -319,16 +327,17 @@ def _capped_communicate(
                 chunk = stream.read(65536)
                 if not chunk:
                     break
-                with read_lock:
-                    stdout_len += len(chunk)
-                    if stdout_len > hard_limit:
-                        exceeded.set()
-                        try:
-                            proc.kill()
-                        except OSError:
-                            pass
-                        break
-                    stdout_chunks.append(chunk)
+                if hard_limit is not None:
+                    with read_lock:
+                        stdout_len += len(chunk)
+                        if stdout_len > hard_limit:
+                            exceeded.set()
+                            try:
+                                proc.kill()
+                            except OSError:
+                                pass
+                            break
+                stdout_chunks.append(chunk)
         finally:
             stream.close()
 
@@ -345,38 +354,83 @@ def _capped_communicate(
         finally:
             stream.close()
 
-    stdout_thread = threading.Thread(target=read_stdout, name="node_launch_stdout")
-    stderr_thread = threading.Thread(target=read_stderr, name="node_launch_stderr")
+    def write_stdin() -> None:
+        stream = proc.stdin
+        if stream is None:
+            return
+        if input_bytes is None:
+            try:
+                stream.close()
+            except OSError:
+                pass
+            return
+        try:
+            offset = 0
+            chunk_size = 65536
+            while offset < len(input_bytes):
+                stream.write(input_bytes[offset : offset + chunk_size])
+                offset += chunk_size
+            stream.flush()
+            stream.close()
+        except BrokenPipeError:
+            stdin_code[0] = "ELAUNCHSTDINCLOSED"
+            try:
+                stream.close()
+            except OSError:
+                pass
+        except OSError as exc:
+            if exc.errno == errno.EPIPE:
+                stdin_code[0] = "ELAUNCHSTDINCLOSED"
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+            else:
+                stdin_os_error[0] = exc
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+
+    stdout_thread = threading.Thread(target=read_stdout, name="node_launch_stdout", daemon=True)
+    stderr_thread = threading.Thread(target=read_stderr, name="node_launch_stderr", daemon=True)
+    stdin_thread = threading.Thread(target=write_stdin, name="node_launch_stdin", daemon=True)
     stdout_thread.start()
     stderr_thread.start()
+    stdin_thread.start()
 
-    stdin_code: Optional[str] = None
-    try:
-        if input_bytes is not None and proc.stdin is not None:
-            proc.stdin.write(input_bytes)
-            proc.stdin.flush()
-        if proc.stdin is not None:
-            proc.stdin.close()
-    except BrokenPipeError:
-        stdin_code = "ELAUNCHSTDINCLOSED"
-    except OSError as exc:
-        if exc.errno == errno.EPIPE:
-            stdin_code = "ELAUNCHSTDINCLOSED"
-        else:
-            raise LaunchError(
-                f"node_launch: Node process failed: {exc}",
-                code="ELAUNCHFAILURE",
-            ) from exc
-
+    timed_out = False
+    returncode: Optional[int]
     try:
         returncode = proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
-        proc.kill()
+        timed_out = True
+        try:
+            proc.kill()
+        except OSError:
+            pass
         proc.wait()
-        stdout_thread.join()
-        stderr_thread.join()
-        stdout = b"".join(stdout_chunks)
-        stderr = b"".join(stderr_chunks)
+        returncode = proc.returncode
+
+    stdin_thread.join()
+    stdout_thread.join()
+    stderr_thread.join()
+
+    stdout = b"".join(stdout_chunks)
+    stderr = b"".join(stderr_chunks)
+    if returncode is None:
+        returncode = proc.returncode if proc.returncode is not None else -1
+
+    if stdin_os_error[0] is not None:
+        exc = stdin_os_error[0]
+        raise LaunchError(
+            f"node_launch: Node process failed: {exc}",
+            code="ELAUNCHFAILURE",
+            stdout=stdout,
+            stderr=stderr,
+        ) from exc
+
+    if timed_out:
         raise LaunchError(
             "node_launch: Node process timed out",
             code="ELAUNCHFAILURE",
@@ -384,12 +438,7 @@ def _capped_communicate(
             stderr=stderr,
         )
 
-    stdout_thread.join()
-    stderr_thread.join()
-    stdout = b"".join(stdout_chunks)
-    stderr = b"".join(stderr_chunks)
-
-    if stdin_code == "ELAUNCHSTDINCLOSED":
+    if stdin_code[0] == "ELAUNCHSTDINCLOSED":
         raise LaunchError(
             "node_launch: Node stdin pipe closed unexpectedly",
             code="ELAUNCHSTDINCLOSED",
@@ -398,9 +447,9 @@ def _capped_communicate(
             stderr=stderr,
         )
 
-    if exceeded.is_set() or len(stdout) > response_max_bytes:
+    if exceeded.is_set() or (cap is not None and len(stdout) > cap):
         raise LaunchError(
-            f"node_launch: response exceeds response_max_bytes ({response_max_bytes})",
+            f"node_launch: response exceeds response_max_bytes ({cap})",
             code="ERESPONSETOOLARGE",
             status=returncode,
             stdout=stdout,
@@ -416,49 +465,7 @@ def _communicate(
     timeout: Optional[float],
     response_max_bytes: Optional[int],
 ) -> tuple[bytes, bytes, int]:
-    if response_max_bytes is not None:
-        _nonnegative_int("response_max_bytes", response_max_bytes)
-        return _capped_communicate(proc, input_bytes, timeout, response_max_bytes)
-
-    stdin_code: Optional[str] = None
-    try:
-        stdout, stderr = proc.communicate(input=input_bytes, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        stdout, stderr = proc.communicate()
-        raise LaunchError(
-            "node_launch: Node process timed out",
-            code="ELAUNCHFAILURE",
-            stdout=stdout or b"",
-            stderr=stderr or b"",
-        )
-    except BrokenPipeError:
-        stdin_code = "ELAUNCHSTDINCLOSED"
-        stdout, stderr = proc.communicate()
-    except OSError as exc:
-        if exc.errno == errno.EPIPE:
-            stdin_code = "ELAUNCHSTDINCLOSED"
-            stdout, stderr = proc.communicate()
-        else:
-            raise LaunchError(
-                f"node_launch: Node process failed: {exc}",
-                code="ELAUNCHFAILURE",
-            ) from exc
-
-    returncode = proc.returncode
-    if returncode is None:
-        returncode = proc.wait()
-
-    if stdin_code == "ELAUNCHSTDINCLOSED":
-        raise LaunchError(
-            "node_launch: Node stdin pipe closed unexpectedly",
-            code="ELAUNCHSTDINCLOSED",
-            status=returncode,
-            stdout=stdout or b"",
-            stderr=stderr or b"",
-        )
-
-    return stdout or b"", stderr or b"", returncode
+    return _stream_communicate(proc, input_bytes, timeout, response_max_bytes)
 
 
 def run_argv(
