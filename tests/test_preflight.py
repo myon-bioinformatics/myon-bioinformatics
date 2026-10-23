@@ -66,4 +66,5 @@ def test_stdlib_cli_exit_codes_with_real_git(tmp_path):
                                capture_output=True, text=True)
     assert explained.returncode == 2 and explained.stdout == ''
     assert explained.stderr.startswith('preflight: ValueError: ')
-    assert 'nesting' in explained.stderr or 'too deep' in explained.stderr
+    assert explained.stderr.endswith('\n') and len(explained.stderr) < 200
+    assert '[[' not in explained.stderr
