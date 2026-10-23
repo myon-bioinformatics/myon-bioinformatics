@@ -39,9 +39,9 @@ PARENT_NODE = """
 import pathlib, tempfile
 import node_launch
 script = pathlib.Path(tempfile.mkdtemp()) / "hello.mjs"
-script.write_text("process.stdout.write('uv-pilot-ok\\n')\\n", encoding="utf-8")
+script.write_text("process.stdout.write('uv-pilot-ok')\\n", encoding="utf-8")
 completed = node_launch.run(script)
-assert completed.stdout == b"uv-pilot-ok\\n", (completed.stdout, completed.stderr)
+assert completed.stdout == b"uv-pilot-ok", (completed.stdout, completed.stderr)
 print("parent-node-ok")
 """
 
