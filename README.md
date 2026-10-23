@@ -318,6 +318,13 @@ sibling repositories. It is both the profile README and the parent tooling repo.
 The [Python runtime/setup policy](docs/python-ci-policy.md) separates stdlib runtime
 compatibility from development tooling and records the governed template boundary.
 
+uv is the intended management path for these Python tools, including stdlib-only
+single-file tools. A tool is not kept off uv because someone also runs the file
+directly. When a standalone copy is what you want, copy the file from the GitHub repo
+(the repository and source path in `vendor-catalog.json`). Environments
+where uv does not apply, such as `python -S` or Python 3.9, are skipped with a
+reason. See [the migration note](docs/uv-git-source-migration.md).
+
 The parent's [Python tests workflow](.github/workflows/python-tests.yml) collects
 JUnit from four development/test Python versions (3.11–3.14) and three
 vendor-portability jobs (Linux 3.11, Windows 3.12, macOS 3.12). A separate

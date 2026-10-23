@@ -139,22 +139,22 @@ def installable(text, version):
     if isinstance(uv_tool, dict) and uv_tool.get("package") is False:
         return (
             False,
-            "tool.uv package is false, so this repository is not an installable project. "
+            "tool.uv package is false, so this repository is not an installable project yet. "
             "uv pip install of the git URL still attempts a build and fails. "
-            "The source file stays a standalone copy",
+            "uv management waits on a project file in that git tree",
         )
     if "build-system" not in data:
         return (
             False,
             "no build-system table. uv pip install of the git URL falls back to setuptools "
-            "discovery and does not install the single file",
+            "discovery and does not install the file yet",
         )
     project = data.get("project") if isinstance(data.get("project"), dict) else {}
     dependencies = project.get("dependencies") or []
     if not isinstance(dependencies, list):
         return False, "project dependencies could not be read"
     if dependencies:
-        return False, "project has third-party dependencies. This pilot does not install them"
+        return False, "project has third-party dependencies. uv install of this project is later"
     ok, reason = _python_satisfies(project.get("requires-python"), version)
     if not ok:
         return False, reason
@@ -196,9 +196,8 @@ def classify(source, env, probe):
         if probe is None or probe.pyproject is None:
             return Decision(
                 "skip",
-                "no pyproject.toml at the repository root. uv cannot install a single file "
-                "from a git URL unless the cloned tree contains a project file. "
-                "This pilot does not add one",
+                "no pyproject.toml at the repository root. uv cannot install this file "
+                "from a git URL until that repository contains a project file",
             )
         ok, reason = installable(probe.pyproject, env.python)
         return Decision("uv" if ok else "skip", reason)
@@ -224,7 +223,8 @@ def classify(source, env, probe):
         )
     return Decision(
         "skip",
-        "not a Python or Node entry. The vendor lock keeps fetch and sha256 for enrolled copies",
+        "not a Python or Node entry, so uv does not install it. "
+        "Copy the file from the GitHub repo for a standalone copy",
     )
 
 

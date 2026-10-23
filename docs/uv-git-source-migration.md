@@ -1,68 +1,125 @@
-# One catalog JSON, one dispatcher
+# uv for every Python tool
 
-This is a parent-only pilot. `vendor-catalog.json` is the manifest for both
-Python and Node entries. `vendor.lock.json`, `vendor/`, `vendor-consumers.json`,
-and `child-heads.json` stay as they are. Child repositories are not edited.
-`templates/vendor-child-ci.workflow.yml` is not edited. A green parent check
-does not block a child merge and is not reviewer approval.
+The end state is uv management for every Python tool across these repositories,
+including stdlib-only single-file tools. A standalone copy is not a reason to
+leave a tool off uv. When someone wants the file itself, copy the file from
+the GitHub repo (the `repository` and `source` path in `vendor-catalog.json`).
 
-## What the driver reads
+This pull request is still a parent-only pilot. It does not edit child
+repositories, `vendor.lock.json`, or `templates/vendor-child-ci.workflow.yml`.
+A green parent check does not block a child merge and is not reviewer approval.
+`child-heads.json` entries are pinned revision records, not packages.
 
-`pilot/vendor_dispatch.py` is standard library only. Each catalog tool already
-has `repository`, `commit`, and `source`. The driver treats that as the GitHub
-location: the repository at `--resolve-ref` (CI passes `main`) and the source
-path. It does not add a manifest, a package directory, or a lockfile.
+## Environments, not a permanent exclusion
 
-`vendor-catalog/1` and `vendor-lock/1` both reject extra keys. The catalog
-cannot store a branch beside the commit, and it has no digest field. The
-dynamic selector is the command flag. The stored record is the existing
-`commit` field. Fetch digests are printed by the command. Enrolled digests stay
-in `vendor.lock.json`, checked by `vendor_sync.py` as before.
+`pilot/vendor_dispatch.py` reads `vendor-catalog.json` only. It skips with a
+reason when the current environment cannot run uv: `python -S`, Python older
+than 3.11, uv missing, or an offline run. Node older than 24, or Node missing,
+skips Node entries the same way. Those skips are the environment. They do not
+classify the tool as unable to move.
 
-## What it runs
+Where the git tree is not an installable project yet, the driver also skips,
+and names that gap (`package = false`, no project file, or third-party
+dependencies). `uv pip install` of a `package = false` tree still attempts a
+build and fails. Adding the project file is later work in that tool's own
+repository. This pull request does not add those files.
 
-Python, when this interpreter is 3.11 or newer, uv is on PATH, and the
-repository root is an installable project with no third-party dependencies:
-`uv pip install` of the git URL. The checkout is temporary. uv is not asked for
-a lockfile. The resolved commit is read from the install metadata and, with
-`--record`, written back to that tool's `commit`.
+## Classification
 
-Today that install is `browser-test-kit` (`check_evidence`, `check_png`,
-`jsonl_digest`, `image_diff`). The source path is a file inside the project.
-It is not passed as a subdirectory fragment. A subdirectory fragment only
-works when that directory itself contains a project file, and these paths do
-not.
+**Now.** uv git install of the repository root works today. The source path is
+a file inside that project, not a subdirectory fragment.
 
-Node 24 or newer: the catalog's Node files have no `package.json`, or the
-`package.json` is private (`browser-test-kit`). npm cannot take them as git
-dependencies. The driver fetches the file and prints sha256.
+| Repository | Source |
+| --- | --- |
+| browser-test-kit | `scripts/check_evidence.py` |
+| browser-test-kit | `scripts/check_png.py` |
+| browser-test-kit | `scripts/jsonl_digest.py` |
+| browser-test-kit | `scripts/image_diff.py` |
 
-Every other entry is `skip` with a reason. `python -S` and Python 3.9 do not
-invoke uv. A missing `uv` or Node, Node older than 24, and an offline run say
-so. They are not omitted.
+**Move later.** uv is the end state. This pilot does not install them. Former
+"cannot move" rows are in this class when the only blocker was the
+standalone-copy contract (`python -S`, Python 3.9 as a property of the file,
+or a verbatim enrolled copy). That contract is withdrawn as a uv exclusion.
 
-## What does not fit a git URL
+| Repository | Source | Was |
+| --- | --- | --- |
+| gh_identity | `gh_identity.py` | cannot move (standalone copy) |
+| myon-bioinformatics | `ci_status.py` | cannot move (standalone copy) |
+| myon-bioinformatics | `vendor_sync.py` | cannot move (standalone copy) |
+| myon-bioinformatics | `vendor_catalog.py` | cannot move (standalone copy) |
+| myon-bioinformatics | `vendor_stage.py` | cannot move (standalone copy) |
+| Ironmate | `pillow_min.py` | cannot move (standalone copy) |
+| myon-bioinformatics | `gh_ops.py` | package first |
+| myon-bioinformatics | `gh_workflow.py` | package first |
+| myon-bioinformatics | `node_launch.py` | package first |
+| myon-bioinformatics | `git_inspector.py` | package first |
+| myon-bioinformatics | `browser_evidence.py` | package first |
+| myon-bioinformatics | `publish_check.py` | package first |
+| myon-bioinformatics | `py_matrix.py` | package first |
+| myon-bioinformatics | `pytest_brief.py` | package first |
+| ascii_artist | `ascii_artist.py` | package first |
+| cli_args | `cli_args.py` | package first |
+| markdown | `markdown.py` | package first |
+| nvd_nist_known_vulns | `nvd_nist_known_vulns.py` | package first |
+| xprobe | `xprobe.py` | package first |
+| xprobe | `scripts/xprobe_pytest.py` | package first |
+| yourself | `yourself.py` | package first |
+| web-ui | `web_ui.py` | package first |
+| BlueProbe | `blueprobe.py` | package first |
+| QueRyu | `queryu.py` | package first |
+| PythDRagoras | `pythdragoras.py` | package first |
+| convert_img_fmt_to_webp-CUI- | `convert_img_fmt_to_webp(CUI).py` | package first |
+| image_ext_converter_gui | `image_ext_converter_gui.py` | package first |
+| video2audio_gui | `video2audio_gui.py` | package first |
+| audio_any2any_gui | `audio_any2any_gui.py` | package first |
+| video_to_image_gui | `video_to_image_gui.py` | package first |
+| mcp-toolcall-lab | `src/mcp_toolcall_lab/github_public_resolver.py` | installable project; third-party dependencies, later |
+| mcp-toolcall-lab | `src/mcp_toolcall_lab/adapters/html_snapshot.py` | installable project; third-party dependencies, later |
+| LINENotifyAPI_Template | `LINENotifyAPI_Template.py` | single-file Python; catalog skip stays `archived_repository` |
+| niconicoSearchAPI_Template | `niconico_search_api_template.py` | single-file Python; catalog skip stays `archived_repository` |
+| convert_img_fmt_to_webp-GUI- | `convert_img_fmt_to_webp(GUI).py` | single-file Python; catalog skip stays `archived_repository` |
+| scapy_GUI_for_Beginners | `scapy_gui.py` | single-file Python; catalog skip stays `archived_repository` |
+| GitHub_api_Template | `github_api_template.py` | single-file Python; catalog skip stays `archived_repository` |
+| python3nmap_GUI_for_Beginners | `python3nmap_gui.py` | single-file Python; catalog skip stays `archived_repository` |
+| Qiita_API_Template | `qiita_api_template.py` | single-file Python; catalog skip stays `archived_repository` |
+| HelpYouBuildServer | `main.py` | single-file Python |
+| cumlative_usage | `cumlative_usage.py` | single-file Python |
+| oci-cost-analysis | `oci-cost-analysis.py` | single-file Python |
 
-`uv pip install` of a git URL needs a project file in the cloned tree. It does
-not install a single file. This pilot does not add project files.
+Catalog `skipped` enrollment is unchanged. It still governs recommendations. It
+does not mean the file cannot become a uv project later.
 
-`tool.uv package = false` marks a development project, not a distribution.
-`uv pip install` of that git URL still attempts a build and fails (the parent
-repository and `gh_identity` both do). The driver skips those trees. The
-standalone file, including `python -S` copies such as `gh_identity.py`,
-`vendor_sync.py`, and `py_launch.cjs`, stays on the vendor lock.
+**Outside uv.** These are not Python modules. uv does not install them. The
+standalone-copy contract was not their blocker. Copy the file from the GitHub
+repo when the bytes themselves are needed. The driver fetches the Node rows
+below when Node 24 is present, because npm cannot take them as git
+dependencies (no `package.json`, or a private one).
 
-A project with third-party dependencies is skipped. `mcp-toolcall-lab` is a
-real package and is outside this pilot for that reason.
+| Repository | Source |
+| --- | --- |
+| myon-bioinformatics | `py_launch.cjs` |
+| browser-test-kit | `scripts/interaction.mjs` |
+| browser-test-kit | `scripts/browser_execution.mjs` |
+| gh_identity, Ironmate, and this parent | `LICENSE` next to a locked tool |
+| web-ui | `css/*.css`, `js/*.js`, `js/flow.cjs`, `js/flow-patch.cjs`, `examples/pr-flow.json` |
 
-Reviewed catalog pins in git are not moved by this pull request. CI `--record`
-updates the workspace copy so the job can show the commits `main` resolved.
-Committing those moving SHAs would be a separate baseline review. `uv.lock`
-stays gitignored and is not the record.
+## What this parent runs
+
+CI runs the driver with `--resolve-ref main --record`. For **Now** rows it
+uses `uv pip install` of the git URL. There is no consumer project file and no
+committed `uv.lock`. The resolved commit is written into that tool's `commit`
+in the job workspace. Reviewed catalog pins in git are not moved here.
+
+`vendor-catalog/1` cannot store a branch beside the commit, and it has no
+digest field. The command flag is the dynamic selector. Fetch digests are
+printed. Enrolled digests stay in `vendor.lock.json` until a later reviewed
+baseline, checked by `vendor_sync.py` as today.
 
 ## How a child would switch
 
-Not done here. A child whose upstream already has an installable project can
-point uv at that git URL and keep `vendor_sync.py` for every file that is not
-such a project. Nothing in this pull request retargets a child lock or the
-child workflow template.
+Not done in this pull request. A child keeps its current lock until it chooses
+uv. Tools that already have an installable project can be installed from the
+git URL. Single-file Python tools move when their own repository gains a
+project file; until then, copy the file from the GitHub repo if a standalone
+copy is what the child wants. This pull request does not retarget a child lock
+or the child workflow template.

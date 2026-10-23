@@ -122,7 +122,7 @@ def test_installable_project_and_explicit_skips():
     ok, reason = module.installable(PACKAGE_FALSE, (3, 12, 0))
     assert not ok and "package is false" in reason
     ok, reason = module.installable(WITH_DEPS, (3, 12, 0))
-    assert not ok and "third-party" in reason
+    assert not ok and "third-party" in reason and "later" in reason
     high = INSTALLABLE.replace('requires-python = ">=3.9"', 'requires-python = ">=3.12"')
     ok, reason = module.installable(high, (3, 11, 0))
     assert not ok and "requires-python" in reason
@@ -140,7 +140,7 @@ def test_environment_skips_are_explicit():
     no_node = module.classify("py_launch.cjs", _env(module, node=None), None)
     assert no_node.reason == "node is not on PATH"
     asset = module.classify("LICENSE", _env(module), None)
-    assert asset.action == "skip" and "vendor lock" in asset.reason
+    assert asset.action == "skip" and "Copy the file from the GitHub repo" in asset.reason
 
 
 def test_dispatch_installs_fetches_and_records(tmp_path):
@@ -239,6 +239,13 @@ def test_vendor_lock_and_template_stay():
     assert "vendor-catalog.json" in note
     assert "package = false" in note
     assert "packages/" not in note
+    assert "Move later" in note
+    assert "gh_identity.py" in note
+    assert "copy the file from the GitHub repo" in note
+    assert "stays a standalone copy" not in note
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "copy the file from the GitHub repo" in readme
+    assert "stays a standalone copy" not in driver
 
 
 def test_workflow_resolves_main_and_skips_other_lanes():
