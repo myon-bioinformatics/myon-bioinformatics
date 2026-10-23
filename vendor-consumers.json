@@ -623,6 +623,11 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "LICENSE",
           "destination": "vendor/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "node_launch.py",
+          "destination": "vendor/node_launch.py"
         }
       ]
     },
