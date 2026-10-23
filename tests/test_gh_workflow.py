@@ -205,7 +205,9 @@ def test_malformed_inputs_are_sanitized_before_network(fake_gh, capsys, raw):
     code = gw.main(["o/r", "ci.yml", "--inputs", raw])
     captured = capsys.readouterr()
     assert code == 1
-    assert json.loads(captured.out) == {"status": "preflight_failed", "error": "invalid_argument"}
+    payload = json.loads(captured.out)
+    assert payload["status"] == "preflight_failed" and payload["error"] == "invalid_argument"
+    assert "JSON object" in payload["hint"]
     assert "private-value" not in captured.out + captured.err
     assert not fake_gh
 
@@ -215,7 +217,9 @@ def test_deeply_nested_input_is_sanitized_before_network(fake_gh, capsys):
     code = gw.main(["o/r", "ci.yml", "--inputs", raw])
     captured = capsys.readouterr()
     assert code == 1
-    assert json.loads(captured.out) == {"status": "preflight_failed", "error": "invalid_argument"}
+    payload = json.loads(captured.out)
+    assert payload["status"] == "preflight_failed" and payload["error"] == "invalid_argument"
+    assert "JSON object" in payload["hint"]
     assert captured.err == ""
     assert not fake_gh
 

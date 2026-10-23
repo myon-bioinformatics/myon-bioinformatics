@@ -121,7 +121,11 @@ python vendor_sync.py evidence --root . --manifest vendor.lock.json --runtime-ev
 Parent-owned `py_launch.cjs` is a single CommonJS module (Node >= 24, `node:`
 builtins only) that spawns a stdlib Python script with argv passthrough, inherited
 stdio, and exit-code forwarding (exit code 2 on spawn failure, missing
-interpreter, or signal). Library callers use `run(scriptPath, args, { python,
+interpreter, signal, or a Node older than 24). A signal prints its name on
+stderr. Set `jsonErrors: true` or `PY_LAUNCH_ERROR_FORMAT=json` to emit one
+stderr object `{ok:false, code, message, hint, exit_code}` for those launcher
+failures. The switch does not read argv, so the child tool keeps its own
+`--json`. Library callers use `run(scriptPath, args, { python,
 input, timeout, maxBuffer, maxInputBytes, responseMaxBytes, env, noSite, isolated, envVar })`
 with `spawnSync`, surfacing stderr on failure. `maxBuffer` and `responseMaxBytes`
 are mutually exclusive; `env` merges over `process.env` without injecting

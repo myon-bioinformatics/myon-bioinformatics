@@ -62,3 +62,8 @@ def test_stdlib_cli_exit_codes_with_real_git(tmp_path):
     assert result.returncode == 2
     assert result.stdout == ''
     assert result.stderr == 'preflight: ValueError\n'
+    explained = subprocess.run(command + ['--runtime-facts', str(nested), '--explain'],
+                               capture_output=True, text=True)
+    assert explained.returncode == 2 and explained.stdout == ''
+    assert explained.stderr.startswith('preflight: ValueError: ')
+    assert 'nesting' in explained.stderr or 'too deep' in explained.stderr

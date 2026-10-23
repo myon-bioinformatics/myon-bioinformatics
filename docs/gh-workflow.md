@@ -57,6 +57,9 @@ from the exact returned run ID. Run observation is a single GET and does not
 wait for CI to finish. `conclusion: null` means the run has no measured
 conclusion yet; dispatch acceptance is not CI green.
 
+A rejected `--inputs` value returns `preflight_failed` / `invalid_argument` plus
+`hint`. The rejected text is not copied into the receipt.
+
 Read-only `planned` and verified `dispatched` return exit code 0. Blocked,
 unresolved, uncertain or failed results return 1. Invalid CLI syntax returns 2.
 `--timeout` defaults to 30 seconds per `gh` call. No operation automatically
