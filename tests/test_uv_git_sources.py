@@ -86,6 +86,7 @@ def test_consumers_track_branch_main_without_a_sha():
 
 def test_vendor_lock_and_stdlib_contract_stay():
     lock = json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))
+    assert "\nbuild/\n" in (ROOT / ".gitignore").read_text(encoding="utf-8")
     assert lock["schema"] == "vendor-lock/1"
     assert any(item["source"] == "gh_identity.py" and item["destination"] == "vendor/gh_identity.py"
                for item in lock["files"])
