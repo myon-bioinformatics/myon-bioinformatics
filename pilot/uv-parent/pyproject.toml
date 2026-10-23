@@ -1,0 +1,21 @@
+# Parent consumer for the packaged single-file tools in this repository.
+# Sources track branch main. CI runs `uv lock --upgrade` and records the
+# resolved commit. The generated lock is not committed.
+
+[project]
+name = "uv-parent-pilot"
+version = "0.0.0"
+requires-python = ">=3.11"
+dependencies = [
+    "gh-ops",
+    "gh-workflow",
+    "node-launch",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+gh-ops = { git = "https://github.com/myon-bioinformatics/myon-bioinformatics", branch = "main", subdirectory = "packages/gh_ops" }
+gh-workflow = { git = "https://github.com/myon-bioinformatics/myon-bioinformatics", branch = "main", subdirectory = "packages/gh_workflow" }
+node-launch = { git = "https://github.com/myon-bioinformatics/myon-bioinformatics", branch = "main", subdirectory = "packages/node_launch" }

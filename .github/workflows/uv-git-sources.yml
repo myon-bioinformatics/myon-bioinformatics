@@ -1,0 +1,65 @@
+name: uv git sources
+
+on:
+  pull_request:
+    paths:
+      - "packages/**"
+      - "pilot/**"
+      - "gh_ops.py"
+      - "gh_workflow.py"
+      - "node_launch.py"
+      - "vendor/gh_identity.py"
+      - "docs/uv-git-source-migration.md"
+      - "docs/python-ci-policy.md"
+      - ".github/workflows/uv-git-sources.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - "pilot/**"
+      - "gh_ops.py"
+      - "gh_workflow.py"
+      - "node_launch.py"
+      - "vendor/gh_identity.py"
+      - "docs/uv-git-source-migration.md"
+      - "docs/python-ci-policy.md"
+      - ".github/workflows/uv-git-sources.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  upstream-main:
+    name: browser-test-kit branch main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+          cache-python: true
+      - name: Resolve browser-test-kit from branch main
+        run: python pilot/resolve_sources.py upstream
+
+  parent-tools:
+    name: parent tools branch main
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: "3.12"
+          cache-python: true
+      - name: Resolve parent packages from branch main
+        run: python pilot/resolve_sources.py parent --exercise-node

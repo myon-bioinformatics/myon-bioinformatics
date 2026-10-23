@@ -1,0 +1,16 @@
+# Installable view of the repo-root node_launch.py. The module file is a symlink
+# to that standalone script, which keeps Python 3.9 and Node 24+.
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "node-launch"
+version = "0.0.0"
+description = "Stdlib Node launcher, also installable from a uv git source."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools]
+py-modules = ["node_launch"]

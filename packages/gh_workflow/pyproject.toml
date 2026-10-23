@@ -1,0 +1,16 @@
+# Installable view of the repo-root gh_workflow.py. The module file is a symlink
+# to that standalone script, which keeps its own Python floor.
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gh-workflow"
+version = "0.0.0"
+description = "Stdlib GitHub Actions wrapper, also installable from a uv git source."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools]
+py-modules = ["gh_workflow"]

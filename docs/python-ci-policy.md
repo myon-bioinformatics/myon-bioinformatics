@@ -36,3 +36,13 @@ resolves to v7.0.0. Changing its bytes requires a coordinated review of enrolled
 child workflow copies and recorded baselines, because parent CI enforces exact
 copy identity. This change does not retarget child locks, reusable workflows,
 or child-head snapshots and does not claim that template rollout is complete.
+
+The uv git-source pilot is a second distribution channel beside the vendor lock.
+`pilot/uv-upstream` and `pilot/uv-parent` set `requires-python` to `>=3.11`,
+list lower bounds only, and select sources with `branch = "main"`. Their CI
+jobs run `uv lock --upgrade` and record the resolved commit in the job log.
+They do not commit `uv.lock` and do not put a commit SHA in the source table.
+Standalone files keep their current floors, including `python -S` where that is
+the contract. `vendor.lock.json`, catalog pins, and `child-heads.json` stay
+pinned. See `docs/uv-git-source-migration.md`. Child repositories and the child
+workflow template are unchanged.

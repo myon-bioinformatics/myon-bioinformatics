@@ -1,0 +1,17 @@
+# Installable view of the repo-root gh_ops.py. The module file is a symlink to
+# that standalone script. gh_identity.py is a symlink to the locked
+# vendor/gh_identity.py so import still finds the adjacent copy.
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gh-ops"
+version = "0.0.0"
+description = "Stdlib GitHub operations, also installable from a uv git source."
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.setuptools]
+py-modules = ["gh_ops", "gh_identity"]
