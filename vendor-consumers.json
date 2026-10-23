@@ -589,6 +589,11 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "LICENSE",
           "destination": "vendor/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "py_launch.cjs",
+          "destination": "vendor/py_launch.cjs"
         }
       ]
     },
