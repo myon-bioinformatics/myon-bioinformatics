@@ -166,6 +166,11 @@
           "source": "gh_identity.py",
           "destination": "vendor/gh_identity.py",
           "license": "vendor/gh_identity-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "node_launch.py",
+          "destination": "vendor/node_launch.py"
         }
       ]
     },
