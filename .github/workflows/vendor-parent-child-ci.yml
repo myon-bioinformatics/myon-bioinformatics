@@ -29,6 +29,7 @@ on:
       - "tests/test_vendor_child_bootstrap.py"
       - "tests/test_vendor_parent_evidence.py"
       - "pyproject.toml"
+      - "uv.lock"
 
 permissions:
   contents: read

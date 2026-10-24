@@ -5,11 +5,13 @@ on:
       - ".github/workflows/*junit*"
       - "tests/test_junit_collection.py"
       - "pyproject.toml"
+      - "uv.lock"
   push:
     paths:
       - ".github/workflows/*junit*"
       - "tests/test_junit_collection.py"
       - "pyproject.toml"
+      - "uv.lock"
 permissions:
   contents: read
   actions: read

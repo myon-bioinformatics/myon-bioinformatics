@@ -10,6 +10,7 @@ on:
       - "vendor_fleet_plan.py"
       - "tests/test_vendor_fleet_plan.py"
       - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/vendor-fleet-plan.yml"
   push:
     branches: [main]
@@ -20,6 +21,7 @@ on:
       - "vendor_consumers.py"
       - "vendor_fleet_plan.py"
       - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/vendor-fleet-plan.yml"
   workflow_dispatch:
 
