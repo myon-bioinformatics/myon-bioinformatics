@@ -18,25 +18,16 @@ PYTEST_WORKFLOWS = (
 )
 
 
-def _requirement_lines(path):
-    lines = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if line and not line.startswith("#"):
-            lines.append(line)
-    return lines
-
-
 def test_dev_group_matches_requirements_lower_bounds():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert project["project"]["requires-python"] == ">=3.11"
     assert project["project"]["dependencies"] == []
     assert project["tool"]["uv"]["package"] is False
-    assert project["dependency-groups"]["dev"] == _requirement_lines(ROOT / "tests" / "requirements.txt")
-    dev = set(project["dependency-groups"]["dev"])
-    for name in ("workflow-requirements.txt", "junit-requirements.txt"):
-        assert set(_requirement_lines(ROOT / "tests" / name)) <= dev
-    assert "uv.lock" in (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert project["dependency-groups"]["dev"] == ["pytest>=8", "PyYAML>=6", "coverage>=7", "pip>=23"]
+    assert not list((ROOT / "tests").glob("*requirements*.txt"))
+    assert "uv.lock" not in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    lock = (ROOT / "uv.lock").read_text(encoding="utf-8")
+    assert lock.startswith("version = ")
     ini = (ROOT / "pytest.ini").read_text(encoding="utf-8")
     assert "pythonpath = ." in ini
 
@@ -48,6 +39,7 @@ def test_pytest_workflows_use_uv_run_pytest():
         assert "python -m pytest" not in text, name
         assert "python -m pip install" not in text, name
         assert SETUP_UV in text, name
+        assert 'UV_LOCKED: "1"' in text, name
     candidate = (WORKFLOWS / "vendor-candidate.yml").read_text(encoding="utf-8")
     assert "uv run python -S vendor_candidate.py" in candidate
     others = [path.name for path in WORKFLOWS.glob("*.yml") if path.name not in PYTEST_WORKFLOWS]
@@ -55,6 +47,22 @@ def test_pytest_workflows_use_uv_run_pytest():
         text = (WORKFLOWS / name).read_text(encoding="utf-8")
         assert "python -m pytest" not in text, name
         assert "uv run pytest" not in text, name
+
+
+def test_parent_lockfile_change_triggers_a_real_ci_check():
+    workflow = (WORKFLOWS / "python-tests.yml").read_text(encoding="utf-8")
+    assert workflow.count('      - "uv.lock"') == 2
+    assert 'UV_LOCKED: "1"' in workflow
+    assert "run: uv lock --check" in workflow
+
+
+def test_python39_no_project_compatibility_is_explicitly_outside_parent_lock():
+    node = (WORKFLOWS / "node-launch-tests.yml").read_text(encoding="utf-8")
+    assert "--python 3.9 --no-project --with pytest==8.4.2" in node
+    # uv ignores UV_LOCKED under --no-project, so keep this exception visible.
+    policy = (ROOT / "docs" / "python-ci-policy.md").read_text(encoding="utf-8")
+    assert "UV_LOCKED` does not apply" in policy
+    assert "pytest==8.4.2" in policy
 
 
 def test_stdlib_lanes_stay_on_python():

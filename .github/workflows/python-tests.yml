@@ -20,6 +20,7 @@ on:
       - ".github/workflows/parent-pin-check.yml"
       - "pytest.ini"
       - "pyproject.toml"
+      - "uv.lock"
       - "pilot/**"
       - "docs/uv-git-source-migration.md"
       - "docs/python-ci-policy.md"
@@ -48,6 +49,7 @@ on:
       - ".github/workflows/parent-pin-check.yml"
       - "pytest.ini"
       - "pyproject.toml"
+      - "uv.lock"
       - "pilot/**"
       - "docs/uv-git-source-migration.md"
       - "docs/python-ci-policy.md"
@@ -61,6 +63,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  UV_LOCKED: "1"
 
 jobs:
   stdlib-runtime:
@@ -111,16 +116,42 @@ jobs:
             --bundle "$RUNNER_TEMP/app_min.py" \
             --root tests/fixtures/minpy_widget \
             --skip-head-check
+      # The audit remains optional at runtime; this explicit stdlib test step
+      # makes the parser/limits/privacy/unknown contracts visible in CI logs.
+      - name: Verify executable audit contracts with Python -S
+        if: matrix.python == '3.11'
+        run: python -S -m unittest discover -s tests -p 'test_constrained_lab_exec_audit.py' -v
+      # Run once per workflow to fail explicitly on stale or missing uv.lock.
+      - name: Verify committed uv.lock matches pyproject.toml
+        if: matrix.python == '3.11'
+        run: uv lock --check
       - name: Run tests with JUnit
         run: uv run pytest -q --junitxml=reports/junit.xml
+      # A transient Actions artifact-service DNS error must not discard
+      # otherwise successful tests. A second failure remains a red check.
       - name: Preserve JUnit report
+        id: parent_junit_upload
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: junit-parent-py${{ matrix.python }}
           path: reports/
           if-no-files-found: error
           retention-days: 14
+      - name: Retry transient JUnit upload failure
+        id: parent_junit_retry
+        if: always() && steps.parent_junit_upload.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-parent-py${{ matrix.python }}
+          path: reports/
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
+      - name: Require JUnit upload success
+        if: always() && steps.parent_junit_upload.outcome == 'failure' && steps.parent_junit_retry.outcome != 'success'
+        run: exit 1
 
   py-launch-catalog-network:
     name: py_launch catalog pin (network)
@@ -235,13 +266,28 @@ jobs:
       - name: Exercise changed public Git snapshots and rejection cases
         run: uv run pytest -q tests/test_vendor_sync.py tests/test_vendor_stage.py tests/test_vendor_consumers.py tests/test_vendor_update_workflow.py tests/test_gh_ops.py tests/test_gh_ops_fetch_guard.py tests/test_minpy.py --junitxml=reports/vendor.xml
       - name: Preserve vendor regression JUnit
+        id: vendor_junit_upload
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: junit-vendor-${{ matrix.os }}-py${{ matrix.python }}
           path: reports/vendor.xml
           if-no-files-found: error
           retention-days: 14
+      - name: Retry transient vendor JUnit upload failure
+        id: vendor_junit_retry
+        if: always() && steps.vendor_junit_upload.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-vendor-${{ matrix.os }}-py${{ matrix.python }}
+          path: reports/vendor.xml
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
+      - name: Require vendor JUnit upload success
+        if: always() && steps.vendor_junit_upload.outcome == 'failure' && steps.vendor_junit_retry.outcome != 'success'
+        run: exit 1
 
   failure-identity:
     needs: [pytest, vendor-portability]

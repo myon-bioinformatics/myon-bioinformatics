@@ -19,6 +19,9 @@ on:
       - ".github/workflows/node-launch-tests.yml"
       - "pyproject.toml"
 
+env:
+  UV_LOCKED: "1"
+
 jobs:
   stdlib-py39:
     runs-on: ubuntu-latest
@@ -35,7 +38,7 @@ jobs:
           python-version: "3.9"
           cache-python: true
       - name: Run node_launch unit tests (Python 3.9)
-        run: uv run --python 3.9 --no-project --with pytest pytest -q tests/test_node_launch.py tests/test_node_launch_cli_args_parity.py
+        run: uv run --python 3.9 --no-project --with pytest==8.4.2 pytest -q tests/test_node_launch.py tests/test_node_launch_cli_args_parity.py
 
   node-test:
     runs-on: ${{ matrix.os }}

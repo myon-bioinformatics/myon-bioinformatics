@@ -1,0 +1,22 @@
+{
+  "name": "@myon-bioinformatics/portable-tools",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Node.js entry points for myon-bioinformatics shared portable tools",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "type": "commonjs",
+  "files": [
+    "py_launch.cjs",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./py_launch.cjs",
+    "./py_launch": "./py_launch.cjs"
+  },
+  "scripts": {
+    "test": "node --test tests/test_npm_package.cjs"
+  }
+}

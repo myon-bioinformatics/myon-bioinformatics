@@ -12,8 +12,6 @@ htmlcov/
 build/
 .venv/
 venv/
-# `uv run` may write a lock. Pytest jobs keep lower bounds in pyproject.toml.
-uv.lock
 node_modules/
 .DS_Store
 Thumbs.db
