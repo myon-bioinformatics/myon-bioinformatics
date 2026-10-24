@@ -4,17 +4,20 @@ on:
     paths:
       - ".github/workflows/*junit*"
       - "tests/test_junit_collection.py"
-      - "tests/junit-requirements.txt"
       - "pyproject.toml"
+      - "uv.lock"
   push:
     paths:
       - ".github/workflows/*junit*"
       - "tests/test_junit_collection.py"
-      - "tests/junit-requirements.txt"
       - "pyproject.toml"
+      - "uv.lock"
 permissions:
   contents: read
   actions: read
+env:
+  UV_LOCKED: "1"
+
 jobs:
   test:
     runs-on: ubuntu-latest

@@ -13,8 +13,9 @@ pytest jobs does not lower or replace any runtime contract. JUnit collection
 names match these development matrices; stdlib smoke results are separate jobs.
 
 Those pytest jobs install the `dev` group from `pyproject.toml` and invoke
-`uv run pytest`. The group lists lower bounds only. A generated `uv.lock` is
-not part of the contract and is gitignored. `requires-python` there is the
+`uv run pytest`. The group lists lower bounds only. The parent's `uv.lock` is committed and
+pytest workflows set `UV_LOCKED=1`, so the lock is the explicit source of resolved
+versions and uv fails rather than rewriting it. `requires-python` there is the
 pytest job floor, not the 3.9 runtime floor of the stdlib tools. `pytest.ini`
 puts the repository root on `pythonpath`, because `uv run pytest` starts the
 pytest console script and does not insert the working directory the way
@@ -43,7 +44,8 @@ When a standalone file is wanted, copy the file from the GitHub repo.
 `pilot/vendor_dispatch.py` reads `vendor-catalog.json` and, for an installable
 repository root, runs `uv pip install` against the git URL at branch main.
 Resolved commits are written back into that catalog's `commit` fields in the
-CI workspace. There is no consumer project file and no committed `uv.lock`.
+CI workspace. Consumer repositories get no project file or committed lock from
+this flow; the parent's own `uv.lock` above is separate.
 Environments where uv does not apply (Python 3.9, `python -S`, uv missing)
 skip with a reason. `vendor.lock.json` and `child-heads.json` stay pinned. See
 `docs/uv-git-source-migration.md`. Child repositories and the child workflow

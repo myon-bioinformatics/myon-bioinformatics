@@ -9,6 +9,7 @@ on:
       - "tests/fixtures/node_launch/**"
       - ".github/workflows/node-launch-tests.yml"
       - "pyproject.toml"
+      - "uv.lock"
   push:
     branches: [main]
     paths:
@@ -18,6 +19,10 @@ on:
       - "tests/fixtures/node_launch/**"
       - ".github/workflows/node-launch-tests.yml"
       - "pyproject.toml"
+      - "uv.lock"
+
+env:
+  UV_LOCKED: "1"
 
 jobs:
   stdlib-py39:

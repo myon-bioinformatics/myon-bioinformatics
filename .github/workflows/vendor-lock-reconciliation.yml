@@ -20,6 +20,7 @@ on:
       - "tests/test_duplicate_files_report.py"
       - "tests/test_flutter_vendor_registry_sync.py"
       - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/vendor-lock-reconciliation.yml"
   push:
     branches: [main]
@@ -38,10 +39,14 @@ on:
       - "tests/test_duplicate_files_report.py"
       - "tests/test_flutter_vendor_registry_sync.py"
       - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/vendor-lock-reconciliation.yml"
 
 permissions:
   contents: read
+
+env:
+  UV_LOCKED: "1"
 
 jobs:
   reconcile:

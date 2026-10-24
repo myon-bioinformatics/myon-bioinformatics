@@ -9,6 +9,7 @@ on:
       - "vendor-consumers.json"
       - "tests/test_vendor_consumers_compat.py"
       - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/vendor-consumers-compat.yml"
   push:
     branches: [main]
@@ -19,11 +20,15 @@ on:
       - "vendor-consumers.json"
       - "tests/test_vendor_consumers_compat.py"
       - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/vendor-consumers-compat.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  UV_LOCKED: "1"
 
 jobs:
   old-new-matrix:

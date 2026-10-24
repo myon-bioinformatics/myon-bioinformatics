@@ -20,6 +20,7 @@ on:
       - ".github/workflows/parent-pin-check.yml"
       - "pytest.ini"
       - "pyproject.toml"
+      - "uv.lock"
       - "pilot/**"
       - "docs/uv-git-source-migration.md"
       - "docs/python-ci-policy.md"
@@ -48,6 +49,7 @@ on:
       - ".github/workflows/parent-pin-check.yml"
       - "pytest.ini"
       - "pyproject.toml"
+      - "uv.lock"
       - "pilot/**"
       - "docs/uv-git-source-migration.md"
       - "docs/python-ci-policy.md"
@@ -61,6 +63,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  UV_LOCKED: "1"
 
 jobs:
   stdlib-runtime:

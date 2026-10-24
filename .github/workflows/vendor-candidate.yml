@@ -14,6 +14,7 @@ on:
       - "gh_ops.py"
       - "tests/**"
       - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/vendor-candidate.yml"
   push:
     branches: [main]
@@ -24,11 +25,15 @@ on:
       - "gh_ops.py"
       - "tests/**"
       - "pyproject.toml"
+      - "uv.lock"
       - ".github/workflows/vendor-candidate.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
+
+env:
+  UV_LOCKED: "1"
 
 jobs:
   gh-identity:
