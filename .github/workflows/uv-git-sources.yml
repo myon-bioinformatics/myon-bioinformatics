@@ -5,6 +5,7 @@ on:
     paths:
       - "pilot/**"
       - "vendor-catalog.json"
+      - "package.json"
       - "docs/uv-git-source-migration.md"
       - "docs/python-ci-policy.md"
       - ".github/workflows/uv-git-sources.yml"
@@ -13,6 +14,7 @@ on:
     paths:
       - "pilot/**"
       - "vendor-catalog.json"
+      - "package.json"
       - "docs/uv-git-source-migration.md"
       - "docs/python-ci-policy.md"
       - ".github/workflows/uv-git-sources.yml"
