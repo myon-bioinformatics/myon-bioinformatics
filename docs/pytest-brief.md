@@ -7,7 +7,7 @@ the final counts. Consumer repositories vendor this file from here.
 ## What it does
 
 1. **Minimal dependency install**
-   - Reads `--requirements` (default: `tests/requirements.txt` when it exists).
+   - Reads `--requirements`. Without it, the default `tests/requirements.txt` is used only when that file exists; this repository no longer has one, so pass `--requirements` explicitly.
    - Uses the target Python's `pip` (>= 23.0) `--dry-run --report` to find packages that are not
      installed yet, so nothing is reinstalled needlessly.
    - Detects PEP 668 `EXTERNALLY-MANAGED` interpreters and adds `--break-system-packages` only there
@@ -32,7 +32,7 @@ python -S pytest_brief.py --requirements tool/python/requirements.txt -- tool/py
 
 ### Options
 
-- `--requirements PATH`: dependency file (default: `tests/requirements.txt` if present).
+- `--requirements PATH`: dependency file (default: `tests/requirements.txt` if present; this repository has none).
 - `--tail N`: number of trailing output lines shown when something fails without a summary (default 15).
   It applies to both cases: a failed `pip install` (its stdout and stderr) and a pytest run that did
   not start or finish normally.

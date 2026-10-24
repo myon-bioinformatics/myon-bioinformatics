@@ -18,24 +18,13 @@ PYTEST_WORKFLOWS = (
 )
 
 
-def _requirement_lines(path):
-    lines = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if line and not line.startswith("#"):
-            lines.append(line)
-    return lines
-
-
 def test_dev_group_matches_requirements_lower_bounds():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert project["project"]["requires-python"] == ">=3.11"
     assert project["project"]["dependencies"] == []
     assert project["tool"]["uv"]["package"] is False
-    assert project["dependency-groups"]["dev"] == _requirement_lines(ROOT / "tests" / "requirements.txt")
-    dev = set(project["dependency-groups"]["dev"])
-    for name in ("workflow-requirements.txt", "junit-requirements.txt"):
-        assert set(_requirement_lines(ROOT / "tests" / name)) <= dev
+    assert project["dependency-groups"]["dev"] == ["pytest>=8", "PyYAML>=6", "coverage>=7", "pip>=23"]
+    assert not list((ROOT / "tests").glob("*requirements*.txt"))
     assert "uv.lock" not in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     lock = (ROOT / "uv.lock").read_text(encoding="utf-8")
     assert lock.startswith("version = ")
