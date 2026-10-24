@@ -36,7 +36,9 @@ def test_dev_group_matches_requirements_lower_bounds():
     dev = set(project["dependency-groups"]["dev"])
     for name in ("workflow-requirements.txt", "junit-requirements.txt"):
         assert set(_requirement_lines(ROOT / "tests" / name)) <= dev
-    assert "uv.lock" in (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "uv.lock" not in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    lock = (ROOT / "uv.lock").read_text(encoding="utf-8")
+    assert lock.startswith("version = ")
     ini = (ROOT / "pytest.ini").read_text(encoding="utf-8")
     assert "pythonpath = ." in ini
 
@@ -48,6 +50,7 @@ def test_pytest_workflows_use_uv_run_pytest():
         assert "python -m pytest" not in text, name
         assert "python -m pip install" not in text, name
         assert SETUP_UV in text, name
+        assert 'UV_LOCKED: "1"' in text, name
     candidate = (WORKFLOWS / "vendor-candidate.yml").read_text(encoding="utf-8")
     assert "uv run python -S vendor_candidate.py" in candidate
     others = [path.name for path in WORKFLOWS.glob("*.yml") if path.name not in PYTEST_WORKFLOWS]
