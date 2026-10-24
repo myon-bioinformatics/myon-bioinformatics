@@ -62,6 +62,9 @@ on:
 permissions:
   contents: read
 
+env:
+  UV_LOCKED: "1"
+
 jobs:
   stdlib-runtime:
     name: Stdlib runtime (Python ${{ matrix.python }})

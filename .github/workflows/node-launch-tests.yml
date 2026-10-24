@@ -19,6 +19,9 @@ on:
       - ".github/workflows/node-launch-tests.yml"
       - "pyproject.toml"
 
+env:
+  UV_LOCKED: "1"
+
 jobs:
   stdlib-py39:
     runs-on: ubuntu-latest
