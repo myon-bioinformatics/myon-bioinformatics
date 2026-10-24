@@ -413,6 +413,73 @@ describe("py_launch.resolvePython", () => {
   });
 });
 
+describe("py_launch probe startup isolation", () => {
+  function runWithSiteHook(mode, flags) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-site-hook-"));
+    try {
+      const marker = path.join(dir, "hook-ran");
+      fs.writeFileSync(
+        path.join(dir, "sitecustomize.py"),
+        'import os\nwith open(os.environ["PY_LAUNCH_SITE_MARKER"], "w") as out:\n    out.write("ran")\nraise SystemExit(42)\n',
+        "utf8",
+      );
+      const opts = JSON.stringify({ python: PYTHON, ...flags });
+      const script = JSON.stringify(path.join(FIXTURES, "echo_argv.py"));
+      const calls = {
+        resolve: `launcher.resolvePython(${opts}); console.log("safe");`,
+        run: `process.stdout.write(launcher.run(${script}, ["safe"], ${opts}).stdout);`,
+        main: `launcher.main(${script}, { ...${opts}, argv: ["safe"] });`,
+      };
+      const result = spawnSync(
+        process.execPath,
+        ["-e", `const launcher = require(${JSON.stringify(LAUNCHER)}); ${calls[mode]}`],
+        {
+          encoding: "utf8",
+          env: { ...process.env, PYTHONPATH: dir, PY_LAUNCH_SITE_MARKER: marker },
+          timeout: 10_000,
+          killSignal: "SIGKILL",
+        },
+      );
+      return { result, hookRan: fs.existsSync(marker) };
+    } finally {
+      rmTempDir(dir);
+    }
+  }
+
+  it("keeps default site startup enabled during the probe", () => {
+    const { result, hookRan } = runWithSiteHook("resolve", {});
+    assert.ifError(result.error);
+    assert.equal(hookRan, true);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /not suitable/);
+  });
+
+  for (const flags of [{ noSite: true }, { isolated: true }, { noSite: true, isolated: true }]) {
+    for (const mode of ["resolve", "run", "main"]) {
+      it(`${mode} suppresses ambient sitecustomize with ${JSON.stringify(flags)}`, () => {
+        const { result, hookRan } = runWithSiteHook(mode, flags);
+        assert.ifError(result.error);
+        assert.equal(hookRan, false, "sitecustomize must not run even during interpreter discovery");
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(result.stdout.trim(), "safe");
+      });
+    }
+  }
+
+  it("puts probe flags after the interpreter prefix and before -c", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "py-launch-probe-flags-"));
+    try {
+      const candidate = makeNodeCandidate(dir, "check-flags", `
+        require("node:assert/strict").deepEqual(process.argv.slice(2, -1), ["-S", "-I", "-c"]);
+        console.log("3.12");
+      `);
+      assert.equal(resolvePython({ candidates: [candidate], noSite: true, isolated: true }).cmd, process.execPath);
+    } finally {
+      rmTempDir(dir);
+    }
+  });
+});
+
 describe("py_launch.main (CLI passthrough)", () => {
   it("forwards argv and exit code", () => {
     const ok = runNodeMain("exit_code.py", ["0"]);
@@ -527,22 +594,73 @@ describe("py_launch.main (CLI passthrough)", () => {
     assert.match(payload.hint, /Python 3\.9\+/);
   });
 
-  it("forwards SIGTERM to the python child on POSIX", async () => {
-    if (process.platform === "win32") return;
-    const script = path.join(FIXTURES, "sleep.py");
-    const child = spawn(
-      process.execPath,
-      [
-        "-e",
-        `require(${JSON.stringify(LAUNCHER)}).main(${JSON.stringify(script)}, { python: ${JSON.stringify(PYTHON)}, argv: ["30"] });`,
-      ],
-      { stdio: "inherit" },
-    );
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    child.kill("SIGTERM");
-    const code = await new Promise((resolve) => child.on("close", resolve));
-    assert.equal(code, 2);
-  });
+  for (const interruptFirst of [false, true]) {
+    for (const jsonErrors of [false, true]) {
+      it(`forwards SIGTERM${interruptFirst ? " after ignored SIGINT" : ""} (${jsonErrors ? "JSON" : "text"})`,
+        { skip: process.platform === "win32", timeout: 15_000 }, async () => {
+          const script = path.join(FIXTURES, "ignore_sigint.py");
+          const opts = { python: PYTHON, jsonErrors, noSite: true };
+          const child = spawn(
+            process.execPath,
+            ["-e", `require(${JSON.stringify(LAUNCHER)}).main(${JSON.stringify(script)}, ${JSON.stringify(opts)});`],
+            { detached: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PY_LAUNCH_ERROR_FORMAT: "" } },
+          );
+          let stdout = "";
+          let stderr = "";
+          let sentFirst = false;
+          let sentTerm = false;
+          let timedOut = false;
+          let spawnError;
+          const killGroup = () => {
+            if (!child.pid) return;
+            try {
+              process.kill(-child.pid, "SIGKILL");
+            } catch (error) {
+              if (error.code !== "ESRCH") throw error;
+            }
+          };
+          const closed = new Promise((resolve) => child.once("close", (code, signal) => resolve({ code, signal })));
+          const timer = setTimeout(() => {
+            timedOut = true;
+            killGroup();
+          }, 7_500);
+          child.on("error", (error) => { spawnError = error; });
+          child.stderr.on("data", (chunk) => { stderr += chunk; });
+          child.stdout.on("data", (chunk) => {
+            stdout += chunk;
+            if (!sentFirst && stdout.includes("READY\n")) {
+              sentFirst = true;
+              if (interruptFirst) child.kill("SIGINT");
+              else {
+                sentTerm = true;
+                child.kill("SIGTERM");
+              }
+            }
+            if (interruptFirst && !sentTerm && stdout.includes("IGNORED SIGINT\n")) {
+              sentTerm = true;
+              child.kill("SIGTERM");
+            }
+          });
+          try {
+            const { code, signal } = await closed;
+            assert.ifError(spawnError);
+            assert.equal(timedOut, false, `launcher did not terminate; stdout=${stdout}; stderr=${stderr}`);
+            assert.equal(sentTerm, true);
+            assert.equal(code, 2);
+            assert.equal(signal, null);
+            if (jsonErrors) {
+              const payload = JSON.parse(stderr);
+              assert.equal(payload.code, "ESIGNAL");
+              assert.equal(payload.exit_code, 2);
+              assert.match(payload.message, /SIGTERM/);
+            } else assert.match(stderr, /terminated by signal SIGTERM/);
+          } finally {
+            clearTimeout(timer);
+            killGroup();
+          }
+        });
+    }
+  }
 });
 
 describe("py_launch.spawnSyncFailureError", () => {

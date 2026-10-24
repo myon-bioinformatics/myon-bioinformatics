@@ -22,6 +22,7 @@
  * environment variables—including values passed via `env`—and omit the script
  * directory from `sys.path`). Sibling imports fail unless the script prepends its
  * directory to `sys.path`; default is off.
+ * Both startup flags also apply to the interpreter version probe.
  */
 const { spawn, spawnSync } = require("node:child_process");
 const { platform } = require("node:os");
@@ -95,7 +96,11 @@ function probeCandidate(spec, opts) {
     return { skip: true };
   }
   const timeout = opts.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
-  const result = spawnSync(spec.cmd, [...spec.prefix, "-c", VERSION_PROBE], {
+  const probeArgs = [
+    ...spec.prefix,
+    ...pythonArgv("-c", [VERSION_PROBE], Boolean(opts.noSite), Boolean(opts.isolated)),
+  ];
+  const result = spawnSync(spec.cmd, probeArgs, {
     encoding: "utf8",
     timeout,
   });
@@ -517,7 +522,8 @@ function main(scriptPath, opts = {}) {
   rejectCmdBatInterpreter(resolved.cmd, resolved.label);
   const child = spawn(resolved.cmd, pyArgs, { stdio: "inherit" });
   const forwardSignal = (signal) => {
-    if (!child.killed) child.kill(signal);
+    // `killed` only means a signal was sent, not that the child has exited.
+    if (child.exitCode === null && child.signalCode === null) child.kill(signal);
   };
   process.on("SIGINT", forwardSignal);
   process.on("SIGTERM", forwardSignal);
