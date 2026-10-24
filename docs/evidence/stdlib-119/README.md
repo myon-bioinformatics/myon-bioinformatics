@@ -1,42 +1,41 @@
-# minpy依存探索キューの計測
+# Measuring the minpy dependency search queue
 
-2026-10-20 / Linux / CPython 3.12.14 / 共有実行環境。
-比較元は親main `e5e7df176f570a7a8fa74b448912d11fca12ef04`の`_collect()`。
-現行の同じASTスキャナ・解決処理に旧関数だけを読み込み、キュー変更を比較する。
-`--baseline`には実行してよい信頼済みのローカルGitコミットを指定する。
+2026-10-20 / Linux / CPython 3.12.14 / shared execution environment.
+The baseline is `_collect()` on parent main `e5e7df176f570a7a8fa74b448912d11fca12ef04`.
+Only the old function is loaded into the current, identical AST scanner and resolver, comparing the queue change.
+`--baseline` takes a trusted local Git commit that is safe to execute.
 
-合成入力はappがn個のbranchをimportし、各branchが共通のn個のleafをimportする。
-モジュール数は2n+1、参照数はn+n²。探索結果の全モジュールフィールド・挿入順・辺・
-診断・外部依存と、生成バンドルのバイト一致を計測前に確認する。
+The synthetic input has app import n branches, and each branch imports the same n leaves.
+There are 2n+1 modules and n+n² references. Before measuring, all module fields, insertion order, edges,
+diagnostics, and external dependencies in the search result, and byte equality of the generated bundle, are checked.
 
-時間は`perf_counter`で3回測った中央値。メモリは時間計測と別に`tracemalloc`で
-測ったPythonのピーク割当で、RSSではない。速度の閾値をpytestへ埋め込まない。
+Time is the median of 3 runs with `perf_counter`. Memory is Python's peak allocation measured separately
+with `tracemalloc`, not RSS. No speed thresholds are embedded in pytest.
 
-| 計測 | モジュール / 参照 | 旧 / 新 中央値(s) | 旧 / 新 peak(bytes) |
+| Measurement | Modules / references | Old / new median (s) | Old / new peak (bytes) |
 |---|---:|---:|---:|
-| ファイルシステムを含む小規模探索 | 41 / 420 | 0.080298 / 0.077566 | 147618 / 144668 |
-| ファイルシステムを含む共有依存探索 | 301 / 22650 | 26.217374 / 26.698056 | 2701769 / 2509907 |
-| 探索部分、固定ソース・解決結果 | 201 / 10100 | 0.115822 / 0.078599 | 1216361 / 1133506 |
-| 探索部分、固定ソース・解決結果 | 701 / 122850 | 1.926878 / 1.163783 | 13509290 / 12501471 |
+| Small search including the file system | 41 / 420 | 0.080298 / 0.077566 | 147618 / 144668 |
+| Shared-dependency search including the file system | 301 / 22650 | 26.217374 / 26.698056 | 2701769 / 2509907 |
+| Search only, fixed sources and resolution results | 201 / 10100 | 0.115822 / 0.078599 | 1216361 / 1133506 |
+| Search only, fixed sources and resolution results | 701 / 122850 | 1.926878 / 1.163783 | 13509290 / 12501471 |
 
-ファイル入力301モジュールではPythonピーク割当が約7.1%減った。時間は約1.8%遅い
-中央値で、CLI全体の高速化を実証していない。
+With 301 modules from file input, Python peak allocation fell by about 7.1%. The median time was about 1.8% slower,
+so this does not demonstrate a speedup of the whole CLI.
 
-大きい局所計測では約39.6%の時間減と約7.5%のPythonピーク割当減を観測した。
-`--isolate-io`はこの固定fixtureについて`_find`と`_read_source`を差し替え、
-実際のAST解析・依存探索・辺の記録はそのまま実行する。製品に解決結果キャッシュを
-実装したわけではなく、解決の安全性やファイル更新時の挙動をこのstubで検証したとも
-扱わない。これらは通常の回帰テストで確認する。
+In the large local measurement, about 39.6% less time and about 7.5% less Python peak allocation were observed.
+For this fixed fixture, `--isolate-io` swaps out `_find` and `_read_source`, while real AST parsing, dependency search,
+and edge recording run as-is. This does not mean a resolution cache was implemented in the product, nor that
+resolution safety or behavior on file updates was verified with this stub. Those are checked by the normal regression tests.
 
-局所の改善をCLI全体の高速化率へ一般化しない。小規模なファイル入力では別の予備計測で
-約8%遅い値も出た。共有機の変動やI/O・解決処理が支配するため、小規模入力の速度向上は
-実証したと扱わない。採用根拠は大きな共有依存での待ち重複と先頭要素移動の削減、
-その局所の時間・メモリ改善、生成物と診断の互換性である。
+The local improvement is not generalized to a speedup rate for the whole CLI. With small file input, a separate preliminary
+measurement even gave about 8% slower values. Because shared-machine variance and I/O and resolution dominate, a speedup for
+small inputs is not treated as demonstrated. The grounds for adoption are fewer duplicate queue entries and less front-element
+shifting with large shared dependencies, the local time and memory improvement, and compatibility of output and diagnostics.
 
-## 再現
+## Reproducing
 
 ```bash
-# shallow checkoutの場合は比較元のコミットを別途取得しておく。
+# For a shallow checkout, fetch the baseline commit separately first.
 python -S tests/benchmark_minpy_queue.py \
   --baseline e5e7df176f570a7a8fa74b448912d11fca12ef04 --sizes 20 150 --repeat 3
 python -S tests/benchmark_minpy_queue.py \
@@ -44,6 +43,6 @@ python -S tests/benchmark_minpy_queue.py \
 python -m pytest -q tests/test_minpy.py tests/test_minpy_dependency_queue.py
 ```
 
-生データは`small.jsonl`と`filesystem-medium.jsonl`（通常のファイル入力）、`component.jsonl`と
-`component-large.jsonl`（局所計測）。301モジュールのファイル入力は予備スクリプトの同じcollector比較から記録した。
-未完了の701モジュールのファイル入力計測値は含めていない。
+Raw data is in `small.jsonl` and `filesystem-medium.jsonl` (normal file input), and `component.jsonl` and
+`component-large.jsonl` (local measurements). The 301-module file-input result was recorded from the same collector comparison in a preliminary script.
+Values for the unfinished 701-module file-input measurement are not included.

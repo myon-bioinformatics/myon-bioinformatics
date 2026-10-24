@@ -89,11 +89,11 @@ I design and build practical CLI and browser tools: mostly single-file, standard
 ---
 
 <!-- PRESENTATION:START concept -->
-## 活動の概念図
+## Activity overview
 
-[![生命科学のデータや課題を、解析・開発・検証を通じてツールやドキュメントとして公開し、研究・コミュニティ・安全性への貢献を目指す活動の流れ](./assets/brand/concept-overview.jpg)](./assets/brand/concept-overview.jpg)
+[![The flow of activity: turning life-science data and problems into published tools and documentation through analysis, development, and verification, aiming to contribute to research, the community, and safety](./assets/brand/concept-overview.jpg)](./assets/brand/concept-overview.jpg)
 
-活動の流れと目指す価値をまとめた概念図です。図中の「本サイト」は[ポートフォリオ](https://myon-bioinformatics.github.io/)を指します。画像をクリックすると拡大できます。
+A diagram summarizing the flow of activity and the value it aims for. "This site" in the diagram refers to the [portfolio](https://myon-bioinformatics.github.io/). Click the image to enlarge it.
 <!-- PRESENTATION:END concept -->
 
 ---
@@ -352,7 +352,7 @@ placed into consumer trees. See [catalog coverage](docs/vendor-catalog-coverage.
 
 [Convention-driven file and symbol discovery](docs/convention-discovery.md) gives verified one-liners for this repository. Supply filename/name rules to inspect production code, configuration and workflows with the shared stdlib-only xprobe tool.
 
-[リポジトリ横断の用途と接続候補](docs/cross-repository-use-cases.md)に、公開・非アーカイブ23リポジトリの入口と検証状態を記録しています。
+[Cross-repository use cases and connection candidates](docs/cross-repository-use-cases.md) records the entry points and verification status of the 23 public, non-archived repositories.
 
 Local prerequisite observations: `python -S preflight.py --root . --require git
 --python-min 3.11`. Optional `--runtime-facts` connects yourself's OS/runtime JSON
