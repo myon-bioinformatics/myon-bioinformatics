@@ -20,6 +20,7 @@ on:
       - ".github/workflows/parent-pin-check.yml"
       - "pytest.ini"
       - "pyproject.toml"
+      - "uv.lock"
       - "pilot/**"
       - "docs/uv-git-source-migration.md"
       - "docs/python-ci-policy.md"
@@ -48,6 +49,7 @@ on:
       - ".github/workflows/parent-pin-check.yml"
       - "pytest.ini"
       - "pyproject.toml"
+      - "uv.lock"
       - "pilot/**"
       - "docs/uv-git-source-migration.md"
       - "docs/python-ci-policy.md"
@@ -119,6 +121,10 @@ jobs:
       - name: Verify executable audit contracts with Python -S
         if: matrix.python == '3.11'
         run: python -S -m unittest discover -s tests -p 'test_constrained_lab_exec_audit.py' -v
+      # Run once per workflow to fail explicitly on stale or missing uv.lock.
+      - name: Verify committed uv.lock matches pyproject.toml
+        if: matrix.python == '3.11'
+        run: uv lock --check
       - name: Run tests with JUnit
         run: uv run pytest -q --junitxml=reports/junit.xml
       # A transient Actions artifact-service DNS error must not discard
