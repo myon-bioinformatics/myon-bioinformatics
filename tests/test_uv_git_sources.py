@@ -304,7 +304,7 @@ def test_workflow_resolves_main_and_skips_other_lanes():
     assert SETUP_PYTHON in text
     assert SETUP_NODE in text
     assert SETUP_UV in text
-    assert 'node-version: "24"' in text
+    assert 'node-version: "26"' in text
     assert "python -S pilot/vendor_dispatch.py --dry-run --offline" in text
     assert 'python pilot/vendor_dispatch.py --assume-python 3.9 --dry-run --offline' in text
     assert "python pilot/vendor_dispatch.py --resolve-ref main --record" in text
