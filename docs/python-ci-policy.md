@@ -15,7 +15,14 @@ names match these development matrices; stdlib smoke results are separate jobs.
 Those pytest jobs install the `dev` group from `pyproject.toml` and invoke
 `uv run pytest`. The group lists lower bounds only. The parent's `uv.lock` is committed and
 pytest workflows set `UV_LOCKED=1`, so the lock is the explicit source of resolved
-versions and uv fails rather than rewriting it. `requires-python` there is the
+versions and uv fails rather than rewriting it. The Python 3.9
+`node-launch-tests.yml` smoke lane is an explicit exception: it uses
+`uv run --no-project` because the parent project requires >=3.11. In this
+mode `UV_LOCKED` does not apply, so the lane explicitly selects
+`pytest==8.4.2` (the last compatible major line). Its transitive tools are
+not governed by the parent lock; it is a runtime-compatibility probe, not
+a reproducibility claim for the parent development environment.
+`requires-python` there is the
 pytest job floor, not the 3.9 runtime floor of the stdlib tools. `pytest.ini`
 puts the repository root on `pythonpath`, because `uv run pytest` starts the
 pytest console script and does not insert the working directory the way
