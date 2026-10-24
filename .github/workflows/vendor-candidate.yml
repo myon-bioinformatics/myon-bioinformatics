@@ -30,6 +30,9 @@ on:
 permissions:
   contents: read
 
+env:
+  UV_LOCKED: "1"
+
 jobs:
   gh-identity:
     runs-on: ubuntu-latest

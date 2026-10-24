@@ -4,7 +4,6 @@ on:
     paths:
       - "gh_workflow.py"
       - "tests/test_gh_workflow.py"
-      - "tests/workflow-requirements.txt"
       - "pyproject.toml"
       - ".github/workflows/workflow-wrapper-tests.yml"
   push:
@@ -12,11 +11,13 @@ on:
     paths:
       - "gh_workflow.py"
       - "tests/test_gh_workflow.py"
-      - "tests/workflow-requirements.txt"
       - "pyproject.toml"
       - ".github/workflows/workflow-wrapper-tests.yml"
 permissions:
   contents: read
+env:
+  UV_LOCKED: "1"
+
 jobs:
   pytest:
     runs-on: ubuntu-latest
