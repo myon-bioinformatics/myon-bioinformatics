@@ -4,13 +4,11 @@ on:
     paths:
       - ".github/workflows/*junit*"
       - "tests/test_junit_collection.py"
-      - "tests/junit-requirements.txt"
       - "pyproject.toml"
   push:
     paths:
       - ".github/workflows/*junit*"
       - "tests/test_junit_collection.py"
-      - "tests/junit-requirements.txt"
       - "pyproject.toml"
 permissions:
   contents: read

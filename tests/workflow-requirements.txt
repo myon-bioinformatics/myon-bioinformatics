@@ -1,3 +1,0 @@
-# Lower-bound subset of the pyproject.toml dev group. Pytest jobs run `uv run pytest`.
-pytest>=8
-PyYAML>=6
