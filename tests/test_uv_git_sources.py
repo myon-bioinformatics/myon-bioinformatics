@@ -95,6 +95,12 @@ def _opener(url):
     if url.endswith("/package.json"):
         if "/browser-test-kit/" in url:
             return 200, b'{"private": true, "devDependencies": {"playwright": "1.64.0"}}'
+        if "/myon-bioinformatics/myon-bioinformatics/" in url:
+            return 200, json.dumps({
+                "name": "@myon-bioinformatics/portable-tools", "private": True,
+                "files": ["py_launch.cjs", "LICENSE"],
+                "exports": {".": "./py_launch.cjs", "./py_launch": "./py_launch.cjs"},
+            }).encode("utf-8")
         return 404, b"missing"
     if "/commits/" in url:
         return 200, json.dumps({"sha": "b" * 40}).encode()
@@ -128,6 +134,39 @@ def test_installable_project_and_explicit_skips():
     assert not ok and "requires-python" in reason
 
 
+def test_node_export_requires_an_explicit_packed_source_and_no_lifecycle_scripts():
+    module = _driver()
+    private = {"name": "@myon-bioinformatics/portable-tools", "private": True,
+               "files": ["py_launch.cjs"],
+               "exports": {"./py_launch": "./py_launch.cjs"}}
+    assert module.node_export(private, "py_launch.cjs") == "./py_launch"
+    assert module.classify("py_launch.cjs", _env(module),
+                           module.Probe(None, private)).action == "npm"
+    assert module.node_export(dict(private, files=[]), "py_launch.cjs") is None
+    assert module.node_export(dict(private, scripts={"prepare": "echo bad"}),
+                              "py_launch.cjs") is None
+    assert module.node_export(dict(private, exports={"./other": "./other.cjs"}),
+                              "py_launch.cjs") is None
+    commit = "a" * 40
+    assert module.npm_git_spec("myon-bioinformatics/myon-bioinformatics", commit).endswith(
+        ".git#" + commit
+    )
+    import pytest
+    with pytest.raises(ValueError):
+        module.npm_git_spec("myon-bioinformatics/myon-bioinformatics", "main")
+
+
+def test_npm_probe_failure_does_not_claim_success():
+    module = _driver()
+    def broken(*args):
+        raise RuntimeError("install deliberately failed")
+    rows = module.dispatch(_catalog(), _env(module), "main", _opener,
+                           lambda *args: ("c" * 40, {}), node_install=broken)
+    affected = next(row for row in rows if row["source"] == "py_launch.cjs")
+    assert affected["action"] == "error"
+    assert "deliberately failed" in affected["reason"]
+
+
 def test_environment_skips_are_explicit():
     module = _driver()
     assert module.classify("gh_ops.py", _env(module, no_site=True), None).reason.startswith("python -S")
@@ -152,7 +191,13 @@ def test_dispatch_installs_fetches_and_records(tmp_path):
         calls.append((repository, ref, tuple(modules)))
         return "c" * 40, {}
 
-    results = module.dispatch(catalog, _env(module), "main", _opener, install, dry_run=False)
+    node_calls = []
+
+    def install_node(repository, commit, package, exported):
+        node_calls.append((repository, commit, package, tuple(exported)))
+
+    results = module.dispatch(catalog, _env(module), "main", _opener, install,
+                              dry_run=False, node_install=install_node)
     by_source = {row["source"]: row for row in results}
     assert calls == [(
         "myon-bioinformatics/browser-test-kit",
@@ -166,11 +211,15 @@ def test_dispatch_installs_fetches_and_records(tmp_path):
     assert by_source["gh_identity.py"]["action"] == "skip"
     assert "package is false" in by_source["gh_identity.py"]["reason"]
     assert by_source["src/mcp_toolcall_lab/github_public_resolver.py"]["action"] == "skip"
-    fetched = by_source["py_launch.cjs"]
-    assert fetched["action"] == "fetch" and fetched["commit"] == "b" * 40
-    assert fetched["sha256"]
+    installed = by_source["py_launch.cjs"]
+    assert installed["action"] == "npm" and installed["commit"] == "b" * 40
+    assert installed["sha256"] and installed["export"] == "."
+    assert node_calls == [(
+        "myon-bioinformatics/myon-bioinformatics", "b" * 40,
+        "@myon-bioinformatics/portable-tools", (".",),
+    )]
     private = by_source["scripts/interaction.mjs"]
-    assert private["action"] == "fetch" and "private" in private["reason"]
+    assert private["action"] == "fetch" and "not an exported" in private["reason"]
     changed = module.apply_record(catalog, results)
     assert "scripts/check_evidence.py" in changed
     assert "py_launch.cjs" in changed
@@ -191,6 +240,7 @@ def test_dry_run_does_not_install():
 
     results = module.dispatch(_catalog(), _env(module), "main", _opener, install, dry_run=True)
     assert any(row["action"] == "uv" and row["commit"] is None for row in results)
+    assert any(row["action"] == "npm" and row["commit"] is None for row in results)
     assert all(row["sha256"] is None for row in results)
 
 
