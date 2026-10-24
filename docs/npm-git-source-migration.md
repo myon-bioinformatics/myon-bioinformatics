@@ -3,7 +3,8 @@
 The parent repository is also a **minimal npm Git package**. It remains
 `"private": true` to prevent accidental npm registry publication; this flag
 does **not** prevent installation via an HTTPS Git dependency. Only
-`py_launch.cjs` and LICENSE are distributed. Node >=24 is required.
+`py_launch.cjs` and LICENSE are distributed. Node >=24 is required; the parent's npm Git distribution CI runs on Node 26.
+Node 24 compatibility remains covered by the parent launcher matrix.
 The existing single-file `vendor/py_launch.cjs` usage is still supported.
 
 For a child repository with `package.json`, add a **reviewed full commit SHA**
