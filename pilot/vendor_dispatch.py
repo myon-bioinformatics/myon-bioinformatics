@@ -93,6 +93,35 @@ def package_json_url(repository, ref):
     return "https://raw.githubusercontent.com/" + repository + "/" + quote(ref, safe="") + "/package.json"
 
 
+def npm_git_spec(repository, commit):
+    """Install only a reviewed commit of a named GitHub package."""
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("invalid GitHub repository")
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("npm git installation needs a full 40-character commit")
+    return "git+https://github.com/" + repository + ".git#" + commit
+
+
+def node_export(package, source):
+    """Return the declared Node export for this exact catalog source, or None."""
+    if not isinstance(package, dict):
+        return None
+    exports, files = package.get("exports"), package.get("files")
+    if not isinstance(exports, dict) or not isinstance(files, list) or source not in files:
+        return None
+    # Do not install packages with install/prepare scripts in this passive pilot.
+    scripts = package.get("scripts") or {}
+    if not isinstance(scripts, dict) or any(k in scripts for k in (
+        "preinstall", "install", "postinstall", "prepare", "prepack", "postpack"
+    )):
+        return None
+    for key, target in exports.items():
+        if key == "." or (isinstance(key, str) and key.startswith("./")):
+            if target == "./" + source:
+                return key
+    return None
+
+
 def commit_url(repository, ref):
     return "https://api.github.com/repos/" + repository + "/commits/" + quote(ref, safe="")
 
@@ -219,15 +248,13 @@ def classify(source, env, probe):
             return Decision("error", one_line(probe))
         if probe is None or probe.package_json is None:
             return Decision("fetch", "no package.json. npm git dependency does not apply. plain fetch")
-        if probe.package_json.get("private") is True:
-            return Decision(
-                "fetch",
-                "package.json is private. npm cannot install this repository as a dependency. plain fetch",
-            )
-        return Decision(
-            "fetch",
-            "npm would install the package rather than this path. plain fetch",
-        )
+        # 'private': true blocks npm registry publication, NOT git installs.
+        # Use npm only when the exact catalog source is explicitly exported and
+        # included in the packed files. Otherwise preserve raw-fetch semantics.
+        exported = node_export(probe.package_json, source)
+        if exported and isinstance(probe.package_json.get("name"), str):
+            return Decision("npm", "explicitly exported Node entry; npm Git dependency")
+        return Decision("fetch", "source is not an exported packed Node entry; plain fetch")
     return Decision(
         "skip",
         "not a Python or Node entry, so uv does not install it. "
@@ -363,6 +390,46 @@ def uv_install(repository, ref, modules):
         return commit, failures
 
 
+def npm_install(repository, commit, package_name, exported_paths):
+    """Probe a pinned Git dependency in an isolated temporary npm consumer.
+
+    No consumer lockfile is edited here. The child must commit its own
+    package.json/package-lock.json and use npm ci after opting in.
+    """
+    npm = shutil.which("npm")
+    node = shutil.which("node")
+    if not npm or not node:
+        raise RuntimeError("npm and Node 24+ are required for npm Git install")
+    if not re.fullmatch(r"(?:@[A-Za-z0-9_.-]+/)?[A-Za-z0-9_.-]+", package_name):
+        raise RuntimeError("invalid npm package name")
+    with tempfile.TemporaryDirectory(prefix="vendor-dispatch-npm-") as tmp:
+        root = Path(tmp)
+        (root / "package.json").write_text(
+            json.dumps({"name": "vendor-dispatch-probe", "version": "0.0.0",
+                        "private": True}), encoding="utf-8",
+        )
+        spec = npm_git_spec(repository, commit)
+        result = subprocess.run(
+            [npm, "install", "--ignore-scripts", "--no-audit", "--no-fund",
+             "--save=false", spec], cwd=root, text=True, capture_output=True,
+            timeout=180,
+        )
+        if result.returncode:
+            raise RuntimeError("npm git install failed: " + one_line(result.stderr)[-300:])
+        for exported in exported_paths:
+            suffix = "" if exported == "." else "/" + exported[2:]
+            request = package_name + suffix
+            js = ("const mod = require(" + json.dumps(request) + ");" +
+                  "if (mod === undefined) process.exit(3)")
+            trial = subprocess.run(
+                [node, "-e", js], cwd=root, text=True, capture_output=True,
+                timeout=20,
+            )
+            if trial.returncode:
+                raise RuntimeError("installed npm export unavailable: " + request +
+                                   " " + one_line(trial.stderr)[-180:])
+
+
 LOCK_SCHEMA = "vendor-lock/1"
 CATALOG_SCHEMA = "vendor-catalog/1"
 
@@ -409,7 +476,7 @@ def verify_lock(results, tools, opener):
             row["digest"] = "new commit"
 
 
-def dispatch(catalog, env, resolve_ref, opener, install, dry_run=False):
+def dispatch(catalog, env, resolve_ref, opener, install, dry_run=False, node_install=None):
     tools = entries_of(catalog)
     wanted = {}
     for tool in tools:
@@ -432,6 +499,7 @@ def dispatch(catalog, env, resolve_ref, opener, install, dry_run=False):
             probes[(repository, ref)] = exc
     results = []
     groups = {}
+    node_groups = {}
     for tool in tools:
         ref = resolve_ref or tool["commit"]
         probe = probes.get((tool["repository"], ref))
@@ -454,6 +522,11 @@ def dispatch(catalog, env, resolve_ref, opener, install, dry_run=False):
             row["spec"] = git_spec(tool["repository"], ref)
             if not dry_run:
                 groups.setdefault((tool["repository"], ref), []).append(row)
+        elif decision.action == "npm":
+            row["export"] = node_export(probe.package_json, tool["source"])
+            row["spec"] = "git+https://github.com/" + tool["repository"] + ".git#" + ref
+            if not dry_run:
+                node_groups.setdefault((tool["repository"], ref), []).append(row)
         results.append(row)
     if not dry_run:
         for (repository, ref), rows in groups.items():
@@ -472,6 +545,25 @@ def dispatch(catalog, env, resolve_ref, opener, install, dry_run=False):
                 if failure:
                     row["action"] = "error"
                     row["reason"] = failure
+        for (repository, ref), rows in node_groups.items():
+            package = probes[(repository, ref)].package_json
+            name = package["name"]
+            try:
+                # Resolve the commit before invoking npm, never install a
+                # moving branch while reporting a different source revision.
+                for row in rows:
+                    commit, digest = fetch_source(repository, ref, row["source"], opener)
+                    row["commit"], row["sha256"] = commit, digest
+                commits = {row["commit"] for row in rows}
+                if len(commits) != 1:
+                    raise RuntimeError("npm entries resolved to different commits")
+                installer = node_install if node_install is not None else npm_install
+                installer(repository, rows[0]["commit"], name, [r["export"] for r in rows])
+            except (RuntimeError, URLError, json.JSONDecodeError, UnicodeError,
+                    OSError, KeyError, subprocess.CalledProcessError) as exc:
+                for row in rows:
+                    row["action"] = "error"
+                    row["reason"] = one_line(exc)
         for row in results:
             if row["action"] != "fetch":
                 continue
@@ -507,7 +599,7 @@ def apply_record(catalog, results):
         return changed
     for tool in catalog["tools"]:
         row = by_key[_key(tool)]
-        if row["action"] not in ("uv", "fetch") or not row["commit"]:
+        if row["action"] not in ("uv", "npm", "fetch") or not row["commit"]:
             continue
         if tool["commit"] != row["commit"]:
             tool["commit"] = row["commit"]

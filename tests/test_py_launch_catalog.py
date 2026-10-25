@@ -1,4 +1,4 @@
-"""Catalog pin for py_launch.cjs after parent PR #151 merge."""
+"""Catalog pin for py_launch.cjs after parent PR #171 merge."""
 import hashlib
 import json
 from pathlib import Path
@@ -8,11 +8,11 @@ import pytest
 import vendor_sync
 
 ROOT = Path(__file__).resolve().parents[1]
-PY_LAUNCH_MERGE_COMMIT = "c73821de8492b2394c718cb276cad9f683ff1910"
+PY_LAUNCH_MERGE_COMMIT = "1116d5c4f55d25af4d21cfe9b3c88f49d3a476fa"
 REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
 SOURCE = "py_launch.cjs"
-PY_LAUNCH_CATALOG_PIN_BLOB_SHA = "5a90907aa0ed3e2afa5ef1519010136644af1658"
-PY_LAUNCH_CATALOG_PIN_SHA256 = "b43c88e4e635d888995cd33f121850fe2cae753b66a55c628891d6795429ab88"
+PY_LAUNCH_CATALOG_PIN_BLOB_SHA = "006817bc813187fa45abc3e8954fde27a2b73caa"
+PY_LAUNCH_CATALOG_PIN_SHA256 = "a78fe656cde285a83501b9b19d97b9ebde6f9637919b3adb95c50eb254154536"
 # Worktree bytes move with this checkout. The catalog pin above stays the
 # accepted main merge until a reviewed promotion.
 PY_LAUNCH_WORKTREE_BLOB_SHA = "006817bc813187fa45abc3e8954fde27a2b73caa"

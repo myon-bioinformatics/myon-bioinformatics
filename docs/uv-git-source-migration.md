@@ -5,7 +5,8 @@ including stdlib-only single-file tools. A standalone copy is not a reason to
 leave a tool off uv. When someone wants the file itself, copy the file from
 the GitHub repo (the `repository` and `source` path in `vendor-catalog.json`).
 
-This pull request is still a parent-only pilot. It does not edit child
+This is a parent-only migration pilot. It now makes the parent's `py_launch.cjs`
+installable as a minimal npm Git package, but does not yet edit child
 repositories, `vendor.lock.json`, or `templates/vendor-child-ci.workflow.yml`.
 A green parent check does not block a child merge and is not reviewer approval.
 `child-heads.json` entries are pinned revision records, not packages.
@@ -91,13 +92,16 @@ does not mean the file cannot become a uv project later.
 
 **Outside uv.** These are not Python modules. uv does not install them. The
 standalone-copy contract was not their blocker. Copy the file from the GitHub
-repo when the bytes themselves are needed. The driver fetches the Node rows
-below when Node 24 is present, because npm cannot take them as git
-dependencies (no `package.json`, or a private one).
+repo when the bytes themselves are needed. The driver uses npm for Node rows that the repository explicitly exports
+and packs, and retains raw fetch for other sources. A `private: true`
+package **can** be installed from Git; it only prevents registry publication.
+The parent `py_launch.cjs` is npm-installable after the package change lands
+on the selected Git commit. The browser-test-kit source files listed below
+are not exported by that package, so they remain raw-fetch candidates.
 
 | Repository | Source |
 | --- | --- |
-| myon-bioinformatics | `py_launch.cjs` |
+| myon-bioinformatics | `py_launch.cjs` (npm Git package; see `docs/npm-git-source-migration.md`) |
 | browser-test-kit | `scripts/interaction.mjs` |
 | browser-test-kit | `scripts/browser_execution.mjs` |
 | gh_identity, Ironmate, and this parent | `LICENSE` next to a locked tool |
@@ -105,8 +109,9 @@ dependencies (no `package.json`, or a private one).
 
 ## What this parent runs
 
-CI runs the driver with `--resolve-ref main --record`. For **Now** rows it
-uses `uv pip install` of the git URL. There is no consumer project file and no
+CI runs the driver with `--resolve-ref main --record`. For **Now** Python rows it
+uses `uv pip install` of the git URL; for explicitly exported Node rows it
+uses an npm Git dependency pinned to the resolved full commit SHA. There is no consumer project file and no
 committed `uv.lock`. The resolved commit is written into that tool's `commit`
 in the job workspace. Reviewed catalog pins in git are not moved here.
 

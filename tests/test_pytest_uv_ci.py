@@ -49,6 +49,22 @@ def test_pytest_workflows_use_uv_run_pytest():
         assert "uv run pytest" not in text, name
 
 
+def test_parent_lockfile_change_triggers_a_real_ci_check():
+    workflow = (WORKFLOWS / "python-tests.yml").read_text(encoding="utf-8")
+    assert workflow.count('      - "uv.lock"') == 2
+    assert 'UV_LOCKED: "1"' in workflow
+    assert "run: uv lock --check" in workflow
+
+
+def test_python39_no_project_compatibility_is_explicitly_outside_parent_lock():
+    node = (WORKFLOWS / "node-launch-tests.yml").read_text(encoding="utf-8")
+    assert "--python 3.9 --no-project --with pytest==8.4.2" in node
+    # uv ignores UV_LOCKED under --no-project, so keep this exception visible.
+    policy = (ROOT / "docs" / "python-ci-policy.md").read_text(encoding="utf-8")
+    assert "UV_LOCKED` does not apply" in policy
+    assert "pytest==8.4.2" in policy
+
+
 def test_stdlib_lanes_stay_on_python():
     python_tests = (WORKFLOWS / "python-tests.yml").read_text(encoding="utf-8")
     stdlib = python_tests.split("jobs:", 1)[1].split("\n  pytest:", 1)[0]
