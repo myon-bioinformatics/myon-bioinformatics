@@ -40,31 +40,31 @@ jobs:
       IRONMATE_COMPAT_ROOT: .compat/ironmate
     steps:
       - name: Checkout proposed parent version
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Checkout historical tool and registry as one unit
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/myon-bioinformatics
           ref: 1eda992aa6fa31a902e2c06428e53ab17e8fe3c1
           path: .compat/parent-old
           persist-credentials: false
       - name: Checkout immutable license-shorthand registry fixture
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/myon-bioinformatics
           ref: a9df23dec720f125772a24b77b413552d60060ba
           path: .compat/parent-shorthand
           persist-credentials: false
       - name: Checkout historical audited Ironmate snapshot
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/Ironmate
           ref: 77cd700f961f2a97051da96b9c13a6c7a64258df
           path: .compat/ironmate
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
