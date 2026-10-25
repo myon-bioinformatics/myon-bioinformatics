@@ -29,6 +29,7 @@ on:
       - "tests/test_vendor_child_bootstrap.py"
       - "tests/test_vendor_parent_evidence.py"
       - "pyproject.toml"
+      - "uv.lock"
 
 permissions:
   contents: read
@@ -67,7 +68,7 @@ jobs:
             esac
           done < <(git diff --name-only "origin/${BASE_REF}"...HEAD)
           echo run=false >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         if: steps.scope.outputs.run == 'true'
         with:
           python-version: "3.12"
@@ -109,7 +110,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - name: Require a complete fleet with no stale or mixed parent pins
@@ -159,7 +160,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: true
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
       - name: Refresh child-heads and open or update autofix pull request

@@ -32,7 +32,7 @@ requirements in the same interpreter, such as `pytest_brief.py`, still can.
 launches is the one in that environment. Stdlib unittest lanes do not call uv.
 
 Active parent workflows pin current official setup releases by full commit SHA,
-with a version comment: setup-python v7.0.0 and setup-node v7.1.0 (verified
+with a version comment: setup-python v7.1.0 (integrated from #174), setup-node v7.1.0 (verified
 2026-10-19), and setup-uv v10.3.2 (verified 2026-10-23). These actions use
 Node 24 and require runner v2.327.1 or newer; these jobs use GitHub-hosted
 runners. Future updates must verify official release tags rather than copy
