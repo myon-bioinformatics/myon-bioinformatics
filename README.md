@@ -248,6 +248,7 @@ Python toolkit for converting documents and images: a Markdown-to-PPTX pipeline,
 * [python3nmap_GUI_for_Beginners](https://github.com/myon-bioinformatics/python3nmap_GUI_for_Beginners)
 * [Qiita_API_Template](https://github.com/myon-bioinformatics/Qiita_API_Template)
 * [scapy_GUI_for_Beginners](https://github.com/myon-bioinformatics/scapy_GUI_for_Beginners)
+* [TalkCompress](https://github.com/myon-bioinformatics/TalkCompress)
 * [video_to_image_gui](https://github.com/myon-bioinformatics/video_to_image_gui)
 * [video2audio_gui](https://github.com/myon-bioinformatics/video2audio_gui)
 * [vlm_ocr_jp_gui](https://github.com/myon-bioinformatics/vlm_ocr_jp_gui)
