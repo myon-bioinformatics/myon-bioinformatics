@@ -66,13 +66,14 @@ libraries are not separate executables and are not a dependency-free claim.
 ## Budget, output, and observation boundaries
 
 Normal mode fails closed unless existing `verify_budget` accepts the cgroup.
-It does not configure cgroups. Workers additionally enforce RLIMIT_AS=128MiB,
+It does not configure cgroups. Workers additionally default to RLIMIT_AS=128MiB
+(explicit diagnostic choices: 192 or 256MiB),
 RLIMIT_CPU=10 seconds, RLIMIT_FSIZE=64KiB. **Address space is not RSS**; this
 conservative extra guard can reject a workload that would fit a 128MiB physical
 memory cgroup. None of these per-process guards establishes an aggregate
-four-worker memory budget. A future dedicated-cgroup experiment must assess
-whether this additional guard is appropriate; it must not silently drop the
-128MiB cgroup requirement to obtain a pass.
+four-worker memory budget. The follow-up below isolates this additional guard;
+a dedicated-cgroup experiment must still assess physical-memory acceptance.
+Changing the AS guard must not silently drop the 128MiB cgroup requirement.
 
 Optional host `libseccomp.so.2` is loaded through stdlib ctypes to deny
 `socket`, `socketpair`, and `connect` in each trusted worker before importing
@@ -140,9 +141,139 @@ assertions receiving null. The same two errors reproduce in the untouched
 base `aed1930834c1ddf8788dc54e0ccbadfa64eac955` (15 budget tests); this PR does
 not alter their behavior.
 
-Remaining: dedicated 128MiB/CPU1 cgroup; review the additional AS guard; all
-four workloads passing; permitted tracing and valid traced/untraced pairs;
+Remaining: dedicated 128MiB/CPU1 cgroup; all four workloads passing in that
+strict envelope; permitted tracing and valid traced/untraced pairs;
 per-campaign cgroup attribution and memory high-water; workload-level external
 callsite classifications where exec events exist; current-head CI and independent
 review. No merge, Issue closure, complete observation, or four-repository
 acceptance is claimed.
+
+
+## MemoryError follow-up, 2026-10-28
+
+Baseline examined: parent `c16b85be49ce26d5cd9e7acd80f4988e5ceb3d07`.
+All four source pins, fixture bytes, oracle, archive format and source compression
+settings remain unchanged. The original exploratory JSONL above is preserved.
+The harness now accepts `--address-space-mib {128,192,256}` (default remains
+128), propagates and records it, and retains filename/function/line traceback
+frames on failure. Normal mode still requires the same cgroup budget verifier,
+including when a larger **virtual-address** guard is explicitly selected.
+
+### Failure attribution
+
+The real fixed archive input is 1,142 UTF-8 bytes (24 records). Under AS=128MiB,
+all three new unaudited runs fail at `build_archive` line 339 -> `_compress_block`
+line 186 -> Python `lzma.compress` line 327. That Python line constructs
+`LZMACompressor`, before `comp.compress(data)` or `comp.flush()`.
+The receipt records the actual traceback, not an inferred exception location.
+
+[Python's LZMA documentation](https://docs.python.org/3.12/library/lzma.html#lzma.LZMACompressor)
+defines omitted preset/filters as preset 6. The standalone diagnostic compares
+omitted preset with explicit 6, plus presets 0 and 3 as controls. Each case runs
+in a fresh `python -S` process. Incremental mode retains the compressor through
+initialization, compression and flush snapshots; a separate one-shot run uses
+the same `lzma.compress(payload, format=FORMAT_XZ)` call as the fixed source.
+No preset is substituted in the archive workload.
+
+Retained `2026-10-28-lzma-probe.jsonl`: **128 probes** = four AS conditions
+(128/192/256MiB and inherited unlimited AS), four input lengths (0/1/1024/1048576
+bytes of repeated ASCII x), four presets (omitted/6/0/3), and two APIs.
+Default and explicit 6 both fail **during initialization**, even with empty
+input, at AS=128MiB. Their one-shot controls also fail. All 112 other cases
+succeed and round-trip; successful default/6 and incremental/one-shot outputs
+are byte-identical for each length. Presets 0/3 succeed at 128MiB, but are
+**diagnostic controls only**, not a proposed change to the pinned source.
+
+Representative AS=192MiB, default-preset **point samples**, in bytes:
+
+| Input | Phase | Virtual size | RSS |
+| --- | --- | ---: | ---: |
+| 0 | Before constructor | 42,287,104 | 12,632,064 |
+| 0 | Constructor returned | 139,976,704 | 29,814,784 |
+| 0 | Flush completed, compressor retained | 139,976,704 | 29,839,360 |
+| 1,048,576 | Before constructor | 43,339,776 | 13,676,544 |
+| 1,048,576 | Constructor returned | 141,029,376 | 30,859,264 |
+| 1,048,576 | Flush completed, compressor retained | 141,029,376 | 40,345,600 |
+
+The empty-input constructor increases sampled virtual size by about 93.2MiB;
+total virtual size is about 133.5MiB, exceeding the 128MiB AS guard, while RSS
+is about 28.4MiB. Failed-constructor allocations can already be freed when the
+failure snapshot is taken. Those low post-failure samples do not measure the
+failed allocation size. `/proc/self/status` VmSize/VmRSS are instantaneous;
+`getrusage().ru_maxrss` is a separate kernel high-water counter including startup.
+Probe CPU/wall times include snapshots and round-trip checking. These metrics
+are retained independently, not reconciled into an invented peak. Virtual
+peak and aggregate workload memory peak remain null.
+
+The host liblzma 5.4.5 `lzma_easy_encoder_memusage()` estimates are 97,620,491
+bytes for preset 6, 32,608,775 for 3, and 2,855,431 for 0. These are library
+**estimates**, not RSS measurements. The [XZ manual](https://tukaani.org/xz/man/xz.1.html)
+also documents preset 6's substantial encoder requirement. Library lookup and
+these estimates happen in the probe driver, outside measured children.
+
+Together, the empty-input failure, constructor-only phase isolation, virtual
+size/RSS separation, lower-preset controls, and successful unchanged archive at
+higher AS identify this reproduction as **encoder initialization hitting the
+additional address-space guard**, not evidence of input-size exhaustion or a
+128MiB cgroup OOM. Larger or less compressible real inputs may still require
+more resident memory; this small repeated-byte matrix is not a scaling study.
+The exact AS threshold is runtime/platform dependent.
+
+### Four-lane correctness and observation remain separate
+
+New complete matrices `2026-10-28-as128.jsonl`, `...-as192.jsonl`, and
+`...-as256.jsonl` each contain six campaigns (pool 1/2/4, unaudited/audited,
+one repetition): **18 campaigns / 72 attempts**, additional to the baseline.
+These are exploratory runs on the same 8GiB, quota-8-CPU host; some diagnostic
+launches overlap. Their timing fields must not establish scaling or overhead.
+
+| Lane | Unaudited AS128 | Unaudited AS192 | Unaudited AS256 | Worker RSS high-water across complete matrices |
+| --- | --- | --- | --- | ---: |
+| gh_identity | 3/3 correct | 3/3 correct | 3/3 correct | 49,373,184–49,381,376 bytes |
+| xprobe | 3/3 correct | 3/3 correct | 3/3 correct | 25,460,736–25,468,928 bytes |
+| Ironmate | 3/3 correct | 3/3 correct | 3/3 correct | 19,791,872 bytes |
+| mcp-toolcall-lab | 3 initialization failures | 3/3 correct | 3/3 correct | 31,850,496 failed; 32,112,640 successful |
+
+Successful oracle result hashes are stable across these conditions. These are
+per-worker maxima, **never summed into an aggregate peak**. The change that
+resolves the archive's diagnostic failure is solely selecting AS192 or AS256;
+it does not alter the existing XZ archive encoder or source pins.
+
+All 36 audited attempts in the complete matrices fail with `tracing_error`
+before a worker receipt. Worker correctness/RSS are unavailable for these
+attempts, external totals remain null, and dependency classification is unknown.
+No valid traced/untraced overhead pair exists.
+
+An additional first AS256 launch retained only the pool-1 pair before stopping;
+its eight attempts are preserved in `2026-10-28-as256-partial.jsonl`, outside the
+complete-matrix counts above. The stopping reason was not captured (unknown).
+Its unaudited four lanes passed; its four audited lanes have tracing errors.
+It must not be presented as a complete campaign matrix.
+
+The probe records visible cgroup limits/counters and an empty-subgroup creation
+attempt: `memory.max=8589934592`, `cpu.max=800000 100000`, creation fails with
+errno 30 (read-only filesystem). It never changes the enclosing cgroup. No
+128MiB-cgroup/CPU1 run was possible. Shared cgroup counters and RSS from the
+larger host do not predict acceptance; that result remains **unknown**.
+
+### Reproduce and regress
+
+```sh
+python -S tools/constrained_lab_lzma_probe.py --output new-lzma-probes.jsonl
+# Staged repos must still match the original manifest exactly:
+python -S tools/constrained_lab_workloads.py --staged ../staged --exploratory --repeats 1 --address-space-mib 192 --output new-as192.jsonl
+# In a dedicated 128MiB/CPU1 cgroup, omit --exploratory; AS192 is a separate guard:
+python -S tools/constrained_lab_workloads.py --staged ../staged --address-space-mib 192 --output new-acceptance-attempt.jsonl
+python -S -m unittest discover -s tests -p 'test_constrained_lab_workloads.py' -v
+python -S -m unittest discover -s tests -p 'test_constrained_lab_lzma_probe.py' -v
+```
+
+The 11 focused tests cover larger-AS fail-closed budget verification, propagation
+of the selected guard, failure receipts, phase attribution with null metrics,
+evidence hashes/pins, empty-input/default-6 controls, stable independent-oracle
+results, and unavailable-audit separation. Dedicated-cgroup aggregate memory,
+CPU1 acceptance, permitted tracing and external dependency classification remain
+open. Keep this PR **Draft**, and #143/#133 open; no acceptance or merge is claimed.
+
+Additional validation: the unchanged auditor regression suite ran 19 tests,
+with 18 passing and its live-strace CI-only check skipped. `git diff --check` passed.

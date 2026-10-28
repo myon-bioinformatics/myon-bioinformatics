@@ -16,7 +16,7 @@ class WorkloadHarnessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             args = argparse.Namespace(manifest=str(w.ROOT/'fixtures/constrained-workloads/manifest.json'),
                                       fixture=str(w.ROOT/'fixtures/constrained-workloads/input.json'),
-                                      staged=tmp, exploratory=False, output=tmp+'/result.jsonl')
+                                      staged=tmp, exploratory=False, address_space_mib=256, output=tmp+'/result.jsonl')
             with patch.object(w, 'validate_sources'), patch.object(w, 'verify_budget', side_effect=ValueError), patch.object(w, 'trial') as launch:
                 with self.assertRaisesRegex(ValueError, 'budget unavailable'):
                     w.run(args)
@@ -48,6 +48,28 @@ class WorkloadHarnessTests(unittest.TestCase):
         self.assertIsNone(row['worker'])
         self.assertIsNone(row['external_total'])
         self.assertIsNone(row['launch_cpu_seconds'])
+
+    def test_explicit_as_guard_is_forwarded_to_worker(self):
+        with patch.object(w.subprocess, 'Popen') as popen, patch.object(w, 'wait_usage', return_value=(1, None)):
+            popen.return_value.pid = 123
+            w.trial('xprobe', Path('/unused'), Path('/unused.json'), False, 256)
+        command = popen.call_args.args[0]
+        self.assertEqual(command[command.index('--address-space-mib')+1], '256')
+
+    def test_failure_receipt_keeps_frames_and_explicit_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp)/'fixture.json'; fixture.write_text('{}')
+            receipt = Path(tmp)/'receipt.json'
+            with patch.object(w.resource, 'setrlimit') as limit, patch.object(w, 'block_network', return_value='test'), patch.object(w, 'exercise', side_effect=MemoryError):
+                rc = w.worker('mcp-toolcall-lab', Path('/unused'), fixture, receipt, 192)
+            report = json.loads(receipt.read_text())
+        self.assertEqual(rc, 1)
+        self.assertFalse(report['correct'])
+        self.assertEqual(report['error_type'], 'MemoryError')
+        self.assertNotIn('result_sha256', report)
+        self.assertTrue(report['error_frames'])
+        self.assertEqual(report['address_space_limit_bytes'], 192*1024**2)
+        limit.assert_any_call(w.resource.RLIMIT_AS, (192*1024**2,)*2)
 
     @unittest.skipUnless(sys.platform.startswith('linux'), 'Linux wait4 metrics')
     def test_wait4_per_child_usage(self):

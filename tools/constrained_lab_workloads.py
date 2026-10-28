@@ -102,9 +102,9 @@ def exercise(lane, source, fixture, work):
     return hashlib.sha256(json.dumps(result, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
-def worker(lane, source, fixture_path, receipt):
+def worker(lane, source, fixture_path, receipt, address_space_mib=128):
     # These per-process safeguards are NOT an aggregate 128MiB cgroup budget.
-    resource.setrlimit(resource.RLIMIT_AS, (128*1024*1024, 128*1024*1024))
+    resource.setrlimit(resource.RLIMIT_AS, (address_space_mib*1024*1024, address_space_mib*1024*1024))
     resource.setrlimit(resource.RLIMIT_FSIZE, (LIMIT, LIMIT))
     resource.setrlimit(resource.RLIMIT_CPU, (10, 10))
     network = block_network()
@@ -115,10 +115,14 @@ def worker(lane, source, fixture_path, receipt):
             result = exercise(lane, Path(source), fixture, Path(tmp))
         report = {'correct': True, 'result_sha256': result}
     except Exception as exc:
-        report = {'correct': False, 'error_type': type(exc).__name__}
+        import traceback
+        report = {'correct': False, 'error_type': type(exc).__name__,
+                  'error_frames': [{'file': Path(f.filename).name, 'function': f.name,
+                                    'line': f.lineno} for f in traceback.extract_tb(exc.__traceback__)]}
     report.update(wall_seconds=time.perf_counter()-started,
                   cpu_seconds=time.process_time()-cpu,
                   rss_peak_bytes=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss*1024,
+                  address_space_limit_bytes=address_space_mib*1024*1024,
                   network=network, scope='worker-self; RSS includes interpreter startup; CPU/wall cover imports and workload')
     Path(receipt).write_text(json.dumps(report))
     return 0 if report['correct'] else 1
@@ -156,11 +160,12 @@ def wait_usage(proc, timeout):
         time.sleep(0.005)
 
 
-def trial(lane, staged, fixture, traced):
+def trial(lane, staged, fixture, traced, address_space_mib=128):
     with tempfile.TemporaryDirectory() as tmp:
         receipt = Path(tmp)/'receipt.json'
         cmd = [sys.executable, '-S', str(Path(__file__).resolve()), '--worker', lane,
-               '--staged', str(staged), '--fixture', str(fixture), '--receipt', str(receipt)]
+               '--staged', str(staged), '--fixture', str(fixture), '--receipt', str(receipt),
+               '--address-space-mib', str(address_space_mib)]
         started = time.perf_counter()
         # Drop caller credentials; preserve only deterministic runtime essentials.
         env = {'PATH': os.environ.get('PATH', '/usr/bin:/bin'), 'PYTHONHASHSEED': '7',
@@ -219,7 +224,7 @@ def run(args):
                 'libc': platform.libc_ver(), 'gpu': 'not used; GPU device access is not isolated',
                 'budget': budget, 'budget_verified': budget is not None,
                 'experiment_class': 'exploratory' if args.exploratory else 'budget-verified',
-                'worker_safeguards': {'address_space_bytes': 134217728, 'cpu_seconds': 10, 'file_bytes': LIMIT},
+                'worker_safeguards': {'address_space_bytes': args.address_space_mib*1024*1024, 'cpu_seconds': 10, 'file_bytes': LIMIT},
                 'seed': 7, 'timestamp_utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
                 'network': 'per-worker seccomp; fails before workload if unavailable',
                 'measurement_scope': 'cgroup counters include unrelated processes and historical peak; not attributed to campaign',
@@ -236,7 +241,7 @@ def run(args):
                 for traced in (False, True):
                     before, start = cgroup(), time.perf_counter()
                     with ThreadPoolExecutor(max_workers=workers) as pool:
-                        rows = list(pool.map(lambda lane: trial(lane, staged, fixture, traced), LANES))
+                        rows = list(pool.map(lambda lane: trial(lane, staged, fixture, traced, args.address_space_mib), LANES))
                     after = cgroup()
                     all_correct = all_correct and all(r['correct'] for r in rows)
                     row = {'type': 'campaign', 'repeat': repeat, 'workers': workers, 'traced': traced,
@@ -256,11 +261,13 @@ def main():
     p.add_argument('--output')
     p.add_argument('--repeats', type=int, choices=range(1, 6), default=3)
     p.add_argument('--exploratory', action='store_true')
+    p.add_argument('--address-space-mib', type=int, choices=(128, 192, 256), default=128,
+                   help='Additional per-process virtual-address guard; never replaces cgroup verification')
     p.add_argument('--worker', choices=LANES)
     p.add_argument('--receipt')
     a = p.parse_args()
     if a.worker:
-        return worker(a.worker, Path(a.staged)/a.worker, a.fixture, a.receipt)
+        return worker(a.worker, Path(a.staged)/a.worker, a.fixture, a.receipt, a.address_space_mib)
     if not a.output:
         p.error('--output required')
     return run(a)
