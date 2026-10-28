@@ -1,0 +1,23 @@
+{
+  "schema": "constrained-real-workloads-manifest/1",
+  "sources": {
+    "gh_identity": {
+      "sha": "46a7078040d672880dc2c786185723064694ee9a",
+      "url": "https://github.com/myon-bioinformatics/gh_identity.git"
+    },
+    "xprobe": {
+      "sha": "45618dde1099202d202f31f9d0015abea89ca8fb",
+      "url": "https://github.com/myon-bioinformatics/xprobe.git"
+    },
+    "Ironmate": {
+      "sha": "ea7a552c316500a913e7b0eff84029a496d6ed1e",
+      "url": "https://github.com/myon-bioinformatics/Ironmate.git"
+    },
+    "mcp-toolcall-lab": {
+      "sha": "b96e8a4cc4a1280b8c3b80e9788f48016d8f5f77",
+      "url": "https://github.com/myon-bioinformatics/mcp-toolcall-lab.git"
+    }
+  },
+  "fixture_sha256": "93c4a7eb617c7219e1d0d32acc3fde660d4e2dc7740a2aa05a1da8382e79380b",
+  "seed": 7
+}
