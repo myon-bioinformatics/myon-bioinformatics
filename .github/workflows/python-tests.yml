@@ -70,7 +70,9 @@ env:
 jobs:
   stdlib-runtime:
     name: Stdlib runtime (Python ${{ matrix.python }})
-    runs-on: ubuntu-latest
+    # setup-python has no Python 3.9 distribution for Ubuntu 26.04.
+    # Keep the legacy stdlib lane separate from the Python 3.11+ pytest jobs.
+    runs-on: ${{ matrix.python == '3.9' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
