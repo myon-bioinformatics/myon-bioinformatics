@@ -2919,7 +2919,9 @@ def _subtree_split_filter_branch(root, prefix, source, timeout):
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("timeout must be positive and finite")
     deadline = time.monotonic() + timeout
-    origin = str(_git_root(root))
+    # Clone/fetch run with different -C directories; keep the source rooted
+    # at the caller's repository even when --root is relative.
+    origin = str(_git_root(root).resolve())
     with tempfile.TemporaryDirectory(prefix="ghi-subtree-fb-") as directory:
         clone = os.path.join(directory, "repo")
         remaining = max(0.001, deadline - time.monotonic())
@@ -4887,6 +4889,96 @@ def render_fleet_checks(o):
     return "\n".join(out)
 
 
+PR_CHECKS_IGNORE = r"(?i)copilot"
+_PR_CHECKS_OK = ("success", "skipped", "neutral")
+
+
+def parse_pr_check_targets(tokens, owner=None):
+    """OWNER/REPO#N, OWNER/REPO N..., or with owner also REPO#N and REPO N."""
+    if owner is not None:
+        owner = repo(f"{owner}/x").split("/")[0]
+        tokens = [t if re.fullmatch(r"[0-9]+", t) or "/" in t.partition("#")[0] else f"{owner}/{t}" for t in tokens]
+    return parse_status_targets(tokens)
+
+
+def _pr_checks_row(r, n, sha, pattern, show, transport, timeout):
+    observed = checks_for_sha(r, sha, transport=transport, timeout=timeout)
+    kept = [c for c in observed["checks"] if not pattern.search(c["name"] or "")]
+    by = dict(sorted(Counter(c["conclusion"] or "-" for c in kept).items()))
+    attention = [c for c in kept if c["status"] != "completed" or c["conclusion"] not in _PR_CHECKS_OK]
+    if not kept or any(c["status"] != "completed" for c in kept):
+        state = "pending"
+    elif attention or not any(c["conclusion"] == "success" for c in kept):
+        state = "failed"
+    else:
+        state = "green"
+    return {"repository": r, "number": n, "head_sha": sha, "state": state, "total": len(kept), "by_conclusion": by,
+            "ignored": len(observed["checks"]) - len(kept),
+            "attention": [{"status": c["status"], "conclusion": c["conclusion"], "name": c["name"]} for c in attention[:show]]}
+
+
+def pr_checks(tokens, *, owner=None, ignore=PR_CHECKS_IGNORE, wait=0, interval=30, delay=0, show=5,
+              transport="auto", timeout=30, sleep=None, clock=None):
+    """Check-runs on each PR's head, polled together until every PR is settled or wait runs out.
+
+    A PR is settled when it has at least one kept check and all kept checks are
+    completed. Head SHAs are resolved once. Each request is its own bounded
+    operation, so waiting may exceed one request's timeout. Read-only.
+    """
+    targets = parse_pr_check_targets(tokens, owner)
+    for name, value, low, high in (("wait", wait, 0, 3600), ("interval", interval, 5, 600), ("delay", delay, 0, 1800)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not low <= value <= high:
+            raise ValueError(f"{name} must be {low}-{high} seconds")
+    if type(show) is not int or not 0 <= show <= 100:
+        raise ValueError("show must be 0-100")
+    if _BUDGET.get() is not None:
+        raise ValueError("pr_checks runs its own bounded requests; call it outside operation()")
+    pattern = re.compile(ignore) if ignore else re.compile(r"(?!)")
+    sleep = sleep or time.sleep
+    clock = clock or time.monotonic
+    if delay:
+        sleep(delay)
+    start = clock()
+    rows, shas = [], {}
+    for r, n in targets:
+        try:
+            shas[(r, n)] = pr(r, n, transport=transport, timeout=timeout)["head_sha"]
+            rows.append({"repository": r, "number": n, "head_sha": shas[(r, n)], "state": "pending"})
+        except (ValueError, Error) as error:
+            rows.append({"repository": r, "number": n, "state": "error", "error": str(getattr(error, "code", "")) or str(error)})
+    polls = 0
+    while True:
+        polls += 1
+        for i, row in enumerate(rows):
+            if row["state"] != "pending":
+                continue
+            try:
+                rows[i] = _pr_checks_row(row["repository"], row["number"], row["head_sha"], pattern, show, transport, timeout)
+            except (ValueError, Error) as error:
+                rows[i] = {**row, "state": "error", "error": str(getattr(error, "code", "")) or str(error)}
+        elapsed = clock() - start
+        if not any(r["state"] == "pending" for r in rows) or elapsed + interval > wait:
+            break
+        sleep(interval)
+    states = {r["state"] for r in rows}
+    state = "error" if "error" in states else "failed" if "failed" in states else "pending" if "pending" in states else "green"
+    return {"schema": "gh-identity-pr-checks/1", "state": state, "rows": rows, "polls": polls,
+            "elapsed_seconds": round(clock() - start, 1), "observed_at": now()}
+
+
+def render_pr_checks(o):
+    out = []
+    for r in o["rows"]:
+        name = f"{r['repository']} #{r['number']}"
+        if r["state"] == "error":
+            out.append(f"## {name} error {r['error']}")
+            continue
+        counts = " ".join(f"{v} {k}" for k, v in r["by_conclusion"].items())
+        out.append(f"## {name} {r['state']} total={r['total']} {counts}".rstrip())
+        out += [f"{c['status']} {c['conclusion'] or '-'} {c['name']}" for c in r["attention"]]
+    return "\n".join(out)
+
+
 def fleet_pr(roots, title, body, *, base="main", draft=False, write=False, transport="auto", timeout=30):
     """Open a PR for each clone's current branch (planned unless write=True); an open PR is reported, not duplicated."""
     if not isinstance(title, str) or not title.strip() or not isinstance(body, str):
@@ -5188,6 +5280,132 @@ def render_merge_readiness(o):
         out.append(f"  head moved after {moved['author']}'s review of {moved['reviewed'][:7]}: "
                    + ("; ".join(moved["messages"]) or "?"))
     return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------
+# Local trials and activity: answer "would it merge / is git still busy here?"
+# without touching the work tree, the index or any ref.
+# ---------------------------------------------------------------------------
+def merge_trial(root, ref, *, base="HEAD", timeout=120):
+    """Would ``ref`` merge into ``base`` in this clone? Read-only (no work-tree, index or ref change).
+
+    The safe form of ``git merge --no-commit --no-ff REF; git status; git diff
+    --name-only --diff-filter=U; git diff --stat HEAD``: ``git merge-tree
+    --write-tree`` (Git 2.38+) computes the merge in the object store only.
+    Reports clean/conflict, conflicted paths and the files the merge would change.
+    """
+    for name, value in (("ref", ref), ("base", base)):
+        if not isinstance(value, str) or not value or value.startswith("-") or any(c in value for c in "\0\n"):
+            raise ValueError(f"{name} must be a revision")
+    out = {"schema": "gh-identity-merge-trial/1", "root": os.fspath(root), "base": base, "ref": ref, "write": False}
+    resolved = {}
+    for name, value in (("base", base), ("ref", ref)):
+        raw, _, code = _git_run(root, ["rev-parse", "--verify", "--quiet", value + "^{commit}"], max_bytes=4096,
+                                ok=(0, 1, 128))
+        resolved[name] = _git_decode(raw).strip() if code == 0 else None
+    out.update(base_sha=resolved["base"], ref_sha=resolved["ref"])
+    if not resolved["base"] or not resolved["ref"]:
+        missing = [n for n in ("base", "ref") if not resolved[n]]
+        return {**out, "status": "missing_object", "missing": missing, "ok": False}
+    raw, _, code = _git_run(root, ["merge-base", resolved["base"], resolved["ref"]], max_bytes=4096, ok=(0, 1))
+    out["merge_base"] = _git_decode(raw).strip() or None if code == 0 else None
+    if out["merge_base"] == resolved["ref"]:
+        return {**out, "status": "already_merged", "conflicts": [], "changed": [], "ok": True}
+    raw, _, code = _git_run(root, ["merge-tree", "--write-tree", "--name-only", "--no-messages",
+                                   resolved["base"], resolved["ref"]], ok=(0, 1), timeout=timeout)
+    lines = [l for l in _git_decode(raw).splitlines() if l]
+    tree, conflicts = (lines[0] if lines else None), lines[1:]
+    changed = []
+    if tree:
+        raw, _, _ = _git_run(root, ["diff", "--numstat", "--no-renames", resolved["base"], tree], max_bytes=4_000_000)
+        for line in _git_decode(raw).splitlines():
+            added, removed, path = (line.split("\t", 2) + ["", "", ""])[:3]
+            changed.append({"path": path, "added": None if added == "-" else int(added),
+                            "removed": None if removed == "-" else int(removed)})
+    return {**out, "status": "clean" if code == 0 else "conflict", "tree": tree, "conflicts": conflicts,
+            "changed": changed, "ok": code == 0}
+
+
+def render_merge_trial(o):
+    head = f"{o['status']} {o['ref']}@{(o.get('ref_sha') or '?')[:7]} into {o['base']}@{(o.get('base_sha') or '?')[:7]}"
+    if o["status"] == "missing_object":
+        return head + " (not in this clone: " + ", ".join(o["missing"]) + "; fetch it first)"
+    rows = [head + f": {len(o['changed'])} file(s) change" + (f", {len(o['conflicts'])} conflicted" if o["conflicts"] else "")]
+    rows += [f"  conflict {p}" for p in o["conflicts"]]
+    rows += [f"  {c['path']} +{c['added'] if c['added'] is not None else 'bin'}/-{c['removed'] if c['removed'] is not None else 'bin'}"
+             for c in o["changed"][:40]]
+    if len(o["changed"]) > 40:
+        rows.append(f"  ... {len(o['changed']) - 40} more")
+    return "\n".join(rows)
+
+
+def git_activity(root, objects=(), *, proc_root="/proc", now_seconds=None):
+    """Is this clone busy, and are these objects here? Read-only.
+
+    The checks behind ``git rev-parse HEAD; git cat-file -t SHA; ps ... | rg 'git
+    fetch'``: HEAD, each object's type (or ``missing``), lock files left in
+    ``.git`` (index.lock, shallow.lock, HEAD.lock, packed-refs.lock) and, on Linux,
+    running git processes whose working directory is inside this clone, with
+    their arguments and elapsed seconds (a fetch that is still unpacking vs one
+    that died).
+    """
+    if isinstance(objects, str):
+        raise TypeError("objects must be a sequence")
+    top = _git_decode(_git_run(root, ["rev-parse", "--show-toplevel"], max_bytes=4096)[0]).strip()
+    gitdir = _git_decode(_git_run(root, ["rev-parse", "--absolute-git-dir"], max_bytes=4096)[0]).strip()
+    raw, _, code = _git_run(root, ["rev-parse", "--verify", "--quiet", "HEAD"], max_bytes=4096, ok=(0, 1, 128))
+    out = {"schema": "gh-identity-git-activity/1", "root": top, "head": _git_decode(raw).strip() if code == 0 else None,
+           "objects": [], "locks": [], "processes": None}
+    for obj in objects:
+        if not isinstance(obj, str) or not re.fullmatch(r"[0-9a-fA-F]{4,64}", obj):
+            raise ValueError("objects must be hex object ids")
+        raw, _, code = _git_run(root, ["cat-file", "-t", obj], max_bytes=4096, ok=(0, 1, 128))
+        out["objects"].append({"id": obj, "type": _git_decode(raw).strip() if code == 0 else "missing"})
+    for name in ("index.lock", "shallow.lock", "HEAD.lock", "packed-refs.lock", "config.lock"):
+        path = os.path.join(gitdir, name)
+        if os.path.exists(path):
+            out["locks"].append({"file": name, "age_seconds": int(time.time() - os.path.getmtime(path))})
+    proc = Path(proc_root)
+    if proc.is_dir() and (proc / "stat").is_file():
+        try:
+            boot = next(float(l.split()[1]) for l in (proc / "stat").read_text().splitlines() if l.startswith("btime "))
+            ticks = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
+        except (OSError, StopIteration, ValueError):
+            boot = ticks = None
+        rows, real_top = [], os.path.realpath(top)
+        for entry in proc.iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                argv = [a.decode("utf-8", "replace") for a in (entry / "cmdline").read_bytes().split(b"\0") if a]
+                cwd = os.path.realpath(os.readlink(entry / "cwd"))
+            except OSError:
+                continue
+            if not argv or os.path.basename(argv[0]) not in ("git", "git-remote-https", "git-remote-http",
+                                                             "git-index-pack", "git-upload-pack") \
+                    or not (cwd == real_top or cwd.startswith(real_top + os.sep)):
+                continue
+            row = {"pid": int(entry.name), "argv": [re.sub(r"//[^/@\s]+@", "//***@", a) for a in argv[:12]]}
+            if boot is not None:
+                try:
+                    start = int((entry / "stat").read_text().rsplit(")", 1)[1].split()[19]) / ticks + boot
+                    row["elapsed_seconds"] = int((now_seconds if now_seconds is not None else time.time()) - start)
+                except (OSError, IndexError, ValueError):
+                    pass
+            rows.append(row)
+        out["processes"] = sorted(rows, key=lambda r: r["pid"])
+    out["busy"] = bool(out["locks"] or out["processes"])
+    return out
+
+
+def render_git_activity(o):
+    rows = [f"{'busy' if o['busy'] else 'idle'} {o['root']} HEAD {(o['head'] or '(none)')[:12]}"]
+    rows += [f"  object {x['id'][:12]} {x['type']}" for x in o["objects"]]
+    rows += [f"  lock {x['file']} ({x['age_seconds']}s old)" for x in o["locks"]]
+    if o["processes"] is None:
+        rows.append("  processes: not observable on this platform")
+    rows += [f"  pid {p['pid']} {p.get('elapsed_seconds', '?')}s: {' '.join(p['argv'])}" for p in o["processes"] or []]
+    return "\n".join(rows)
 
 
 @contextlib.contextmanager
@@ -5840,8 +6058,11 @@ def _cli_parser():
  x=s.add_parser("git-switch");x.add_argument("--root",default=".");x.add_argument("branch",nargs="?",help='existing branch, or "-" for the previous branch');x.add_argument("-c","--create",metavar="NEW_BRANCH");x.add_argument("--write",action="store_true")
  x=s.add_parser("fleet-status",help="branch, upstream +ahead/-behind, changes of several clones (local; --fix-tracking plans upstream config, --write applies)");x.add_argument("roots",nargs="+");x.add_argument("--fix-tracking",action="store_true");x.add_argument("--write",action="store_true");x.add_argument("--text",action="store_true")
  x=s.add_parser("fleet-checks",allow_abbrev=False,help="checks of each clone's HEAD; --steps adds failed steps and failure/warning annotations (read-only)");x.add_argument("roots",nargs="+");x.add_argument("--steps",action="store_true");x.add_argument("--ignore",action="append",metavar="CHECK_NAME");x.add_argument("--wait",type=float,default=0);x.add_argument("--interval",type=float,default=30);x.add_argument("--text",action="store_true");x.add_argument("--poll-timeout",type=float,default=30,help=argparse.SUPPRESS)
+ x=s.add_parser("pr-checks",help="check-runs on each PR head (OWNER/REPO#N, or REPO#N with --owner); --wait polls all together until settled; exit 0 green, 1 failed/error, 3 pending (read-only)");x.add_argument("targets",nargs="+",metavar="OWNER/REPO#N|OWNER/REPO|N");x.add_argument("--owner");x.add_argument("--ignore",default=PR_CHECKS_IGNORE,metavar="REGEX",help="drop check names matching REGEX (default (?i)copilot; empty keeps all)");x.add_argument("--wait",type=float,default=0);x.add_argument("--interval",type=float,default=30);x.add_argument("--delay",type=float,default=0,help="sleep before the first poll (CI start-up)");x.add_argument("--show",type=int,default=5,help="attention lines per PR");x.add_argument("--text",action="store_true");x.add_argument("--poll-timeout",type=float,default=30,help=argparse.SUPPRESS)
  x=s.add_parser("merge-readiness",help="review findings (Must/Blocking/Should), changes requested, open threads and head moves to confirm before merging; exit 0 clear, 1 blocked, 3 attention");x.add_argument("repository");x.add_argument("number",type=int);x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
  x=s.add_parser("fleet-pr",help="open a PR for each clone's current branch, or report the open one (planned unless --write)");x.add_argument("roots",nargs="+");x.add_argument("--title",required=True);x.add_argument("--body-file",required=True);x.add_argument("--base",default="main");x.add_argument("--draft",action="store_true");x.add_argument("--write",action="store_true");x.add_argument("--text",action="store_true")
+ x=s.add_parser("merge-trial",help="would REF merge into BASE in this clone? merge-tree only: no work-tree, index or ref change; exit 0 clean, 1 conflict, 3 object missing");x.add_argument("root");x.add_argument("ref");x.add_argument("--base",default="HEAD");x.add_argument("--git-timeout",type=float,default=120);x.add_argument("--text",action="store_true")
+ x=s.add_parser("git-activity",help="HEAD, object presence (cat-file -t), stale .git locks and running git processes in this clone; exit 0 idle, 3 busy");x.add_argument("root");x.add_argument("--object",action="append",default=[],dest="objects",metavar="SHA");x.add_argument("--text",action="store_true")
  x=s.add_parser("merge-preview",help="would these open PRs merge together (alone, in sequence, pairwise)? temporary repository, nothing pushed");x.add_argument("repository");x.add_argument("--pr",type=int,action="append",dest="numbers");x.add_argument("--all-open",action="store_true");x.add_argument("--base");x.add_argument("--no-pairs",action="store_true");x.add_argument("--git-timeout",type=float,default=300);x.add_argument("--remote-base",default="https://github.com/");x.add_argument("--text",action="store_true")
  x=s.add_parser("local-position",help="cwd, Git top level, checkout HEAD, change counts, GitHub remote (local only)");x.add_argument("--root",default=".")
  x=s.add_parser("subtree-sync",help="plan (default) or run git subtree push/pull with provenance; push only to a NEW branch");x.add_argument("--root",default=".");x.add_argument("--prefix",required=True);x.add_argument("--remote",required=True);x.add_argument("--branch",required=True);x.add_argument("--direction",choices=("push","pull"),required=True);x.add_argument("--squash",action="store_true");x.add_argument("--message","-m");x.add_argument("--remote-compare-ref",help="remote branch to compare before push (default: remote HEAD symref)");x.add_argument("--write",action="store_true",help="actually push/pull and verify; without it only the plan is printed");x.add_argument("--git-timeout",type=float,default=600)
@@ -5899,7 +6120,7 @@ def _cli_parser():
  x=s.add_parser("variable-get");x.add_argument("repo");x.add_argument("name")
  x=s.add_parser("variable-set");x.add_argument("repo");x.add_argument("name");x.add_argument("value");x.add_argument("--write",action="store_true")
  x=s.add_parser("labels",help="add/remove existing labels on one Issue/PR (planned unless --write)");x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("--add",action="append",default=[],metavar="LABEL");x.add_argument("--remove",action="append",default=[],metavar="LABEL");x.add_argument("--write",action="store_true")
- x=s.add_parser("comment");x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("body");x.add_argument("--operation-key");x.add_argument("--sanitize-mentions",action="store_true");x.add_argument("--write",action="store_true")
+ x=s.add_parser("comment");x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("body",nargs="?");x.add_argument("--body-file");x.add_argument("--operation-key");x.add_argument("--sanitize-mentions",action="store_true");x.add_argument("--write",action="store_true")
  _CLI_PARSER=a;return a
 def _main(argv=None):
  argv=list(sys.argv[1:] if argv is None else argv)
@@ -5928,6 +6149,8 @@ def _main(argv=None):
    else:raise ValueError("branch required")
   elif ns.cmd=="git-work":o=git_work(ns.root,ns.source,ns.branch,upstream=ns.upstream,remote=ns.remote,depth=ns.depth,fetch_timeout=ns.fetch_timeout,write=ns.write)
   elif ns.cmd=="local-position":o=local_position(ns.root)
+  elif ns.cmd=="merge-trial":o=merge_trial(ns.root,ns.ref,base=ns.base,timeout=ns.git_timeout)
+  elif ns.cmd=="git-activity":o=git_activity(ns.root,ns.objects)
   elif ns.cmd=="merge-preview":o=merge_preview(ns.repository,ns.numbers,all_open=ns.all_open,base=ns.base,pairs=not ns.no_pairs,transport=transport,timeout=ns.git_timeout,remote_base=ns.remote_base)
   elif ns.cmd=="fleet-status":o=fleet_status(ns.roots,fix_tracking=ns.fix_tracking,write=ns.write)
   elif ns.cmd=="fleet-checks":
@@ -5936,6 +6159,7 @@ def _main(argv=None):
     o=fleet_checks(ns.roots,ignore=ignore,steps=ns.steps,transport=transport,timeout=ns.poll_timeout)
     if o["state"]!="pending" or time.monotonic()+ns.interval>deadline:break
     time.sleep(ns.interval)
+  elif ns.cmd=="pr-checks":o=pr_checks(ns.targets,owner=ns.owner,ignore=ns.ignore,wait=ns.wait,interval=ns.interval,delay=ns.delay,show=ns.show,transport=transport,timeout=ns.poll_timeout)
   elif ns.cmd=="merge-readiness":o=merge_readiness(ns.repository,ns.number,max_items=ns.limit,max_pages=ns.page_limit,transport=transport)
   elif ns.cmd=="fleet-pr":o=fleet_pr(ns.roots,ns.title,Path(ns.body_file).read_text(encoding="utf-8"),base=ns.base,draft=ns.draft,write=ns.write,transport=transport)
   elif ns.cmd=="subtree-sync-status":o=subtree_sync_status(ns.root,ns.prefix,ns.other_root,revision=ns.revision,other_ref=ns.other_ref,other_only_paths=ns.other_only_path,timeout=ns.timeout,mainline=ns.mainline)
@@ -6013,6 +6237,9 @@ def _main(argv=None):
   elif ns.cmd=="variable-set":o=set_variable(ns.repo,ns.name,ns.value,ns.write,transport)
   elif ns.cmd=="labels":o=set_labels(ns.repo,ns.number,ns.add,ns.remove,ns.write,transport)
   else:
+   if (ns.body is None)==(ns.body_file is None):raise ValueError("give body or --body-file")
+   if ns.body_file:
+    with open(ns.body_file,encoding="utf-8",newline="") as stream:ns.body=stream.read()
    marker=f"<!-- gh-identity:{ns.operation_key} -->" if ns.operation_key else None
    o=post_comment(ns.repo,ns.number,ns.body,ns.write,marker,transport,sanitize_mentions=ns.sanitize_mentions)
  except (ValueError,Error,OSError,GitInspectionError) as e:
@@ -6029,19 +6256,25 @@ def _main(argv=None):
  elif ns.cmd in ("vendor-lock-check","vendor-lock-verify-remote") and ns.markdown:print(render_vendor_markdown(o))
  elif ns.cmd=="pin-audit" and ns.text:print(render_pin_audit(o))
  elif ns.cmd=="merge-preview" and ns.text:print(render_merge_preview(o))
+ elif ns.cmd=="merge-trial" and ns.text:print(render_merge_trial(o))
+ elif ns.cmd=="git-activity" and ns.text:print(render_git_activity(o))
  elif ns.cmd=="fleet-status" and ns.text:print(render_fleet_status(o))
  elif ns.cmd=="fleet-checks" and ns.text:print(render_fleet_checks(o))
  elif ns.cmd=="fleet-pr" and ns.text:print(render_fleet_pr(o))
+ elif ns.cmd=="pr-checks" and ns.text:print(render_pr_checks(o))
  elif ns.cmd=="merge-readiness" and ns.text:print(render_merge_readiness(o))
  elif ns.cmd=="duplicate-files" and ns.markdown:print(render_duplicates_markdown(o,top=ns.top))
  else:print(json.dumps(o,ensure_ascii=False))
  if ns.cmd=="duplicate-files":return 0 if o["complete"] else 1
  if ns.cmd=="repo-name-files":return 0 if o["complete"] else 1
  if ns.cmd=="pin-audit":return 0 if o["ok"] else 1
+ if ns.cmd=="merge-trial":return 3 if o["status"]=="missing_object" else 0 if o["ok"] else 1
+ if ns.cmd=="git-activity":return 3 if o["busy"] else 0
  if ns.cmd=="merge-preview":return 0 if o["ok"] else 1
  if ns.cmd=="fleet-status":return 0 if o["ok"] else 1
  if ns.cmd=="fleet-checks":return 0 if o["state"]=="green" else 3 if o["state"]=="pending" else 1
  if ns.cmd=="merge-readiness":return {"clear":0,"blocked":1}.get(o["verdict"],3)
+ if ns.cmd=="pr-checks":return 0 if o["state"]=="green" else 3 if o["state"]=="pending" else 1
  if ns.cmd=="fleet-pr":return 0 if o["status"] in ("planned","verified") else 1
  if ns.cmd in ("vendor-lock-check","vendor-lock-verify-remote") and ns.ci_check:
   drift=any(r.get("upstream_changed") for r in o["files"])
@@ -6074,6 +6307,10 @@ def main(argv=None):
   # wait-checks spans many bounded polls; --timeout then bounds each poll.
   if args[:1]==["wait-checks"]:
    if set(limits)-{"timeout"}:raise ValueError("wait-checks accepts --timeout only (per poll)")
+   return _main(args+(["--poll-timeout",str(limits["timeout"])] if "timeout" in limits else []))
+  # pr-checks makes many requests (and may wait): each one is bounded on its own.
+  if args[:1]==["pr-checks"]:
+   if set(limits)-{"timeout"}:raise ValueError("pr-checks accepts --timeout only (per request)")
    return _main(args+(["--poll-timeout",str(limits["timeout"])] if "timeout" in limits else []))
   # fleet-checks --wait polls for minutes: each poll gets its own budget, not one shared 30 s scope.
   wait=_fleet_checks_wait_value(args)

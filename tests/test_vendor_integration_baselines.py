@@ -21,7 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 ])
 def test_adopted_sources_keep_their_license_and_exact_pin(
         consumer, fixture, repository, source, destination, license_path, commit):
-    registry = json.loads((ROOT / "vendor-consumers.json").read_text())
+    # Preserve the historical source/license assertions against their reviewed topology.
+    # The current full fleet is checked by test_vendor_baseline_rollout.py.
+    registry = json.loads((ROOT / "tests/fixtures/vendor_baseline_before_20261029.json").read_text())["registry"]
     lock = json.loads((ROOT / "tests/fixtures" / fixture).read_text())
     name = "myon-bioinformatics/" + consumer
     assert vendor_consumers.compare(registry, lock, name)["matches"]

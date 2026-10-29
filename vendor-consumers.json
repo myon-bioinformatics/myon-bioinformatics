@@ -35,6 +35,16 @@
           "source": "gh_identity.py",
           "destination": "vendor/gh_identity.py",
           "license": "vendor/gh_identity-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "LICENSE",
+          "destination": "vendor/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "py_launch.cjs",
+          "destination": "vendor/py_launch.cjs"
         }
       ]
     },
@@ -54,6 +64,16 @@
           "source": "gh_identity.py",
           "destination": "vendor/gh_identity.py",
           "license": "vendor/gh_identity-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "LICENSE",
+          "destination": "vendor/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "py_launch.cjs",
+          "destination": "vendor/py_launch.cjs"
         }
       ]
     },
@@ -101,6 +121,11 @@
           "source": "gh_identity.py",
           "destination": "vendor/gh_identity.py",
           "license": "vendor/gh_identity-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "py_launch.cjs",
+          "destination": "vendor/py_launch.cjs"
         }
       ]
     },
@@ -402,6 +427,21 @@
           "source": "gh_ops.py",
           "destination": "scripts/gh_ops.py",
           "license": "scripts/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "LICENSE",
+          "destination": "vendor/pillow_min/Ironmate-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "pillow_min.py",
+          "destination": "vendor/pillow_min/pillow_min.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "py_launch.cjs",
+          "destination": "vendor/py_launch.cjs"
         }
       ]
     },
@@ -425,6 +465,11 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "node_launch.py",
           "destination": "vendor/node_launch.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "py_launch.cjs",
+          "destination": "vendor/py_launch.cjs"
         }
       ]
     },
@@ -493,11 +538,21 @@
           "repository": "myon-bioinformatics/browser-test-kit",
           "source": "scripts/browser_execution.mjs",
           "destination": "e2e/utils/browser_execution.mjs"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "LICENSE",
+          "destination": "python/vendor/pillow_min/Ironmate-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "pillow_min.py",
+          "destination": "python/vendor/pillow_min/pillow_min.py"
         }
       ],
       "locked_ci": {
         "workflow": ".github/workflows/non-dart.yml",
-        "sha256": "65d0618bac062420bf5e2f527a18345f9c0d2e2cb27b8c2f83306d1349580194"
+        "sha256": "3871d074b2272dddca95987e08df7eebff6b61bf81f2655a6ee4dda86bd957e1"
       }
     },
     {
@@ -534,6 +589,11 @@
           "source": "web_ui.py",
           "destination": "vendor/web_ui.py",
           "license": "vendor/web-ui-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "py_launch.cjs",
+          "destination": "vendor/py_launch.cjs"
         }
       ]
     },
@@ -621,6 +681,11 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "LICENSE",
           "destination": "vendor/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "py_launch.cjs",
+          "destination": "vendor/py_launch.cjs"
         }
       ]
     },
@@ -638,6 +703,11 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "node_launch.py",
           "destination": "vendor/node_launch.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "py_launch.cjs",
+          "destination": "vendor/py_launch.cjs"
         }
       ]
     },
@@ -692,6 +762,21 @@
           "repository": "myon-bioinformatics/web-ui",
           "source": "js/controls.js",
           "destination": "tools/vendor/web-ui/js/controls.js"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "LICENSE",
+          "destination": "tools/vendor/ironmate/LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "pillow_min.py",
+          "destination": "tools/vendor/ironmate/pillow_min.py"
+        },
+        {
+          "repository": "myon-bioinformatics/web-ui",
+          "source": "js/collection.js",
+          "destination": "tools/vendor/web-ui/js/collection.js"
         }
       ]
     }
