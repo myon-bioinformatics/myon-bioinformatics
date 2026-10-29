@@ -11,6 +11,14 @@ CONSUMER = "myon-bioinformatics/web-ui"
 
 
 def load(path):
+    # These regressions exercise the historical PR's reviewed contract.
+    # Current fleet acceptance is covered by test_vendor_baseline_rollout.py.
+    historical = json.loads((ROOT / "tests/fixtures/vendor_baseline_before_20261029.json").read_text())
+    requested = path
+    if requested == "vendor-consumers.json":
+        return historical["registry"]
+    if requested == "child-heads.json":
+        return historical["heads"]
     return json.loads((ROOT / path).read_text())
 
 
