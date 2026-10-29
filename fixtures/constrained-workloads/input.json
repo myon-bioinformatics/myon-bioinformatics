@@ -1,0 +1,30 @@
+{
+  "seed": 7,
+  "image_side": 32,
+  "lines": [
+    "sample 000 needle 日本語",
+    "sample 001 ordinary text",
+    "sample 002 ordinary text",
+    "sample 003 needle 日本語",
+    "sample 004 ordinary text",
+    "sample 005 ordinary text",
+    "sample 006 needle 日本語",
+    "sample 007 ordinary text",
+    "sample 008 ordinary text",
+    "sample 009 needle 日本語",
+    "sample 010 ordinary text",
+    "sample 011 ordinary text",
+    "sample 012 needle 日本語",
+    "sample 013 ordinary text",
+    "sample 014 ordinary text",
+    "sample 015 needle 日本語",
+    "sample 016 ordinary text",
+    "sample 017 ordinary text",
+    "sample 018 needle 日本語",
+    "sample 019 ordinary text",
+    "sample 020 ordinary text",
+    "sample 021 needle 日本語",
+    "sample 022 ordinary text",
+    "sample 023 ordinary text"
+  ]
+}

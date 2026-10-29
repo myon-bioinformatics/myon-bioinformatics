@@ -47,3 +47,8 @@ prove complete descendant coverage, provide an audit backend without strace,
 or assert that any workload is Python/Node-only. strace overhead must be
 measured separately; kernel permissions and detached children may cause gaps.
 Do not call this a sandbox, a security boundary, or an enforced allowlist.
+
+The pinned follow-up harness and its explicitly incomplete exploratory evidence
+are documented in [Four real workloads](constrained-lab-real-workloads.md).
+That experiment does not change this adapter's partial/unknown coverage contract
+or establish completion of the four-lane resource demonstration.
