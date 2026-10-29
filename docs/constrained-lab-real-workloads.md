@@ -277,3 +277,139 @@ open. Keep this PR **Draft**, and #143/#133 open; no acceptance or merge is clai
 
 Additional validation: the unchanged auditor regression suite ran 19 tests,
 with 18 passing and its live-strace CI-only check skipped. `git diff --check` passed.
+
+## Environment qualification and acceptance route (2026-10-29)
+
+**Status: blocked here; acceptance unknown.** Rechecked at head
+b22f1a1a8780401d22da7feb6b3c1857ae9f9738. The current execution host exposes
+cgroup v2 read-only, memory.max=8589934592, cpu.max="800000 100000",
+memory.swap.max=max. Creating an empty subgroup fails with EROFS (errno 30).
+Docker and Podman are absent. A separate
+`strace -f -e trace=execve,execveat -o /tmp/probe.trace /usr/bin/true`
+exits 1 with PTRACE_TRACEME / PTRACE_SETOPTIONS "Operation not permitted".
+UID 0 therefore proves neither cgroup delegation nor ptrace permission.
+No enclosing cgroup, mount, or security policy was modified.
+
+### Available routes and qualification gates
+
+| Route | Required evidence before running | Current status |
+| --- | --- | --- |
+| Rootful Docker on a Linux VM | cgroup v2 memory/CPU controllers, functioning memory+swap enforcement, private cgroup namespace, readable counters, successful child ptrace probe | Candidate; not executed here |
+| Delegated cgroup v2 on Linux | Dedicated empty subtree, delegated memory/cpu controllers, limits configured before attaching any measured process, separate observer outside the subtree | Candidate; delegation unavailable here |
+| GitHub-hosted Linux VM | Host job (not nested job container), Docker/cgroup/preflight checked at runtime; stage inputs before offline container | Candidate; no qualifying run recorded |
+| Self-hosted Linux runner | Same gates, plus disposable dedicated execution group and no unrelated processes | Candidate; no runner availability established |
+
+The existing constrained-lab.yml runs unittest smoke only. Its path filter omits
+the new workload harness and fixtures; green smoke/ordinary Python CI does not
+qualify a resource experiment. No resource acceptance job is currently provided.
+GitHub documents passwordless sudo on Linux VMs, but that is a possible setup
+route, not evidence that any particular job has passed cgroup/ptrace gates.
+Use an explicit supported Ubuntu VM label (for example ubuntu-24.04), read-only
+contents permission, no deployment permission, and an always-run evidence upload
+when a dedicated acceptance workflow is added. Do not close #143/#133 from it.
+
+### Docker reproduction recipe (candidate, not a successful run)
+
+Prepare all four repositories with the existing manifest reproduction above.
+Keep every SHA, fixture digest, compression setting and seed unchanged.
+Before going offline, build an image containing Python, git (source validation),
+strace and libseccomp.so.2; retain its Dockerfile, package versions and immutable
+image ID/digest. Do not install packages or clone during the measurement.
+The image must support the existing Python APIs without third-party packages.
+
+Set REAL_WORKLOAD_IMAGE to that locally prepared immutable image ID/digest.
+From the repository root, with ../staged already populated:
+
+```sh
+mkdir -p acceptance-evidence
+docker info > acceptance-evidence/docker-info.txt
+docker image inspect "$REAL_WORKLOAD_IMAGE" > acceptance-evidence/image.json
+docker create --name pr175-acceptance --cgroupns=private \
+  --memory=128m --memory-swap=128m --cpus=1 --network=none \
+  --mount type=bind,src="$(pwd)",dst=/repo,readonly \
+  --mount type=bind,src="$(cd ../staged && pwd)",dst=/staged,readonly \
+  --mount type=bind,src="$(pwd)/acceptance-evidence",dst=/evidence \
+  --workdir /repo "$REAL_WORKLOAD_IMAGE" sh -c '
+    set -eu
+    for f in memory.max memory.swap.max cpu.max memory.current memory.peak memory.events cpu.stat; do
+      cat "/sys/fs/cgroup/$f" > "/evidence/pre-$f"
+    done
+    test "$(cat /sys/fs/cgroup/memory.max)" = 134217728
+    test "$(cat /sys/fs/cgroup/memory.swap.max)" = 0
+    python -S -c "from tools.constrained_lab_resources import verify_budget; print(verify_budget())" > /evidence/budget.txt
+    strace -f -e trace=execve,execveat -o /evidence/ptrace.trace /usr/bin/true
+    set +e
+    python -S tools/constrained_lab_workloads.py --staged /staged \
+      --address-space-mib 192 --repeats 3 --output /evidence/results.jsonl
+    rc=$?
+    for f in memory.current memory.peak memory.events cpu.stat; do
+      cat "/sys/fs/cgroup/$f" > "/evidence/post-$f"
+    done
+    exit "$rc"
+  '
+docker inspect pr175-acceptance > acceptance-evidence/container-before.json
+docker start --attach pr175-acceptance
+# Run these even if attach/preflight/workload failed; preserve exit/OOM evidence:
+docker inspect pr175-acceptance > acceptance-evidence/container-after.json
+docker logs pr175-acceptance > acceptance-evidence/container.log 2>&1
+```
+
+First try the default container security profile. If the independent ptrace
+probe fails, classify audit unavailable; investigate the actual host LSM,
+seccomp and ptrace restrictions. A reviewed SYS_PTRACE capability/profile
+adjustment may be needed on a dedicated VM; neither adding the capability nor
+running as root guarantees success. Do not use --privileged, disable all
+seccomp, or expose a host Docker socket inside the measured container.
+Run preflight and measurements with identical security settings.
+Keep source mounts read-only and place Python bytecode outside staged sources
+(or disable bytecode) so repeated validation still sees clean worktrees.
+
+AS192 above is only the additional per-process virtual-address guard. The
+physical/accounted group budget remains 128MiB with swap disabled. It avoids
+the already identified AS128 initialization confound without changing XZ.
+This does not predict success: concurrent workers, the Python coordinator,
+auditor, page cache and kernel charges may exhaust the shared 128MiB budget.
+CPU1 means quota/period <= 1, not a single affinity CPU or exclusive physical
+core. Four separate 128MiB containers would instead allow 512MiB aggregate
+and do not demonstrate this shared-budget reference.
+
+### Evidence interpretation and remaining instrumentation
+
+A fresh container isolates the whole attempt's cgroup high-water from prior
+runs, but its memory.peak includes preflight and all campaigns. Retain it as
+**container-attempt peak including setup**, never as an individual campaign
+peak. read_cgroup/verify_budget currently read /sys/fs/cgroup directly; this
+works only when that path represents the executing group's private namespace.
+For a host delegated subtree, resolve /proc/self/cgroup and mountinfo or
+provide an explicitly verified group path; simply creating a host subgroup
+does not make the existing hard-coded reader target it.
+
+For attributable campaign peaks, launch one campaign in each fresh dedicated
+group (requires a harness selector/outer controller), or use a verified
+kernel-supported peak-reset mechanism. Do not subtract peaks or sum per-worker
+ru_maxrss. An external observer must retain final memory.peak, memory.events,
+cpu.stat and exit/OOM state if the coordinator itself is killed. Do not delete
+the container/group before collecting evidence. A missing post sample is unknown.
+The recipe above does not implement per-campaign peak attribution or separate
+per-worker limits under a host parent budget, as required by the broader #133.
+
+Acceptance additionally requires:
+- all expected worker receipts, independent oracle hashes, unchanged provenance,
+  and complete matrices; exit zero alone is insufficient;
+- evidence that the four pool-4 tasks actually overlap (start/end intervals or
+  synchronization instrumentation); max_workers=4 alone is not proof;
+- valid auditor completion without truncation/timeouts/parser loss; a successful
+  ptrace smoke probe alone does not establish complete executable observation;
+- matched successful audited/unaudited pairs before any overhead conclusion.
+
+Until those measurements exist, retain four-lane concurrency, attributable
+aggregate peak, complete dependencies and tracing overhead as null/unknown.
+A cgroup OOM is a measured failure of this allocation, not an unavailable
+environment and not proof that a larger AS cap fixes physical-memory demand.
+Keep PR #175 Draft and Issues #143/#133 open.
+
+Primary references:
+- https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html
+- https://docs.docker.com/engine/containers/resource_constraints/
+- https://docs.docker.com/engine/security/seccomp/
+- https://docs.github.com/en/actions/reference/runners/github-hosted-runners
