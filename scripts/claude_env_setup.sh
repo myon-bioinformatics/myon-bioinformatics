@@ -4,7 +4,7 @@
 #   bash claude_env_setup.sh            # 足りないものだけ入れる（2 回目以降は数秒）
 #   UPDATE=1 bash claude_env_setup.sh   # conda-forge の道具も最新に更新する
 #
-# 入れるもの: Node の LTS 系列の最新（npm 付き）、uv と pip、uv 管理の Python 3.14/3.15、
+# 入れるもの: Node の LTS 系列の最新（npm 付き）、uv と pip、uv 管理の Python 3.14/3.15（既定は 3.14）、
 #             git gh go ruby jq ripgrep pandoc ffmpeg curl（conda-forge。専用環境 /opt/modern）。
 # 触らないもの: Playwright とブラウザ（新しいブラウザの配布元に届かず、版を上げると壊れる）、
 #             /opt/npm-tools（イメージ側で版を固定）、OS 管理の Python パッケージ。
@@ -17,6 +17,7 @@
 set -u
 NODE_MAJOR=${NODE_MAJOR:-26}           # LTS 系列。次の LTS が出たらここだけ変える
 NPM_MAJOR=${NPM_MAJOR:-11}             # その Node に付いてくる npm の系列
+PY_DEFAULT=${PY_DEFAULT:-3.14}         # uv の既定 Python。切り替えは uv python pin --global 3.15 など
 MODERN=${MODERN:-/opt/modern}
 LINK_DIR=${LINK_DIR:-/home/claude/.npm-global/bin}   # PATH の先頭にあるディレクトリ（現在のシェルで効かせる）
 TOOLS="go ruby git gh jq ripgrep pandoc ffmpeg curl"
@@ -57,6 +58,11 @@ python_step() {
   python3 -m pip install --quiet --upgrade --root-user-action=ignore pip uv >>"$LOG" 2>&1
   ln -sfn /usr/local/bin/uv /root/.local/bin/uv; ln -sfn /usr/local/bin/uvx /root/.local/bin/uvx
   uv python upgrade 3.14 >>"$LOG" 2>&1; uv python install 3.14 3.15 >>"$LOG" 2>&1
+  # Python は uv を正とする: 管理版を優先し、どこでも既定は $PY_DEFAULT（リポジトリ側の指定が優先）。
+  # システムの python3（スキルが使うライブラリ入り）は差し替えない
+  mkdir -p /root/.config/uv
+  grep -qs '^python-preference' /root/.config/uv/uv.toml || printf 'python-preference = "managed"\n' >> /root/.config/uv/uv.toml
+  uv python pin --global "$PY_DEFAULT" >>"$LOG" 2>&1
   # 社内ミラーに無い版を取りこぼさないよう、uv ツールは PyPI を指定して更新する
   uv tool upgrade --all --default-index https://pypi.org/simple >>"$LOG" 2>&1
   say "$(uv --version | cut -c1-12) / $(python3 -m pip --version | cut -d' ' -f1-2) / $(uv python list --only-installed 2>/dev/null | awk "{print \$1}" | sort -u | wc -l) Python"
