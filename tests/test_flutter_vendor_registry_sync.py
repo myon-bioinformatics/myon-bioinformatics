@@ -25,6 +25,14 @@ GH_OPS_CATALOG_COMMIT = "09831b992dc91d83b15c44861a788e03b1e654c4"
 
 
 def load(filename):
+    # These regressions exercise the historical PR's reviewed contract.
+    # Current fleet acceptance is covered by test_vendor_baseline_rollout.py.
+    historical = json.loads((ROOT / "tests/fixtures/vendor_baseline_before_20261029.json").read_text())
+    requested = filename
+    if requested == "vendor-consumers.json":
+        return historical["registry"]
+    if requested == "child-heads.json":
+        return historical["heads"]
     return json.loads((ROOT / filename).read_text(encoding="utf-8"))
 
 
@@ -119,18 +127,27 @@ def test_historical_layout_requires_deliberate_parent_baseline_update():
     )
 
 
+@pytest.mark.parametrize("baseline", ["historical", "current"])
 @pytest.mark.parametrize("fault", [None, "removed", "disabled", "ignored", "command",
                                   "trigger", "digest", "revision", "missing"])
-def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, fault):
-    registry = load("vendor-consumers.json")
-    heads = load("child-heads.json")
+def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, fault, baseline):
+    if baseline == "current":
+        registry = json.loads((ROOT / "vendor-consumers.json").read_text())
+        heads = json.loads((ROOT / "child-heads.json").read_text())
+        workflow_fixture = "tests/fixtures/flutter_non_dart_20261029.yml"
+        expected_sha = "5a647a52c96976b4318764fdaa4857c86d19cea7"
+    else:
+        registry = load("vendor-consumers.json")
+        heads = load("child-heads.json")
+        workflow_fixture = WORKFLOW_FIXTURE
+        expected_sha = "4b0fbfbc14eb2d478af1c7bc8d5a1942a4dad454"
     consumer = vendor_consumers.get_consumer(registry, FLUTTER)
     contract = consumer["locked_ci"]
-    approved = (ROOT / WORKFLOW_FIXTURE).read_bytes()
+    approved = (ROOT / workflow_fixture).read_bytes()
     assert hashlib.sha256(approved).hexdigest() == contract["sha256"]
     recorded = heads["heads"][FLUTTER]
     assert recorded["repository_id"] == 739348522
-    assert recorded["sha"] == "4b0fbfbc14eb2d478af1c7bc8d5a1942a4dad454"
+    assert recorded["sha"] == expected_sha
     data = approved
     if fault == "removed":
         start = data.index(b"  python-vendor-locked:\n")
