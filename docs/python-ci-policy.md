@@ -33,7 +33,10 @@ launches is the one in that environment. Stdlib unittest lanes do not call uv.
 
 Active parent workflows pin current official setup releases by full commit SHA,
 with a version comment: setup-node v7.1.0 (verified 2026-10-19) and setup-uv
-v10.3.3. These actions use
+v10.3.3. The uv executable uses `version: "latest"`, so it follows the latest
+stable uv release at run time rather than promising an immutable tool version.
+Python selectors, compatibility matrices, explicit patch pins and the parent
+lock remain unchanged by that uv selection. These actions use
 Node 24 and require runner v2.327.1 or newer; these jobs use GitHub-hosted
 runners. Future updates must verify official release tags rather than copy
 older pins from neighboring workflows.
@@ -46,8 +49,10 @@ comparison changes; a child that adopts the template copies the new bytes verbat
 This change does not retarget child locks, reusable workflows, or child-head
 snapshots and does not claim that template rollout is complete. The Flutter
 `non-dart.yml` that `vendor-consumers.json` approves by digest is the child's own
-workflow and still uses setup-python; moving it is a child change plus a new
-parent-approved digest.
+workflow. Flutter #235 migrated it to setup-uv with uv 0.13.3; parent #192
+records that actual merge and the reviewed full-file digest. It stays unchanged
+by this latest-uv update. Any later change requires coordinated child review
+and a new parent-approved digest, not a template rollout or silent refresh.
 
 The end state is uv management for every Python tool, including stdlib-only
 single-file tools. A standalone copy is not a reason to leave a tool off uv.
@@ -59,5 +64,5 @@ CI workspace. Consumer repositories get no project file or committed lock from
 this flow; the parent's own `uv.lock` above is separate.
 Environments where uv does not apply (Python 3.9, `python -S`, uv missing)
 skip with a reason. `vendor.lock.json` and `child-heads.json` stay pinned. See
-`docs/uv-git-source-migration.md`. Child repositories and the child workflow
-template are unchanged.
+`docs/uv-git-source-migration.md`. That earlier uv-git-source migration did
+not change child repositories or the child workflow template.

@@ -272,3 +272,38 @@ This is a deliberate parent approval update, not an automatic digest adoption
 or another child workflow. Until this parent candidate is reviewed and merged,
 parent main retains the old recorded head and digest; its refresh gate
 intentionally rejects Flutter #194 as `locked_ci_mismatch`.
+
+## Python provisioning update coordinated with Flutter #235
+
+The reviewed Non-Dart workflow is preserved byte-for-byte in
+`tests/fixtures/flutter_non_dart_ci_python_235.yml`, with full-file SHA-256
+`4e2dc00621ee1fc9b37a84f55b65f87e00230b40e8745f0014111d85b8499959`.
+Flutter #235 was normally merged as
+`b25a76629eee10f72dbf2dd8a492ba3591807d49`. The recorded child snapshot now
+uses that actual main merge commit, not the proposed PR head. Its workflow and
+lock bytes were checked against the reviewed candidate and are identical.
+
+The CI migration replaces setup-python with pinned setup-uv/uv 0.13.3 and
+Python 3.15, updates the stdlib Docker lane and JUnit report identities, and
+moves Python setup ahead of the locked vendor lane's first Python command.
+Triggers, path selection, permissions, parent tooling pin, vendor
+check -> remove -> materialize -> check sequence, metadata regressions and
+failure propagation remain intact. The adopted lock and all 19 placed vendor
+files are unchanged from the previous recorded Flutter snapshot. No other
+consumer registration or recorded head changes.
+
+This is an explicit parent approval of the reviewed whole workflow, not an
+automatic digest refresh. The existing missing/modified/disabled/ignored
+workflow and wrong-revision rejection tests remain active. Historical fixtures
+are retained; green fixture tests are not independent source provenance.
+Parent child CI must still read and verify the actual immutable source and
+child blobs at the recorded merge revision.
+
+The locked-CI integration order above was followed: Flutter #235 passed its
+exact-head checks and merged first. `child-heads.json`, the new lock snapshot
+and current-baseline expectation now use the actual merge SHA. The final
+parent candidate must pass its source audit and regressions before merging.
+Parent main intentionally retains its prior approved
+snapshot and digest until that coordinated update lands. No dual-digest
+allowlist, optional child workflow rollout, new vendor enrollment or relaxed
+failure gate is introduced.
