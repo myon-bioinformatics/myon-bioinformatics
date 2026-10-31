@@ -13,6 +13,17 @@ import vendor_sync
 
 
 class StdlibRuntimeTests(unittest.TestCase):
+    def test_runtime_plan_only_compares_declared_facts(self):
+        from tools import runtime_plan
+        manifest = runtime_plan.load_json(ROOT / "runtime-profiles.json")
+        fixture = runtime_plan.load_json(ROOT / "tests/fixtures/runtime_plan/synthetic-debian13-amd64.json")
+        result = runtime_plan.plan(manifest, "aoi-numeric-native", fixture)
+        self.assertEqual(result["static_requirements_status"], "requirements_match")
+        self.assertFalse(result["execution_ready"])
+        self.assertFalse(result["measured"])
+        fixture["facts"] = {}
+        self.assertEqual(runtime_plan.plan(manifest, "stdlib-core", fixture)["static_requirements_status"], "unknown")
+
     def test_minpy_deep_dependency_cycles(self):
         from tools import minpy
         limit = sys.getrecursionlimit()

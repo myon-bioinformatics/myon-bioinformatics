@@ -1,0 +1,210 @@
+{
+  "schema": "nano-profiles/1",
+  "profiles": {
+    "stdlib-core": {
+      "description": "Stdlib planning/orchestration baseline; Node bridge is optional, not a second resident runtime.",
+      "sources": [
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "path": "node_launch.py",
+          "scope": "optional",
+          "ledger": "vendor-catalog.json",
+          "evidence_url": null
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "path": "py_launch.cjs",
+          "scope": "optional",
+          "ledger": "vendor-catalog.json",
+          "evidence_url": null
+        }
+      ],
+      "requirements": {
+        "runtime": [
+          {
+            "id": "python",
+            "fact": "python.version",
+            "kind": "minimum_version",
+            "expected": "3.9"
+          },
+          {
+            "id": "json",
+            "fact": "stdlib.json",
+            "kind": "present",
+            "expected": true
+          }
+        ],
+        "optional": [
+          {
+            "id": "node-bridge",
+            "fact": "node.version",
+            "kind": "minimum_version",
+            "expected": "24.0"
+          }
+        ],
+        "build": [],
+        "development": [
+          {
+            "id": "dev-python",
+            "fact": "python.version",
+            "kind": "minimum_version",
+            "expected": "3.11"
+          },
+          {
+            "id": "pytest",
+            "fact": "pytest.version",
+            "kind": "minimum_version",
+            "expected": "8.0"
+          }
+        ]
+      },
+      "evidence": {
+        "dependency_closure": null,
+        "package_hashes": null,
+        "security_review": null,
+        "measurements": null
+      }
+    },
+    "aoi-numeric-native": {
+      "description": "Reference-only Aoi numeric native candidate for Debian 13 amd64/glibc and LP64; not adopted or execution-verified.",
+      "sources": [
+        {
+          "repository": "myon-bioinformatics/Aoi",
+          "path": "shrink/numpy_min.py",
+          "scope": "runtime",
+          "ledger": null,
+          "evidence_url": "https://github.com/myon-bioinformatics/Aoi/blob/2f6907f69856a0f1b1570a039d1feefcf6b2edea/shrink/numpy_min.py"
+        }
+      ],
+      "requirements": {
+        "runtime": [
+          {
+            "id": "python",
+            "fact": "python.version",
+            "kind": "minimum_version",
+            "expected": "3.11"
+          },
+          {
+            "id": "ctypes",
+            "fact": "stdlib.ctypes",
+            "kind": "present",
+            "expected": true
+          },
+          {
+            "id": "os",
+            "fact": "os.id",
+            "kind": "equal",
+            "expected": "debian"
+          },
+          {
+            "id": "release",
+            "fact": "os.release",
+            "kind": "equal",
+            "expected": "13"
+          },
+          {
+            "id": "arch",
+            "fact": "os.arch",
+            "kind": "equal",
+            "expected": "amd64"
+          },
+          {
+            "id": "libc",
+            "fact": "os.libc",
+            "kind": "equal",
+            "expected": "glibc"
+          },
+          {
+            "id": "integer-abi",
+            "fact": "native.integer_bits",
+            "kind": "equal",
+            "expected": 32
+          },
+          {
+            "id": "lapack-symbols",
+            "fact": "native.lapack_symbols",
+            "kind": "contains_all",
+            "expected": [
+              "sgesdd_",
+              "dgesdd_"
+            ]
+          },
+          {
+            "id": "blas-symbols",
+            "fact": "native.blas_symbols",
+            "kind": "contains_all",
+            "expected": [
+              "cblas_sgemm",
+              "cblas_dgemm"
+            ]
+          },
+          {
+            "id": "libblas3",
+            "fact": "package.libblas3.version",
+            "kind": "equal",
+            "expected": "3.12.1-6"
+          },
+          {
+            "id": "liblapack3",
+            "fact": "package.liblapack3.version",
+            "kind": "equal",
+            "expected": "3.12.1-6"
+          },
+          {
+            "id": "libgfortran5",
+            "fact": "package.libgfortran5.version",
+            "kind": "equal",
+            "expected": "14.2.0-19"
+          },
+          {
+            "id": "libblas3-arch",
+            "fact": "package.libblas3.arch",
+            "kind": "equal",
+            "expected": "amd64"
+          },
+          {
+            "id": "liblapack3-arch",
+            "fact": "package.liblapack3.arch",
+            "kind": "equal",
+            "expected": "amd64"
+          },
+          {
+            "id": "libgfortran5-arch",
+            "fact": "package.libgfortran5.arch",
+            "kind": "equal",
+            "expected": "amd64"
+          }
+        ],
+        "optional": [
+          {
+            "id": "node-bridge",
+            "fact": "node.version",
+            "kind": "minimum_version",
+            "expected": "24.0"
+          }
+        ],
+        "build": [],
+        "development": [
+          {
+            "id": "dev-python",
+            "fact": "python.version",
+            "kind": "minimum_version",
+            "expected": "3.11"
+          },
+          {
+            "id": "pytest",
+            "fact": "pytest.version",
+            "kind": "minimum_version",
+            "expected": "8.0"
+          }
+        ]
+      },
+      "evidence": {
+        "dependency_closure": null,
+        "package_hashes": null,
+        "security_review": null,
+        "measurements": null
+      }
+    }
+  }
+}

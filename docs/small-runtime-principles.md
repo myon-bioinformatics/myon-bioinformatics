@@ -7,6 +7,11 @@ composition can take us before adding a larger runtime or dependency stack.
 This is an experiment in capability, correctness and efficiency, not primarily
 a project to build a hardened security sandbox.
 
+The initial [runtime profiles and read-only planner](runtime-profiles.md)
+describe stdlib-core and optional Aoi numerical-native requirements from explicit
+JSON inputs. They do not install, inspect the host, measure performance or prove
+execution readiness.
+
 This principle guides the parent, reusable child tools and cross-cutting Flutter
 work. It does not require replacing Flutter/Dart, browsers, native libraries or
 other necessary project runtimes. For example, inspecting Flutter source or
