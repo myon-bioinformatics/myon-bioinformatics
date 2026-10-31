@@ -70,15 +70,13 @@ jobs:
             esac
           done < <(git diff --name-only "origin/${BASE_REF}"...HEAD)
           echo run=false >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        if: steps.scope.outputs.run == 'true'
-        with:
-          python-version: "3.12"
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         if: steps.scope.outputs.run == 'true'
         with:
-          python-version: "3.12"
-          cache-python: true
+          version: "0.13.3"
+          python-version: "3.15"
+          activate-environment: true
+          enable-cache: false
       - name: Validate child heads and parent vendor baseline
         if: steps.scope.outputs.run == 'true'
         env:
@@ -120,9 +118,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: "3.12"
+          version: "0.13.3"
+          python-version: "3.15"
+          activate-environment: true
+          enable-cache: false
       - name: Require a complete fleet with no stale or mixed parent pins
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -170,9 +171,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: true
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: "3.12"
+          version: "0.13.3"
+          python-version: "3.15"
+          activate-environment: true
+          enable-cache: false
       - name: Refresh child-heads and open or update autofix pull request
         env:
           GH_TOKEN: ${{ github.token }}

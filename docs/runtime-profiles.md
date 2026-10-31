@@ -137,6 +137,6 @@ python -S tests/stdlib_runtime_smoke.py
 ```
 
 Tests use JSON fixtures, fake facts and temporary files only; they do not execute
-the described workloads. Existing Python CI collects the tests on 3.11–3.14;
+the described workloads. Existing Python CI collects the tests on 3.11–3.15;
 the existing 3.9/3.10 stdlib smoke also covers the planner. Manifest changes
 trigger that same workflow. No new CI measurement, apt step or child rollout.

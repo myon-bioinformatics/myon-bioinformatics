@@ -26,20 +26,17 @@ env:
 
 jobs:
   stdlib-py39:
-    # setup-python has no Python 3.9 build for Ubuntu 26.04.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.9"
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          version: "0.13.3"
           python-version: "3.9"
-          cache-python: true
+          enable-cache: false
       - name: Run node_launch unit tests (Python 3.9)
         run: uv run --python 3.9 --no-project --with pytest==8.4.2 pytest -q tests/test_node_launch.py tests/test_node_launch_cli_args_parity.py
 
@@ -56,12 +53,10 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: ${{ matrix.python }}
-          cache-python: true
+          version: "0.13.3"
+          python-version: "${{ matrix.python }}"
+          enable-cache: false
       - name: Run node_launch unit tests
         run: uv run pytest -q tests/test_node_launch.py tests/test_node_launch_cli_args_parity.py

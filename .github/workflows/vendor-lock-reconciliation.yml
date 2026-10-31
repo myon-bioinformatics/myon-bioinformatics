@@ -55,13 +55,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.12"
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: "3.12"
-          cache-python: true
+          version: "0.13.3"
+          python-version: "3.15"
+          activate-environment: true
+          enable-cache: false
       - name: Unit regressions
         run: uv run pytest -q tests/test_vendor_lock_reconcile.py tests/test_vendor_consumers.py tests/test_vendor_catalog.py tests/test_vendor_fleet_plan.py tests/test_duplicate_files_report.py
       - name: Fetch real consumer locks (read only)
@@ -110,9 +109,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: "3.12"
+          version: "0.13.3"
+          python-version: "3.15"
+          activate-environment: true
+          enable-cache: false
       - name: Verify locked gh_identity (offline)
         run: python -S vendor_sync.py check --manifest vendor.lock.json
       - name: Duplicate files with vendor-lock provenance
