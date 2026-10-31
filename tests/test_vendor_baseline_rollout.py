@@ -15,6 +15,11 @@ import vendor_sync
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = json.loads((ROOT / "tests/fixtures/fleet_vendor_locks_20261029.json").read_text())
+# Preserve the previous observation; only this reviewed child was re-observed.
+REFRESHED_FIXTURES = {
+    "myon-bioinformatics/Ironmate": json.loads(
+        (ROOT / "tests/fixtures/ironmate_adopted_vendor_20261031.json").read_text()),
+}
 # Registry entries enrolled after the 2026-10-29 observation. The parent registry
 # must land before the child lock (the child CI reads the live registry), so these
 # are excluded from the frozen-baseline comparison until the baseline is re-observed.
@@ -26,7 +31,8 @@ POST_BASELINE_ENROLLMENTS = {
 def baseline_registry(registry):
     registry = copy.deepcopy(registry)
     for consumer in registry["consumers"]:
-        drop = POST_BASELINE_ENROLLMENTS.get(consumer["repository"], set())
+        drop = (set() if consumer["repository"] in REFRESHED_FIXTURES
+                else POST_BASELINE_ENROLLMENTS.get(consumer["repository"], set()))
         consumer["entries"] = [e for e in consumer["entries"]
                                if e["destination"] not in drop and e.get("license") not in drop]
     return registry
@@ -44,7 +50,7 @@ def test_post_baseline_enrollments_are_registered():
 def test_observed_lock_topology_and_immutable_revision(name):
     registry = baseline_registry(json.loads((ROOT / "vendor-consumers.json").read_text()))
     heads = vendor_sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
-    fixture = FIXTURES[name]
+    fixture = REFRESHED_FIXTURES.get(name, FIXTURES[name])
     lock = vendor_sync.validate(fixture["lock"])
     assert heads["heads"][name]["sha"] == fixture["sha"]
     assert vendor_consumers.compare(registry, lock, name)["matches"]
@@ -73,3 +79,22 @@ def test_observation_does_not_enroll_new_repositories():
     registry = vendor_consumers.validate(json.loads((ROOT / "vendor-consumers.json").read_text()))
     locked = {row["repository"] for row in registry["consumers"] if row["state"] == "locked"}
     assert set(FIXTURES) == locked
+
+
+def test_ironmate_adoption_preserves_previous_snapshot_and_checks_new_entries():
+    name = "myon-bioinformatics/Ironmate"
+    old = FIXTURES[name]
+    current = REFRESHED_FIXTURES[name]
+    assert old["sha"] == "7adcb80de69a701a252a6a5abc7407be3f8132f5"
+    assert current["sha"] == "8f4b9e3e2b12a2a32c47daa37da0a5bc3ee7dcd3"
+    assert len(old["lock"]["files"]) == 59
+    assert current["lock"]["files"][:59] == old["lock"]["files"]
+    added = current["lock"]["files"][59:]
+    assert {row["destination"] for row in added} == {
+        "vendor/fetch_module.py", "vendor/Aoi-LICENSE"}
+    assert all(row["repository"] == "myon-bioinformatics/Aoi" and
+               row["ref"] == row["commit"] == "9cfa841818de56a22048c8c6196f10f698118122"
+               for row in added)
+    registry = baseline_registry(json.loads((ROOT / "vendor-consumers.json").read_text()))
+    assert vendor_consumers.compare(registry, current["lock"], name)["matches"]
+    assert not vendor_consumers.compare(registry, old["lock"], name)["matches"]
