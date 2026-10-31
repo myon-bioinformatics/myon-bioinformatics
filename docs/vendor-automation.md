@@ -163,12 +163,14 @@ github:owner/repo#commit` style invocation; the vendored launcher stays shared.
 Without a wrapper, call the vendored launcher directly:
 
 ```sh
-node vendor/py_launch.cjs --env-var MY_TOOL_PYTHON your_tool.py ARGS...
+node vendor/py_launch.cjs [--env-var MY_TOOL_PYTHON] [--site] your_tool.py ARGS...
 ```
 
 `--env-var NAME` (or `--env-var=NAME`) lets `NAME` choose the Python
-interpreter. Python always runs with `-S` (`noSite: true`): `site` is not
-loaded, so the script must not depend on site-packages.
+interpreter. By default Python runs with `-S` (`noSite: true`): `site` is not
+loaded, so the script must not depend on site-packages. `--site` drops `-S`
+for tools that need site-packages (for example Playwright). Options go before
+`your_tool.py`; everything after it is passed to the script unchanged.
 
 ### Python launcher for vendored Node scripts (`node_launch.py`)
 

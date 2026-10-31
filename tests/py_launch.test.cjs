@@ -825,7 +825,7 @@ it("CLI: node py_launch.cjs SCRIPT.py ARGS runs the script and forwards its exit
   assert.match(usage.stderr, /usage: node py_launch\.cjs/);
 });
 
-it("CLI: --env-var NAME selects the Python from that variable, and -S is always passed", () => {
+it("CLI: --env-var NAME selects the Python from that variable, and -S is passed by default", () => {
   const { spawnSync } = require("node:child_process");
   const fs = require("node:fs");
   const os = require("node:os");
@@ -844,4 +844,46 @@ it("CLI: --env-var NAME selects the Python from that variable, and -S is always 
   assert.strictEqual(ok.stdout.trim(), "1");
   const badName = spawnSync(process.execPath, [launcher, "--env-var", "1X", script], { encoding: "utf8" });
   assert.strictEqual(badName.status, 2);
+});
+
+it("CLI: --site drops -S; default keeps -S; options work in any order before SCRIPT.py", () => {
+  const { spawnSync } = require("node:child_process");
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const p = require("node:path");
+  const dir = fs.mkdtempSync(p.join(os.tmpdir(), "pyl-site-"));
+  const script = p.join(dir, "flags.py");
+  fs.writeFileSync(script, "import sys\nprint(sys.flags.no_site, 'site' in sys.modules, ' '.join(sys.argv[1:]))\n");
+  const launcher = p.join(__dirname, "..", "py_launch.cjs");
+  const run = (argv, env) => spawnSync(process.execPath, [launcher, ...argv], { encoding: "utf8", env: env ?? process.env });
+  const def = run([script, "x"]);
+  assert.strictEqual(def.status, 0, def.stderr);
+  assert.strictEqual(def.stdout.trim(), "1 False x");
+  const site = run(["--site", script, "x"]);
+  assert.strictEqual(site.status, 0, site.stderr);
+  assert.strictEqual(site.stdout.trim(), "0 True x");
+  const env = { ...process.env, MY_TOOL_PYTHON: PYTHON };
+  for (const argv of [
+    ["--env-var", "MY_TOOL_PYTHON", "--site", script],
+    ["--site", "--env-var", "MY_TOOL_PYTHON", script],
+    ["--site", "--env-var=MY_TOOL_PYTHON", script],
+  ]) {
+    const r = run(argv, env);
+    assert.strictEqual(r.status, 0, `${argv.join(" ")}: ${r.stderr}`);
+    assert.strictEqual(r.stdout.trim(), "0 True");
+  }
+  const strict = run(["--site", "--env-var", "MY_TOOL_PYTHON", script], { ...process.env, MY_TOOL_PYTHON: p.join(dir, "no-such-python") });
+  assert.strictEqual(strict.status, 2);
+  assert.match(strict.stderr, /MY_TOOL_PYTHON/);
+  const after = run([script, "--site"]);
+  assert.strictEqual(after.stdout.trim(), "1 False --site");
+  const unknown = run(["--sites", script]);
+  assert.strictEqual(unknown.status, 2);
+  assert.match(unknown.stderr, /usage: node py_launch\.cjs \[--env-var NAME\] \[--site\]/);
+  const missing = run(["--site", "--env-var"]);
+  assert.strictEqual(missing.status, 2);
+  assert.match(missing.stderr, /--env-var needs a variable name/);
+  const noScript = run(["--site"]);
+  assert.strictEqual(noScript.status, 2);
+  assert.match(noScript.stderr, /usage:/);
 });

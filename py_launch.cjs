@@ -569,26 +569,43 @@ module.exports = {
   MIN_NODE,
 };
 
-// CLI: node py_launch.cjs [--env-var NAME] SCRIPT.py [ARGS...] — 包むだけの .cjs を置かずに Python ツールを動かす。
+// CLI: node py_launch.cjs [--env-var NAME] [--site] SCRIPT.py [ARGS...] — 包むだけの .cjs を置かずに Python ツールを動かす。
 // --env-var NAME: 使う Python を環境変数 NAME で選べるようにする（例: BTK_PYTHON、XPROBE_PYTHON）。
-// Python には常に -S（site を読まない）を付けて渡す（noSite: true）。
+// 既定では Python に -S（site を読まない）を付けて渡す（noSite: true）。
+// --site: -S を外し、site-packages（例: Playwright）を読めるようにする。
+// オプションは SCRIPT.py より前に置く。SCRIPT.py より後ろはすべてスクリプトへそのまま渡す。
 if (require.main === module) {
   const args = process.argv.slice(2);
   let envVar;
-  if (args[0] === "--env-var") {
-    envVar = args[1];
-    args.splice(0, 2);
-  } else if (args[0] && args[0].startsWith("--env-var=")) {
-    envVar = args.shift().slice("--env-var=".length);
+  let site = false;
+  let bad = null;
+  while (args.length && args[0].startsWith("--")) {
+    const opt = args[0];
+    if (opt === "--site") {
+      site = true;
+      args.shift();
+    } else if (opt === "--env-var") {
+      if (args.length < 2) {
+        bad = "envvar";
+        break;
+      }
+      envVar = args[1];
+      args.splice(0, 2);
+    } else if (opt.startsWith("--env-var=")) {
+      envVar = args.shift().slice("--env-var=".length);
+    } else {
+      bad = "usage";
+      break;
+    }
   }
   const [script, ...rest] = args;
-  if (envVar !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(envVar)) {
+  if (bad === "envvar" || (envVar !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(envVar))) {
     process.stderr.write("py_launch: --env-var needs a variable name such as MY_TOOL_PYTHON\n");
     process.exitCode = 2;
-  } else if (!script || script.startsWith("-")) {
-    process.stderr.write("usage: node py_launch.cjs [--env-var NAME] SCRIPT.py [ARGS...]\n");
+  } else if (bad === "usage" || !script || script.startsWith("-")) {
+    process.stderr.write("usage: node py_launch.cjs [--env-var NAME] [--site] SCRIPT.py [ARGS...]\n");
     process.exitCode = 2;
   } else {
-    main(require("node:path").resolve(script), { argv: rest, noSite: true, ...(envVar ? { envVar } : {}) });
+    main(require("node:path").resolve(script), { argv: rest, noSite: !site, ...(envVar ? { envVar } : {}) });
   }
 }
