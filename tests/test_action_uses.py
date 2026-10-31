@@ -1,5 +1,6 @@
 """scripts/check_action_uses.py がuses の SHA 固定方針を守る。"""
 import sys
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -121,17 +122,17 @@ def test_annotated_tag_resolves_to_inner_commit(monkeypatch):
     assert seen[0].endswith("/git/ref/tags/v1")
 
 
-def test_api_failure_exits_two_unless_warn(tmp_path, capsys):
+def test_api_failure_exits_two_even_when_warn(tmp_path, capsys):
     _write(tmp_path, f"steps:\n  - uses: actions/setup-python@{SHA} # v7.0.0\n")
 
     def resolve(repository, tag):
         raise uses.HashCheckError("GitHub API HTTP 403 for tags")
 
     assert uses.main(["--root", str(tmp_path), "--check-hashes"], resolve=resolve) == 2
-    assert uses.main(["--root", str(tmp_path), "--check-hashes", "--warn"], resolve=resolve) == 0
+    assert uses.main(["--root", str(tmp_path), "--check-hashes", "--warn"], resolve=resolve) == 2
     err = capsys.readouterr().err
     assert "::error::" in err
-    assert "::warning::" in err
+    assert err.count("::error::") == 2
 
 
 def test_short_sha_is_rejected(tmp_path):
@@ -149,3 +150,81 @@ def test_third_party_tag_is_rejected(tmp_path):
 def test_third_party_sha_needs_version_comment(tmp_path):
     _write(tmp_path, f"steps:\n  - uses: example/action@{SHA}\n")
     assert len(uses.style_problems(tmp_path)) == 1
+
+
+@pytest.mark.parametrize("key", ["uses", "'uses'", '"uses"', "uses "])
+def test_quoted_block_keys_cannot_hide_tag_refs(tmp_path, key):
+    _write(tmp_path, f"steps:\n  - {key}: actions/checkout@v7\n")
+    assert len(uses.style_problems(tmp_path)) == 1
+    _write(tmp_path, f"steps:\n  - {key}: actions/checkout@{SHA} # v7.0.1\n")
+    assert uses.style_problems(tmp_path) == []
+
+
+@pytest.mark.parametrize("key", ["uses", "'uses'", '"uses"'])
+def test_flow_mapping_is_explicitly_rejected(tmp_path, key):
+    _write(tmp_path, f"steps:\n  - {{{key}: actions/checkout@v7}}\n")
+    found = uses.style_problems(tmp_path)
+    assert len(found) == 1 and "flow mapping" in found[0]
+    assert uses.main(["--root", str(tmp_path)]) == 1
+
+
+@pytest.mark.parametrize("value", ["", ">-", "|"])
+def test_empty_or_multiline_uses_is_not_silently_approved(tmp_path, value):
+    _write(tmp_path, f"steps:\n  - uses: {value}\n      actions/checkout@v7\n")
+    assert len(uses.style_problems(tmp_path)) == 1
+
+
+def test_run_block_scalar_text_is_not_an_action(tmp_path):
+    _write(tmp_path, "steps:\n  - run: |\n      echo '{uses: example/action@v1}'\n"
+                    "      uses: example/documentation@v1\n"
+                    "  - uses: actions/checkout@v7\n")
+    found = uses.style_problems(tmp_path)
+    assert len(found) == 1 and "checkout@v7" in found[0]
+
+
+@pytest.mark.parametrize("header", ["name: |", "name: >-", "run: |"])
+def test_sequence_scalar_does_not_hide_sibling_uses(tmp_path, header):
+    _write(tmp_path, f"steps:\n  - {header}\n      example\n"
+                    "    uses: actions/checkout@v7\n")
+    found = uses.style_problems(tmp_path)
+    assert len(found) == 1 and "checkout@v7" in found[0]
+
+
+@pytest.mark.parametrize("text", [
+    '  - name: "example {uses: example/action@v1}"\n',
+    "  - name: 'example {uses: example/action@v1}'\n",
+    "  - name: example {uses: example/action@v1}\n",
+    "  - name: example # {uses: example/action@v1}\n",
+    '  - {name: "example {uses: example/action@v1}", run: echo ok}\n',
+    "  - {name: example, run: echo ok} # {uses: example/action@v1}\n",
+])
+def test_flow_looking_scalar_or_comment_is_not_an_action(tmp_path, text):
+    _write(tmp_path, "steps:\n" + text)
+    assert uses.style_problems(tmp_path) == []
+
+
+def test_subactions_resolve_one_repository_tag(tmp_path):
+    _write(tmp_path, f"steps:\n  - uses: actions/cache/restore@{SHA} # v6.1.0\n"
+                    f"  - uses: actions/cache/save@{SHA} # v6.1.0\n")
+    calls = []
+    def resolve(repository, tag):
+        calls.append((repository, tag))
+        return SHA
+    assert uses.hash_problems(tmp_path, resolve) == []
+    assert calls == [("actions/cache", "v6.1.0")]
+
+
+def test_existing_workflow_lint_lane_covers_all_workflow_changes_offline():
+    import yaml  # Test dependency only; production scanner stays stdlib.
+    workflow = yaml.load((ROOT / ".github/workflows/actionlint.yml").read_text(),
+                         Loader=yaml.BaseLoader)
+    for event in ("pull_request", "push"):
+        paths = workflow["on"][event]["paths"]
+        assert ".github/workflows/**" in paths
+        assert "scripts/check_action_uses.py" in paths
+        assert "tests/test_action_uses.py" in paths
+    assert workflow["permissions"] == {"contents": "read"}
+    job = workflow["jobs"]["action-uses"]
+    assert job["steps"][-1]["run"] == "python3 -S scripts/check_action_uses.py"
+    assert job["steps"][0]["with"]["persist-credentials"] == "false"
+    assert "env" not in job and "permissions" not in job

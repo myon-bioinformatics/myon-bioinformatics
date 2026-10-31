@@ -5,15 +5,29 @@ on:
     paths:
       - ".github/workflows/**"
       - "templates/vendor-child-ci.workflow.yml"
+      - "scripts/check_action_uses.py"
+      - "tests/test_action_uses.py"
   push:
     paths:
       - ".github/workflows/**"
       - "templates/vendor-child-ci.workflow.yml"
+      - "scripts/check_action_uses.py"
+      - "tests/test_action_uses.py"
 
 permissions:
   contents: read
 
 jobs:
+  action-uses:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check all workflow action pins offline
+        run: python3 -S scripts/check_action_uses.py
+
   actionlint:
     uses: ./.github/workflows/reusable-actionlint.yml
 

@@ -13,28 +13,10 @@
 一致するかを見る。--warn のとき不一致は警告で終了 0。既定は終了 1。
 API 自体が失敗したときは --warn でも終了 2。
 
-Aoi の scripts/check_action_uses.py と同じ形の stdlib のみの単一ファイル。
-Aoi の GitHub Actions uses を親リポジトリの書き方と照合する。
-
-親 myon-bioinformatics/myon-bioinformatics の active workflow（2026-10-20）:
-
-- actions/*（checkout、setup-*、cache、upload/download-artifact などすべて）は、
-  そのリリースの 40 桁 commit SHA と `# vX.Y.Z`（2026-10-31 myon さんの判断で統一）。
-  例: checkout v7.0.1、setup-python v7.1.0、setup-node v7.1.0。
-- 同じリポジトリの reusable workflow は相対パス。
-- 他リポジトリの reusable workflow は 40 桁 SHA。
-- 更新は Dependabot の github-actions（毎月、Asia/Tokyo、PR は 5 件まで）。
-  action の uses を書き換える autofix workflow は無い。
-- 親の parent_pin_check は action のタグと SHA を見ない。親リポジトリ自身の
-  40 桁ピンの統一と鮮度だけを見る。schedule と main への push は失敗、
-  pull_request とそれ以外の push は警告。
-
-astral-sh/setup-uv は親に無い。v10 の動くメジャータグも無いので、公式の
-setup アクションと同じく最新リリースの SHA と `# vX.Y.Z` にする。
-
---check-hashes は、そのコメントのリリースタグが指す commit と SHA が
-一致するかを見る。--warn のとき不一致は警告で終了 0。既定は終了 1。
-API 自体が失敗したときは --warn でも終了 2。
+標準ライブラリのみの書式検査で、最新リリースの探索は行わない。
+uses は block mapping（キーの単純な引用を含む）で記述する。
+flow mapping、空や複数行の uses は未対応として拒否する。
+run 等の block scalar 内の文字列は action として扱わない。
 """
 from __future__ import annotations
 
@@ -51,7 +33,11 @@ from urllib.parse import quote
 ROOT = Path(__file__).resolve().parents[1]
 HEX40 = re.compile(r"^[0-9a-fA-F]{40}$")
 PATCH = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
-USES_LINE = re.compile(r"^[ \t]*(?:-[ \t]*)?uses:[ \t]*(?P<value>\S.*?)\s*$")
+USES_KEY = r"(?:uses|'uses'|\"uses\")"
+USES_LINE = re.compile(r"^[ \t]*(?:-[ \t]*)?" + USES_KEY + r"[ \t]*:[ \t]*(?P<value>.*?)\s*$")
+FLOW_USES = re.compile(r"[,{][ \t]*" + USES_KEY + r"[ \t]*:")
+UNSUPPORTED_FLOW = "<unsupported flow mapping uses>"
+BLOCK_SCALAR = re.compile(r":[ \t]*[>|][0-9+-]*[ \t]*(?:#.*)?$")
 PARENT_PREFIX = "myon-bioinformatics/myon-bioinformatics/"
 
 
@@ -77,6 +63,43 @@ def _split_uses(value: str) -> tuple[str, str]:
     return text, ""
 
 
+def _has_flow_uses(line: str) -> bool:
+    """Find flow keys, ignoring quoted scalar contents and YAML comments."""
+    # Ordinary block scalar values (names, shell commands) are not flow maps.
+    start = line.lstrip().removeprefix("-").lstrip()
+    if not start.startswith(("{", "[")):
+        _, separator, value = start.partition(":")
+        if not separator or not value.lstrip().startswith(("{", "[")):
+            return False
+    masked = []
+    index = 0
+    while index < len(line):
+        char = line[index]
+        if char == "#" and (index == 0 or line[index - 1].isspace()):
+            break
+        if char not in {"'", '"'}:
+            masked.append(char)
+            index += 1
+            continue
+        begin = index
+        index += 1
+        while index < len(line):
+            if char == '"' and line[index] == "\\":
+                index += 2
+                continue
+            if line[index] == char:
+                if char == "'" and line[index:index + 2] == "''":
+                    index += 2
+                    continue
+                index += 1
+                break
+            index += 1
+        quoted = line[begin:index]
+        is_key = quoted in {"'uses'", '"uses"'} and line[index:].lstrip().startswith(":")
+        masked.append(quoted if is_key else " " * len(quoted))
+    return FLOW_USES.search("".join(masked)) is not None
+
+
 def _iter_uses(root: Path):
     workflow_dir = root / ".github" / "workflows"
     if not workflow_dir.is_dir():
@@ -84,8 +107,25 @@ def _iter_uses(root: Path):
     paths = sorted(workflow_dir.glob("*.yml")) + sorted(workflow_dir.glob("*.yaml"))
     for path in paths:
         lines = path.read_text(encoding="utf-8").splitlines()
+        scalar_indent = None
         for lineno, line in enumerate(lines, 1):
+            indent = len(line) - len(line.lstrip())
+            if scalar_indent is not None:
+                if not line.strip() or indent > scalar_indent:
+                    continue
+                scalar_indent = None
             if line.lstrip().startswith("#"):
+                continue
+            if BLOCK_SCALAR.search(line) and USES_LINE.match(line) is None:
+                # A sequence item's '-' is outside its mapping. The following
+                # sibling keys align with the key after '- ', not with the dash.
+                prefix = re.match(r"^[ \t]*(?:-[ \t]+)?", line)
+                scalar_indent = prefix.end()
+                continue
+            # This stdlib scanner supports block mappings, not a YAML parser.
+            # Reject flow-style uses explicitly rather than silently approving it.
+            if _has_flow_uses(line):
+                yield path, lineno, UNSUPPORTED_FLOW, ""
                 continue
             match = USES_LINE.match(line)
             if match is None:
@@ -99,6 +139,8 @@ def _needs_sha(action: str) -> bool:
 
 
 def _style_problem(raw: str, comment: str) -> str | None:
+    if raw == UNSUPPORTED_FLOW:
+        return "uses の flow mapping は未対応。block mapping で記述してください"
     if raw.startswith("./") or raw.startswith("docker://"):
         return None
     if "@" not in raw:
@@ -185,9 +227,11 @@ def hash_problems(root: Path, resolve=github_tag_commit) -> list[str]:
             continue
         if not HEX40.fullmatch(rev) or not PATCH.fullmatch(comment):
             continue
-        key = (action, comment)
+        # A subaction such as actions/cache/restore shares its repository tag.
+        repository = "/".join(action.split("/")[:2])
+        key = (repository, comment)
         if key not in resolved:
-            resolved[key] = resolve(action, comment).lower()
+            resolved[key] = resolve(repository, comment).lower()
         if resolved[key] != rev.lower():
             rel = path.relative_to(root).as_posix()
             found.append(
@@ -214,16 +258,11 @@ def main(argv: list[str] | None = None, resolve=github_tag_commit) -> int:
             found.extend(hash_problems(root, resolve))
         except HashCheckError as exc:
             hash_error = exc
-    if hash_error is not None and not args.warn:
+    if hash_error is not None:
         for item in found:
-            print(item, file=sys.stderr)
+            print(f"::warning::{item}" if args.warn else item, file=sys.stderr)
         print(f"::error::{hash_error}", file=sys.stderr)
         return 2
-    if hash_error is not None:
-        print(f"::warning::{hash_error}", file=sys.stderr)
-        if not found:
-            print("action uses のハッシュ照合は pull request では警告", file=sys.stderr)
-            return 0
     if not found:
         print("action uses ok")
         return 0
