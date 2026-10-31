@@ -120,13 +120,18 @@ def _github_read_bytes(url, token=None):
             time.sleep(PUBLIC_FETCH_RETRY_DELAYS_SEC[attempt])
 
 
-def _report_github_error(error, method, token, *, rate_limited=False):
+def _report_github_error(error, method, token, *, rate_limited=None):
     # Report the endpoint family without repository names, body, or credentials.
     path = error.url.split("?", 1)[0].removeprefix("https://api.github.com/")
     parts = path.split("/")
     endpoint = parts[3] if len(parts) > 3 and parts[0] == "repos" else "repository-metadata"
     if endpoint not in {"commits", "pulls", "contents", "actions", "git", "branches"}:
         endpoint = "repository-metadata"
+    if rate_limited is None:
+        response_headers = error.headers or {}
+        rate_limited = error.code == 429 or (error.code == 403 and (
+            response_headers.get("X-RateLimit-Remaining") == "0" or
+            response_headers.get("Retry-After") is not None))
     detail = {"status": error.code, "authenticated": bool(token),
               "rate_limited": rate_limited, "endpoint_family": endpoint}
     for key in ("X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After", "X-GitHub-Request-Id"):
@@ -1617,7 +1622,7 @@ def refresh_child_heads(registry, heads_path, *, ref="main", remotes=None, token
 
 def _github_api(method, url, token=None, body=None):
     if method == "GET":
-        return json.loads(_github_read_bytes(url, token).decode("utf-8"))
+        return _github_json(url, token)
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "vendor-sync/parent-child-ci"}
     if token:
         headers["Authorization"] = "Bearer " + token

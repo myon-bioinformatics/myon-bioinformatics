@@ -89,6 +89,7 @@ def test_json_cache_returns_independent_values_and_expires(monkeypatch):
     def audit():
         sync._github_json("url")["items"].append("mutated")
         assert sync._github_json("url") == {"items": []}
+        assert sync._github_api("GET", "url") == {"items": []}
 
     audit()
     audit()

@@ -1,4 +1,4 @@
-"""Keep the reviewed 2026-10-29 observation baseline internally consistent.
+"""Keep the reviewed fleet observation baseline internally consistent.
 
 These fixtures freeze claims for offline regression, not proof of upstream
 provenance. Parent CI separately reads the immutable source and child blobs.
