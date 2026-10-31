@@ -15,17 +15,17 @@ Reusable GitHub Actions live in `.github/workflows/`:
 
 ## Calling reusable workflows
 
-Pin cross-repository reusable workflows to a release tag or, for maximum immutability, a commit SHA. Do not use `@main` in long-lived consumers because changes to the shared repository would otherwise propagate to every consumer without an explicit upgrade.
+Pin cross-repository reusable workflows to a full 40-character commit SHA (policy since 2026-10-31; tags are not used). Do not use `@main` in long-lived consumers because changes to the shared repository would otherwise propagate to every consumer without an explicit upgrade.
 
-Example after a stable `v1` tag is published:
+Example (replace `FULL_COMMIT_SHA` with the parent commit you want to consume):
 
 ```yaml
 jobs:
   lint-workflows:
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-actionlint.yml@v1
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-actionlint.yml@FULL_COMMIT_SHA
 
   deploy-pages:
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@v1
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-pages-static.yml@FULL_COMMIT_SHA
     with:
       artifact_path: "dist"
 
