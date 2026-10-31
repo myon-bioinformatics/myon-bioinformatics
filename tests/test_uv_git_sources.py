@@ -7,7 +7,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "uv-git-sources.yml"
-SETUP_PYTHON = "actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0"
 SETUP_NODE = "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0"
 SETUP_UV = "astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3"
 INSTALLABLE = """
@@ -301,9 +300,11 @@ def test_vendor_lock_and_template_stay():
 def test_workflow_resolves_main_and_skips_other_lanes():
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1" in text
-    assert SETUP_PYTHON in text
+    assert "actions/setup-python" not in text
     assert SETUP_NODE in text
     assert SETUP_UV in text
+    assert 'python-version: "3.15"' in text
+    assert "activate-environment: true" in text
     assert 'node-version: "26"' in text
     assert "python -S pilot/vendor_dispatch.py --dry-run --offline" in text
     assert 'python pilot/vendor_dispatch.py --assume-python 3.9 --dry-run --offline' in text

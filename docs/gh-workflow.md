@@ -88,7 +88,7 @@ independent YAML oracle for supported forms and valid forms outside the subset.
 Its non-constructing BaseLoader preserves `on` as a string (the default YAML 1.1
 loader would treat it as a boolean). The runtime module never imports PyYAML.
 This separate workflow avoids depending on the pending Git
-inspector PR. Development/test CI covers Python 3.11–3.14 and preserves JUnit with `if: always()`.
+inspector PR. Development/test CI covers Python 3.11–3.15 and preserves JUnit with `if: always()`.
 A separate stdlib-only `python -S` smoke job exercises the Python 3.10 runtime contract.
 The existing reusable JUnit collection is available for subsequent rollout;
 this PR does not alter that contract or other repositories' workflows.

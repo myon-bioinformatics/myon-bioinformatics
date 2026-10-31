@@ -327,8 +327,8 @@ where uv does not apply, such as `python -S` or Python 3.9, are skipped with a
 reason. See [the migration note](docs/uv-git-source-migration.md).
 
 The parent's [Python tests workflow](.github/workflows/python-tests.yml) collects
-JUnit from four development/test Python versions (3.11–3.14) and three
-vendor-portability jobs (Linux 3.11, Windows 3.12, macOS 3.12). A separate
+JUnit from five development/test Python versions (3.11–3.15) and three
+vendor-portability jobs (Linux 3.11, Windows 3.15, macOS 3.15). A separate
 stdlib-only runtime smoke job runs `tests/stdlib_runtime_smoke.py` with `python -S`
 on Python 3.9 and 3.10, without installing pytest. Raw XML and compact failure identity are
 separate artifacts: raw XML is retained for 14 days, while compact artifacts use

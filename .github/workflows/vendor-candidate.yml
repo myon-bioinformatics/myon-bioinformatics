@@ -46,13 +46,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: ${{ matrix.python }}
-          cache-python: true
+          version: "0.13.3"
+          python-version: "${{ matrix.python }}"
+          enable-cache: false
       - name: Test candidate verifier offline
         run: uv run pytest -q tests/test_vendor_candidate.py --junitxml=reports/verifier.xml
       - name: Verify recommended gh_identity in disposable consumer

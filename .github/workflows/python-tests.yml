@@ -72,18 +72,20 @@ env:
 jobs:
   stdlib-runtime:
     name: Stdlib runtime (Python ${{ matrix.python }})
-    # setup-python has no Python 3.9 distribution for Ubuntu 26.04.
     # Keep the legacy stdlib lane separate from the Python 3.11+ pytest jobs.
-    runs-on: ${{ matrix.python == '3.9' && 'ubuntu-24.04' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python: ["3.9", "3.10"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: ${{ matrix.python }}
+          version: "0.13.3"
+          python-version: "${{ matrix.python }}"
+          activate-environment: true
+          enable-cache: false
       - name: Exercise runtime without third-party packages
         run: python -S tests/stdlib_runtime_smoke.py
 
@@ -93,16 +95,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.12", "3.13", "3.14"]
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: ${{ matrix.python }}
-          cache-python: true
+          version: "0.13.3"
+          python-version: "${{ matrix.python }}"
+          activate-environment: true
+          enable-cache: false
       - run: python -m py_compile git_inspector.py gh_ops.py vendor_consumers.py tools/parent_pin_check.py tools/minpy.py
       - name: Verify enrolled GitHub identity dependency (offline)
         run: python -S vendor_sync.py check --manifest vendor.lock.json
@@ -163,13 +164,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.12"
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: "3.12"
-          cache-python: true
+          version: "0.13.3"
+          python-version: "3.15"
+          enable-cache: false
       - name: Verify py_launch vendor-catalog pin against GitHub
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         env:
@@ -199,13 +198,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.12"
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: "3.12"
-          cache-python: true
+          version: "0.13.3"
+          python-version: "3.15"
+          enable-cache: false
       - name: Verify node_launch vendor-catalog pin against GitHub
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         env:
@@ -239,20 +236,19 @@ jobs:
           - os: ubuntu-latest
             python: "3.11"
           - os: windows-latest
-            python: "3.12"
+            python: "3.15"
           - os: macos-latest
-            python: "3.12"
+            python: "3.15"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: ${{ matrix.python }}
-          cache-python: true
+          version: "0.13.3"
+          python-version: "${{ matrix.python }}"
+          activate-environment: true
+          enable-cache: false
       - name: Regenerate minpy fixture and compare
         shell: bash
         run: |
@@ -301,6 +297,6 @@ jobs:
       actions: read
     uses: ./.github/workflows/reusable-junit-identity.yml
     with:
-      expected-reports: '["junit-parent-py3.11/junit.xml","junit-parent-py3.12/junit.xml","junit-parent-py3.13/junit.xml","junit-parent-py3.14/junit.xml","junit-vendor-ubuntu-latest-py3.11/vendor.xml","junit-vendor-windows-latest-py3.12/vendor.xml","junit-vendor-macos-latest-py3.12/vendor.xml"]'
+      expected-reports: '["junit-parent-py3.11/junit.xml","junit-parent-py3.12/junit.xml","junit-parent-py3.13/junit.xml","junit-parent-py3.14/junit.xml","junit-parent-py3.15/junit.xml","junit-vendor-ubuntu-latest-py3.11/vendor.xml","junit-vendor-windows-latest-py3.15/vendor.xml","junit-vendor-macos-latest-py3.15/vendor.xml"]'
       output-artifact: parent-python-failure-identity
       commit-sha: ${{ github.sha }}

@@ -64,13 +64,12 @@ jobs:
           ref: 77cd700f961f2a97051da96b9c13a6c7a64258df
           path: .compat/ironmate
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.12"
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: "3.12"
-          cache-python: true
+          version: "0.13.3"
+          python-version: "3.15"
+          activate-environment: true
+          enable-cache: false
       - name: Check the original Ironmate lock and file bytes with both verifiers
         run: |
           python -S .compat/parent-old/vendor_sync.py check --root .compat/ironmate --manifest vendor.lock.json

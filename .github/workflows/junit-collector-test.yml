@@ -29,13 +29,11 @@ jobs:
           ref: 7e7015b2df69ad446b968f6fa49711b5b1dbdd3f
           path: shared-xprobe
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.12"
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
-          python-version: "3.12"
-          cache-python: true
+          version: "0.13.3"
+          python-version: "3.15"
+          enable-cache: false
       - run: uv run pytest -q tests/test_junit_collection.py --junitxml=build/collector-tests.xml
         env:
           XPROBE_SOURCE: shared-xprobe/xprobe.py
