@@ -15,8 +15,8 @@ PY_LAUNCH_CATALOG_PIN_BLOB_SHA = "006817bc813187fa45abc3e8954fde27a2b73caa"
 PY_LAUNCH_CATALOG_PIN_SHA256 = "a78fe656cde285a83501b9b19d97b9ebde6f9637919b3adb95c50eb254154536"
 # Worktree bytes move with this checkout. The catalog pin above stays the
 # accepted main merge until a reviewed promotion.
-PY_LAUNCH_WORKTREE_BLOB_SHA = "b6e3d851891b5522eb95e73b8d38b397a368b6ab"
-PY_LAUNCH_WORKTREE_SHA256 = "d5b6aacb2c68fbe95067848e5221c73af62753a12d478fa6e23ad83f199301b0"
+PY_LAUNCH_WORKTREE_BLOB_SHA = "ca71c805f316c5cdd0753d55c2a70aa8119cf3ac"
+PY_LAUNCH_WORKTREE_SHA256 = "f55418550baba981ccf3151eb55d64cce29c5ab7d31dcf0867284dde7dcafd60"
 PY_LAUNCH_CATALOG_PIN_FIXTURE = ROOT / "tests" / "fixtures" / "py-launch-catalog-pin.lock.json"
 
 
