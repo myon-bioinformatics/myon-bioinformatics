@@ -15,11 +15,34 @@ import vendor_sync
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = json.loads((ROOT / "tests/fixtures/fleet_vendor_locks_20261029.json").read_text())
+# Registry entries enrolled after the 2026-10-29 observation. The parent registry
+# must land before the child lock (the child CI reads the live registry), so these
+# are excluded from the frozen-baseline comparison until the baseline is re-observed.
+POST_BASELINE_ENROLLMENTS = {
+    "myon-bioinformatics/Ironmate": {"vendor/fetch_module.py", "vendor/Aoi-LICENSE"},
+}
+
+
+def baseline_registry(registry):
+    registry = copy.deepcopy(registry)
+    for consumer in registry["consumers"]:
+        drop = POST_BASELINE_ENROLLMENTS.get(consumer["repository"], set())
+        consumer["entries"] = [e for e in consumer["entries"]
+                               if e["destination"] not in drop and e.get("license") not in drop]
+    return registry
+
+
+def test_post_baseline_enrollments_are_registered():
+    registry = json.loads((ROOT / "vendor-consumers.json").read_text())
+    for name, paths in POST_BASELINE_ENROLLMENTS.items():
+        row = vendor_consumers.get_consumer(registry, name)
+        seen = {e["destination"] for e in row["entries"]} | {e.get("license") for e in row["entries"]}
+        assert paths <= seen
 
 
 @pytest.mark.parametrize("name", sorted(FIXTURES))
 def test_observed_lock_topology_and_immutable_revision(name):
-    registry = json.loads((ROOT / "vendor-consumers.json").read_text())
+    registry = baseline_registry(json.loads((ROOT / "vendor-consumers.json").read_text()))
     heads = vendor_sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
     fixture = FIXTURES[name]
     lock = vendor_sync.validate(fixture["lock"])

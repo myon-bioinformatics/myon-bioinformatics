@@ -17,7 +17,7 @@ def load(path):
 def test_ironmate_registry_matches_reviewed_flow_lock():
     registry = load('vendor-consumers.json')
     lock = load('tests/fixtures/ironmate-flow-workspace.lock.json')
-    assert len(lock['files']) == 59
+    assert len(lock['files']) == 61
     assert vendor_consumers.compare(registry, lock, CONSUMER)['matches']
     # All adopted source digests remain owned by the child's immutable lock.
     assert all(x['ref'] == x['commit'] for x in lock['files'])

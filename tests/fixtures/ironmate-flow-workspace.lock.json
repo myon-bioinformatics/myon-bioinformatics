@@ -531,6 +531,24 @@
       "commit": "c73821de8492b2394c718cb276cad9f683ff1910",
       "blob_sha": "5a90907aa0ed3e2afa5ef1519010136644af1658",
       "sha256": "b43c88e4e635d888995cd33f121850fe2cae753b66a55c628891d6795429ab88"
+    },
+    {
+      "repository": "myon-bioinformatics/Aoi",
+      "source": "scripts/fetch_module.py",
+      "destination": "vendor/fetch_module.py",
+      "ref": "9cfa841818de56a22048c8c6196f10f698118122",
+      "commit": "9cfa841818de56a22048c8c6196f10f698118122",
+      "blob_sha": "cbc3a90a59c619139a0341a68cec7a35259c6d62",
+      "sha256": "0fe92150a293cdb6e9e135d93b7c15cd62796f9296ad52e6e87b32d5bf779d26"
+    },
+    {
+      "repository": "myon-bioinformatics/Aoi",
+      "source": "LICENSE",
+      "destination": "vendor/Aoi-LICENSE",
+      "ref": "9cfa841818de56a22048c8c6196f10f698118122",
+      "commit": "9cfa841818de56a22048c8c6196f10f698118122",
+      "blob_sha": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
+      "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
     }
   ]
 }

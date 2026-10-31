@@ -402,6 +402,12 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "py_launch.cjs",
           "destination": "vendor/py_launch.cjs"
+        },
+        {
+          "repository": "myon-bioinformatics/Aoi",
+          "source": "scripts/fetch_module.py",
+          "destination": "vendor/fetch_module.py",
+          "license": "vendor/Aoi-LICENSE"
         }
       ]
     },
