@@ -29,13 +29,17 @@ jobs:
         with:
           persist-credentials: false
       - name: Check action pins and release hashes
-        # pull request では警告、main への push と schedule では失敗（Aoi の action-uses.yml と同じ）。
+        # Release-hash mismatches may warn on PR/non-main pushes; style errors
+        # and API validation failures remain errors. Main/schedule are strict.
         env:
           EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF: ${{ github.ref }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Syntax/pinning policy is always strict; only observed release-hash
+          # mismatches may be report-only before main integration.
+          python3 -S scripts/check_action_uses.py
           strict=0
           if [[ "$EVENT_NAME" == "schedule" ]]; then
             strict=1
