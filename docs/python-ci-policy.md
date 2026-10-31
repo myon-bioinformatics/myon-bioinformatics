@@ -38,12 +38,16 @@ Node 24 and require runner v2.327.1 or newer; these jobs use GitHub-hosted
 runners. Future updates must verify official release tags rather than copy
 older pins from neighboring workflows.
 
-The distributable `templates/vendor-child-ci.workflow.yml` is intentionally
-unchanged in this focused update. It still uses a floating setup-python v7,
-which resolves to v7.0.0. Changing its bytes requires a coordinated review of enrolled
-child workflow copies and recorded baselines, because parent CI enforces exact
-copy identity. This change does not retarget child locks, reusable workflows,
-or child-head snapshots and does not claim that template rollout is complete.
+The distributable `templates/vendor-child-ci.workflow.yml` also gets its interpreter
+from setup-uv (Python 3.15, the same form as the parent workflows). Parent CI still
+requires an enrolled child's copy to match the template byte for byte. At the
+revisions recorded in `child-heads.json` no child carries a copy yet, so no existing
+comparison changes; a child that adopts the template copies the new bytes verbatim.
+This change does not retarget child locks, reusable workflows, or child-head
+snapshots and does not claim that template rollout is complete. The Flutter
+`non-dart.yml` that `vendor-consumers.json` approves by digest is the child's own
+workflow and still uses setup-python; moving it is a child change plus a new
+parent-approved digest.
 
 The end state is uv management for every Python tool, including stdlib-only
 single-file tools. A standalone copy is not a reason to leave a tool off uv.
