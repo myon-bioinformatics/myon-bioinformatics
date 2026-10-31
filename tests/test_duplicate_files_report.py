@@ -149,7 +149,7 @@ def test_workflow_runs_offline_regressions_and_uploads_even_on_failure():
     assert "reports/duplicate-files.md" in job
     assert "reports/duplicate-files.stderr.log" in job
     assert "--timeout 900" in job
-    assert "actions/checkout@v7" in job
+    assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1" in job
 
 
 def test_weekly_scan_event_and_permission_boundaries():

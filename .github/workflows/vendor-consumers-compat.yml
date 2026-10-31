@@ -40,25 +40,25 @@ jobs:
       IRONMATE_COMPAT_ROOT: .compat/ironmate
     steps:
       - name: Checkout proposed parent version
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Checkout historical tool and registry as one unit
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/myon-bioinformatics
           ref: 1eda992aa6fa31a902e2c06428e53ab17e8fe3c1
           path: .compat/parent-old
           persist-credentials: false
       - name: Checkout immutable license-shorthand registry fixture
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/myon-bioinformatics
           ref: a9df23dec720f125772a24b77b413552d60060ba
           path: .compat/parent-shorthand
           persist-credentials: false
       - name: Checkout historical audited Ironmate snapshot
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/Ironmate
           ref: 77cd700f961f2a97051da96b9c13a6c7a64258df
@@ -80,7 +80,7 @@ jobs:
           uv run pytest -q tests/test_vendor_consumers_compat.py --junitxml=reports/vendor-consumers-compat.xml
       - name: Preserve compatibility results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vendor-consumers-compat
           path: reports/vendor-consumers-compat.xml
