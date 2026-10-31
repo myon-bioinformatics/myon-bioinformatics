@@ -15,9 +15,12 @@ repository label or the section in which its dependency happens to be declared.
 For example, Ironmate's lazy PDF-preview imports are optional feature runtime
 dependencies even though its manifest lists them in `dev`.
 
-This change adds no runtime implementation, dependency upgrade/removal, adopted
-pin, child change, CI/Pages setting or test exception. Runtime files/lines
-deleted: **0/0**; new runtime functions: **0**; tests removed: **0**.
+The inventory stage added no runtime implementation or deletion. Its snapshot
+counts remain historical. The follow-up adds one parent preparation tool,
+`tools/nano_export.py`, not a new application/library replacement. No dependency
+upgrade/removal, adopted pin, child change, CI/Pages setting or test exception is
+introduced. Application/runtime files and lines deleted: **0/0**; application
+functions added: **0**; tests removed: **0**.
 The existing [two profiles and static planner](runtime-profiles.md) retain their
 v1 API, frozen source/package examples and null execution evidence.
 
@@ -72,12 +75,74 @@ Each row's exact revision, manifests and actual consumer source blobs are in
   establish a general API-replacement tool. Node built-ins and existing JS
   helpers can be reused, but Python-backed launchers are not JS implementations.
 
-No new self-written runtime function is proposed in this PR. Future candidates
+No new self-written application/library replacement is proposed. Future candidates
 must name a real uncovered call surface, preserve the original oracle, test
 errors/boundaries and compare complete outputs before dependency removal.
 Changing delivery from pip/npm to a downloaded wheel/CDN is not elimination.
 
 ## Reproducible preparation without changing a repository
+
+### Executable Aoi runtime-only preparer (follow-up)
+
+`tools/nano_export.py` operationalizes one package-bearing selection: Aoi's
+research runtime, **not** its already-stdlib distributions. Aoi's default setup
+includes both `dev` and `runtime`; this helper exports the existing `runtime`
+group without pytest/coverage/selectolax and their dev-only dependencies. It
+does not delete these tools or weaken their independent-oracle tests.
+
+```sh
+python -S tools/nano_export.py --source /path/to/Aoi-inputs \
+  --output-parent /path/to/existing-export-directory
+```
+
+Use Python 3.11+ and a trusted installed `uv` (optionally `--uv /path/to/uv`).
+The source directory must contain `pyproject.toml` and `uv.lock` matching the
+exact Aoi Git blobs already recorded in the inventory. No fetch, source refresh,
+full clone, install or workload is performed. Other snapshots/lock structures,
+Git/path/workspace dependencies and edited or symlinked inputs fail closed.
+The supported local Aoi project is omitted from the export. Hashes verify **only
+these two input files**; the recorded source commit is inventory provenance,
+not proof of a checkout HEAD, ancestry, full-source license/security or behavior.
+
+Each call copies the verified inputs to a unique private directory outside the
+source, disables uv configuration discovery, clears uv/pip/Git overrides and
+Python environment selectors, forces
+the current Python executable, and runs locked/offline/no-Python-download export
+with `--no-default-groups --group runtime --no-emit-project`. Only after success
+and unchanged input checks does it publish `requirements.txt` and `receipt.json`
+and print their directory. Failures remove that invocation's directory; callers
+must require exit 0 and its receipt, not watch for partially written files.
+The trusted-tool subprocess has a timeout and bounded returned-file size; this
+is not a hostile-process sandbox or a disk/process-tree quota.
+
+The receipt records input Git blobs, inventory SHA-256, uv/Python versions,
+requirements SHA-256 and **exported row count**. It explicitly says no checkout
+verification, installation or workload occurred. Requirements use pinned
+registry packages and hashes, with no local project path. After the helper has
+exited 0, a separately chosen installation can use its completed directory:
+
+```sh
+NANO_EXPORT=/absolute/completed/directory/printed/by/helper
+test -s "$NANO_EXPORT/receipt.json" && test -s "$NANO_EXPORT/requirements.txt" || exit 1
+/path/to/selected/python -m venv "$NANO_EXPORT/venv" || exit 1
+"$NANO_EXPORT/venv/bin/python" -m pip install --require-hashes \
+  --only-binary=:all: -r "$NANO_EXPORT/requirements.txt"
+```
+
+This installation was **not run** and still needs compatible wheels. The manual
+recipe below instead creates `FEATURE_WORK/runtime.txt`; its variables and
+filenames are not the helper's output contract.
+
+[Recorded offline comparison](evidence/nano-exports/2026-10-31-aoi.json): uv
+0.13.4 / Python 3.12.14 exported **20 default-group rows → 12 runtime rows**.
+The omitted dev-only names are colorama, coverage, iniconfig, packaging, pluggy,
+pygments, pytest and selectolax. Both NumPy marker branches remain; these are
+**not installed-package counts**. Two simultaneous real offline helper calls
+completed in distinct directories with the same requirements digest, without
+changing source files. This checks output isolation, **not parallel speedup**.
+No installed bytes, install/build time or runtime performance was measured.
+
+### Manual recipes and remaining features
 
 Commands below are **opt-in recipes, not executed installation steps**. Use a
 trusted checkout at the inventory's commit, an explicitly chosen installed
@@ -234,11 +299,14 @@ instruction is not a new exception for this work.
 
 ```sh
 python -S -m unittest discover -s tests -p 'test_nano_inventory.py' -v
+python -S -m unittest discover -s tests -p 'test_nano_export.py' -v
 python -S -m unittest discover -s tests -p 'test_runtime_plan.py' -v
 python -S tests/stdlib_runtime_smoke.py
 ```
 
-The added checks validate inventory structure, public-scope metadata, immutable
-source-link shape and absence of invented execution evidence. They do not fetch
-sources, authenticate historical source claims or execute the listed features.
+The inventory checks validate public-scope metadata, immutable source-link shape
+and absence of invented execution evidence. The preparer tests use synthetic
+inputs/fake uv to check failure cleanup, exact selection, input mutation and
+parallel output independence. Neither suite fetches sources or executes the
+listed features. The separate evidence above records real offline uv exports.
 The existing Python workflow discovers the added test; no workflow is modified.
