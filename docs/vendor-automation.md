@@ -154,7 +154,7 @@ consumer wrapper (three lines):
 ```js
 "use strict";
 const { main } = require("./vendor/py_launch.cjs");
-if (require.main === module) main(__dirname + "/your_tool.py", { envVar: "IRONMATE_PYTHON", noSite: true });
+if (require.main === module) main(__dirname + "/your_tool.py", { envVar: "MY_TOOL_PYTHON", noSite: true });
 ```
 
 Optional `package.json` `"bin"` can point at that wrapper for `npx

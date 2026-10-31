@@ -2,7 +2,7 @@
 /**
  * Shared Node launcher for single-file stdlib Python tools (Node >= 24, node: builtins only).
  *
- * CLI: require("./vendor/py_launch.cjs").main(__dirname + "/tool.py", { envVar: "IRONMATE_PYTHON", noSite: true })
+ * CLI: require("./vendor/py_launch.cjs").main(__dirname + "/tool.py", { envVar: "MY_TOOL_PYTHON", noSite: true })
  * Library: run(scriptPath, args, { python, input, timeout, maxBuffer, maxInputBytes, responseMaxBytes, env, noSite, isolated, envVar }).
  * `maxBuffer` and `responseMaxBytes` are mutually exclusive. `env` merges over `process.env` (never injects PYTHONUTF8).
  *
