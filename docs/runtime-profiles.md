@@ -6,6 +6,12 @@ This first slice describes two configurations; it does not install, benchmark,
 launch workers, replace Docker, or distribute anything to children.
 See the [small-runtime principle](small-runtime-principles.md).
 
+The [current cross-repository screening and setup guide](nano-environments.md)
+extends the existing dependency survey, not this planner's v1 contract. It
+separates already-stdlib cores, optional features and real production packages;
+its source observations and installation recipes are not executed or measured
+runtime profiles. Both profiles below and their null evidence remain unchanged.
+
 ## Two initial configurations
 
 | Profile | Runtime requirements | Optional / separate work |
