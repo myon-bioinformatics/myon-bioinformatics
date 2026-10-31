@@ -1755,6 +1755,8 @@ def pending_enrollments(registry, base_registry, parent_repository=PARENT_REPOSI
     Only pure additions qualify. Changed or removed entries, new consumers,
     state changes, and the parent's own entries (checked from local PR bytes)
     are never pending and stay strict.
+    Pending entries are not validated at PR time; the child PR that adopts
+    them validates them, and push/schedule runs remain strict.
     """
     import vendor_consumers
     registry = vendor_consumers.validate(registry)
