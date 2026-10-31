@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = json.loads((ROOT / "tests/fixtures/fleet_vendor_locks_20261029.json").read_text())
 # Preserve the previous observation; only this reviewed child was re-observed.
 REFRESHED_FIXTURES = {
+    "myon-bioinformatics/flutter_navigation_basic": json.loads(
+        (ROOT / "tests/fixtures/flutter_adopted_vendor_235.json").read_text()),
     "myon-bioinformatics/Ironmate": json.loads(
         (ROOT / "tests/fixtures/ironmate_adopted_vendor_20261031.json").read_text()),
 }
@@ -67,7 +69,7 @@ def test_observed_lock_topology_and_immutable_revision(name):
 def test_flutter_full_workflow_digest_remains_explicit():
     registry = json.loads((ROOT / "vendor-consumers.json").read_text())
     row = vendor_consumers.get_consumer(registry, "myon-bioinformatics/flutter_navigation_basic")
-    workflow = (ROOT / "tests/fixtures/flutter_non_dart_20261031.yml").read_bytes()
+    workflow = (ROOT / "tests/fixtures/flutter_non_dart_ci_python_235.yml").read_bytes()
     assert hashlib.sha256(workflow).hexdigest() == row["locked_ci"]["sha256"]
     assert row["locked_ci"]["workflow"] == ".github/workflows/non-dart.yml"
     assert b"python-vendor-locked:" in workflow
@@ -98,3 +100,13 @@ def test_ironmate_adoption_preserves_previous_snapshot_and_checks_new_entries():
     registry = baseline_registry(json.loads((ROOT / "vendor-consumers.json").read_text()))
     assert vendor_consumers.compare(registry, current["lock"], name)["matches"]
     assert not vendor_consumers.compare(registry, old["lock"], name)["matches"]
+
+
+def test_flutter_python_ci_adoption_preserves_the_adopted_vendor_lock():
+    name = "myon-bioinformatics/flutter_navigation_basic"
+    old = FIXTURES[name]
+    current = REFRESHED_FIXTURES[name]
+    assert old["sha"] == "075e08530e6c02b9f0b2194922f244ff047ab23f"
+    assert current["lock"] == old["lock"]
+    heads = json.loads((ROOT / "child-heads.json").read_text())
+    assert heads["heads"][name]["pull_number"] == 235
