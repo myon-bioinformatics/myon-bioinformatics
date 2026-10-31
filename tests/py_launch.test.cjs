@@ -807,3 +807,41 @@ if (require.main === module) main(__dirname + "/echo_argv.py", { python: process
     }
   });
 });
+
+it("CLI: node py_launch.cjs SCRIPT.py ARGS runs the script and forwards its exit code", () => {
+  const { spawnSync } = require("node:child_process");
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const p = require("node:path");
+  const dir = fs.mkdtempSync(p.join(os.tmpdir(), "pyl-cli-"));
+  const script = p.join(dir, "echo_args.py");
+  fs.writeFileSync(script, "import sys\nprint(' '.join(sys.argv[1:]))\nsys.exit(3)\n");
+  const launcher = p.join(__dirname, "..", "py_launch.cjs");
+  const ok = spawnSync(process.execPath, [launcher, script, "a", "b c"], { encoding: "utf8" });
+  assert.strictEqual(ok.stdout.trim(), "a b c");
+  assert.strictEqual(ok.status, 3);
+  const usage = spawnSync(process.execPath, [launcher], { encoding: "utf8" });
+  assert.strictEqual(usage.status, 2);
+  assert.match(usage.stderr, /usage: node py_launch\.cjs/);
+});
+
+it("CLI: --env-var NAME selects the Python from that variable, and -S is always passed", () => {
+  const { spawnSync } = require("node:child_process");
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const p = require("node:path");
+  const dir = fs.mkdtempSync(p.join(os.tmpdir(), "pyl-env-"));
+  const script = p.join(dir, "flags.py");
+  fs.writeFileSync(script, "import sys\nprint(sys.flags.no_site)\n");
+  const launcher = p.join(__dirname, "..", "py_launch.cjs");
+  const env = { ...process.env, MY_TOOL_PYTHON: p.join(dir, "no-such-python") };
+  const bad = spawnSync(process.execPath, [launcher, "--env-var", "MY_TOOL_PYTHON", script], { encoding: "utf8", env });
+  assert.strictEqual(bad.status, 2);
+  assert.match(bad.stderr, /MY_TOOL_PYTHON/);
+  const eq = spawnSync(process.execPath, [launcher, "--env-var=MY_TOOL_PYTHON", script], { encoding: "utf8", env });
+  assert.strictEqual(eq.status, 2);
+  const ok = spawnSync(process.execPath, [launcher, script], { encoding: "utf8" });
+  assert.strictEqual(ok.stdout.trim(), "1");
+  const badName = spawnSync(process.execPath, [launcher, "--env-var", "1X", script], { encoding: "utf8" });
+  assert.strictEqual(badName.status, 2);
+});

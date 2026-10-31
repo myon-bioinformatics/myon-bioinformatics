@@ -2,7 +2,7 @@
 /**
  * Shared Node launcher for single-file stdlib Python tools (Node >= 24, node: builtins only).
  *
- * CLI: require("./vendor/py_launch.cjs").main(__dirname + "/tool.py", { envVar: "IRONMATE_PYTHON", noSite: true })
+ * CLI: require("./vendor/py_launch.cjs").main(__dirname + "/tool.py", { envVar: "MY_TOOL_PYTHON", noSite: true })
  * Library: run(scriptPath, args, { python, input, timeout, maxBuffer, maxInputBytes, responseMaxBytes, env, noSite, isolated, envVar }).
  * `maxBuffer` and `responseMaxBytes` are mutually exclusive. `env` merges over `process.env` (never injects PYTHONUTF8).
  *
@@ -568,3 +568,27 @@ module.exports = {
   VERSION_PROBE,
   MIN_NODE,
 };
+
+// CLI: node py_launch.cjs [--env-var NAME] SCRIPT.py [ARGS...] — 包むだけの .cjs を置かずに Python ツールを動かす。
+// --env-var NAME: 使う Python を環境変数 NAME で選べるようにする（例: BTK_PYTHON、XPROBE_PYTHON）。
+// Python には常に -S（site を読まない）を付けて渡す（noSite: true）。
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  let envVar;
+  if (args[0] === "--env-var") {
+    envVar = args[1];
+    args.splice(0, 2);
+  } else if (args[0] && args[0].startsWith("--env-var=")) {
+    envVar = args.shift().slice("--env-var=".length);
+  }
+  const [script, ...rest] = args;
+  if (envVar !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(envVar)) {
+    process.stderr.write("py_launch: --env-var needs a variable name such as MY_TOOL_PYTHON\n");
+    process.exitCode = 2;
+  } else if (!script || script.startsWith("-")) {
+    process.stderr.write("usage: node py_launch.cjs [--env-var NAME] SCRIPT.py [ARGS...]\n");
+    process.exitCode = 2;
+  } else {
+    main(require("node:path").resolve(script), { argv: rest, noSite: true, ...(envVar ? { envVar } : {}) });
+  }
+}

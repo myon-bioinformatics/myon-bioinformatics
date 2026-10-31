@@ -154,11 +154,21 @@ consumer wrapper (three lines):
 ```js
 "use strict";
 const { main } = require("./vendor/py_launch.cjs");
-if (require.main === module) main(__dirname + "/your_tool.py", { envVar: "IRONMATE_PYTHON", noSite: true });
+if (require.main === module) main(__dirname + "/your_tool.py", { envVar: "MY_TOOL_PYTHON", noSite: true });
 ```
 
 Optional `package.json` `"bin"` can point at that wrapper for `npx
 github:owner/repo#commit` style invocation; the vendored launcher stays shared.
+
+Without a wrapper, call the vendored launcher directly:
+
+```sh
+node vendor/py_launch.cjs --env-var MY_TOOL_PYTHON your_tool.py ARGS...
+```
+
+`--env-var NAME` (or `--env-var=NAME`) lets `NAME` choose the Python
+interpreter. Python always runs with `-S` (`noSite: true`): `site` is not
+loaded, so the script must not depend on site-packages.
 
 ### Python launcher for vendored Node scripts (`node_launch.py`)
 
