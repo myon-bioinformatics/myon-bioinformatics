@@ -43,7 +43,7 @@ jobs:
       matrix:
         python: ["3.11", "3.14"]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -65,7 +65,7 @@ jobs:
           --test tests/test_gh_ops.py --output "$CANDIDATE_OUTPUT"
       - name: Preserve verification and candidate JUnit (including failures)
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vendor-candidate-gh-identity-py${{ matrix.python }}
           path: ${{ runner.temp }}/vendor-candidate-py${{ matrix.python }}/
@@ -73,7 +73,7 @@ jobs:
           retention-days: 14
       - name: Preserve verifier JUnit
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: junit-vendor-candidate-verifier-py${{ matrix.python }}
           path: reports/verifier.xml

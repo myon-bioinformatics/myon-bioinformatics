@@ -300,7 +300,7 @@ def test_vendor_lock_and_template_stay():
 
 def test_workflow_resolves_main_and_skips_other_lanes():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "actions/checkout@v7" in text
+    assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1" in text
     assert SETUP_PYTHON in text
     assert SETUP_NODE in text
     assert SETUP_UV in text
