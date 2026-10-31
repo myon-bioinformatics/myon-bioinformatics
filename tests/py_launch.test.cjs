@@ -807,3 +807,20 @@ if (require.main === module) main(__dirname + "/echo_argv.py", { python: process
     }
   });
 });
+
+it("CLI: node py_launch.cjs SCRIPT.py ARGS runs the script and forwards its exit code", () => {
+  const { spawnSync } = require("node:child_process");
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const p = require("node:path");
+  const dir = fs.mkdtempSync(p.join(os.tmpdir(), "pyl-cli-"));
+  const script = p.join(dir, "echo_args.py");
+  fs.writeFileSync(script, "import sys\nprint(' '.join(sys.argv[1:]))\nsys.exit(3)\n");
+  const launcher = p.join(__dirname, "..", "py_launch.cjs");
+  const ok = spawnSync(process.execPath, [launcher, script, "a", "b c"], { encoding: "utf8" });
+  assert.strictEqual(ok.stdout.trim(), "a b c");
+  assert.strictEqual(ok.status, 3);
+  const usage = spawnSync(process.execPath, [launcher], { encoding: "utf8" });
+  assert.strictEqual(usage.status, 2);
+  assert.match(usage.stderr, /usage: node py_launch\.cjs/);
+});

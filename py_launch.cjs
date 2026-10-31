@@ -568,3 +568,14 @@ module.exports = {
   VERSION_PROBE,
   MIN_NODE,
 };
+
+// CLI: node py_launch.cjs SCRIPT.py [ARGS...] — 包むだけの .cjs を置かずに Python ツールを動かす。
+if (require.main === module) {
+  const [script, ...rest] = process.argv.slice(2);
+  if (!script || script.startsWith("-")) {
+    process.stderr.write("usage: node py_launch.cjs SCRIPT.py [ARGS...]\n");
+    process.exitCode = 2;
+  } else {
+    main(require("node:path").resolve(script), { argv: rest, noSite: true });
+  }
+}
