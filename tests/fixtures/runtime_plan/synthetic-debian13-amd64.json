@@ -1,0 +1,30 @@
+{
+  "schema": "nano-environment/1",
+  "kind": "synthetic",
+  "facts": {
+    "python.version": "3.13.0",
+    "stdlib.ctypes": true,
+    "os.id": "debian",
+    "os.release": "13",
+    "os.arch": "amd64",
+    "os.libc": "glibc",
+    "native.integer_bits": 32,
+    "native.lapack_symbols": [
+      "sgesdd_",
+      "dgesdd_"
+    ],
+    "native.blas_symbols": [
+      "cblas_sgemm",
+      "cblas_dgemm"
+    ],
+    "package.libblas3.version": "3.12.1-6",
+    "package.liblapack3.version": "3.12.1-6",
+    "package.libgfortran5.version": "14.2.0-19",
+    "node.version": false,
+    "pytest.version": false,
+    "stdlib.json": true,
+    "package.libblas3.arch": "amd64",
+    "package.liblapack3.arch": "amd64",
+    "package.libgfortran5.arch": "amd64"
+  }
+}
