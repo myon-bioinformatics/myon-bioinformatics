@@ -214,7 +214,7 @@ def test_subactions_resolve_one_repository_tag(tmp_path):
     assert calls == [("actions/cache", "v6.1.0")]
 
 
-def test_existing_workflow_lint_lane_covers_all_workflow_changes_offline():
+def test_workflow_lint_lane_checks_hashes_strict_on_main_and_schedule():
     import yaml  # Test dependency only; production scanner stays stdlib.
     workflow = yaml.load((ROOT / ".github/workflows/actionlint.yml").read_text(),
                          Loader=yaml.BaseLoader)
@@ -223,8 +223,25 @@ def test_existing_workflow_lint_lane_covers_all_workflow_changes_offline():
         assert ".github/workflows/**" in paths
         assert "scripts/check_action_uses.py" in paths
         assert "tests/test_action_uses.py" in paths
+        assert "templates/*.workflow.yml" in paths
+    assert "schedule" in workflow["on"]
     assert workflow["permissions"] == {"contents": "read"}
     job = workflow["jobs"]["action-uses"]
-    assert job["steps"][-1]["run"] == "python3 -S scripts/check_action_uses.py"
+    step = job["steps"][-1]
+    run = step["run"]
+    assert "python3 -S scripts/check_action_uses.py --check-hashes --warn" in run
+    assert "python3 -S scripts/check_action_uses.py --check-hashes\n" in run
+    assert '"$EVENT_NAME" == "schedule"' in run
+    assert '"$GITHUB_REF" == "refs/heads/main"' in run
+    assert step["env"]["GITHUB_TOKEN"] == "${{ github.token }}"
     assert job["steps"][0]["with"]["persist-credentials"] == "false"
     assert "env" not in job and "permissions" not in job
+
+
+def test_workflow_templates_are_checked(tmp_path):
+    path = tmp_path / "templates" / "child.workflow.yml"
+    path.parent.mkdir(parents=True)
+    path.write_text("steps:\n  - uses: actions/checkout@v7\n", encoding="utf-8")
+    found = uses.style_problems(tmp_path)
+    assert len(found) == 1
+    assert found[0].startswith("templates/child.workflow.yml:2:")

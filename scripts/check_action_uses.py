@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """GitHub Actions の uses を、最新リリースの full SHA 固定の方針と照合する。
 
+検査対象: .github/workflows/*.yml、*.yaml と templates/*.workflow.yml。
+
 方針（2026-10-31 myon さんの判断）:
 
 - 外部の action（actions/*、astral-sh/setup-uv、サードパーティを含むすべて）は、
@@ -102,9 +104,9 @@ def _has_flow_uses(line: str) -> bool:
 
 def _iter_uses(root: Path):
     workflow_dir = root / ".github" / "workflows"
-    if not workflow_dir.is_dir():
-        return
     paths = sorted(workflow_dir.glob("*.yml")) + sorted(workflow_dir.glob("*.yaml"))
+    # 子に配る workflow テンプレートも同じ方針で検査する。
+    paths += sorted((root / "templates").glob("*.workflow.yml"))
     for path in paths:
         lines = path.read_text(encoding="utf-8").splitlines()
         scalar_indent = None
