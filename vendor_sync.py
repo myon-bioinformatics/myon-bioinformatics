@@ -1745,10 +1745,61 @@ def _head_sha_map(heads):
     return {name: entry["sha"] for name, entry in heads.items()}
 
 
+def _entry_key(entry):
+    return (entry["repository"].casefold(), entry["source"], entry["destination"].casefold())
+
+
+def pending_enrollments(registry, base_registry, parent_repository=PARENT_REPOSITORY):
+    """Entries a PR adds to an existing locked child consumer, relative to base.
+
+    Only pure additions qualify. Changed or removed entries, new consumers,
+    state changes, and the parent's own entries (checked from local PR bytes)
+    are never pending and stay strict.
+    """
+    import vendor_consumers
+    registry = vendor_consumers.validate(registry)
+    base_registry = vendor_consumers.validate(base_registry)
+    base = {c["repository"].casefold(): c for c in base_registry["consumers"]}
+    pending = []
+    for consumer in registry["consumers"]:
+        name = consumer["repository"]
+        old = base.get(name.casefold())
+        if (old is None or name.casefold() == parent_repository.casefold()
+                or consumer["state"] != "locked" or old["state"] != "locked"
+                or consumer["lock"] != old["lock"]):
+            continue
+        old_entries = {_entry_key(e): e for e in old["entries"]}
+        new_entries = {_entry_key(e): e for e in consumer["entries"]}
+        if any(key not in new_entries or new_entries[key] != entry
+               for key, entry in old_entries.items()):
+            continue
+        for key in sorted(new_entries.keys() - old_entries.keys()):
+            entry = new_entries[key]
+            pending.append({"consumer": name, "repository": entry["repository"],
+                            "source": entry["source"], "destination": entry["destination"]})
+    return pending
+
+
+def _registry_without_pending(registry, pending):
+    registry = copy.deepcopy(registry)
+    drop = {(p["consumer"].casefold(),) + _entry_key(p) for p in pending}
+    for consumer in registry["consumers"]:
+        name = consumer["repository"].casefold()
+        consumer["entries"] = [e for e in consumer["entries"]
+                               if (name,) + _entry_key(e) not in drop]
+    return registry
+
+
 def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, token=None,
                         autofix=False, parent_repository=PARENT_REPOSITORY, local_roots=None,
-                        repo_fetch=None, skip_source_diff=False, pr_validation=False):
+                        repo_fetch=None, skip_source_diff=False, pr_validation=False,
+                        base_registry=None):
     document = validate_child_heads(document)
+    if base_registry is not None and not pr_validation:
+        raise ValueError("base registry is only accepted with PR validation")
+    pending = (pending_enrollments(registry, base_registry, parent_repository)
+               if base_registry is not None else [])
+    audit_registry = _registry_without_pending(registry, pending) if pending else registry
     ref = document["ref"]
     monitored = monitored_repositories(registry, token=token)
     drift = []
@@ -1795,7 +1846,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
     parent_root_path = Path(parent_root)
     template_text = (parent_root_path / CHILD_CI_TEMPLATE).read_text(encoding="utf-8")
     audit_blocked, template_report, child_files = _baseline_audit_blocked(
-        registry, document, monitored, template_text, token=token,
+        audit_registry, document, monitored, template_text, token=token,
         parent_root=parent_root, parent_repository=parent_repository,
         remotes=remotes, local_roots=local_roots,
     )
@@ -1924,6 +1975,8 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         "audit_failure_count": audit_failure_count,
         "audit_blocked": audit_blocked,
         "pr_validation": pr_validation,
+        "pending_enrollments": pending,
+        "pending_enrollment_count": len(pending),
         "failure_count": failure_count,
     }
 
@@ -2435,6 +2488,11 @@ def _write_audit_summary(report, summary_path):
 def _write_child_heads_summary(report, summary_path):
     lines = ["## Parent child CI", ""]
     if report.get("schema") == "parent-child-ci/1":
+        for row in report.get("pending_enrollments", []):
+            lines.append(
+                f"Pending enrollment (report only): {row['consumer']} "
+                f"{row['repository']}:{row['source']} -> {row['destination']}"
+            )
         if report["drift_count"]:
             if report.get("pr_validation"):
                 lines.append(
@@ -2624,6 +2682,9 @@ def main(argv=None, *, get=_get):
                         help="skip cross-repo branch diff scan (pull request validation only)")
     parser.add_argument("--pr-validation", action="store_true",
                         help="pull request mode: SHA drift is report-only; only repository id mismatch fails")
+    parser.add_argument("--base-registry",
+                        help="PR base vendor-consumers.json; entries this PR only adds to an "
+                             "existing locked child are reported as pending enrollment")
     parser.add_argument("--consumer-name", dest="consumer_name",
                         help="consumer repository for run-child-ci (default: derive from --root)")
     args = parser.parse_args(argv)
@@ -2672,6 +2733,8 @@ def main(argv=None, *, get=_get):
                 parent_repository=args.parent,
                 skip_source_diff=args.skip_source_diff,
                 pr_validation=args.pr_validation,
+                base_registry=(json.loads(Path(args.base_registry).read_text(encoding="utf-8"))
+                               if args.base_registry else None),
             )
             if args.summary:
                 _write_child_heads_summary(result, args.summary)
