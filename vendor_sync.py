@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import base64
 import copy
+from contextvars import ContextVar
+from functools import wraps
 import hashlib
 import json
 import os
@@ -68,6 +70,75 @@ CHILD_CI_WORKFLOW_PATH = ".github/workflows/vendor-child-ci.yml"
 PUBLIC_GIT_FETCH_ERROR = "public Git fetch/read failed"
 PUBLIC_ACCESS_BLOCKED = "GitHub public access blocked (authentication or rate limit)"
 PUBLIC_FETCH_RETRY_DELAYS_SEC = (2, 4)
+_PARENT_FETCH_CACHE = ContextVar("parent_fetch_cache", default=None)
+
+
+def _parent_fetch_scope(function):
+    @wraps(function)
+    def scoped(*args, **kwargs):
+        marker = _PARENT_FETCH_CACHE.set({})
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _PARENT_FETCH_CACHE.reset(marker)
+    return scoped
+
+
+def _github_read_bytes(url, token=None):
+    """Bounded GET retries with safe diagnostics; never retry ambiguous writes."""
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "vendor-sync/parent-child-ci"}
+    if token:
+        headers["Authorization"] = "Bearer " + token
+    for attempt in range(_public_fetch_max_attempts()):
+        try:
+            with urlopen(Request(url, headers=headers), timeout=30) as response:
+                raw = response.read(MAX_BYTES + 1)
+            if len(raw) > MAX_BYTES:
+                raise ValueError("GitHub response exceeds byte limit")
+            return raw
+        except HTTPError as error:
+            response_headers = error.headers or {}
+            rate_limited = error.code == 429 or (error.code == 403 and (
+                response_headers.get("X-RateLimit-Remaining") == "0" or
+                response_headers.get("Retry-After") is not None))
+            _report_github_error(error, "GET", token, rate_limited=rate_limited)
+            retryable = rate_limited or error.code >= 500
+            delay = PUBLIC_FETCH_RETRY_DELAYS_SEC[min(attempt, len(PUBLIC_FETCH_RETRY_DELAYS_SEC) - 1)]
+            try:
+                if response_headers.get("Retry-After") is not None:
+                    delay = max(delay, float(response_headers["Retry-After"]))
+                elif rate_limited and response_headers.get("X-RateLimit-Reset"):
+                    delay = max(delay, float(response_headers["X-RateLimit-Reset"]) - time.time())
+            except (ValueError, TypeError):
+                retryable = False
+            if not retryable or delay > 60 or attempt + 1 == _public_fetch_max_attempts():
+                raise
+            time.sleep(delay)
+        except (URLError, TimeoutError) as error:
+            if attempt + 1 == _public_fetch_max_attempts():
+                raise
+            time.sleep(PUBLIC_FETCH_RETRY_DELAYS_SEC[attempt])
+
+
+def _report_github_error(error, method, token, *, rate_limited=None):
+    # Report the endpoint family without repository names, body, or credentials.
+    path = error.url.split("?", 1)[0].removeprefix("https://api.github.com/")
+    parts = path.split("/")
+    endpoint = parts[3] if len(parts) > 3 and parts[0] == "repos" else "repository-metadata"
+    if endpoint not in {"commits", "pulls", "contents", "actions", "git", "branches"}:
+        endpoint = "repository-metadata"
+    if rate_limited is None:
+        response_headers = error.headers or {}
+        rate_limited = error.code == 429 or (error.code == 403 and (
+            response_headers.get("X-RateLimit-Remaining") == "0" or
+            response_headers.get("Retry-After") is not None))
+    detail = {"status": error.code, "authenticated": bool(token),
+              "rate_limited": rate_limited, "endpoint_family": endpoint}
+    for key in ("X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After", "X-GitHub-Request-Id"):
+        if (error.headers or {}).get(key) is not None:
+            detail[key] = _redact_secrets(str(error.headers[key]), token=token)
+    error.msg = "GitHub " + method + " failed " + json.dumps(detail, sort_keys=True)
+    sys.stderr.write("vendor_sync: " + str(error.msg) + "\n")
 
 
 class _TransientPublicFetchError(Exception):
@@ -1550,6 +1621,8 @@ def refresh_child_heads(registry, heads_path, *, ref="main", remotes=None, token
 
 
 def _github_api(method, url, token=None, body=None):
+    if method == "GET":
+        return _github_json(url, token)
     headers = {"Accept": "application/vnd.github+json", "User-Agent": "vendor-sync/parent-child-ci"}
     if token:
         headers["Authorization"] = "Bearer " + token
@@ -1558,8 +1631,12 @@ def _github_api(method, url, token=None, body=None):
         data = json.dumps(body).encode("utf-8")
         headers["Content-Type"] = "application/json"
     request = Request(url, data=data, headers=headers, method=method)
-    with urlopen(request, timeout=60) as response:
-        raw = response.read(MAX_BYTES + 1)
+    try:
+        with urlopen(request, timeout=60) as response:
+            raw = response.read(MAX_BYTES + 1)
+    except HTTPError as error:
+        _report_github_error(error, method, token)
+        raise
     if len(raw) > MAX_BYTES:
         raise ValueError("GitHub response exceeds byte limit")
     if not raw:
@@ -1745,6 +1822,7 @@ def _head_sha_map(heads):
     return {name: entry["sha"] for name, entry in heads.items()}
 
 
+@_parent_fetch_scope
 def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, token=None,
                         autofix=False, parent_repository=PARENT_REPOSITORY, local_roots=None,
                         repo_fetch=None, skip_source_diff=False, pr_validation=False):
@@ -2100,6 +2178,10 @@ def _commit_merged_via_git_bare_fetch(repository, commit, *, remotes=None):
     """Exact first-parent check via gh_identity.first_parent_check (blob-less bare fetch)."""
     ghi = _gh_identity()
     remote = _repository_remote(repository, remotes)
+    cache = _PARENT_FETCH_CACHE.get()
+    key = ("first-parent", _normalize_repository(repository), commit.lower(), remote)
+    if cache is not None and key in cache:
+        return True
 
     def attempt():
         try:
@@ -2116,7 +2198,10 @@ def _commit_merged_via_git_bare_fetch(repository, commit, *, remotes=None):
         return True
 
     label = "first-parent check " + _normalize_repository(repository)
-    return _retry_transient_public_fetch(label, attempt)
+    result = _retry_transient_public_fetch(label, attempt)
+    if cache is not None:
+        cache[key] = True
+    return result
 
 
 def commit_merged_into_default(repository, commit, *, remotes=None, local_roots=None, token=None):
@@ -2282,14 +2367,15 @@ def audit_consumer_merged_pins(consumer, lock_documents, workflow_documents, *,
 
 
 def _github_json(url, token=None):
-    headers = {"Accept": "application/vnd.github+json", "User-Agent": "vendor-sync/merged-pin-audit"}
-    if token:
-        headers["Authorization"] = "Bearer " + token
-    with urlopen(Request(url, headers=headers), timeout=30) as response:
-        raw = response.read(MAX_BYTES + 1)
-    if len(raw) > MAX_BYTES:
-        raise ValueError("GitHub response exceeds byte limit")
-    return json.loads(raw.decode("utf-8"))
+    token = _api_token(token)
+    cache = _PARENT_FETCH_CACHE.get()
+    key = ("json", url, token)
+    if cache is not None and key in cache:
+        return copy.deepcopy(cache[key])
+    result = json.loads(_github_read_bytes(url, token).decode("utf-8"))
+    if cache is not None:
+        cache[key] = copy.deepcopy(result)
+    return result
 
 
 def _fetch_consumer_revision(repository, ref, token=None):
