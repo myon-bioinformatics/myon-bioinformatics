@@ -84,6 +84,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
           args=(
@@ -95,6 +96,12 @@ jobs:
           )
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             args+=(--skip-source-diff --pr-validation)
+            # Entries this PR only adds to an existing child are pending
+            # enrollment (report-only) until the child adopts them. Push and
+            # schedule runs stay strict against the full registry.
+            base_registry="$RUNNER_TEMP/base-vendor-consumers.json"
+            git show "$PR_BASE_SHA:vendor-consumers.json" > "$base_registry"
+            args+=(--base-registry "$base_registry")
           fi
           python -S vendor_sync.py "${args[@]}"
       - name: Unit regressions (offline)
