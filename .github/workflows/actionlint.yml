@@ -4,16 +4,54 @@ on:
   pull_request:
     paths:
       - ".github/workflows/**"
-      - "templates/vendor-child-ci.workflow.yml"
+      - "templates/*.workflow.yml"
+      - "scripts/check_action_uses.py"
+      - "tests/test_action_uses.py"
   push:
     paths:
       - ".github/workflows/**"
-      - "templates/vendor-child-ci.workflow.yml"
+      - "templates/*.workflow.yml"
+      - "scripts/check_action_uses.py"
+      - "tests/test_action_uses.py"
+  # タグと SHA の照合は、タグの付け替えを拾うため毎日も回す（07:00 UTC）。
+  schedule:
+    - cron: "0 7 * * *"
 
 permissions:
   contents: read
 
 jobs:
+  action-uses:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check action pins and release hashes
+        # Release-hash mismatches may warn on PR/non-main pushes; style errors
+        # and API validation failures remain errors. Main/schedule are strict.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Syntax/pinning policy is always strict; only observed release-hash
+          # mismatches may be report-only before main integration.
+          python3 -S scripts/check_action_uses.py
+          strict=0
+          if [[ "$EVENT_NAME" == "schedule" ]]; then
+            strict=1
+          elif [[ "$EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
+            strict=1
+          fi
+          if [[ "$strict" == "1" ]]; then
+            python3 -S scripts/check_action_uses.py --check-hashes
+          else
+            python3 -S scripts/check_action_uses.py --check-hashes --warn
+          fi
+
   actionlint:
     uses: ./.github/workflows/reusable-actionlint.yml
 
