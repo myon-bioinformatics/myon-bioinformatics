@@ -4,6 +4,7 @@ import copy
 import pytest
 
 import vendor_sync as sync
+import vendor_consumers
 
 CHILD = "owner/child"
 
@@ -30,6 +31,18 @@ def test_pure_addition_is_pending():
 
 def test_no_base_change_has_no_pending():
     assert sync.pending_enrollments(_registry(), _registry()) == []
+
+
+def test_license_only_addition_is_removed_from_normalized_audit_registry():
+    base = _registry()
+    head = copy.deepcopy(base)
+    head["consumers"][0]["entries"][0]["license"] = "vendor/tool-LICENSE"
+    original = copy.deepcopy(head)
+    pending = sync.pending_enrollments(head, base)
+    assert pending == [{"consumer": CHILD, "repository": "owner/tool",
+                        "source": "LICENSE", "destination": "vendor/tool-LICENSE"}]
+    assert sync._registry_without_pending(head, pending) == base
+    assert head == original
 
 
 def test_modified_entry_is_not_pending():
@@ -68,7 +81,8 @@ def _run(monkeypatch, tmp_path, registry, **kwargs):
 
     def audit(audit_registry, *a, **k):
         seen["registry"] = audit_registry
-        child = [c for c in audit_registry["consumers"] if c["repository"] == CHILD][0]
+        normalized = vendor_consumers.validate(audit_registry)
+        child = [c for c in normalized["consumers"] if c["repository"] == CHILD][0]
         ok = len(child["entries"]) == 1  # the child main lock has only tool.py
         failures = [] if ok else [{"repository": CHILD, "message": "consumer topology mismatch against parent registry"}]
         return [], {"failures": [], "missing": []}, {"checked": [], "failures": failures,
@@ -88,6 +102,24 @@ def test_pr_validation_with_base_reports_pending_and_passes(monkeypatch, tmp_pat
 
 def test_pr_validation_without_base_stays_strict(monkeypatch, tmp_path):
     report, _ = _run(monkeypatch, tmp_path, _registry(NEW), pr_validation=True)
+    assert report["pending_enrollment_count"] == 0
+    assert report["failure_count"] == 1
+
+
+def test_license_only_pr_addition_is_report_only(monkeypatch, tmp_path):
+    head = _registry()
+    head["consumers"][0]["entries"][0]["license"] = "vendor/tool-LICENSE"
+    report, seen = _run(monkeypatch, tmp_path, head, pr_validation=True,
+                        base_registry=_registry())
+    assert report["pending_enrollment_count"] == 1
+    assert report["failure_count"] == 0
+    assert seen["registry"] == _registry()
+
+
+def test_license_only_addition_without_pr_base_stays_strict(monkeypatch, tmp_path):
+    head = _registry()
+    head["consumers"][0]["entries"][0]["license"] = "vendor/tool-LICENSE"
+    report, _ = _run(monkeypatch, tmp_path, head)
     assert report["pending_enrollment_count"] == 0
     assert report["failure_count"] == 1
 
