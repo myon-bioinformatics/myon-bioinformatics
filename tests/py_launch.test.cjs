@@ -899,7 +899,7 @@ it("CLI: lone -- ends options; repeated options: last wins; --site puts site-pac
   const dash = p.join(dir, "-dash.py");
   fs.writeFileSync(dash, "print('dash')\n");
   const paths = p.join(dir, "paths.py");
-  fs.writeFileSync(paths, "import sys, site\nprint(sum(1 for d in site.getsitepackages() if d in sys.path))\n");
+  fs.writeFileSync(paths, "import os, sys, site\nn = os.path.normcase\nroots = {n(sys.prefix), n(sys.base_prefix)}\nprint(sum(1 for d in site.getsitepackages() if d in sys.path and n(d) not in roots))\n");
   const launcher = p.join(__dirname, "..", "py_launch.cjs");
   const run = (argv, env, cwd) => spawnSync(process.execPath, [launcher, ...argv], { encoding: "utf8", env: env ?? process.env, cwd });
   const sep = run(["--site", "--", script, "--", "x"]);
