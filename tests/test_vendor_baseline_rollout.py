@@ -38,7 +38,7 @@ def test_observed_lock_topology_and_immutable_revision(name):
 def test_flutter_full_workflow_digest_remains_explicit():
     registry = json.loads((ROOT / "vendor-consumers.json").read_text())
     row = vendor_consumers.get_consumer(registry, "myon-bioinformatics/flutter_navigation_basic")
-    workflow = (ROOT / "tests/fixtures/flutter_non_dart_20261029.yml").read_bytes()
+    workflow = (ROOT / "tests/fixtures/flutter_non_dart_20261031.yml").read_bytes()
     assert hashlib.sha256(workflow).hexdigest() == row["locked_ci"]["sha256"]
     assert row["locked_ci"]["workflow"] == ".github/workflows/non-dart.yml"
     assert b"python-vendor-locked:" in workflow
