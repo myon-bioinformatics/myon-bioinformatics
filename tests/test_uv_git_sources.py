@@ -284,6 +284,10 @@ def test_vendor_lock_and_template_stay():
     template = (ROOT / "templates" / "vendor-child-ci.workflow.yml").read_text(encoding="utf-8")
     assert "vendor_dispatch" not in template
     assert "uv lock" not in template
+    assert "actions/setup-python" not in template
+    assert "astral-sh/setup-uv@" in template
+    assert 'python-version: "3.15"' in template
+    assert "activate-environment: true" in template
     note = (ROOT / "docs" / "uv-git-source-migration.md").read_text(encoding="utf-8")
     assert "vendor-catalog.json" in note
     assert "package = false" in note
