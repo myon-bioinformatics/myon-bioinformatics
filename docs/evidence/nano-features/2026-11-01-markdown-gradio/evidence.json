@@ -1,0 +1,3846 @@
+{
+  "schema": "nano-markdown-gradio-measured/1",
+  "status": "selected_text_api_validated_install_repetitions_incomplete",
+  "repository": "myon-bioinformatics/markdown",
+  "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+  "source_identity": {
+    "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+    "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+    "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+    "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a",
+    "orchestrator_sha256": "f43a6749a6374bf0859edf27dae4c48aae9a88236913f0ac991ee61751a20cdf"
+  },
+  "host_before": {
+    "observed_at": "2026-11-01T04:20:21.772018+00:00",
+    "phase": "pre-install/pre-workload",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "python": "3.12.14",
+    "disk_free_bytes": 58092027904,
+    "disk_total_bytes": 67586535424,
+    "disk_required_minimum_bytes": 12884901888,
+    "visible_cpu_count": 9,
+    "affinity_cpu_count": 9,
+    "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+    "mem_total_kib": 10206472,
+    "effective_cpu_quota": null,
+    "effective_memory_limit": null,
+    "limits": "Visible CPUs/MemTotal and disk-free observation, not exclusive allocation or measured effective quota. No cleanup of prior evidence."
+  },
+  "host_curl": {
+    "path": "/usr/bin/curl",
+    "version": "8.14.1",
+    "bytes": 321880,
+    "sha256": "52e9ceef96bd7c7dd4c2c9d8ac4c5f466c563dc0d16817720518b430da7a94b7",
+    "scope": "host test executable; not counted in runtime venv"
+  },
+  "scope": "Text-input real Gradio queue/API only; uploaded_path=None. Not upload/widget/browser/full-suite coverage.",
+  "requirements_rows_not_installed_counts": {
+    "full": 77,
+    "gradio": 56
+  },
+  "distinct_requirement_names_not_installed_counts": {
+    "full": 75,
+    "gradio": 55
+  },
+  "installed_package_sets": {
+    "full": [
+      [
+        "Jinja2",
+        "3.1.6"
+      ],
+      [
+        "MarkupSafe",
+        "3.0.4"
+      ],
+      [
+        "PyYAML",
+        "6.0.3"
+      ],
+      [
+        "Pygments",
+        "2.21.0"
+      ],
+      [
+        "altair",
+        "6.3.0"
+      ],
+      [
+        "annotated-doc",
+        "0.0.5"
+      ],
+      [
+        "annotated-types",
+        "0.8.0"
+      ],
+      [
+        "anyio",
+        "4.15.1"
+      ],
+      [
+        "attrs",
+        "26.1.0"
+      ],
+      [
+        "brotli",
+        "1.2.1"
+      ],
+      [
+        "certifi",
+        "2026.10.19"
+      ],
+      [
+        "charset-normalizer",
+        "3.5.2"
+      ],
+      [
+        "click",
+        "8.5.0"
+      ],
+      [
+        "fastapi",
+        "0.150.0"
+      ],
+      [
+        "filelock",
+        "4.2.4"
+      ],
+      [
+        "fsspec",
+        "2026.9.0"
+      ],
+      [
+        "gradio",
+        "6.30.0"
+      ],
+      [
+        "gradio_client",
+        "2.7.2"
+      ],
+      [
+        "greenlet",
+        "3.5.6"
+      ],
+      [
+        "groovy",
+        "0.1.2"
+      ],
+      [
+        "h11",
+        "0.16.0"
+      ],
+      [
+        "hf-gradio",
+        "0.4.1"
+      ],
+      [
+        "hf-xet",
+        "1.7.0"
+      ],
+      [
+        "httpcore",
+        "1.0.9"
+      ],
+      [
+        "httpcore2",
+        "2.15.1"
+      ],
+      [
+        "httpx",
+        "0.28.1"
+      ],
+      [
+        "httpx2",
+        "2.15.1"
+      ],
+      [
+        "huggingface_hub",
+        "2.2.0"
+      ],
+      [
+        "idna",
+        "3.20"
+      ],
+      [
+        "itsdangerous",
+        "2.2.0"
+      ],
+      [
+        "jsonschema",
+        "4.26.0"
+      ],
+      [
+        "jsonschema-specifications",
+        "2025.9.1"
+      ],
+      [
+        "markdown-it-py",
+        "4.2.0"
+      ],
+      [
+        "mdurl",
+        "0.1.2"
+      ],
+      [
+        "narwhals",
+        "2.27.1"
+      ],
+      [
+        "numpy",
+        "2.5.4"
+      ],
+      [
+        "opentelemetry-api",
+        "1.45.1"
+      ],
+      [
+        "orjson",
+        "3.13.0"
+      ],
+      [
+        "packaging",
+        "26.3"
+      ],
+      [
+        "pandas",
+        "3.0.6"
+      ],
+      [
+        "pillow",
+        "13.0.0"
+      ],
+      [
+        "playwright",
+        "1.64.0"
+      ],
+      [
+        "protobuf",
+        "7.36.2"
+      ],
+      [
+        "pyarrow",
+        "26.0.0"
+      ],
+      [
+        "pydantic",
+        "2.14.1"
+      ],
+      [
+        "pydantic_core",
+        "2.50.1"
+      ],
+      [
+        "pydeck",
+        "0.9.3"
+      ],
+      [
+        "pydub",
+        "0.25.1"
+      ],
+      [
+        "pyee",
+        "14.0.0"
+      ],
+      [
+        "python-dateutil",
+        "2.9.0.post0"
+      ],
+      [
+        "python-multipart",
+        "0.0.32"
+      ],
+      [
+        "pytz",
+        "2026.5"
+      ],
+      [
+        "referencing",
+        "0.37.0"
+      ],
+      [
+        "requests",
+        "2.34.2"
+      ],
+      [
+        "rich",
+        "15.0.0"
+      ],
+      [
+        "rpds-py",
+        "2026.9.1"
+      ],
+      [
+        "safehttpx",
+        "0.2.0"
+      ],
+      [
+        "semantic-version",
+        "2.10.0"
+      ],
+      [
+        "shellingham",
+        "1.5.4"
+      ],
+      [
+        "six",
+        "1.17.0"
+      ],
+      [
+        "starlette",
+        "1.9.0"
+      ],
+      [
+        "streamlit",
+        "1.66.0"
+      ],
+      [
+        "tomlkit",
+        "0.15.2"
+      ],
+      [
+        "tqdm",
+        "4.70.1"
+      ],
+      [
+        "truststore",
+        "0.10.5"
+      ],
+      [
+        "typer",
+        "0.27.3"
+      ],
+      [
+        "typing-inspection",
+        "0.4.4"
+      ],
+      [
+        "typing_extensions",
+        "4.16.0"
+      ],
+      [
+        "urllib3",
+        "2.8.0"
+      ],
+      [
+        "uvicorn",
+        "0.54.0"
+      ],
+      [
+        "watchdog",
+        "6.0.0"
+      ],
+      [
+        "websockets",
+        "17.3"
+      ]
+    ],
+    "gradio": [
+      [
+        "Jinja2",
+        "3.1.6"
+      ],
+      [
+        "MarkupSafe",
+        "3.0.4"
+      ],
+      [
+        "PyYAML",
+        "6.0.3"
+      ],
+      [
+        "Pygments",
+        "2.21.0"
+      ],
+      [
+        "annotated-doc",
+        "0.0.5"
+      ],
+      [
+        "annotated-types",
+        "0.8.0"
+      ],
+      [
+        "anyio",
+        "4.15.1"
+      ],
+      [
+        "brotli",
+        "1.2.1"
+      ],
+      [
+        "certifi",
+        "2026.10.19"
+      ],
+      [
+        "click",
+        "8.5.0"
+      ],
+      [
+        "fastapi",
+        "0.150.0"
+      ],
+      [
+        "filelock",
+        "4.2.4"
+      ],
+      [
+        "fsspec",
+        "2026.9.0"
+      ],
+      [
+        "gradio",
+        "6.30.0"
+      ],
+      [
+        "gradio_client",
+        "2.7.2"
+      ],
+      [
+        "groovy",
+        "0.1.2"
+      ],
+      [
+        "h11",
+        "0.16.0"
+      ],
+      [
+        "hf-gradio",
+        "0.4.1"
+      ],
+      [
+        "hf-xet",
+        "1.7.0"
+      ],
+      [
+        "httpcore",
+        "1.0.9"
+      ],
+      [
+        "httpcore2",
+        "2.15.1"
+      ],
+      [
+        "httpx",
+        "0.28.1"
+      ],
+      [
+        "httpx2",
+        "2.15.1"
+      ],
+      [
+        "huggingface_hub",
+        "2.2.0"
+      ],
+      [
+        "idna",
+        "3.20"
+      ],
+      [
+        "markdown-it-py",
+        "4.2.0"
+      ],
+      [
+        "mdurl",
+        "0.1.2"
+      ],
+      [
+        "numpy",
+        "2.5.4"
+      ],
+      [
+        "opentelemetry-api",
+        "1.45.1"
+      ],
+      [
+        "orjson",
+        "3.13.0"
+      ],
+      [
+        "packaging",
+        "26.3"
+      ],
+      [
+        "pandas",
+        "3.0.6"
+      ],
+      [
+        "pillow",
+        "13.0.0"
+      ],
+      [
+        "pydantic",
+        "2.14.1"
+      ],
+      [
+        "pydantic_core",
+        "2.50.1"
+      ],
+      [
+        "pydub",
+        "0.25.1"
+      ],
+      [
+        "python-dateutil",
+        "2.9.0.post0"
+      ],
+      [
+        "python-multipart",
+        "0.0.32"
+      ],
+      [
+        "pytz",
+        "2026.5"
+      ],
+      [
+        "rich",
+        "15.0.0"
+      ],
+      [
+        "safehttpx",
+        "0.2.0"
+      ],
+      [
+        "semantic-version",
+        "2.10.0"
+      ],
+      [
+        "shellingham",
+        "1.5.4"
+      ],
+      [
+        "six",
+        "1.17.0"
+      ],
+      [
+        "starlette",
+        "1.9.0"
+      ],
+      [
+        "tomlkit",
+        "0.15.2"
+      ],
+      [
+        "tqdm",
+        "4.70.1"
+      ],
+      [
+        "truststore",
+        "0.10.5"
+      ],
+      [
+        "typer",
+        "0.27.3"
+      ],
+      [
+        "typing-inspection",
+        "0.4.4"
+      ],
+      [
+        "typing_extensions",
+        "4.16.0"
+      ],
+      [
+        "uvicorn",
+        "0.54.0"
+      ]
+    ]
+  },
+  "installation": {
+    "source": {
+      "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+      "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+      "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+      "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a",
+      "orchestrator_sha256": "f43a6749a6374bf0859edf27dae4c48aae9a88236913f0ac991ee61751a20cdf"
+    },
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "python_executable": "<python-3.12.14>",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "uv": "0.13.4",
+    "network_transfer_bytes": null,
+    "limits": [
+      "Planned three fresh-cache AB/BA/AB install pairs; retain actual attempts and stop first failure.",
+      "Both profiles select only frontend with no default dev groups and no project; feature prunes Streamlit/Playwright.",
+      "Apparent/allocated regular-file bytes exclude shared interpreter/stdlib and symlink targets.",
+      "uv link-mode=copy; filesystem dedup unknown. Retained cache bytes are not network transfer bytes.",
+      "OS/DNS/CDN caches not flushed; timing is a small host observation, not universal speed evidence.",
+      "Both sides execute unchanged real Gradio queue/HTTP/client routes; no browser or model.",
+      "Each fixed job owns a private real local server plus HOME/TMPDIR/cache/output; no external server omitted.",
+      "Batch time includes two process starts, imports, app launch, API work, shutdown and receipt writing.",
+      "Only whole four-field callback payloads compare exactly; opaque job/session IDs are retained separately, not compared as content.",
+      "RSS sampled every20ms; sum double-counts shared pages, can miss peaks, is not PSS or a resource quota.",
+      "Worker high-water is read after API shutdown before receipt serialization, not final process-lifetime peak.",
+      "Test-only reused pytest/iniconfig/pluggy files and host curl are separately accounted, not installed in runtime venvs.",
+      "Full child/browser suite is untouched and not run; four existing no-browser tests must pass in each profile without skips.",
+      "No external API/model/browser/Docker or child repository changes."
+    ],
+    "postrun_identity_verified": false
+  },
+  "install_attempts": [
+    {
+      "trial": 1,
+      "profile": "full",
+      "order": [
+        "full",
+        "gradio"
+      ],
+      "stage": "installed",
+      "venv_create_seconds": 0.06411928600209649,
+      "venv_create_exit_code": 0,
+      "install_seconds": 17.575416353000037,
+      "exit_code": 0,
+      "installer_private_paths": {
+        "HOME": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/installer-home",
+        "TMPDIR": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/installer-tmp",
+        "XDG_CONFIG_HOME": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/installer-config",
+        "XDG_CACHE_HOME": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/installer-xdg-cache"
+      },
+      "venv": {
+        "apparent_regular_bytes": 642781043,
+        "allocated_regular_bytes": 667291648,
+        "regular_files": 10215,
+        "symlinks": 4,
+        "symlink_text_bytes": 90,
+        "hardlinked_files": 0
+      },
+      "cache": {
+        "apparent_regular_bytes": 661696414,
+        "allocated_regular_bytes": 686219264,
+        "regular_files": 10265,
+        "symlinks": 72,
+        "symlink_text_bytes": 2592,
+        "hardlinked_files": 0
+      },
+      "command": [
+        "<uv-0.13.4>",
+        "--no-config",
+        "pip",
+        "install",
+        "--python",
+        "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv/bin/python",
+        "--default-index",
+        "https://pypi.org/simple",
+        "--require-hashes",
+        "--only-binary",
+        ":all:",
+        "--no-deps",
+        "--link-mode",
+        "copy",
+        "--cache-dir",
+        "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/cache",
+        "-r",
+        "<workspace>/nano-gradio-measure-20261101/requirements-full.txt"
+      ],
+      "installed_distribution_count": 72,
+      "installed_package_set": "full",
+      "raw_receipt_sha256": "8b9080e41fab4ef32501b16a221ca3f352d2efb40428ede04be3ebe07599286d",
+      "raw_log_sha256": {
+        "install.stderr.log": "971f804de0ccf6ca223f6fa3ffc7a2027e77fc5f1fe54f3950f086807e2aaebb",
+        "install.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "trial": 1,
+      "profile": "gradio",
+      "order": [
+        "full",
+        "gradio"
+      ],
+      "stage": "installed",
+      "venv_create_seconds": 0.06402389999857405,
+      "venv_create_exit_code": 0,
+      "install_seconds": 10.444845180998527,
+      "exit_code": 0,
+      "installer_private_paths": {
+        "HOME": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/installer-home",
+        "TMPDIR": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/installer-tmp",
+        "XDG_CONFIG_HOME": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/installer-config",
+        "XDG_CACHE_HOME": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/installer-xdg-cache"
+      },
+      "venv": {
+        "apparent_regular_bytes": 239130663,
+        "allocated_regular_bytes": 257626112,
+        "regular_files": 7556,
+        "symlinks": 4,
+        "symlink_text_bytes": 90,
+        "hardlinked_files": 0
+      },
+      "cache": {
+        "apparent_regular_bytes": 251534688,
+        "allocated_regular_bytes": 270041088,
+        "regular_files": 7592,
+        "symlinks": 52,
+        "symlink_text_bytes": 1872,
+        "hardlinked_files": 0
+      },
+      "command": [
+        "<uv-0.13.4>",
+        "--no-config",
+        "pip",
+        "install",
+        "--python",
+        "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv/bin/python",
+        "--default-index",
+        "https://pypi.org/simple",
+        "--require-hashes",
+        "--only-binary",
+        ":all:",
+        "--no-deps",
+        "--link-mode",
+        "copy",
+        "--cache-dir",
+        "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/cache",
+        "-r",
+        "<workspace>/nano-gradio-measure-20261101/requirements-gradio.txt"
+      ],
+      "installed_distribution_count": 52,
+      "installed_package_set": "gradio",
+      "raw_receipt_sha256": "f830821f056f9c346f53bb201e7c9d82476c88596421cc2c88614d4845e3aa95",
+      "raw_log_sha256": {
+        "install.stderr.log": "7b4f88503d447822b87555e4f35fd1d89ee3f258e376f13bbbfec2e8469f28de",
+        "install.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "trial": 2,
+      "profile": "gradio",
+      "order": [
+        "gradio",
+        "full"
+      ],
+      "stage": "failed",
+      "venv_create_seconds": 0.06423798000105307,
+      "venv_create_exit_code": 0,
+      "install_seconds": 13.503627409998444,
+      "exit_code": 2,
+      "installer_private_paths": {
+        "HOME": "<workspace>/nano-gradio-measure-20261101/install-trials/2-gradio/installer-home",
+        "TMPDIR": "<workspace>/nano-gradio-measure-20261101/install-trials/2-gradio/installer-tmp",
+        "XDG_CONFIG_HOME": "<workspace>/nano-gradio-measure-20261101/install-trials/2-gradio/installer-config",
+        "XDG_CACHE_HOME": "<workspace>/nano-gradio-measure-20261101/install-trials/2-gradio/installer-xdg-cache"
+      },
+      "venv": {
+        "apparent_regular_bytes": 14990,
+        "allocated_regular_bytes": 28672,
+        "regular_files": 6,
+        "symlinks": 4,
+        "symlink_text_bytes": 90,
+        "hardlinked_files": 0
+      },
+      "cache": {
+        "apparent_regular_bytes": 12403920,
+        "allocated_regular_bytes": 12509184,
+        "regular_files": 110,
+        "symlinks": 0,
+        "symlink_text_bytes": 0,
+        "hardlinked_files": 0
+      },
+      "command": [
+        "<uv-0.13.4>",
+        "--no-config",
+        "pip",
+        "install",
+        "--python",
+        "<workspace>/nano-gradio-measure-20261101/install-trials/2-gradio/venv/bin/python",
+        "--default-index",
+        "https://pypi.org/simple",
+        "--require-hashes",
+        "--only-binary",
+        ":all:",
+        "--no-deps",
+        "--link-mode",
+        "copy",
+        "--cache-dir",
+        "<workspace>/nano-gradio-measure-20261101/install-trials/2-gradio/cache",
+        "-r",
+        "<workspace>/nano-gradio-measure-20261101/requirements-gradio.txt"
+      ],
+      "installed_distribution_count": null,
+      "installed_package_set": null,
+      "raw_receipt_sha256": "834b3b038c51714c25f25a91510be3d6d451c85a22a09d24b9ec3b0b7bc90d01",
+      "raw_log_sha256": {
+        "install.stderr.log": "cf96e7ebc6f3ac2696617a663389fe06a8dca2169c32bb476458c66d59069cb2",
+        "install.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "raw_registry_error": "Using Python 3.12.14 environment at: nano-gradio-measure-20261101/install-trials/2-gradio/venv\nResolved 52 packages in 3.37s\nerror: Failed to download `numpy==2.5.4`\n  cause: Failed to fetch: https://files.pythonhosted.org/packages/43/a3/c799c62e19c337e6d3770b08e475887fb30ce8477d3c09efca6b2f0228a6/numpy-2.5.4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl\n  cause: error sending request for url (https://files.pythonhosted.org/packages/43/a3/c799c62e19c337e6d3770b08e475887fb30ce8477d3c09efca6b2f0228a6/numpy-2.5.4-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl)\n  cause: client error (Connect)\n  cause: operation timed out\n"
+    }
+  ],
+  "install_plan_accounting": {
+    "planned": 6,
+    "attempted": 3,
+    "succeeded": 2,
+    "failed": 1,
+    "unstarted": 3,
+    "complete_matched_pairs": 1,
+    "successful_install_samples_per_profile": 1,
+    "planned_order": [
+      [
+        1,
+        "full"
+      ],
+      [
+        1,
+        "gradio"
+      ],
+      [
+        2,
+        "gradio"
+      ],
+      [
+        2,
+        "full"
+      ],
+      [
+        3,
+        "full"
+      ],
+      [
+        3,
+        "gradio"
+      ]
+    ],
+    "unstarted_trials": [
+      [
+        2,
+        "full"
+      ],
+      [
+        3,
+        "full"
+      ],
+      [
+        3,
+        "gradio"
+      ]
+    ],
+    "outer_install_runner_exit_code": 1,
+    "failure_operation_exit_code": 2,
+    "stop_reason": "First official NumPy wheel connection timeout; no retries, alternate endpoint or escalation.",
+    "network_retries_after_failure": 0,
+    "install_timing_median": null
+  },
+  "workload": {
+    "source": {
+      "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+      "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+      "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+      "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a",
+      "orchestrator_sha256": "f43a6749a6374bf0859edf27dae4c48aae9a88236913f0ac991ee61751a20cdf"
+    },
+    "selected_environment_trial": 1,
+    "postrun_identity_verified": true,
+    "limits": [
+      "Planned three fresh-cache AB/BA/AB install pairs; retain actual attempts and stop first failure.",
+      "Both profiles select only frontend with no default dev groups and no project; feature prunes Streamlit/Playwright.",
+      "Apparent/allocated regular-file bytes exclude shared interpreter/stdlib and symlink targets.",
+      "uv link-mode=copy; filesystem dedup unknown. Retained cache bytes are not network transfer bytes.",
+      "OS/DNS/CDN caches not flushed; timing is a small host observation, not universal speed evidence.",
+      "Both sides execute unchanged real Gradio queue/HTTP/client routes; no browser or model.",
+      "Each fixed job owns a private real local server plus HOME/TMPDIR/cache/output; no external server omitted.",
+      "Batch time includes two process starts, imports, app launch, API work, shutdown and receipt writing.",
+      "Only whole four-field callback payloads compare exactly; opaque job/session IDs are retained separately, not compared as content.",
+      "RSS sampled every20ms; sum double-counts shared pages, can miss peaks, is not PSS or a resource quota.",
+      "Worker high-water is read after API shutdown before receipt serialization, not final process-lifetime peak.",
+      "Test-only reused pytest/iniconfig/pluggy files and host curl are separately accounted, not installed in runtime venvs.",
+      "Full child/browser suite is untouched and not run; four existing no-browser tests must pass in each profile without skips.",
+      "No external API/model/browser/Docker or child repository changes."
+    ],
+    "model_inference_performed": false,
+    "browser_started": false,
+    "docker_started": false
+  },
+  "batches": [
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 2,
+      "mode": "api",
+      "sampled_sum_rss_max_bytes": 207290368,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "wall_seconds": 10.944032806000905,
+      "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+      "all_final_exit_codes": [
+        0,
+        0
+      ],
+      "profile": "full",
+      "repetition": 1,
+      "order": [
+        "full",
+        "gradio"
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 5.091450818999874,
+          "loopback_port": 48537,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 201252,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "c548778634b2ede60182b039a928d1e254b819a1ff0634c844868e2ba5dc1487",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-0",
+          "raw_file_sha256": {
+            "audit.jsonl": "c548778634b2ede60182b039a928d1e254b819a1ff0634c844868e2ba5dc1487",
+            "empty.post.json": "6ddcd9c2721374c9d42bb4fca4cc8dd9812dcae0a1b9ec4b6c76deb85871eb96",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "2e6b702c0810ac033b7e521abcc069ba19214b9088d92e049f5d02d544ac4e5e",
+            "rich.post.json": "42dcaf067c18e32f48be6990abaab630801d52fbbbf0a2abeac6e3dccfcf1f22",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "782917abd73d7f6b2f65b88ca499096f578f4e49b5fef374b73ffa9c15901afc",
+            "unicode_code.post.json": "29f26ae9b0c6d5892624e91ae57f72ac563291739758e613d2748ee4f13a6e09",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        },
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.5541866309977195,
+          "loopback_port": 57613,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 200160,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "e278548defebd4c6028145ce6ea0907bebcf5a907bae3f04c687dcf2edc0f0e9",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-1",
+          "raw_file_sha256": {
+            "audit.jsonl": "e278548defebd4c6028145ce6ea0907bebcf5a907bae3f04c687dcf2edc0f0e9",
+            "empty.post.json": "d20882a22f4a3747e6cf1ad4538cd280a696b6b72605b7699e08c269433f4791",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "6ca746be665139ae8715ce904ea31bba2935c93749728f69485dd8407e5937df",
+            "rich.post.json": "7f72e76756c0e0950f9a6f5c2c64e4a62881458301bf384f802fc594b922747d",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "4aff5dbff0ef1a3af38bba2dd19611d536201a8aa8b3347ca2ac8fd1f9f70257",
+            "unicode_code.post.json": "70cff0b290dd154193b91252f9a5f9ded7830d39f063c6a7e5b97a92892ff2ed",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        }
+      ],
+      "raw_receipt_sha256": "3c9c422925cbe9d3f32ed0140b5ceba8167d4a02dd446c5533184d7e0100f2ab"
+    },
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 2,
+      "mode": "api",
+      "sampled_sum_rss_max_bytes": 157704192,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "wall_seconds": 9.901498849998461,
+      "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+      "all_final_exit_codes": [
+        0,
+        0
+      ],
+      "profile": "gradio",
+      "repetition": 1,
+      "order": [
+        "full",
+        "gradio"
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.441485403000115,
+          "loopback_port": 56141,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 152240,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "18d3a559f78881a4b3b963cf610f3901c5e6ed5337409e5148d5450668a592fa",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-0",
+          "raw_file_sha256": {
+            "audit.jsonl": "18d3a559f78881a4b3b963cf610f3901c5e6ed5337409e5148d5450668a592fa",
+            "empty.post.json": "3c5308ef2f879e296afbe7f7c14b65691bc66b5479aea0c7802b723e7caf2667",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "a31ca56277b029870bbf877db181418fe649886a9506b2ac608f226d86a5d747",
+            "rich.post.json": "6b746fdf0936f16d1915079c09adb597a4eb176a3b154dd4c31f79b93e8f2ee1",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "18bba738a41268ffda63ac3e36191231a8555ef826b9e4153ba24cd1279c4659",
+            "unicode_code.post.json": "c397c9119096c6e37e36e957b23d1267e1b7767b25ae0fe9710bc3bde3576e98",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        },
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.417170235999947,
+          "loopback_port": 47087,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 152552,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "ad0ecd93cc93f64b39c240171613f2b83107dbae7007b77a2d8c9472b09efde0",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-1",
+          "raw_file_sha256": {
+            "audit.jsonl": "ad0ecd93cc93f64b39c240171613f2b83107dbae7007b77a2d8c9472b09efde0",
+            "empty.post.json": "11a20ba92c759d347927fb989d222099295d0dbc86d063f660dcc218caa17ed5",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "180e05b78a95267906b37a6e66ef0cc6967205dc6d7424477f7217968e8feb85",
+            "rich.post.json": "fdb7d04a3cf9fb0b8dfc1e29a46fbcb89ba3e2f70d60f9fa4e8e2d0451886bbe",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "1cd09de0bb425a57721e8b9e0fb6530258747e3944a24207a09fe5ce33bca06d",
+            "unicode_code.post.json": "5ff3b1e38808cf25cb6dc0d2a3a062acc672996bb1fef4274651c010478fd585",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        }
+      ],
+      "raw_receipt_sha256": "add13284037330bc023c0ba2c38069607db479bc96824c8c6fa1630474e60499"
+    },
+    {
+      "status": "completed",
+      "workers": 2,
+      "jobs": 2,
+      "mode": "api",
+      "sampled_sum_rss_max_bytes": 412778496,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "wall_seconds": 5.556055600001855,
+      "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+      "all_final_exit_codes": [
+        0,
+        0
+      ],
+      "profile": "full",
+      "repetition": 1,
+      "order": [
+        "full",
+        "gradio"
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.930565549999301,
+          "loopback_port": 54263,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 200400,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "940b574999098323d7a112ad9351117da129f065c15d79a955f61b043e017c90",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-0",
+          "raw_file_sha256": {
+            "audit.jsonl": "940b574999098323d7a112ad9351117da129f065c15d79a955f61b043e017c90",
+            "empty.post.json": "97a84c05e2949ca19f459de9ca897beb30387b214cc1d51c15bceb20d14b9ed8",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "9a0c21b4d54b0f5d8737410239adb6a4e477b757e1dd81688255128c186a22c4",
+            "rich.post.json": "9a5651d9270f2c492d87edbf5c9a597f2ccfbbbe75f0c6f2ed44309ca09893d8",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "648620fd30ae2d6a5ea5d10900921b05fb97baf2fdbaff2ed37ad7d192ad6881",
+            "unicode_code.post.json": "01721d629a1b20e870ecd15fdb38db3ff4a0193afc29a07f631805076ba1485b",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        },
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.968385550997482,
+          "loopback_port": 56315,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 200476,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "d0d4d9034a06d3043cbe00972845aa7e8516915c84ab1bbeacbec24f0b5be2c0",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-1",
+          "raw_file_sha256": {
+            "audit.jsonl": "d0d4d9034a06d3043cbe00972845aa7e8516915c84ab1bbeacbec24f0b5be2c0",
+            "empty.post.json": "6f4cd1274d00c8faada601ac6bdf297b260e5d2b1ab72c138d83535e995e034a",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "a0f9984eec6ca94c5a4cbb01ae8636249fb61802b25b5e4ba39b571eff2cbeb9",
+            "rich.post.json": "4980f7b7e363233a99a695a7d0a61b3c3cb96bf3a0b509cecf90fd4ece6aa95d",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "0c6543ee893647df18d9ebc86875ac3149662cb4a61b79c33fb72e7d4ddaee9f",
+            "unicode_code.post.json": "735913ac797b1ddc7a70f335780703cd150682530f594a09c459a86fea268114",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        }
+      ],
+      "raw_receipt_sha256": "e4dfe9e95d71bf81ae0d87949de3e1fcb93b2ef04ed693728fb6d474adeb9f92"
+    },
+    {
+      "status": "completed",
+      "workers": 2,
+      "jobs": 2,
+      "mode": "api",
+      "sampled_sum_rss_max_bytes": 315645952,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "wall_seconds": 4.834314280997205,
+      "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+      "all_final_exit_codes": [
+        0,
+        0
+      ],
+      "profile": "gradio",
+      "repetition": 1,
+      "order": [
+        "full",
+        "gradio"
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.232755576002091,
+          "loopback_port": 34907,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 153036,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "58180a03ccb0c147551f80026e181e1b92c14d957e6579b01a12d766c22d914b",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-0",
+          "raw_file_sha256": {
+            "audit.jsonl": "58180a03ccb0c147551f80026e181e1b92c14d957e6579b01a12d766c22d914b",
+            "empty.post.json": "4d3ea4758e98563a76beb65a42d650d2d512e9d8bb2caaff338da9c659fdfb37",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "9a79b64b6ecc39cba6851ff296c26fbe8068edfc63336e06b897de924f3ab8e2",
+            "rich.post.json": "6081c215d449692b6c870e4919a2dec9359d87e591b2d1f413be39e7e4727d76",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "b25ad4881c8cf51409363b4d8b8297bc57d5f93645f5ec798b7bea13a7fb6cdb",
+            "unicode_code.post.json": "5028b1f2f3431585248b321e460125821ec3f53fd1078301ebdcd8429c1b9390",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        },
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.238466031001735,
+          "loopback_port": 51609,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 152492,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "a5c8c060f2a391e269d6bf73cdc78e219c870aa6b11cb6bc753d115061bc4ea5",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-1",
+          "raw_file_sha256": {
+            "audit.jsonl": "a5c8c060f2a391e269d6bf73cdc78e219c870aa6b11cb6bc753d115061bc4ea5",
+            "empty.post.json": "f0381b5ac969554d3e0d707d4f4e60d1b187b6aa156bd48fe55d5225e1b78d75",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "55d8e7445cb975ff0cd04af73153270ccd79f87f49b361e0946b0660c6500f52",
+            "rich.post.json": "bc2c7d9db09067772eab2c672297fd47542445030c74ae8e40b12c9c40ebc2d1",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "12a3e4ab948444e38716239fd59fea36d40c9415ab94234c5c343eef55c85317",
+            "unicode_code.post.json": "a0b3a370bfd407903fe821e9901cb572a466a2f35f9be6c76e10a67856448616",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        }
+      ],
+      "raw_receipt_sha256": "b219ffb66c26954d43c94dc39d87fec3cea6fdd0b53f0853ae426dfb60bc11c4"
+    },
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 2,
+      "mode": "api",
+      "sampled_sum_rss_max_bytes": 157843456,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "wall_seconds": 9.612878052001179,
+      "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+      "all_final_exit_codes": [
+        0,
+        0
+      ],
+      "profile": "gradio",
+      "repetition": 2,
+      "order": [
+        "gradio",
+        "full"
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.253736606002349,
+          "loopback_port": 60953,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 152752,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "c916a370fdfeddaab798e33c29fbce8acfb4ba2c688dfc7562a37d7798417f59",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-0",
+          "raw_file_sha256": {
+            "audit.jsonl": "c916a370fdfeddaab798e33c29fbce8acfb4ba2c688dfc7562a37d7798417f59",
+            "empty.post.json": "a7c85a291abdd990c77dcdeeb7aaac418e92f7ec576286264c2c075f28359255",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "b958e9078edb2162e51316f1fa04b8f788f9e9566cc85100567d0378d42907ee",
+            "rich.post.json": "6ab5820fba0bbba5cf89977588ccc488690141dfc900405c839af31359a6f229",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "0adb1ad3ce7b9ac2f7593828175d9ad06bb7b63b7516a0c436406b9ff4cd7e4e",
+            "unicode_code.post.json": "87a2e6c67b2d4775701621bef9137f544d693e52876f74f044afffb12f390277",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        },
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.314103177999641,
+          "loopback_port": 42223,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 152572,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "d928f26c66036c4d7138500542af0e941e425d1bea6fb6cdec03e75cac315277",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-1",
+          "raw_file_sha256": {
+            "audit.jsonl": "d928f26c66036c4d7138500542af0e941e425d1bea6fb6cdec03e75cac315277",
+            "empty.post.json": "468119f212cef5d646ecf22421095f62269cf7eff738c2b188e33914203a4fe7",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "3e32ea44e03f4de3c498a6298433236c741edf8b7b71604774fdb80fd7691e34",
+            "rich.post.json": "6399c5722517665860ae2c5edc6c789b4e75f7050dd550eef8a777f2c61c96b4",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "9c1d8f90b92d9373224c1d3b69b917b330c974ee7d461f8d6c68b43cfe627042",
+            "unicode_code.post.json": "ae49e784d990ee18d0ea2697ce4709bc16302645f33ec8d5098f17e67267a521",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        }
+      ],
+      "raw_receipt_sha256": "a2e68cf36bc556383639f06003d84f682400479aaebea9ac214cc1d582494f14"
+    },
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 2,
+      "mode": "api",
+      "sampled_sum_rss_max_bytes": 206401536,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "wall_seconds": 9.769061156999669,
+      "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+      "all_final_exit_codes": [
+        0,
+        0
+      ],
+      "profile": "full",
+      "repetition": 2,
+      "order": [
+        "gradio",
+        "full"
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.48678889599978,
+          "loopback_port": 58529,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 200080,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "4f1ce82bad950417459c7ca5d250bd0e1342e00b64059697cb8d7f0c78446e1f",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-0",
+          "raw_file_sha256": {
+            "audit.jsonl": "4f1ce82bad950417459c7ca5d250bd0e1342e00b64059697cb8d7f0c78446e1f",
+            "empty.post.json": "bb928761bba0329a6328f62332ad5cec3cb7f59a993d6eec353b0a4db626b075",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "e2ce176da5f4ef4baf221a02e3b2abbd73fedde6462b1cc8e72ccee348fa2090",
+            "rich.post.json": "603a141b558f7b7dfceb477dabb84c18c9893f1d0ae2e98e97b08495c6a70017",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "ef83ace9f129614fd02171f1e4275356e03fb5b0b1245ca58bc1c09ebc829f2b",
+            "unicode_code.post.json": "3467b5dfa6ca7001feacc3b47abed649c4d087d1f20c3144f20e40c180409c6c",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        },
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.272283344002062,
+          "loopback_port": 54571,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 200264,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "91b9131cba845307c4efd768d488f1ba7f82d502f6877482a90078a4a8534014",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-1",
+          "raw_file_sha256": {
+            "audit.jsonl": "91b9131cba845307c4efd768d488f1ba7f82d502f6877482a90078a4a8534014",
+            "empty.post.json": "1cb2d7521a2d9105c3bb845218113cb0ee482905ec5cf96346b97c0460f25da5",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "bd7879c28af89b2ab4d4d316b27208914023de17986d0ac124892d0e1bc0e199",
+            "rich.post.json": "d6e4927560a7ce730da69787a6202ee13da0b56c096609dea4e5ce414d8f0708",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "2b90c823175b27bcfb7ebd589237819f34feb27ecd4225e4cfd489ab394afb7a",
+            "unicode_code.post.json": "a0bba5c859b2d92c9d997d56e959e0d7c6bdfcc3803104304b4ad21b8f11edb0",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        }
+      ],
+      "raw_receipt_sha256": "f853809f94384a7f2bdd4ed2155d5d64142e0cf0e35d6cb3bfdc7e311e74f965"
+    },
+    {
+      "status": "completed",
+      "workers": 2,
+      "jobs": 2,
+      "mode": "api",
+      "sampled_sum_rss_max_bytes": 315572224,
+      "worker_exit_codes": [
+        {
+          "job": 1,
+          "exit_code": 0
+        },
+        {
+          "job": 0,
+          "exit_code": 0
+        }
+      ],
+      "wall_seconds": 5.074467321999691,
+      "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+      "all_final_exit_codes": [
+        0,
+        0
+      ],
+      "profile": "gradio",
+      "repetition": 2,
+      "order": [
+        "gradio",
+        "full"
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.437734277002164,
+          "loopback_port": 57123,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 152680,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "7dfee7e612c2e15447db62609bb9af56228e3960fb2acd8c6cddd639e2359552",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-1",
+          "raw_file_sha256": {
+            "audit.jsonl": "7dfee7e612c2e15447db62609bb9af56228e3960fb2acd8c6cddd639e2359552",
+            "empty.post.json": "835390278c2a28edc82fef12fb4de3ef9445235a30bce3ae74ca5c1537e6f665",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "33f5dd5a9f87355883db05817f828dfc7f349adfdba945ccc8561575e3ffe96d",
+            "rich.post.json": "cefc7b7ef3e10423d77180101cbc84a02474d1ca90c8e0df40949f3dd1430a6f",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "8ad4dafe500171125370b73512f55704b826b7c257a60705ef78ea0357350013",
+            "unicode_code.post.json": "c582a251f18e1433cfb43c9a37d3e1e1ed04cb8489831554e9447c9c93c0189f",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        },
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.373146542999166,
+          "loopback_port": 36755,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 152732,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "544fbdb5a10c4d471248b1e668f64a09710f7229dc9f0dad0613e9d4a5328e54",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-0",
+          "raw_file_sha256": {
+            "audit.jsonl": "544fbdb5a10c4d471248b1e668f64a09710f7229dc9f0dad0613e9d4a5328e54",
+            "empty.post.json": "eb0f2fb80ee9ad90691ba999a241abab45944d8f4e625b6265ec4aec945b0d54",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "b43ef68fe1d4b53b05d19cd9a001ca9d41194e4caab525da9c56b43eb514191c",
+            "rich.post.json": "fe004d38bda4d632fff1f5dc9df0e27cde55024aa3b2f2a0a566561d9894bbce",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "c01c4f8370fdb59e9ee420dd96102b9352da0f6266a12de9c723ac1f7ea0e039",
+            "unicode_code.post.json": "bc05524f57fd140156d22c21c09a88e75370dc850052ab92361067e250b01337",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        }
+      ],
+      "raw_receipt_sha256": "22b17b0c6c372c4ad588510e62c26a2feb8a5c2b44bc215fd82fdc59cf7bac4b"
+    },
+    {
+      "status": "completed",
+      "workers": 2,
+      "jobs": 2,
+      "mode": "api",
+      "sampled_sum_rss_max_bytes": 411549696,
+      "worker_exit_codes": [
+        {
+          "job": 1,
+          "exit_code": 0
+        },
+        {
+          "job": 0,
+          "exit_code": 0
+        }
+      ],
+      "wall_seconds": 5.289060707000317,
+      "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+      "all_final_exit_codes": [
+        0,
+        0
+      ],
+      "profile": "full",
+      "repetition": 2,
+      "order": [
+        "gradio",
+        "full"
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.631096037999669,
+          "loopback_port": 52643,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 199312,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "c1e9d0a470f83c25b33199fe430391dec7949ff58d498a02ed9b21e740131ea3",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-1",
+          "raw_file_sha256": {
+            "audit.jsonl": "c1e9d0a470f83c25b33199fe430391dec7949ff58d498a02ed9b21e740131ea3",
+            "empty.post.json": "a58229521da4606c77ab19e17d165fd40ac0e16154e2e2168049106b627aee38",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "8d06ef5d6f0ec02a2027f3bb9ecd37695d18ca14a61f697a7ece60ec187f4fb8",
+            "rich.post.json": "21bbd4c086d3970f8f52d70eee278f27fb5a98af921bdc7d2bf1b09d7cd32e7a",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "702550f8210cbafbde8d2dea83cf984971110a6cd0bf1deb7920fd57f631e8b4",
+            "unicode_code.post.json": "261ddd33d874e12dc4b9b03427ee30c4ed61ed318eaf5801a0294f170f3fb4e6",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        },
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.6624405210022815,
+          "loopback_port": 44521,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 200120,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "8082aa697adde4fb5db6ae159a272a8bf22245eb408282c0fa7147e2fc2f20aa",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-0",
+          "raw_file_sha256": {
+            "audit.jsonl": "8082aa697adde4fb5db6ae159a272a8bf22245eb408282c0fa7147e2fc2f20aa",
+            "empty.post.json": "98114640125ff292449ad5a52348fe89ef3ef8124d0f6565211ca3fae399dbff",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "58c39803aff17cb8316a781375b930f83f91202d75f0e9980c75f00987fe653c",
+            "rich.post.json": "ff39f9ad07c3e766c9f51f63ad97bfe05fb3bbd50624e9f6a2147ac33354a456",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "8e134e4e01ecf117c03c9972d2f973beeaf902104da1963e521d868d18b58dc7",
+            "unicode_code.post.json": "18e89302d97dbc62a818dc07e5f367ba35058c827bd1ce75f6d981f4d8b71188",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        }
+      ],
+      "raw_receipt_sha256": "e45257d73ea441283146f61041024442f132794f7a745acfb72322c4ffbec25f"
+    },
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 2,
+      "mode": "api",
+      "sampled_sum_rss_max_bytes": 206135296,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "wall_seconds": 10.269977038999059,
+      "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+      "all_final_exit_codes": [
+        0,
+        0
+      ],
+      "profile": "full",
+      "repetition": 3,
+      "order": [
+        "full",
+        "gradio"
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.6354674130016065,
+          "loopback_port": 36499,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 200176,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "b55345297d04a2c8bd6168354a2bda4d79339f5a65bbcf1cce70299b8a7b7310",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-0",
+          "raw_file_sha256": {
+            "audit.jsonl": "b55345297d04a2c8bd6168354a2bda4d79339f5a65bbcf1cce70299b8a7b7310",
+            "empty.post.json": "edbc892b6832a6477f4471a0cc610425cc88c3aab353da5778d408f3a21ed91e",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "a81c0e58dcb94babde6a0df3407d781d59bf951165e326fe465fcc7d99a090eb",
+            "rich.post.json": "73b5171cdfd820126eeebc044e21760325048183d846c4d629451860190c3eac",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "a7b49835011b892ebc1b58c7e2e52aa75e69b675730d98a6d869c8fe35421ec0",
+            "unicode_code.post.json": "61ce59e036d86e1720dd121c85a2c6cf58ca55d99ed63a0de4a4f47cff0e0a9e",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        },
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.563026879000972,
+          "loopback_port": 48281,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 200044,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "18c41a0310b38897e9f31275d87b15a49c957024416ae7c352da59fa2ac6b81b",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-1",
+          "raw_file_sha256": {
+            "audit.jsonl": "18c41a0310b38897e9f31275d87b15a49c957024416ae7c352da59fa2ac6b81b",
+            "empty.post.json": "da0531f5ed3a4766de58dc717f781843ac5a0e162a89e68b54a6e40f47f1127e",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "d092c5d26ab109a13969765c85434d3942b8588ad33af1f118622e1340daab39",
+            "rich.post.json": "5e8f1a5b6c25adbd71fc49e365f9266187257168503760d99942a01b69f7d506",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "012a651d92d012010a3664101fcdae4e4abfaa5f7a7ab07efe35f505f6d9d2b8",
+            "unicode_code.post.json": "0e4d1eb141990f0cb2053eb77d604b876dc231ee1f867ab1ce9bf3e96f1d59d5",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        }
+      ],
+      "raw_receipt_sha256": "06fae2f27e8f954e7e1d29f991a4a5f3618e76be4b83e6788abd5d5686e4eca7"
+    },
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 2,
+      "mode": "api",
+      "sampled_sum_rss_max_bytes": 157831168,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "wall_seconds": 10.336631303998729,
+      "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+      "all_final_exit_codes": [
+        0,
+        0
+      ],
+      "profile": "gradio",
+      "repetition": 3,
+      "order": [
+        "full",
+        "gradio"
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.6782538009974814,
+          "loopback_port": 56329,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 152468,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "73194431b83b2680d10936371ab38010fd7014eaed2236f864a236e82bc286f7",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-0",
+          "raw_file_sha256": {
+            "audit.jsonl": "73194431b83b2680d10936371ab38010fd7014eaed2236f864a236e82bc286f7",
+            "empty.post.json": "9dcb1ebc514e636b1bb32200639253df6d7b455b4e49b3947673b7a93ae3e3dd",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "794f967f0f97a8824a5e9e29ae04a152c069267da773ef28bd184c619d649251",
+            "rich.post.json": "90782f3f922cf5b5be5104ed99f71697072f8f4828957079f6063420d7268167",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "a0680d6753df18b685d433f53b26e3630cc1fbca93b970229d4a54a95a4d0be1",
+            "unicode_code.post.json": "1f8208ce27b065a870ad33cef5ddb3ae8f0b50047563a8aab70d236890c77bc3",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        },
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.496161356997618,
+          "loopback_port": 45707,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 152728,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "d345adfaba2bfd2f61094643b2b29d1d4d6c5385b82c69df6d8942a0003497e6",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-1",
+          "raw_file_sha256": {
+            "audit.jsonl": "d345adfaba2bfd2f61094643b2b29d1d4d6c5385b82c69df6d8942a0003497e6",
+            "empty.post.json": "97819f3b05db2da73edc7fafd23605f94354e29164b31f3f48fbd6d6c8903c7e",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "a1df7c8a1ba9049accdbdd6ad066f46c15a1cc1d1489d3db0b4d537d3118c35d",
+            "rich.post.json": "c695e2ae6ec5975a12fc5301137c469cfe231e4ad884864f31b49844765b5768",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "0807f8bbe9a38767bde5dec7a792e8baadba9c774a9bde3ecee082e59487c9d7",
+            "unicode_code.post.json": "6be0bdf208dfc252c45f83f0d1bf1934f43b6eebf08ab6ef1edd27a15c0f60f9",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        }
+      ],
+      "raw_receipt_sha256": "f55ea53b103e4ccfb4914138dec3dc509754ba80c444186148a9b225fc65591a"
+    },
+    {
+      "status": "completed",
+      "workers": 2,
+      "jobs": 2,
+      "mode": "api",
+      "sampled_sum_rss_max_bytes": 411619328,
+      "worker_exit_codes": [
+        {
+          "job": 1,
+          "exit_code": 0
+        },
+        {
+          "job": 0,
+          "exit_code": 0
+        }
+      ],
+      "wall_seconds": 5.57119549500203,
+      "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+      "all_final_exit_codes": [
+        0,
+        0
+      ],
+      "profile": "full",
+      "repetition": 3,
+      "order": [
+        "full",
+        "gradio"
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.775890521999827,
+          "loopback_port": 40837,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 199676,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "1ecf4c504f7a6a04a03034950553edbb468eba69cbf8dab7a5e43efdb165960b",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-1",
+          "raw_file_sha256": {
+            "audit.jsonl": "1ecf4c504f7a6a04a03034950553edbb468eba69cbf8dab7a5e43efdb165960b",
+            "empty.post.json": "04d6600efad5566ce4e03a55409b1493cb9f760411b7f734aab7e5d2aecfea23",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "431a1f8d211dea58f2767533eaaf92418b81a53a356847b255e5ebe5fd615778",
+            "rich.post.json": "8e64292e63a96964ba26a755e17c4dca3426f9a6fe82b330f613ab449893764c",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "c29c2f10a31900d9a495143acfc7bbace2ae5ef24df298a37bfe798f9b977437",
+            "unicode_code.post.json": "7dbb05beda05359f5a8095cf3e91300f17faed5c779e5481474d5546bf17d7aa",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        },
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.9506709489978675,
+          "loopback_port": 34541,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 199648,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "6e471a0f4c9533775d5d056e34cbf95632d632b4e8ea2eb318eede05bbb01932",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-0",
+          "raw_file_sha256": {
+            "audit.jsonl": "6e471a0f4c9533775d5d056e34cbf95632d632b4e8ea2eb318eede05bbb01932",
+            "empty.post.json": "5c8432fe7ce1a1b2107b5dbf11b30d7b8295b692d3b9db49529f7592c2f76002",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "b71b749a66481449429834557a65514ef56d2d405b7c8afb9899b7e43ff58912",
+            "rich.post.json": "b2b848062a31b254ea90f82d8062971e3a5efe9871fdbcee12bf30903b356625",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "058163c353c0fffc449118cc5285514b54b997af78935c2462bddab66f984912",
+            "unicode_code.post.json": "9cfba24490293deb97954277dfc5534d907a8d76c6d8057dcff1b2802b96b302",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        }
+      ],
+      "raw_receipt_sha256": "1dda1b6bcbfa5ca9f7e84a5bf41a2c9c0bf9362d7ff51020109fc0df1abf4373"
+    },
+    {
+      "status": "completed",
+      "workers": 2,
+      "jobs": 2,
+      "mode": "api",
+      "sampled_sum_rss_max_bytes": 315297792,
+      "worker_exit_codes": [
+        {
+          "job": 1,
+          "exit_code": 0
+        },
+        {
+          "job": 0,
+          "exit_code": 0
+        }
+      ],
+      "wall_seconds": 5.275792848999117,
+      "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+      "all_final_exit_codes": [
+        0,
+        0
+      ],
+      "profile": "gradio",
+      "repetition": 3,
+      "order": [
+        "full",
+        "gradio"
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.576651638002659,
+          "loopback_port": 60143,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 152536,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "9be0465a24b48ba187d55113cfc8a41f1ac8fecf556e70f27dd75fbad7c33a68",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-1",
+          "raw_file_sha256": {
+            "audit.jsonl": "9be0465a24b48ba187d55113cfc8a41f1ac8fecf556e70f27dd75fbad7c33a68",
+            "empty.post.json": "d83fb38c0c1829e8cf098bb1fde3e57c196e4f909241f21e42ea1dc49fe52d99",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "bb3288a20b658d77ca3f34ada928128a18753b38e9c3a653d159e907c2bc3814",
+            "rich.post.json": "7ab855e5420dea36be6fa007d4ebe1698742c727972e90135f2348d322bb8226",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "33efeb7248003720a45980ea9c6e999b74def28497ccb7c7bbdc12d420d2f369",
+            "unicode_code.post.json": "a79733a626ee8a164961eb63c62949b02cce1dbbdf471c03e8fe5439942e6a33",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        },
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv"
+          },
+          "output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+          "seconds_import_launch_api_shutdown": 4.607032676001836,
+          "loopback_port": 34221,
+          "api_calls": 6,
+          "denied_attempts": 0,
+          "curl_calls": 0,
+          "cli_completion_ru_maxrss_kib_linux": 152668,
+          "app_path": "<workspace>/nano-gradio-measure-20261101/source/demos/gradio_app.py",
+          "markdown_path": "<workspace>/nano-gradio-measure-20261101/source/markdown.py",
+          "audit_sha256": "51fe778249e37991ea2d447ac8edbc8b08cbac32a1622ab34ea3379fad169388",
+          "complete_output_reference_match": true,
+          "independent_fixed_expected_values_checked": true,
+          "job": "job-0",
+          "raw_file_sha256": {
+            "audit.jsonl": "51fe778249e37991ea2d447ac8edbc8b08cbac32a1622ab34ea3379fad169388",
+            "empty.post.json": "6fed6b4bfe77c2f616c68f2a6040c0e884e5d141054816abf2348508d761a5cd",
+            "empty.sse.txt": "287b6e2e8b077ce8551ce456f1ba9017df4a9a3de1f2d77ead4f01fce8a118fd",
+            "receipt.json": "132ec8a22dde76856ffbe404bfd4da051b42475237bd119148f5c564ad8241e6",
+            "rich.post.json": "9ed7a5dbd55ea19f35437e6c01b22d0844c93423210f23a56673de07bd07d9f2",
+            "rich.sse.txt": "0111ab702ecb38c578b15c206c66154757e64d780d187aa4146e658146c7c66e",
+            "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "stdout.log": "7b19916b8a0d70456782df2e3ff0c15beea29020d69338cf8d060c0942d442aa",
+            "unicode_code.post.json": "c46638777f94ec2a9d178d1a521f538dbc20efb43523baa18212dd57da563342",
+            "unicode_code.sse.txt": "5a3fac5eed2837895cf1dbafb991ca405658555f85328e69d5c65baecd19b05f"
+          },
+          "private_state_bytes": {
+            "home": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "cache": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "config": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "hf": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            },
+            "gradio-tmp": {
+              "apparent_regular_bytes": 0,
+              "allocated_regular_bytes": 0,
+              "regular_files": 0,
+              "symlinks": 0,
+              "symlink_text_bytes": 0,
+              "hardlinked_files": 0
+            }
+          }
+        }
+      ],
+      "raw_receipt_sha256": "34c0bf5e351dc4fc1625d9b7fb80ecdf66a792685b182ec5464770d528ae0bdd"
+    }
+  ],
+  "original_tests": [
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 1,
+      "mode": "original-tests",
+      "sampled_sum_rss_max_bytes": 226340864,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        }
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv"
+          },
+          "pytest_exit_code": 0,
+          "passed": 4,
+          "skipped": 0,
+          "failures": 0,
+          "curl_calls": 4,
+          "denied_attempts": 0,
+          "pytest_path": "<workspace>/nano-gradio-measure-20261101/test-tools/pytest/__init__.py",
+          "gradio_path": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv/lib/python3.12/site-packages/gradio/__init__.py",
+          "gradio_client_path": "<workspace>/nano-gradio-measure-20261101/install-trials/1-full/venv/lib/python3.12/site-packages/gradio_client/__init__.py",
+          "junit_sha256": "d8a645af65f406a6315ddf298d2771e07e41714e7ab4d66e46294144e55c095b",
+          "audit_sha256": "c7343f4bbfac0d4bbaad02f410893492fedb1bb408d5228831abd2749d20e0cf"
+        }
+      ],
+      "wall_seconds": 7.768752946998575,
+      "all_final_exit_codes": [
+        0
+      ],
+      "profile": "full",
+      "raw_receipt_sha256": "23c4ec4ffd1783703a152e966003f2a9fa1ed6c66dd183a4eab3a433516496bb",
+      "raw_file_sha256": {
+        "audit.jsonl": "c7343f4bbfac0d4bbaad02f410893492fedb1bb408d5228831abd2749d20e0cf",
+        "junit.xml": "d8a645af65f406a6315ddf298d2771e07e41714e7ab4d66e46294144e55c095b",
+        "receipt.json": "27658c0b2145baa4eccafd92e9cc71524721599357e0679eeb4ab81ea405530a",
+        "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout.log": "c4fdf88a116e06cf6c05ee64ad3bf633ad05a144fa3ec083131fb6ec531d2c71"
+      }
+    },
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 1,
+      "mode": "original-tests",
+      "sampled_sum_rss_max_bytes": 177508352,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        }
+      ],
+      "worker_receipts": [
+        {
+          "status": "completed",
+          "source": {
+            "revision": "f04d233d2edc63650439fbb7692434e9f2c66266",
+            "source_receipt_sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836",
+            "test_tools_receipt_sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e",
+            "worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+          },
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "model_inference_performed": false,
+          "browser_started": false,
+          "docker_started": false,
+          "runtime": {
+            "versions": {
+              "gradio": "6.30.0",
+              "gradio-client": "2.7.2"
+            },
+            "python_prefix": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv"
+          },
+          "pytest_exit_code": 0,
+          "passed": 4,
+          "skipped": 0,
+          "failures": 0,
+          "curl_calls": 4,
+          "denied_attempts": 0,
+          "pytest_path": "<workspace>/nano-gradio-measure-20261101/test-tools/pytest/__init__.py",
+          "gradio_path": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv/lib/python3.12/site-packages/gradio/__init__.py",
+          "gradio_client_path": "<workspace>/nano-gradio-measure-20261101/install-trials/1-gradio/venv/lib/python3.12/site-packages/gradio_client/__init__.py",
+          "junit_sha256": "ec7d2869699402a1782be562ef5bb488147e80be9ebbefd0bde7be812f01a20a",
+          "audit_sha256": "40d0dfc0034a4a668f51cff1ed84258fb4646b80b57e0a759e508f32842db115"
+        }
+      ],
+      "wall_seconds": 7.42800317900037,
+      "all_final_exit_codes": [
+        0
+      ],
+      "profile": "gradio",
+      "raw_receipt_sha256": "2cd67e4797065ec2f3cd21bb802c0176ad3d78959f1e7c95ea677efb90c99801",
+      "raw_file_sha256": {
+        "audit.jsonl": "40d0dfc0034a4a668f51cff1ed84258fb4646b80b57e0a759e508f32842db115",
+        "junit.xml": "ec7d2869699402a1782be562ef5bb488147e80be9ebbefd0bde7be812f01a20a",
+        "receipt.json": "a4ac070923e7f05d27387d9400b7e7f68d2ec25c2d1b27f4a064c4fc0dbe6a62",
+        "stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout.log": "2468823866763abbe1f8adc2228ceed9f26e2e1052a4319241e9cbd089b8e302"
+      }
+    }
+  ],
+  "summary": {
+    "full": {
+      "successful_install_samples": 1,
+      "installed_distribution_count": 72,
+      "single_observed_install_seconds": 17.575416353000037,
+      "venv": {
+        "apparent_regular_bytes": 642781043,
+        "allocated_regular_bytes": 667291648,
+        "regular_files": 10215,
+        "symlinks": 4,
+        "symlink_text_bytes": 90,
+        "hardlinked_files": 0
+      },
+      "cache": {
+        "apparent_regular_bytes": 661696414,
+        "allocated_regular_bytes": 686219264,
+        "regular_files": 10265,
+        "symlinks": 72,
+        "symlink_text_bytes": 2592,
+        "hardlinked_files": 0
+      },
+      "workloads": {
+        "1": {
+          "samples": 3,
+          "two_job_batch_seconds": [
+            10.944032806000905,
+            9.769061156999669,
+            10.269977038999059
+          ],
+          "two_job_batch_seconds_median": 10.269977038999059,
+          "sampled_sum_rss_max_bytes": [
+            207290368,
+            206401536,
+            206135296
+          ]
+        },
+        "2": {
+          "samples": 3,
+          "two_job_batch_seconds": [
+            5.556055600001855,
+            5.289060707000317,
+            5.57119549500203
+          ],
+          "two_job_batch_seconds_median": 5.556055600001855,
+          "sampled_sum_rss_max_bytes": [
+            412778496,
+            411549696,
+            411619328
+          ]
+        }
+      }
+    },
+    "gradio": {
+      "successful_install_samples": 1,
+      "installed_distribution_count": 52,
+      "single_observed_install_seconds": 10.444845180998527,
+      "venv": {
+        "apparent_regular_bytes": 239130663,
+        "allocated_regular_bytes": 257626112,
+        "regular_files": 7556,
+        "symlinks": 4,
+        "symlink_text_bytes": 90,
+        "hardlinked_files": 0
+      },
+      "cache": {
+        "apparent_regular_bytes": 251534688,
+        "allocated_regular_bytes": 270041088,
+        "regular_files": 7592,
+        "symlinks": 52,
+        "symlink_text_bytes": 1872,
+        "hardlinked_files": 0
+      },
+      "workloads": {
+        "1": {
+          "samples": 3,
+          "two_job_batch_seconds": [
+            9.901498849998461,
+            9.612878052001179,
+            10.336631303998729
+          ],
+          "two_job_batch_seconds_median": 9.901498849998461,
+          "sampled_sum_rss_max_bytes": [
+            157704192,
+            157843456,
+            157831168
+          ]
+        },
+        "2": {
+          "samples": 3,
+          "two_job_batch_seconds": [
+            4.834314280997205,
+            5.074467321999691,
+            5.275792848999117
+          ],
+          "two_job_batch_seconds_median": 5.074467321999691,
+          "sampled_sum_rss_max_bytes": [
+            315645952,
+            315572224,
+            315297792
+          ]
+        }
+      }
+    }
+  },
+  "canonical_output_reference_file": "output-reference.json",
+  "canonical_output_sha256": "42da35e1717439d3ca5328356031f78efa9d2a8bee5f209000aec7993da417b7",
+  "canonical_output_file_sha256": "7c149efb17da4cb38b6169154b98779ecb69d6f6f6e87a1727f659a7f46b38be",
+  "test_tools_accounting": {
+    "distribution_count": 3,
+    "packages": [
+      {
+        "name": "pytest",
+        "version": "9.1.1"
+      },
+      {
+        "name": "iniconfig",
+        "version": "2.3.1"
+      },
+      {
+        "name": "pluggy",
+        "version": "1.7.0"
+      }
+    ],
+    "apparent_regular_bytes": 1454604,
+    "files": 121,
+    "installed_into_measured_venvs": false,
+    "copied_from_existing_hash_locked_environment": true,
+    "copied_files_installed_RECORD_sha256_verified": true,
+    "runtime_supplied_test_dependencies": {
+      "packaging": "26.3",
+      "pygments": "2.21.0"
+    },
+    "scope": "Only three named modules/metadata exposed; not whole old site-packages."
+  },
+  "source_accounting": {
+    "runtime_source_files": 2,
+    "runtime_source_bytes": 276418,
+    "original_test_files": 3,
+    "original_test_bytes": 6501,
+    "child_files_modified": false
+  },
+  "preparation_tests": {
+    "before_measurement_fake_stdlib_passed": 25,
+    "post_measurement_reproduction_staging_fake_passed": 2,
+    "package_or_network_workloads_in_preparation_tests": false
+  },
+  "acceptance": {
+    "status": "pass",
+    "selected_trial": 1,
+    "api_workers_exit0": 24,
+    "test_workers_exit0": 2,
+    "api_responses": 144,
+    "original_tests_passed": 8,
+    "original_tests_skipped": 0,
+    "persisted_audit_events": 952,
+    "denied_attempts": 0,
+    "workload_postrun_identities_verified": true,
+    "installation_plan_complete": false
+  },
+  "raw_artifacts": [
+    {
+      "path": "install-results.json",
+      "bytes": 16274,
+      "sha256": "a12271389f0b34d7db714fbd3e549a8e842a04d9ac985869c9138a234fa132cd"
+    },
+    {
+      "path": "workload-results.json",
+      "bytes": 110893,
+      "sha256": "2f7b0a2d6421d9381407a5f4576f6bee75f590fc57c309abf2fa667a7be65c9d"
+    },
+    {
+      "path": "output-reference.json",
+      "bytes": 1927,
+      "sha256": "7c149efb17da4cb38b6169154b98779ecb69d6f6f6e87a1727f659a7f46b38be"
+    },
+    {
+      "path": "preparation-tests.log",
+      "bytes": 3148,
+      "sha256": "2ff3cc5299bd9ad3a8ce370dbd0317d04611debff578c02981ad44e5876018d1"
+    },
+    {
+      "path": "staging-tests.log",
+      "bytes": 368,
+      "sha256": "6c5fe628cce4824b703c99ca890bec49466586d9647169049911d3b12344ce60"
+    },
+    {
+      "path": "terminal-check.json",
+      "bytes": 329,
+      "sha256": "5dca32a37e4977b44b0373c41c204f90c38a2383e6efdfc5d4fc6da335a7b3a1"
+    }
+  ],
+  "model_inference_performed": false,
+  "browser_started": false,
+  "docker_started": false,
+  "external_api_calls": 0,
+  "general_speed_claim": false,
+  "public_harness_derivation": {
+    "measured_orchestrator_sha256": "f43a6749a6374bf0859edf27dae4c48aae9a88236913f0ac991ee61751a20cdf",
+    "public_orchestrator_sha256": "32b83ea2307d7e55de85ad6b0ec0ace334188fa2918497a32ac42b00b9f54db6",
+    "change": "Only literal existing uv execution-host absolute path replaced with <uv-0.13.4>. Every reproduction must configure an independently existing trusted uv0.13.4 in a verified private copy and record its new hash. Do not call it the measured harness.",
+    "measured_worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a",
+    "public_worker_sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+  }
+}

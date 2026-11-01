@@ -1,0 +1,55 @@
+{
+  "files": [
+    {
+      "path": "PUBLIC-RESULTS.md",
+      "bytes": 3976,
+      "sha256": "8c0f8cdaf64f0a071226cd2dd776aa481ede3930c1a99327d54bd1c2dab58173"
+    },
+    {
+      "path": "REPRODUCE.md",
+      "bytes": 8864,
+      "sha256": "9a8716b47f39c156597061078789ea2c886986c4b1132996baa91a52e0a629ba"
+    },
+    {
+      "path": "benchmark_dra_html.py",
+      "bytes": 19651,
+      "sha256": "f03eec5d645905458b3c9687dc556ce5e046ca68c012cd88ab7cc01f50669ca3"
+    },
+    {
+      "path": "public-ready-evidence.json",
+      "bytes": 176198,
+      "sha256": "47a010b4b5bb81fd0be9b7c2d8e3a06a0e711ec7365cee31b124558d57a57923"
+    },
+    {
+      "path": "requirements-default.txt",
+      "bytes": 14302,
+      "sha256": "017dfef8ff529b4b437f3e6916e41e2ddedc40f6810094a7a1bc39a95e8ea8a4"
+    },
+    {
+      "path": "requirements-html.txt",
+      "bytes": 207,
+      "sha256": "b1f8a750a20b63c85081cad9b8883a8bdcd79ccbdcab499c97a5ec063f8b7cd6"
+    },
+    {
+      "path": "source-receipt.json",
+      "bytes": 44140,
+      "sha256": "3a7d43990183dd3fd4afef87366efc9779eb38fe3f3de1b77d7fddf0ab31aff9"
+    },
+    {
+      "path": "synthetic-fixtures.json",
+      "bytes": 992,
+      "sha256": "aed6d8e61841f46e47ee1d162f9f51febfc763ebba9df3db1263ceaf248dd737"
+    },
+    {
+      "path": "test-input-receipt.json",
+      "bytes": 414,
+      "sha256": "38639e0c893cd4377db7751b3d0d7123606671302a3084ee5de720b6f74218a5"
+    },
+    {
+      "path": "test_benchmark_dra_html.py",
+      "bytes": 3170,
+      "sha256": "76b4a968a9f05e0dca2fb640dc8da48aa841fa23dbee4285a347da37fba17287"
+    }
+  ],
+  "note": "Only public-bundle is scrubbed; private original audit logs and review-bundle must not be published wholesale."
+}

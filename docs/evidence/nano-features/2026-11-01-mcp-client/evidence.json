@@ -1,0 +1,2595 @@
+{
+  "schema": "nano-mcp-chat-client-measured/1",
+  "status": "bounded_selected_feature_complete",
+  "repository": "myon-bioinformatics/mcp-toolcall-lab",
+  "revision": "06cdc8e4e14d50de45c8b8122a5ccff6911c3404",
+  "host_before": {
+    "observed_at": "2026-11-01T03:35:27.018637+00:00",
+    "phase": "before second selected-feature pair, not sampled capacity during workloads",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "python": "3.12.14",
+    "cpu_model": "AMD EPYC 9V74 80-Core Processor",
+    "visible_cpu_count": 9,
+    "affinity_cpu_count": 9,
+    "mem_total_kib": 10206472,
+    "effective_cpu_quota": null,
+    "effective_memory_limit": null,
+    "limits": "visible CPUs and MemTotal are observations, not guaranteed exclusive allocation; standard cgroup quota files were unavailable"
+  },
+  "source_identity": {
+    "status": "verified",
+    "revision": "06cdc8e4e14d50de45c8b8122a5ccff6911c3404",
+    "files": 31,
+    "receipt_sha256": "b8842ad174276520cdd1b3e2e15afdd6b3d0bdcabb7f4b8becb724a98b9a3252",
+    "worker_sha256": "6eebb2d3681c3774bd675c745b8518657e3ad55a298950085539c2fb8033c813",
+    "orchestrator_sha256": "4054779a3d620873e13c4cfd00358d7a9af767327e8c6dd2f3a7c9b0fe20a42c"
+  },
+  "measurement_scope": "caller-only identical real SDK code versus default dependency environment; necessary full FastMCP fixture separately counted",
+  "requirements_rows_not_installed_counts": {
+    "server": 72,
+    "client": 30
+  },
+  "installed_package_sets": {
+    "server": [
+      [
+        "Authlib",
+        "1.9.1"
+      ],
+      [
+        "PyJWT",
+        "2.15.1"
+      ],
+      [
+        "PyYAML",
+        "6.0.3"
+      ],
+      [
+        "Pygments",
+        "2.21.0"
+      ],
+      [
+        "SecretStorage",
+        "3.5.0"
+      ],
+      [
+        "aiofile",
+        "3.12.3"
+      ],
+      [
+        "annotated-types",
+        "0.8.0"
+      ],
+      [
+        "anyio",
+        "4.15.1"
+      ],
+      [
+        "attrs",
+        "26.1.0"
+      ],
+      [
+        "beartype",
+        "0.23.1"
+      ],
+      [
+        "cachetools",
+        "7.2.4"
+      ],
+      [
+        "caio",
+        "0.12.10"
+      ],
+      [
+        "certifi",
+        "2026.10.23"
+      ],
+      [
+        "cffi",
+        "2.1.1"
+      ],
+      [
+        "click",
+        "8.5.0"
+      ],
+      [
+        "cryptography",
+        "50.0.2"
+      ],
+      [
+        "cyclopts",
+        "5.3.0"
+      ],
+      [
+        "dnspython",
+        "2.9.0"
+      ],
+      [
+        "docstring_parser",
+        "0.18.0"
+      ],
+      [
+        "email-validator",
+        "2.3.0"
+      ],
+      [
+        "exceptiongroup",
+        "1.3.1"
+      ],
+      [
+        "fastmcp",
+        "4.1.3"
+      ],
+      [
+        "fastmcp-slim",
+        "4.1.3"
+      ],
+      [
+        "griffelib",
+        "2.4.1"
+      ],
+      [
+        "h11",
+        "0.16.0"
+      ],
+      [
+        "httpcore2",
+        "2.16.0"
+      ],
+      [
+        "httpx2",
+        "2.16.0"
+      ],
+      [
+        "idna",
+        "3.20"
+      ],
+      [
+        "jaraco.classes",
+        "3.4.0"
+      ],
+      [
+        "jaraco.context",
+        "6.1.2"
+      ],
+      [
+        "jaraco.functools",
+        "4.6.0"
+      ],
+      [
+        "jeepney",
+        "0.9.0"
+      ],
+      [
+        "joserfc",
+        "1.7.7"
+      ],
+      [
+        "jsonref",
+        "1.1.0"
+      ],
+      [
+        "jsonschema",
+        "4.26.0"
+      ],
+      [
+        "jsonschema-path",
+        "0.5.0"
+      ],
+      [
+        "jsonschema-specifications",
+        "2025.9.1"
+      ],
+      [
+        "keyring",
+        "25.7.0"
+      ],
+      [
+        "markdown-it-py",
+        "4.2.0"
+      ],
+      [
+        "mcp",
+        "2.3.0"
+      ],
+      [
+        "mcp-types",
+        "2.3.0"
+      ],
+      [
+        "mdurl",
+        "0.1.2"
+      ],
+      [
+        "more-itertools",
+        "11.2.1"
+      ],
+      [
+        "openapi-pydantic",
+        "0.6.0"
+      ],
+      [
+        "opentelemetry-api",
+        "1.45.1"
+      ],
+      [
+        "packaging",
+        "26.3"
+      ],
+      [
+        "pathable",
+        "0.6.0"
+      ],
+      [
+        "platformdirs",
+        "4.13.5"
+      ],
+      [
+        "py-key-value-aio",
+        "0.4.6"
+      ],
+      [
+        "pycparser",
+        "3.12"
+      ],
+      [
+        "pydantic",
+        "2.14.1"
+      ],
+      [
+        "pydantic-settings",
+        "2.16.1"
+      ],
+      [
+        "pydantic_core",
+        "2.50.1"
+      ],
+      [
+        "pyperclip",
+        "1.11.0"
+      ],
+      [
+        "python-dotenv",
+        "1.2.4"
+      ],
+      [
+        "python-multipart",
+        "0.0.32"
+      ],
+      [
+        "referencing",
+        "0.37.0"
+      ],
+      [
+        "rich",
+        "15.0.0"
+      ],
+      [
+        "rich-rst",
+        "2.2.0"
+      ],
+      [
+        "rpds-py",
+        "2026.9.1"
+      ],
+      [
+        "sse-starlette",
+        "3.5.0"
+      ],
+      [
+        "starlette",
+        "1.9.0"
+      ],
+      [
+        "truststore",
+        "0.10.5"
+      ],
+      [
+        "typing-inspection",
+        "0.4.4"
+      ],
+      [
+        "typing_extensions",
+        "4.16.0"
+      ],
+      [
+        "uncalled-for",
+        "0.4.1"
+      ],
+      [
+        "uvicorn",
+        "0.54.0"
+      ],
+      [
+        "watchfiles",
+        "1.3.0"
+      ],
+      [
+        "websockets",
+        "17.3"
+      ]
+    ],
+    "client": [
+      [
+        "PyJWT",
+        "2.15.1"
+      ],
+      [
+        "annotated-types",
+        "0.8.0"
+      ],
+      [
+        "anyio",
+        "4.15.1"
+      ],
+      [
+        "attrs",
+        "26.1.0"
+      ],
+      [
+        "cffi",
+        "2.1.1"
+      ],
+      [
+        "click",
+        "8.5.0"
+      ],
+      [
+        "cryptography",
+        "50.0.2"
+      ],
+      [
+        "h11",
+        "0.16.0"
+      ],
+      [
+        "httpcore2",
+        "2.16.0"
+      ],
+      [
+        "httpx2",
+        "2.16.0"
+      ],
+      [
+        "idna",
+        "3.20"
+      ],
+      [
+        "jsonschema",
+        "4.26.0"
+      ],
+      [
+        "jsonschema-specifications",
+        "2025.9.1"
+      ],
+      [
+        "mcp",
+        "2.3.0"
+      ],
+      [
+        "mcp-types",
+        "2.3.0"
+      ],
+      [
+        "opentelemetry-api",
+        "1.45.1"
+      ],
+      [
+        "pycparser",
+        "3.12"
+      ],
+      [
+        "pydantic",
+        "2.14.1"
+      ],
+      [
+        "pydantic_core",
+        "2.50.1"
+      ],
+      [
+        "python-multipart",
+        "0.0.32"
+      ],
+      [
+        "referencing",
+        "0.37.0"
+      ],
+      [
+        "rpds-py",
+        "2026.9.1"
+      ],
+      [
+        "sse-starlette",
+        "3.5.0"
+      ],
+      [
+        "starlette",
+        "1.9.0"
+      ],
+      [
+        "truststore",
+        "0.10.5"
+      ],
+      [
+        "typing-inspection",
+        "0.4.4"
+      ],
+      [
+        "typing_extensions",
+        "4.16.0"
+      ],
+      [
+        "uvicorn",
+        "0.54.0"
+      ]
+    ]
+  },
+  "installation": {
+    "source": {
+      "status": "verified",
+      "revision": "06cdc8e4e14d50de45c8b8122a5ccff6911c3404",
+      "files": 31,
+      "receipt_sha256": "b8842ad174276520cdd1b3e2e15afdd6b3d0bdcabb7f4b8becb724a98b9a3252",
+      "worker_sha256": "6eebb2d3681c3774bd675c745b8518657e3ad55a298950085539c2fb8033c813",
+      "orchestrator_sha256": "4054779a3d620873e13c4cfd00358d7a9af767327e8c6dd2f3a7c9b0fe20a42c"
+    },
+    "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+    "python_executable": "<python-3.12.14>",
+    "platform": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "uv": "0.13.4",
+    "network_transfer_bytes": null,
+    "limits": [
+      "Planned up to three fresh-cache AB/BA/AB pairs. Actual attempts/completions retained individually.",
+      "OS/DNS/CDN caches not flushed; uv caches are fresh, but this is not a network throughput experiment.",
+      "Apparent/allocated bytes exclude shared Python interpreter/stdlib and symlink targets; filesystem dedup unknown.",
+      "Cache retained bytes are not compressed network transfer bytes; uv link-mode=copy.",
+      "Default is full default server runtime, not optional test/browser/Galleria/model environments.",
+      "Pruned caller still requires real MCP/Pydantic and their fixed transitive runtime dependencies.",
+      "A separately measured full FastMCP server fixture remains required; this is not whole-service removal.",
+      "Two environments co-hosted cost full-server bytes plus client bytes, potentially more than one shared full environment.",
+      "Each batch has exactly two fixed client jobs against one real server; startup excluded from workload wall time.",
+      "Client wall time includes process startup/imports/calls/receipt writing; algorithm and server are unchanged.",
+      "RSS sampled every 20ms; sum RSS double-counts shared pages and can miss true peaks. Not PSS or enforced quotas.",
+      "Client ru_maxrss is sampled after workload, before receipt packaging; not final process-lifetime peak.",
+      "No external API/model/browser/Docker; loopback audit hooks are defense in depth, not an OS sandbox.",
+      "Output equivalence is confined to eight synthetic cases through both chat/direct paths."
+    ],
+    "postrun_identity_verified": true
+  },
+  "install_attempts": [
+    {
+      "trial": 1,
+      "profile": "server",
+      "order": [
+        "server",
+        "client"
+      ],
+      "stage": "installed",
+      "venv_create_seconds": 0.06435795300058089,
+      "venv_create_exit_code": 0,
+      "install_seconds": 12.453697537002881,
+      "exit_code": 0,
+      "venv": {
+        "apparent_regular_bytes": 58981931,
+        "allocated_regular_bytes": 67227648,
+        "regular_files": 3747,
+        "symlinks": 4,
+        "symlink_text_bytes": 90,
+        "hardlinked_files": 0
+      },
+      "cache": {
+        "apparent_regular_bytes": 70982045,
+        "allocated_regular_bytes": 79269888,
+        "regular_files": 3801,
+        "symlinks": 69,
+        "symlink_text_bytes": 2484,
+        "hardlinked_files": 0
+      },
+      "command": [
+        "<uv-0.13.4>",
+        "--no-config",
+        "pip",
+        "install",
+        "--python",
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/1-server/venv/bin/python",
+        "--default-index",
+        "https://pypi.org/simple",
+        "--require-hashes",
+        "--only-binary",
+        ":all:",
+        "--no-deps",
+        "--link-mode",
+        "copy",
+        "--cache-dir",
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/1-server/cache",
+        "-r",
+        "<workspace>/nano-next-20261101/mcp-measure/requirements-server.txt"
+      ],
+      "installed_distribution_count": 69,
+      "installed_package_set": "server",
+      "raw_receipt_sha256": "18ec21d903beff7a8b3e52372e76c31711f9d8c243977cc761cf31805d406880",
+      "raw_logs": {
+        "install.stderr.log": "11e1874060003de690a719caa128dae2b6e4047212128f6bce9cfd3a3efed5a5",
+        "install.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "trial": 1,
+      "profile": "client",
+      "order": [
+        "server",
+        "client"
+      ],
+      "stage": "installed",
+      "venv_create_seconds": 0.06430498900226667,
+      "venv_create_exit_code": 0,
+      "install_seconds": 7.9935431470003095,
+      "exit_code": 0,
+      "venv": {
+        "apparent_regular_bytes": 30223954,
+        "allocated_regular_bytes": 32616448,
+        "regular_files": 1026,
+        "symlinks": 4,
+        "symlink_text_bytes": 90,
+        "hardlinked_files": 0
+      },
+      "cache": {
+        "apparent_regular_bytes": 39438652,
+        "allocated_regular_bytes": 41852928,
+        "regular_files": 1048,
+        "symlinks": 28,
+        "symlink_text_bytes": 1008,
+        "hardlinked_files": 0
+      },
+      "command": [
+        "<uv-0.13.4>",
+        "--no-config",
+        "pip",
+        "install",
+        "--python",
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/1-client/venv/bin/python",
+        "--default-index",
+        "https://pypi.org/simple",
+        "--require-hashes",
+        "--only-binary",
+        ":all:",
+        "--no-deps",
+        "--link-mode",
+        "copy",
+        "--cache-dir",
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/1-client/cache",
+        "-r",
+        "<workspace>/nano-next-20261101/mcp-measure/requirements-client.txt"
+      ],
+      "installed_distribution_count": 28,
+      "installed_package_set": "client",
+      "raw_receipt_sha256": "d48730febeb6d6aace633d42dfea6c18fa41d031c08b5f2510c146e292ddb2cc",
+      "raw_logs": {
+        "install.stderr.log": "54282cdd446964404dfb6ce2906744e49499022a3805d08653016c3cccba927d",
+        "install.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "trial": 2,
+      "profile": "client",
+      "order": [
+        "client",
+        "server"
+      ],
+      "stage": "installed",
+      "venv_create_seconds": 0.064450352001586,
+      "venv_create_exit_code": 0,
+      "install_seconds": 8.240399138001521,
+      "exit_code": 0,
+      "venv": {
+        "apparent_regular_bytes": 30223954,
+        "allocated_regular_bytes": 32616448,
+        "regular_files": 1026,
+        "symlinks": 4,
+        "symlink_text_bytes": 90,
+        "hardlinked_files": 0
+      },
+      "cache": {
+        "apparent_regular_bytes": 39438652,
+        "allocated_regular_bytes": 41852928,
+        "regular_files": 1048,
+        "symlinks": 28,
+        "symlink_text_bytes": 1008,
+        "hardlinked_files": 0
+      },
+      "command": [
+        "<uv-0.13.4>",
+        "--no-config",
+        "pip",
+        "install",
+        "--python",
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/2-client/venv/bin/python",
+        "--default-index",
+        "https://pypi.org/simple",
+        "--require-hashes",
+        "--only-binary",
+        ":all:",
+        "--no-deps",
+        "--link-mode",
+        "copy",
+        "--cache-dir",
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/2-client/cache",
+        "-r",
+        "<workspace>/nano-next-20261101/mcp-measure/requirements-client.txt"
+      ],
+      "installed_distribution_count": 28,
+      "installed_package_set": "client",
+      "raw_receipt_sha256": "40256684d3f3e0a4fe882171b67a1a57c97b6dd863254f6c62ebac87dbc047ef",
+      "raw_logs": {
+        "install.stderr.log": "53e0ddbfab4bf8fb3e875269fae1f6e155b205a634d6f292955edfef9c82df9c",
+        "install.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "trial": 2,
+      "profile": "server",
+      "order": [
+        "client",
+        "server"
+      ],
+      "stage": "installed",
+      "venv_create_seconds": 0.06438199499825714,
+      "venv_create_exit_code": 0,
+      "install_seconds": 8.493734886000311,
+      "exit_code": 0,
+      "venv": {
+        "apparent_regular_bytes": 58981931,
+        "allocated_regular_bytes": 67227648,
+        "regular_files": 3747,
+        "symlinks": 4,
+        "symlink_text_bytes": 90,
+        "hardlinked_files": 0
+      },
+      "cache": {
+        "apparent_regular_bytes": 70982045,
+        "allocated_regular_bytes": 79269888,
+        "regular_files": 3801,
+        "symlinks": 69,
+        "symlink_text_bytes": 2484,
+        "hardlinked_files": 0
+      },
+      "command": [
+        "<uv-0.13.4>",
+        "--no-config",
+        "pip",
+        "install",
+        "--python",
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/2-server/venv/bin/python",
+        "--default-index",
+        "https://pypi.org/simple",
+        "--require-hashes",
+        "--only-binary",
+        ":all:",
+        "--no-deps",
+        "--link-mode",
+        "copy",
+        "--cache-dir",
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/2-server/cache",
+        "-r",
+        "<workspace>/nano-next-20261101/mcp-measure/requirements-server.txt"
+      ],
+      "installed_distribution_count": 69,
+      "installed_package_set": "server",
+      "raw_receipt_sha256": "df6616cfc1075c34d8420f5f5acc83892b0922c1837b1437004f5a8b81fea2d6",
+      "raw_logs": {
+        "install.stderr.log": "51c4711e3b8aa99d6435e2fb8e252c3399d195caaa9ba8c540892f2acc065b05",
+        "install.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "trial": 3,
+      "profile": "server",
+      "order": [
+        "server",
+        "client"
+      ],
+      "stage": "installed",
+      "venv_create_seconds": 0.06658645099741989,
+      "venv_create_exit_code": 0,
+      "install_seconds": 9.847533845997532,
+      "exit_code": 0,
+      "venv": {
+        "apparent_regular_bytes": 58981931,
+        "allocated_regular_bytes": 67227648,
+        "regular_files": 3747,
+        "symlinks": 4,
+        "symlink_text_bytes": 90,
+        "hardlinked_files": 0
+      },
+      "cache": {
+        "apparent_regular_bytes": 70982045,
+        "allocated_regular_bytes": 79269888,
+        "regular_files": 3801,
+        "symlinks": 69,
+        "symlink_text_bytes": 2484,
+        "hardlinked_files": 0
+      },
+      "command": [
+        "<uv-0.13.4>",
+        "--no-config",
+        "pip",
+        "install",
+        "--python",
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/venv/bin/python",
+        "--default-index",
+        "https://pypi.org/simple",
+        "--require-hashes",
+        "--only-binary",
+        ":all:",
+        "--no-deps",
+        "--link-mode",
+        "copy",
+        "--cache-dir",
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/cache",
+        "-r",
+        "<workspace>/nano-next-20261101/mcp-measure/requirements-server.txt"
+      ],
+      "installed_distribution_count": 69,
+      "installed_package_set": "server",
+      "raw_receipt_sha256": "a61905f5080bf72cd09fb60ae62649f27bb1a8b98fe3acb6ce3a1401d02206f4",
+      "raw_logs": {
+        "install.stderr.log": "320aad8680389247a9e7d7e94842d2a6cfdb7b677e9d3808e6c7786c38a3fb2a",
+        "install.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "trial": 3,
+      "profile": "client",
+      "order": [
+        "server",
+        "client"
+      ],
+      "stage": "installed",
+      "venv_create_seconds": 0.0642272730001423,
+      "venv_create_exit_code": 0,
+      "install_seconds": 7.688815176999924,
+      "exit_code": 0,
+      "venv": {
+        "apparent_regular_bytes": 30223954,
+        "allocated_regular_bytes": 32616448,
+        "regular_files": 1026,
+        "symlinks": 4,
+        "symlink_text_bytes": 90,
+        "hardlinked_files": 0
+      },
+      "cache": {
+        "apparent_regular_bytes": 39438652,
+        "allocated_regular_bytes": 41852928,
+        "regular_files": 1048,
+        "symlinks": 28,
+        "symlink_text_bytes": 1008,
+        "hardlinked_files": 0
+      },
+      "command": [
+        "<uv-0.13.4>",
+        "--no-config",
+        "pip",
+        "install",
+        "--python",
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-client/venv/bin/python",
+        "--default-index",
+        "https://pypi.org/simple",
+        "--require-hashes",
+        "--only-binary",
+        ":all:",
+        "--no-deps",
+        "--link-mode",
+        "copy",
+        "--cache-dir",
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-client/cache",
+        "-r",
+        "<workspace>/nano-next-20261101/mcp-measure/requirements-client.txt"
+      ],
+      "installed_distribution_count": 28,
+      "installed_package_set": "client",
+      "raw_receipt_sha256": "6a389b2d4e4f77b8a879273b74d8c36c8429cc1bb4020b089be80e8ca2bc5c72",
+      "raw_logs": {
+        "install.stderr.log": "208781e3b6d6eaab7d860ec2d873760560c78848607f684113767692211bd01f",
+        "install.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "venv.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "workload": {
+    "selected_environment_trial": 3,
+    "source": {
+      "status": "verified",
+      "revision": "06cdc8e4e14d50de45c8b8122a5ccff6911c3404",
+      "files": 31,
+      "receipt_sha256": "b8842ad174276520cdd1b3e2e15afdd6b3d0bdcabb7f4b8becb724a98b9a3252",
+      "worker_sha256": "6eebb2d3681c3774bd675c745b8518657e3ad55a298950085539c2fb8033c813",
+      "orchestrator_sha256": "4054779a3d620873e13c4cfd00358d7a9af767327e8c6dd2f3a7c9b0fe20a42c"
+    },
+    "postrun_identity_verified": true,
+    "limits": [
+      "Planned up to three fresh-cache AB/BA/AB pairs. Actual attempts/completions retained individually.",
+      "OS/DNS/CDN caches not flushed; uv caches are fresh, but this is not a network throughput experiment.",
+      "Apparent/allocated bytes exclude shared Python interpreter/stdlib and symlink targets; filesystem dedup unknown.",
+      "Cache retained bytes are not compressed network transfer bytes; uv link-mode=copy.",
+      "Default is full default server runtime, not optional test/browser/Galleria/model environments.",
+      "Pruned caller still requires real MCP/Pydantic and their fixed transitive runtime dependencies.",
+      "A separately measured full FastMCP server fixture remains required; this is not whole-service removal.",
+      "Two environments co-hosted cost full-server bytes plus client bytes, potentially more than one shared full environment.",
+      "Each batch has exactly two fixed client jobs against one real server; startup excluded from workload wall time.",
+      "Client wall time includes process startup/imports/calls/receipt writing; algorithm and server are unchanged.",
+      "RSS sampled every 20ms; sum RSS double-counts shared pages and can miss true peaks. Not PSS or enforced quotas.",
+      "Client ru_maxrss is sampled after workload, before receipt packaging; not final process-lifetime peak.",
+      "No external API/model/browser/Docker; loopback audit hooks are defense in depth, not an OS sandbox.",
+      "Output equivalence is confined to eight synthetic cases through both chat/direct paths."
+    ],
+    "model_inference_performed": false,
+    "browser_started": false,
+    "docker_started": false,
+    "external_api_calls": 0,
+    "installed_environment_accounting": {
+      "shared_full_environment_apparent_bytes": 58981931,
+      "client_only_apparent_bytes": 30223954,
+      "separate_fixture_apparent_bytes": 58981931,
+      "cohost_separate_environments_apparent_bytes": 89205885
+    }
+  },
+  "batches": [
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 2,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "server_exit_code": -15,
+      "sampled_client_sum_rss_max_bytes": 74022912,
+      "sampled_server_rss_max_bytes": 89980928,
+      "sampled_combined_sum_rss_max_bytes": 164003840,
+      "server_command": [
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/venv/bin/python",
+        "-I",
+        "-B",
+        "<workspace>/nano-next-20261101/mcp-measure/prepare_mcp_comparison.py",
+        "serve",
+        "--ready",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r1-w1-server/server-ready.json",
+        "--log",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r1-w1-server/server.jsonl",
+        "--allow-loopback-execution"
+      ],
+      "server_startup_seconds": 1.3913097850017948,
+      "server_ready_rss_bytes": 86577152,
+      "wall_seconds": 3.312328243002412,
+      "server_trace": {
+        "calls": 32,
+        "events": 116,
+        "trace_ids": [
+          "nano-r1-w1-server-job-0-empty-chat",
+          "nano-r1-w1-server-job-0-empty-direct",
+          "nano-r1-w1-server-job-0-invalid_type-chat",
+          "nano-r1-w1-server-job-0-invalid_type-direct",
+          "nano-r1-w1-server-job-0-missing_argument-chat",
+          "nano-r1-w1-server-job-0-missing_argument-direct",
+          "nano-r1-w1-server-job-0-municipality-chat",
+          "nano-r1-w1-server-job-0-municipality-direct",
+          "nano-r1-w1-server-job-0-station-chat",
+          "nano-r1-w1-server-job-0-station-direct",
+          "nano-r1-w1-server-job-0-transaction-chat",
+          "nano-r1-w1-server-job-0-transaction-direct",
+          "nano-r1-w1-server-job-0-unicode_empty-chat",
+          "nano-r1-w1-server-job-0-unicode_empty-direct",
+          "nano-r1-w1-server-job-0-unknown_tool-chat",
+          "nano-r1-w1-server-job-0-unknown_tool-direct",
+          "nano-r1-w1-server-job-1-empty-chat",
+          "nano-r1-w1-server-job-1-empty-direct",
+          "nano-r1-w1-server-job-1-invalid_type-chat",
+          "nano-r1-w1-server-job-1-invalid_type-direct",
+          "nano-r1-w1-server-job-1-missing_argument-chat",
+          "nano-r1-w1-server-job-1-missing_argument-direct",
+          "nano-r1-w1-server-job-1-municipality-chat",
+          "nano-r1-w1-server-job-1-municipality-direct",
+          "nano-r1-w1-server-job-1-station-chat",
+          "nano-r1-w1-server-job-1-station-direct",
+          "nano-r1-w1-server-job-1-transaction-chat",
+          "nano-r1-w1-server-job-1-transaction-direct",
+          "nano-r1-w1-server-job-1-unicode_empty-chat",
+          "nano-r1-w1-server-job-1-unicode_empty-direct",
+          "nano-r1-w1-server-job-1-unknown_tool-chat",
+          "nano-r1-w1-server-job-1-unknown_tool-direct"
+        ],
+        "log_sha256": "2a1e6d0aaa4c71098dc5ee908d731a478a6a461f4bd4e6ad04dd2e1f9fe02872",
+        "external_source_calls": 0
+      },
+      "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+      "all_clients_final_exit_codes": [
+        0,
+        0
+      ],
+      "repetition": 1,
+      "profile": "server",
+      "order": [
+        "server",
+        "client"
+      ],
+      "client_receipts": [
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.555206975001056,
+          "cli_completion_ru_maxrss_raw": 71844,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r1-w1-server-job-0",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "server",
+          "installed_distribution_count": 69,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        },
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.2147027040009561,
+          "cli_completion_ru_maxrss_raw": 72076,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r1-w1-server-job-1",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "server",
+          "installed_distribution_count": 69,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        }
+      ],
+      "raw_receipt_sha256": "8692792d2233a52f65f84ad493f2cf23a76ce9fc90cffec632f3c33d76c19ffa",
+      "raw_logs": {
+        "client-0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "server.stderr.log": "6eb089f810edb48b7028cde439114c17baee97e1233d861a5e2e5061292425da",
+        "server.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fixture_shutdown": "intentional SIGTERM after both jobs completed; process reaped"
+    },
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 2,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "server_exit_code": -15,
+      "sampled_client_sum_rss_max_bytes": 73252864,
+      "sampled_server_rss_max_bytes": 89731072,
+      "sampled_combined_sum_rss_max_bytes": 162983936,
+      "server_command": [
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/venv/bin/python",
+        "-I",
+        "-B",
+        "<workspace>/nano-next-20261101/mcp-measure/prepare_mcp_comparison.py",
+        "serve",
+        "--ready",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r1-w1-client/server-ready.json",
+        "--log",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r1-w1-client/server.jsonl",
+        "--allow-loopback-execution"
+      ],
+      "server_startup_seconds": 1.4504610049989424,
+      "server_ready_rss_bytes": 86384640,
+      "wall_seconds": 3.0675216150011693,
+      "server_trace": {
+        "calls": 32,
+        "events": 116,
+        "trace_ids": [
+          "nano-r1-w1-client-job-0-empty-chat",
+          "nano-r1-w1-client-job-0-empty-direct",
+          "nano-r1-w1-client-job-0-invalid_type-chat",
+          "nano-r1-w1-client-job-0-invalid_type-direct",
+          "nano-r1-w1-client-job-0-missing_argument-chat",
+          "nano-r1-w1-client-job-0-missing_argument-direct",
+          "nano-r1-w1-client-job-0-municipality-chat",
+          "nano-r1-w1-client-job-0-municipality-direct",
+          "nano-r1-w1-client-job-0-station-chat",
+          "nano-r1-w1-client-job-0-station-direct",
+          "nano-r1-w1-client-job-0-transaction-chat",
+          "nano-r1-w1-client-job-0-transaction-direct",
+          "nano-r1-w1-client-job-0-unicode_empty-chat",
+          "nano-r1-w1-client-job-0-unicode_empty-direct",
+          "nano-r1-w1-client-job-0-unknown_tool-chat",
+          "nano-r1-w1-client-job-0-unknown_tool-direct",
+          "nano-r1-w1-client-job-1-empty-chat",
+          "nano-r1-w1-client-job-1-empty-direct",
+          "nano-r1-w1-client-job-1-invalid_type-chat",
+          "nano-r1-w1-client-job-1-invalid_type-direct",
+          "nano-r1-w1-client-job-1-missing_argument-chat",
+          "nano-r1-w1-client-job-1-missing_argument-direct",
+          "nano-r1-w1-client-job-1-municipality-chat",
+          "nano-r1-w1-client-job-1-municipality-direct",
+          "nano-r1-w1-client-job-1-station-chat",
+          "nano-r1-w1-client-job-1-station-direct",
+          "nano-r1-w1-client-job-1-transaction-chat",
+          "nano-r1-w1-client-job-1-transaction-direct",
+          "nano-r1-w1-client-job-1-unicode_empty-chat",
+          "nano-r1-w1-client-job-1-unicode_empty-direct",
+          "nano-r1-w1-client-job-1-unknown_tool-chat",
+          "nano-r1-w1-client-job-1-unknown_tool-direct"
+        ],
+        "log_sha256": "cadfae53ba955e02f60bf36f31c006b099b53354f5c397126c10f4ca5e06f666",
+        "external_source_calls": 0
+      },
+      "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+      "all_clients_final_exit_codes": [
+        0,
+        0
+      ],
+      "repetition": 1,
+      "profile": "client",
+      "order": [
+        "server",
+        "client"
+      ],
+      "client_receipts": [
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.4547861809987808,
+          "cli_completion_ru_maxrss_raw": 71124,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r1-w1-client-job-0",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "client",
+          "installed_distribution_count": 28,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        },
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.1394117760028166,
+          "cli_completion_ru_maxrss_raw": 71272,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r1-w1-client-job-1",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "client",
+          "installed_distribution_count": 28,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        }
+      ],
+      "raw_receipt_sha256": "b76984cc0e74074567b49a1d39724b04415736541b291e68b61a1bc6dd967728",
+      "raw_logs": {
+        "client-0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "server.stderr.log": "f8c433a5670058b8809f7b0d844ece7330ac1d4b119c3250c7affc2bc549abb8",
+        "server.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fixture_shutdown": "intentional SIGTERM after both jobs completed; process reaped"
+    },
+    {
+      "status": "completed",
+      "workers": 2,
+      "jobs": 2,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "server_exit_code": -15,
+      "sampled_client_sum_rss_max_bytes": 147726336,
+      "sampled_server_rss_max_bytes": 89899008,
+      "sampled_combined_sum_rss_max_bytes": 237625344,
+      "server_command": [
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/venv/bin/python",
+        "-I",
+        "-B",
+        "<workspace>/nano-next-20261101/mcp-measure/prepare_mcp_comparison.py",
+        "serve",
+        "--ready",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r1-w2-server/server-ready.json",
+        "--log",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r1-w2-server/server.jsonl",
+        "--allow-loopback-execution"
+      ],
+      "server_startup_seconds": 1.4313191319997713,
+      "server_ready_rss_bytes": 86327296,
+      "wall_seconds": 1.9988526050001383,
+      "server_trace": {
+        "calls": 32,
+        "events": 116,
+        "trace_ids": [
+          "nano-r1-w2-server-job-0-empty-chat",
+          "nano-r1-w2-server-job-0-empty-direct",
+          "nano-r1-w2-server-job-0-invalid_type-chat",
+          "nano-r1-w2-server-job-0-invalid_type-direct",
+          "nano-r1-w2-server-job-0-missing_argument-chat",
+          "nano-r1-w2-server-job-0-missing_argument-direct",
+          "nano-r1-w2-server-job-0-municipality-chat",
+          "nano-r1-w2-server-job-0-municipality-direct",
+          "nano-r1-w2-server-job-0-station-chat",
+          "nano-r1-w2-server-job-0-station-direct",
+          "nano-r1-w2-server-job-0-transaction-chat",
+          "nano-r1-w2-server-job-0-transaction-direct",
+          "nano-r1-w2-server-job-0-unicode_empty-chat",
+          "nano-r1-w2-server-job-0-unicode_empty-direct",
+          "nano-r1-w2-server-job-0-unknown_tool-chat",
+          "nano-r1-w2-server-job-0-unknown_tool-direct",
+          "nano-r1-w2-server-job-1-empty-chat",
+          "nano-r1-w2-server-job-1-empty-direct",
+          "nano-r1-w2-server-job-1-invalid_type-chat",
+          "nano-r1-w2-server-job-1-invalid_type-direct",
+          "nano-r1-w2-server-job-1-missing_argument-chat",
+          "nano-r1-w2-server-job-1-missing_argument-direct",
+          "nano-r1-w2-server-job-1-municipality-chat",
+          "nano-r1-w2-server-job-1-municipality-direct",
+          "nano-r1-w2-server-job-1-station-chat",
+          "nano-r1-w2-server-job-1-station-direct",
+          "nano-r1-w2-server-job-1-transaction-chat",
+          "nano-r1-w2-server-job-1-transaction-direct",
+          "nano-r1-w2-server-job-1-unicode_empty-chat",
+          "nano-r1-w2-server-job-1-unicode_empty-direct",
+          "nano-r1-w2-server-job-1-unknown_tool-chat",
+          "nano-r1-w2-server-job-1-unknown_tool-direct"
+        ],
+        "log_sha256": "e97a1a0f9c8cadfa881a4df2165f4d6528e7c256dd8a89f35d4aa26309dedd29",
+        "external_source_calls": 0
+      },
+      "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+      "all_clients_final_exit_codes": [
+        0,
+        0
+      ],
+      "repetition": 1,
+      "profile": "server",
+      "order": [
+        "server",
+        "client"
+      ],
+      "client_receipts": [
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.7108862069981114,
+          "cli_completion_ru_maxrss_raw": 71724,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r1-w2-server-job-0",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "server",
+          "installed_distribution_count": 69,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        },
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.715968297998188,
+          "cli_completion_ru_maxrss_raw": 72128,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r1-w2-server-job-1",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "server",
+          "installed_distribution_count": 69,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        }
+      ],
+      "raw_receipt_sha256": "d26fe8a0d1d78b6e7d764bf51eed6e97355afb85ceb18c27e5075202066e8baf",
+      "raw_logs": {
+        "client-0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "server.stderr.log": "f7bca5cac179094395950f4c368edcb92c871a930c1fed748bc495cb614161a1",
+        "server.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fixture_shutdown": "intentional SIGTERM after both jobs completed; process reaped"
+    },
+    {
+      "status": "completed",
+      "workers": 2,
+      "jobs": 2,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "server_exit_code": -15,
+      "sampled_client_sum_rss_max_bytes": 146108416,
+      "sampled_server_rss_max_bytes": 90234880,
+      "sampled_combined_sum_rss_max_bytes": 236343296,
+      "server_command": [
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/venv/bin/python",
+        "-I",
+        "-B",
+        "<workspace>/nano-next-20261101/mcp-measure/prepare_mcp_comparison.py",
+        "serve",
+        "--ready",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r1-w2-client/server-ready.json",
+        "--log",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r1-w2-client/server.jsonl",
+        "--allow-loopback-execution"
+      ],
+      "server_startup_seconds": 1.4701309980009682,
+      "server_ready_rss_bytes": 86585344,
+      "wall_seconds": 1.911023701002705,
+      "server_trace": {
+        "calls": 32,
+        "events": 116,
+        "trace_ids": [
+          "nano-r1-w2-client-job-0-empty-chat",
+          "nano-r1-w2-client-job-0-empty-direct",
+          "nano-r1-w2-client-job-0-invalid_type-chat",
+          "nano-r1-w2-client-job-0-invalid_type-direct",
+          "nano-r1-w2-client-job-0-missing_argument-chat",
+          "nano-r1-w2-client-job-0-missing_argument-direct",
+          "nano-r1-w2-client-job-0-municipality-chat",
+          "nano-r1-w2-client-job-0-municipality-direct",
+          "nano-r1-w2-client-job-0-station-chat",
+          "nano-r1-w2-client-job-0-station-direct",
+          "nano-r1-w2-client-job-0-transaction-chat",
+          "nano-r1-w2-client-job-0-transaction-direct",
+          "nano-r1-w2-client-job-0-unicode_empty-chat",
+          "nano-r1-w2-client-job-0-unicode_empty-direct",
+          "nano-r1-w2-client-job-0-unknown_tool-chat",
+          "nano-r1-w2-client-job-0-unknown_tool-direct",
+          "nano-r1-w2-client-job-1-empty-chat",
+          "nano-r1-w2-client-job-1-empty-direct",
+          "nano-r1-w2-client-job-1-invalid_type-chat",
+          "nano-r1-w2-client-job-1-invalid_type-direct",
+          "nano-r1-w2-client-job-1-missing_argument-chat",
+          "nano-r1-w2-client-job-1-missing_argument-direct",
+          "nano-r1-w2-client-job-1-municipality-chat",
+          "nano-r1-w2-client-job-1-municipality-direct",
+          "nano-r1-w2-client-job-1-station-chat",
+          "nano-r1-w2-client-job-1-station-direct",
+          "nano-r1-w2-client-job-1-transaction-chat",
+          "nano-r1-w2-client-job-1-transaction-direct",
+          "nano-r1-w2-client-job-1-unicode_empty-chat",
+          "nano-r1-w2-client-job-1-unicode_empty-direct",
+          "nano-r1-w2-client-job-1-unknown_tool-chat",
+          "nano-r1-w2-client-job-1-unknown_tool-direct"
+        ],
+        "log_sha256": "e0a1e9c93d05d0f015b90a9515a4872a5f6b08bee3565fde4bbb176661218307",
+        "external_source_calls": 0
+      },
+      "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+      "all_clients_final_exit_codes": [
+        0,
+        0
+      ],
+      "repetition": 1,
+      "profile": "client",
+      "order": [
+        "server",
+        "client"
+      ],
+      "client_receipts": [
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.6157368760032114,
+          "cli_completion_ru_maxrss_raw": 71360,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r1-w2-client-job-0",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "client",
+          "installed_distribution_count": 28,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        },
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.624306202000298,
+          "cli_completion_ru_maxrss_raw": 70788,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r1-w2-client-job-1",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "client",
+          "installed_distribution_count": 28,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        }
+      ],
+      "raw_receipt_sha256": "01d6889fbedad31fd2d32df1557af14f95ba403929e765a980f30d4fe0cc7866",
+      "raw_logs": {
+        "client-0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "server.stderr.log": "69d16ebf6a9c440646754af2ea0f7b0841d069a74f7f633d52918f2f8a88f5a2",
+        "server.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fixture_shutdown": "intentional SIGTERM after both jobs completed; process reaped"
+    },
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 2,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "server_exit_code": -15,
+      "sampled_client_sum_rss_max_bytes": 73359360,
+      "sampled_server_rss_max_bytes": 89837568,
+      "sampled_combined_sum_rss_max_bytes": 163196928,
+      "server_command": [
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/venv/bin/python",
+        "-I",
+        "-B",
+        "<workspace>/nano-next-20261101/mcp-measure/prepare_mcp_comparison.py",
+        "serve",
+        "--ready",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r2-w1-client/server-ready.json",
+        "--log",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r2-w1-client/server.jsonl",
+        "--allow-loopback-execution"
+      ],
+      "server_startup_seconds": 1.3897617120019277,
+      "server_ready_rss_bytes": 86413312,
+      "wall_seconds": 3.1056523250008468,
+      "server_trace": {
+        "calls": 32,
+        "events": 116,
+        "trace_ids": [
+          "nano-r2-w1-client-job-0-empty-chat",
+          "nano-r2-w1-client-job-0-empty-direct",
+          "nano-r2-w1-client-job-0-invalid_type-chat",
+          "nano-r2-w1-client-job-0-invalid_type-direct",
+          "nano-r2-w1-client-job-0-missing_argument-chat",
+          "nano-r2-w1-client-job-0-missing_argument-direct",
+          "nano-r2-w1-client-job-0-municipality-chat",
+          "nano-r2-w1-client-job-0-municipality-direct",
+          "nano-r2-w1-client-job-0-station-chat",
+          "nano-r2-w1-client-job-0-station-direct",
+          "nano-r2-w1-client-job-0-transaction-chat",
+          "nano-r2-w1-client-job-0-transaction-direct",
+          "nano-r2-w1-client-job-0-unicode_empty-chat",
+          "nano-r2-w1-client-job-0-unicode_empty-direct",
+          "nano-r2-w1-client-job-0-unknown_tool-chat",
+          "nano-r2-w1-client-job-0-unknown_tool-direct",
+          "nano-r2-w1-client-job-1-empty-chat",
+          "nano-r2-w1-client-job-1-empty-direct",
+          "nano-r2-w1-client-job-1-invalid_type-chat",
+          "nano-r2-w1-client-job-1-invalid_type-direct",
+          "nano-r2-w1-client-job-1-missing_argument-chat",
+          "nano-r2-w1-client-job-1-missing_argument-direct",
+          "nano-r2-w1-client-job-1-municipality-chat",
+          "nano-r2-w1-client-job-1-municipality-direct",
+          "nano-r2-w1-client-job-1-station-chat",
+          "nano-r2-w1-client-job-1-station-direct",
+          "nano-r2-w1-client-job-1-transaction-chat",
+          "nano-r2-w1-client-job-1-transaction-direct",
+          "nano-r2-w1-client-job-1-unicode_empty-chat",
+          "nano-r2-w1-client-job-1-unicode_empty-direct",
+          "nano-r2-w1-client-job-1-unknown_tool-chat",
+          "nano-r2-w1-client-job-1-unknown_tool-direct"
+        ],
+        "log_sha256": "dc5086d33466f15f2e585b7a10a6c8c45ec61b9a1d06da3155aad1aafc4c7a99",
+        "external_source_calls": 0
+      },
+      "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+      "all_clients_final_exit_codes": [
+        0,
+        0
+      ],
+      "repetition": 2,
+      "profile": "client",
+      "order": [
+        "client",
+        "server"
+      ],
+      "client_receipts": [
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.5490286810018006,
+          "cli_completion_ru_maxrss_raw": 71412,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r2-w1-client-job-0",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "client",
+          "installed_distribution_count": 28,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        },
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.13562196699786,
+          "cli_completion_ru_maxrss_raw": 71204,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r2-w1-client-job-1",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "client",
+          "installed_distribution_count": 28,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        }
+      ],
+      "raw_receipt_sha256": "1472c68eb1c3afe3898968ac273b0e4645f38d03bcd18f20353435b0d226e432",
+      "raw_logs": {
+        "client-0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "server.stderr.log": "c87fc35fa0f5adbb89348208aab38895611f56257b629743d7bd8a14a43c1041",
+        "server.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fixture_shutdown": "intentional SIGTERM after both jobs completed; process reaped"
+    },
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 2,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "server_exit_code": -15,
+      "sampled_client_sum_rss_max_bytes": 74108928,
+      "sampled_server_rss_max_bytes": 89825280,
+      "sampled_combined_sum_rss_max_bytes": 163934208,
+      "server_command": [
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/venv/bin/python",
+        "-I",
+        "-B",
+        "<workspace>/nano-next-20261101/mcp-measure/prepare_mcp_comparison.py",
+        "serve",
+        "--ready",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r2-w1-server/server-ready.json",
+        "--log",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r2-w1-server/server.jsonl",
+        "--allow-loopback-execution"
+      ],
+      "server_startup_seconds": 1.5345158579984854,
+      "server_ready_rss_bytes": 86421504,
+      "wall_seconds": 3.061995725001907,
+      "server_trace": {
+        "calls": 32,
+        "events": 116,
+        "trace_ids": [
+          "nano-r2-w1-server-job-0-empty-chat",
+          "nano-r2-w1-server-job-0-empty-direct",
+          "nano-r2-w1-server-job-0-invalid_type-chat",
+          "nano-r2-w1-server-job-0-invalid_type-direct",
+          "nano-r2-w1-server-job-0-missing_argument-chat",
+          "nano-r2-w1-server-job-0-missing_argument-direct",
+          "nano-r2-w1-server-job-0-municipality-chat",
+          "nano-r2-w1-server-job-0-municipality-direct",
+          "nano-r2-w1-server-job-0-station-chat",
+          "nano-r2-w1-server-job-0-station-direct",
+          "nano-r2-w1-server-job-0-transaction-chat",
+          "nano-r2-w1-server-job-0-transaction-direct",
+          "nano-r2-w1-server-job-0-unicode_empty-chat",
+          "nano-r2-w1-server-job-0-unicode_empty-direct",
+          "nano-r2-w1-server-job-0-unknown_tool-chat",
+          "nano-r2-w1-server-job-0-unknown_tool-direct",
+          "nano-r2-w1-server-job-1-empty-chat",
+          "nano-r2-w1-server-job-1-empty-direct",
+          "nano-r2-w1-server-job-1-invalid_type-chat",
+          "nano-r2-w1-server-job-1-invalid_type-direct",
+          "nano-r2-w1-server-job-1-missing_argument-chat",
+          "nano-r2-w1-server-job-1-missing_argument-direct",
+          "nano-r2-w1-server-job-1-municipality-chat",
+          "nano-r2-w1-server-job-1-municipality-direct",
+          "nano-r2-w1-server-job-1-station-chat",
+          "nano-r2-w1-server-job-1-station-direct",
+          "nano-r2-w1-server-job-1-transaction-chat",
+          "nano-r2-w1-server-job-1-transaction-direct",
+          "nano-r2-w1-server-job-1-unicode_empty-chat",
+          "nano-r2-w1-server-job-1-unicode_empty-direct",
+          "nano-r2-w1-server-job-1-unknown_tool-chat",
+          "nano-r2-w1-server-job-1-unknown_tool-direct"
+        ],
+        "log_sha256": "12424ba109c31098a0546c36047657eff131ff7818eefb1e29102f4cd807aa3e",
+        "external_source_calls": 0
+      },
+      "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+      "all_clients_final_exit_codes": [
+        0,
+        0
+      ],
+      "repetition": 2,
+      "profile": "server",
+      "order": [
+        "client",
+        "server"
+      ],
+      "client_receipts": [
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.4993491050008743,
+          "cli_completion_ru_maxrss_raw": 72192,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r2-w1-server-job-0",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "server",
+          "installed_distribution_count": 69,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        },
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.0920465880008123,
+          "cli_completion_ru_maxrss_raw": 72160,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r2-w1-server-job-1",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "server",
+          "installed_distribution_count": 69,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        }
+      ],
+      "raw_receipt_sha256": "6b52484a8139417d213e08de02c6a9fc8cc7bfd4f397b7a33ace7bb5f31018b8",
+      "raw_logs": {
+        "client-0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "server.stderr.log": "cb26b23c290087e2d73fd0853594bb0db358b15919ee4d5a30f3bd3f757ed9d2",
+        "server.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fixture_shutdown": "intentional SIGTERM after both jobs completed; process reaped"
+    },
+    {
+      "status": "completed",
+      "workers": 2,
+      "jobs": 2,
+      "worker_exit_codes": [
+        {
+          "job": 1,
+          "exit_code": 0
+        },
+        {
+          "job": 0,
+          "exit_code": 0
+        }
+      ],
+      "server_exit_code": -15,
+      "sampled_client_sum_rss_max_bytes": 146300928,
+      "sampled_server_rss_max_bytes": 90165248,
+      "sampled_combined_sum_rss_max_bytes": 236466176,
+      "server_command": [
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/venv/bin/python",
+        "-I",
+        "-B",
+        "<workspace>/nano-next-20261101/mcp-measure/prepare_mcp_comparison.py",
+        "serve",
+        "--ready",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r2-w2-client/server-ready.json",
+        "--log",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r2-w2-client/server.jsonl",
+        "--allow-loopback-execution"
+      ],
+      "server_startup_seconds": 1.4496997099995497,
+      "server_ready_rss_bytes": 86585344,
+      "wall_seconds": 1.731926091000787,
+      "server_trace": {
+        "calls": 32,
+        "events": 116,
+        "trace_ids": [
+          "nano-r2-w2-client-job-0-empty-chat",
+          "nano-r2-w2-client-job-0-empty-direct",
+          "nano-r2-w2-client-job-0-invalid_type-chat",
+          "nano-r2-w2-client-job-0-invalid_type-direct",
+          "nano-r2-w2-client-job-0-missing_argument-chat",
+          "nano-r2-w2-client-job-0-missing_argument-direct",
+          "nano-r2-w2-client-job-0-municipality-chat",
+          "nano-r2-w2-client-job-0-municipality-direct",
+          "nano-r2-w2-client-job-0-station-chat",
+          "nano-r2-w2-client-job-0-station-direct",
+          "nano-r2-w2-client-job-0-transaction-chat",
+          "nano-r2-w2-client-job-0-transaction-direct",
+          "nano-r2-w2-client-job-0-unicode_empty-chat",
+          "nano-r2-w2-client-job-0-unicode_empty-direct",
+          "nano-r2-w2-client-job-0-unknown_tool-chat",
+          "nano-r2-w2-client-job-0-unknown_tool-direct",
+          "nano-r2-w2-client-job-1-empty-chat",
+          "nano-r2-w2-client-job-1-empty-direct",
+          "nano-r2-w2-client-job-1-invalid_type-chat",
+          "nano-r2-w2-client-job-1-invalid_type-direct",
+          "nano-r2-w2-client-job-1-missing_argument-chat",
+          "nano-r2-w2-client-job-1-missing_argument-direct",
+          "nano-r2-w2-client-job-1-municipality-chat",
+          "nano-r2-w2-client-job-1-municipality-direct",
+          "nano-r2-w2-client-job-1-station-chat",
+          "nano-r2-w2-client-job-1-station-direct",
+          "nano-r2-w2-client-job-1-transaction-chat",
+          "nano-r2-w2-client-job-1-transaction-direct",
+          "nano-r2-w2-client-job-1-unicode_empty-chat",
+          "nano-r2-w2-client-job-1-unicode_empty-direct",
+          "nano-r2-w2-client-job-1-unknown_tool-chat",
+          "nano-r2-w2-client-job-1-unknown_tool-direct"
+        ],
+        "log_sha256": "1cf9f4dd136c9385396b04749ca408886da8fa58f467de229eae16caf857efea",
+        "external_source_calls": 0
+      },
+      "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+      "all_clients_final_exit_codes": [
+        0,
+        0
+      ],
+      "repetition": 2,
+      "profile": "client",
+      "order": [
+        "client",
+        "server"
+      ],
+      "client_receipts": [
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.4719766180023726,
+          "cli_completion_ru_maxrss_raw": 71160,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r2-w2-client-job-1",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "client",
+          "installed_distribution_count": 28,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        },
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.489010919998691,
+          "cli_completion_ru_maxrss_raw": 71192,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r2-w2-client-job-0",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "client",
+          "installed_distribution_count": 28,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        }
+      ],
+      "raw_receipt_sha256": "4c2ef983da553144e2316edaec4a8e4e624a8ede96e6f7ea46529001771b2db6",
+      "raw_logs": {
+        "client-0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "server.stderr.log": "3f99e43479b091960632739bbf7dd207be15cbcebe1e2269874fe5be214ed9e2",
+        "server.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fixture_shutdown": "intentional SIGTERM after both jobs completed; process reaped"
+    },
+    {
+      "status": "completed",
+      "workers": 2,
+      "jobs": 2,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "server_exit_code": -15,
+      "sampled_client_sum_rss_max_bytes": 147857408,
+      "sampled_server_rss_max_bytes": 90013696,
+      "sampled_combined_sum_rss_max_bytes": 237871104,
+      "server_command": [
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/venv/bin/python",
+        "-I",
+        "-B",
+        "<workspace>/nano-next-20261101/mcp-measure/prepare_mcp_comparison.py",
+        "serve",
+        "--ready",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r2-w2-server/server-ready.json",
+        "--log",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r2-w2-server/server.jsonl",
+        "--allow-loopback-execution"
+      ],
+      "server_startup_seconds": 1.4717839580007421,
+      "server_ready_rss_bytes": 86409216,
+      "wall_seconds": 1.8082345990005706,
+      "server_trace": {
+        "calls": 32,
+        "events": 116,
+        "trace_ids": [
+          "nano-r2-w2-server-job-0-empty-chat",
+          "nano-r2-w2-server-job-0-empty-direct",
+          "nano-r2-w2-server-job-0-invalid_type-chat",
+          "nano-r2-w2-server-job-0-invalid_type-direct",
+          "nano-r2-w2-server-job-0-missing_argument-chat",
+          "nano-r2-w2-server-job-0-missing_argument-direct",
+          "nano-r2-w2-server-job-0-municipality-chat",
+          "nano-r2-w2-server-job-0-municipality-direct",
+          "nano-r2-w2-server-job-0-station-chat",
+          "nano-r2-w2-server-job-0-station-direct",
+          "nano-r2-w2-server-job-0-transaction-chat",
+          "nano-r2-w2-server-job-0-transaction-direct",
+          "nano-r2-w2-server-job-0-unicode_empty-chat",
+          "nano-r2-w2-server-job-0-unicode_empty-direct",
+          "nano-r2-w2-server-job-0-unknown_tool-chat",
+          "nano-r2-w2-server-job-0-unknown_tool-direct",
+          "nano-r2-w2-server-job-1-empty-chat",
+          "nano-r2-w2-server-job-1-empty-direct",
+          "nano-r2-w2-server-job-1-invalid_type-chat",
+          "nano-r2-w2-server-job-1-invalid_type-direct",
+          "nano-r2-w2-server-job-1-missing_argument-chat",
+          "nano-r2-w2-server-job-1-missing_argument-direct",
+          "nano-r2-w2-server-job-1-municipality-chat",
+          "nano-r2-w2-server-job-1-municipality-direct",
+          "nano-r2-w2-server-job-1-station-chat",
+          "nano-r2-w2-server-job-1-station-direct",
+          "nano-r2-w2-server-job-1-transaction-chat",
+          "nano-r2-w2-server-job-1-transaction-direct",
+          "nano-r2-w2-server-job-1-unicode_empty-chat",
+          "nano-r2-w2-server-job-1-unicode_empty-direct",
+          "nano-r2-w2-server-job-1-unknown_tool-chat",
+          "nano-r2-w2-server-job-1-unknown_tool-direct"
+        ],
+        "log_sha256": "9474b85dee249e2274595cbc35ff6a05a0233c6867ad0d1d4d5529b12c2690f5",
+        "external_source_calls": 0
+      },
+      "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+      "all_clients_final_exit_codes": [
+        0,
+        0
+      ],
+      "repetition": 2,
+      "profile": "server",
+      "order": [
+        "client",
+        "server"
+      ],
+      "client_receipts": [
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.5640313760013669,
+          "cli_completion_ru_maxrss_raw": 72056,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r2-w2-server-job-0",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "server",
+          "installed_distribution_count": 69,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        },
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.576675358999637,
+          "cli_completion_ru_maxrss_raw": 71932,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r2-w2-server-job-1",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "server",
+          "installed_distribution_count": 69,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        }
+      ],
+      "raw_receipt_sha256": "dcaf5369d0d9aa169df7d92197ca1361215f3b5946203801027f51dd649fc484",
+      "raw_logs": {
+        "client-0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "server.stderr.log": "742c92872944e8d39bea407047f322c56971a98f2e2b50a7a51d85867f7a48f0",
+        "server.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fixture_shutdown": "intentional SIGTERM after both jobs completed; process reaped"
+    },
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 2,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "server_exit_code": -15,
+      "sampled_client_sum_rss_max_bytes": 74182656,
+      "sampled_server_rss_max_bytes": 89890816,
+      "sampled_combined_sum_rss_max_bytes": 164073472,
+      "server_command": [
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/venv/bin/python",
+        "-I",
+        "-B",
+        "<workspace>/nano-next-20261101/mcp-measure/prepare_mcp_comparison.py",
+        "serve",
+        "--ready",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r3-w1-server/server-ready.json",
+        "--log",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r3-w1-server/server.jsonl",
+        "--allow-loopback-execution"
+      ],
+      "server_startup_seconds": 1.4523440490011126,
+      "server_ready_rss_bytes": 86528000,
+      "wall_seconds": 3.1482579769981385,
+      "server_trace": {
+        "calls": 32,
+        "events": 116,
+        "trace_ids": [
+          "nano-r3-w1-server-job-0-empty-chat",
+          "nano-r3-w1-server-job-0-empty-direct",
+          "nano-r3-w1-server-job-0-invalid_type-chat",
+          "nano-r3-w1-server-job-0-invalid_type-direct",
+          "nano-r3-w1-server-job-0-missing_argument-chat",
+          "nano-r3-w1-server-job-0-missing_argument-direct",
+          "nano-r3-w1-server-job-0-municipality-chat",
+          "nano-r3-w1-server-job-0-municipality-direct",
+          "nano-r3-w1-server-job-0-station-chat",
+          "nano-r3-w1-server-job-0-station-direct",
+          "nano-r3-w1-server-job-0-transaction-chat",
+          "nano-r3-w1-server-job-0-transaction-direct",
+          "nano-r3-w1-server-job-0-unicode_empty-chat",
+          "nano-r3-w1-server-job-0-unicode_empty-direct",
+          "nano-r3-w1-server-job-0-unknown_tool-chat",
+          "nano-r3-w1-server-job-0-unknown_tool-direct",
+          "nano-r3-w1-server-job-1-empty-chat",
+          "nano-r3-w1-server-job-1-empty-direct",
+          "nano-r3-w1-server-job-1-invalid_type-chat",
+          "nano-r3-w1-server-job-1-invalid_type-direct",
+          "nano-r3-w1-server-job-1-missing_argument-chat",
+          "nano-r3-w1-server-job-1-missing_argument-direct",
+          "nano-r3-w1-server-job-1-municipality-chat",
+          "nano-r3-w1-server-job-1-municipality-direct",
+          "nano-r3-w1-server-job-1-station-chat",
+          "nano-r3-w1-server-job-1-station-direct",
+          "nano-r3-w1-server-job-1-transaction-chat",
+          "nano-r3-w1-server-job-1-transaction-direct",
+          "nano-r3-w1-server-job-1-unicode_empty-chat",
+          "nano-r3-w1-server-job-1-unicode_empty-direct",
+          "nano-r3-w1-server-job-1-unknown_tool-chat",
+          "nano-r3-w1-server-job-1-unknown_tool-direct"
+        ],
+        "log_sha256": "5ebb3cda4d3098b7cba7504b29b28e910b47e7b90ce4086292469c4126e76b18",
+        "external_source_calls": 0
+      },
+      "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+      "all_clients_final_exit_codes": [
+        0,
+        0
+      ],
+      "repetition": 3,
+      "profile": "server",
+      "order": [
+        "server",
+        "client"
+      ],
+      "client_receipts": [
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.528957870999875,
+          "cli_completion_ru_maxrss_raw": 72140,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r3-w1-server-job-0",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "server",
+          "installed_distribution_count": 69,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        },
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.1380654950007738,
+          "cli_completion_ru_maxrss_raw": 72232,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r3-w1-server-job-1",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "server",
+          "installed_distribution_count": 69,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        }
+      ],
+      "raw_receipt_sha256": "97b625f05dd94bf661303d389e4344d72547c9c01243d006dca582514b926356",
+      "raw_logs": {
+        "client-0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "server.stderr.log": "60612cb5a789b9d26679247daa1ddb4893e3f3b9629d4caa2a88b6fee672c2a3",
+        "server.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fixture_shutdown": "intentional SIGTERM after both jobs completed; process reaped"
+    },
+    {
+      "status": "completed",
+      "workers": 1,
+      "jobs": 2,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "server_exit_code": -15,
+      "sampled_client_sum_rss_max_bytes": 73256960,
+      "sampled_server_rss_max_bytes": 89743360,
+      "sampled_combined_sum_rss_max_bytes": 163000320,
+      "server_command": [
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/venv/bin/python",
+        "-I",
+        "-B",
+        "<workspace>/nano-next-20261101/mcp-measure/prepare_mcp_comparison.py",
+        "serve",
+        "--ready",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r3-w1-client/server-ready.json",
+        "--log",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r3-w1-client/server.jsonl",
+        "--allow-loopback-execution"
+      ],
+      "server_startup_seconds": 1.411583385000995,
+      "server_ready_rss_bytes": 86360064,
+      "wall_seconds": 3.35998001599728,
+      "server_trace": {
+        "calls": 32,
+        "events": 116,
+        "trace_ids": [
+          "nano-r3-w1-client-job-0-empty-chat",
+          "nano-r3-w1-client-job-0-empty-direct",
+          "nano-r3-w1-client-job-0-invalid_type-chat",
+          "nano-r3-w1-client-job-0-invalid_type-direct",
+          "nano-r3-w1-client-job-0-missing_argument-chat",
+          "nano-r3-w1-client-job-0-missing_argument-direct",
+          "nano-r3-w1-client-job-0-municipality-chat",
+          "nano-r3-w1-client-job-0-municipality-direct",
+          "nano-r3-w1-client-job-0-station-chat",
+          "nano-r3-w1-client-job-0-station-direct",
+          "nano-r3-w1-client-job-0-transaction-chat",
+          "nano-r3-w1-client-job-0-transaction-direct",
+          "nano-r3-w1-client-job-0-unicode_empty-chat",
+          "nano-r3-w1-client-job-0-unicode_empty-direct",
+          "nano-r3-w1-client-job-0-unknown_tool-chat",
+          "nano-r3-w1-client-job-0-unknown_tool-direct",
+          "nano-r3-w1-client-job-1-empty-chat",
+          "nano-r3-w1-client-job-1-empty-direct",
+          "nano-r3-w1-client-job-1-invalid_type-chat",
+          "nano-r3-w1-client-job-1-invalid_type-direct",
+          "nano-r3-w1-client-job-1-missing_argument-chat",
+          "nano-r3-w1-client-job-1-missing_argument-direct",
+          "nano-r3-w1-client-job-1-municipality-chat",
+          "nano-r3-w1-client-job-1-municipality-direct",
+          "nano-r3-w1-client-job-1-station-chat",
+          "nano-r3-w1-client-job-1-station-direct",
+          "nano-r3-w1-client-job-1-transaction-chat",
+          "nano-r3-w1-client-job-1-transaction-direct",
+          "nano-r3-w1-client-job-1-unicode_empty-chat",
+          "nano-r3-w1-client-job-1-unicode_empty-direct",
+          "nano-r3-w1-client-job-1-unknown_tool-chat",
+          "nano-r3-w1-client-job-1-unknown_tool-direct"
+        ],
+        "log_sha256": "fe115a5f638cb52a00de55ed01be4def48143e376f43311f09d14e8574ee39f7",
+        "external_source_calls": 0
+      },
+      "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+      "all_clients_final_exit_codes": [
+        0,
+        0
+      ],
+      "repetition": 3,
+      "profile": "client",
+      "order": [
+        "server",
+        "client"
+      ],
+      "client_receipts": [
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.5622840219984937,
+          "cli_completion_ru_maxrss_raw": 71172,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r3-w1-client-job-0",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "client",
+          "installed_distribution_count": 28,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        },
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.316218652002135,
+          "cli_completion_ru_maxrss_raw": 71280,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r3-w1-client-job-1",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "client",
+          "installed_distribution_count": 28,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        }
+      ],
+      "raw_receipt_sha256": "7e585316098a08c9ff99aaa7fdf5dac2c3f9445e2add79fe5a33d12fe0ef1daa",
+      "raw_logs": {
+        "client-0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "server.stderr.log": "9cd260f009b24576dd011c34cad95aef80a9fc6e9df0fb482dc3a7fde8c7fc09",
+        "server.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fixture_shutdown": "intentional SIGTERM after both jobs completed; process reaped"
+    },
+    {
+      "status": "completed",
+      "workers": 2,
+      "jobs": 2,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "server_exit_code": -15,
+      "sampled_client_sum_rss_max_bytes": 147419136,
+      "sampled_server_rss_max_bytes": 89952256,
+      "sampled_combined_sum_rss_max_bytes": 237371392,
+      "server_command": [
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/venv/bin/python",
+        "-I",
+        "-B",
+        "<workspace>/nano-next-20261101/mcp-measure/prepare_mcp_comparison.py",
+        "serve",
+        "--ready",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r3-w2-server/server-ready.json",
+        "--log",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r3-w2-server/server.jsonl",
+        "--allow-loopback-execution"
+      ],
+      "server_startup_seconds": 1.5529548270023952,
+      "server_ready_rss_bytes": 86294528,
+      "wall_seconds": 2.121146093999414,
+      "server_trace": {
+        "calls": 32,
+        "events": 116,
+        "trace_ids": [
+          "nano-r3-w2-server-job-0-empty-chat",
+          "nano-r3-w2-server-job-0-empty-direct",
+          "nano-r3-w2-server-job-0-invalid_type-chat",
+          "nano-r3-w2-server-job-0-invalid_type-direct",
+          "nano-r3-w2-server-job-0-missing_argument-chat",
+          "nano-r3-w2-server-job-0-missing_argument-direct",
+          "nano-r3-w2-server-job-0-municipality-chat",
+          "nano-r3-w2-server-job-0-municipality-direct",
+          "nano-r3-w2-server-job-0-station-chat",
+          "nano-r3-w2-server-job-0-station-direct",
+          "nano-r3-w2-server-job-0-transaction-chat",
+          "nano-r3-w2-server-job-0-transaction-direct",
+          "nano-r3-w2-server-job-0-unicode_empty-chat",
+          "nano-r3-w2-server-job-0-unicode_empty-direct",
+          "nano-r3-w2-server-job-0-unknown_tool-chat",
+          "nano-r3-w2-server-job-0-unknown_tool-direct",
+          "nano-r3-w2-server-job-1-empty-chat",
+          "nano-r3-w2-server-job-1-empty-direct",
+          "nano-r3-w2-server-job-1-invalid_type-chat",
+          "nano-r3-w2-server-job-1-invalid_type-direct",
+          "nano-r3-w2-server-job-1-missing_argument-chat",
+          "nano-r3-w2-server-job-1-missing_argument-direct",
+          "nano-r3-w2-server-job-1-municipality-chat",
+          "nano-r3-w2-server-job-1-municipality-direct",
+          "nano-r3-w2-server-job-1-station-chat",
+          "nano-r3-w2-server-job-1-station-direct",
+          "nano-r3-w2-server-job-1-transaction-chat",
+          "nano-r3-w2-server-job-1-transaction-direct",
+          "nano-r3-w2-server-job-1-unicode_empty-chat",
+          "nano-r3-w2-server-job-1-unicode_empty-direct",
+          "nano-r3-w2-server-job-1-unknown_tool-chat",
+          "nano-r3-w2-server-job-1-unknown_tool-direct"
+        ],
+        "log_sha256": "4b5f4d9026f346e24829dee0cb0cc2ec1601ad8d8eed2f81685651229ebc907d",
+        "external_source_calls": 0
+      },
+      "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+      "all_clients_final_exit_codes": [
+        0,
+        0
+      ],
+      "repetition": 3,
+      "profile": "server",
+      "order": [
+        "server",
+        "client"
+      ],
+      "client_receipts": [
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.7659629430017958,
+          "cli_completion_ru_maxrss_raw": 72056,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r3-w2-server-job-0",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "server",
+          "installed_distribution_count": 69,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        },
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.7873738230009621,
+          "cli_completion_ru_maxrss_raw": 71500,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r3-w2-server-job-1",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "server",
+          "installed_distribution_count": 69,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        }
+      ],
+      "raw_receipt_sha256": "1a18fc7643a966abb46589a5c9a6fb352222961a81e14ca52129139612971b87",
+      "raw_logs": {
+        "client-0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "server.stderr.log": "9dda96923744f4a4809645f91ca6c392cd9666da361086b2a72c5dc130ccaba3",
+        "server.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fixture_shutdown": "intentional SIGTERM after both jobs completed; process reaped"
+    },
+    {
+      "status": "completed",
+      "workers": 2,
+      "jobs": 2,
+      "worker_exit_codes": [
+        {
+          "job": 0,
+          "exit_code": 0
+        },
+        {
+          "job": 1,
+          "exit_code": 0
+        }
+      ],
+      "server_exit_code": -15,
+      "sampled_client_sum_rss_max_bytes": 146518016,
+      "sampled_server_rss_max_bytes": 89997312,
+      "sampled_combined_sum_rss_max_bytes": 236515328,
+      "server_command": [
+        "<workspace>/nano-next-20261101/mcp-measure/install-trials/3-server/venv/bin/python",
+        "-I",
+        "-B",
+        "<workspace>/nano-next-20261101/mcp-measure/prepare_mcp_comparison.py",
+        "serve",
+        "--ready",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r3-w2-client/server-ready.json",
+        "--log",
+        "<workspace>/nano-next-20261101/mcp-measure/workload-runs/r3-w2-client/server.jsonl",
+        "--allow-loopback-execution"
+      ],
+      "server_startup_seconds": 1.5735004430025583,
+      "server_ready_rss_bytes": 86392832,
+      "wall_seconds": 2.242351368000527,
+      "server_trace": {
+        "calls": 32,
+        "events": 116,
+        "trace_ids": [
+          "nano-r3-w2-client-job-0-empty-chat",
+          "nano-r3-w2-client-job-0-empty-direct",
+          "nano-r3-w2-client-job-0-invalid_type-chat",
+          "nano-r3-w2-client-job-0-invalid_type-direct",
+          "nano-r3-w2-client-job-0-missing_argument-chat",
+          "nano-r3-w2-client-job-0-missing_argument-direct",
+          "nano-r3-w2-client-job-0-municipality-chat",
+          "nano-r3-w2-client-job-0-municipality-direct",
+          "nano-r3-w2-client-job-0-station-chat",
+          "nano-r3-w2-client-job-0-station-direct",
+          "nano-r3-w2-client-job-0-transaction-chat",
+          "nano-r3-w2-client-job-0-transaction-direct",
+          "nano-r3-w2-client-job-0-unicode_empty-chat",
+          "nano-r3-w2-client-job-0-unicode_empty-direct",
+          "nano-r3-w2-client-job-0-unknown_tool-chat",
+          "nano-r3-w2-client-job-0-unknown_tool-direct",
+          "nano-r3-w2-client-job-1-empty-chat",
+          "nano-r3-w2-client-job-1-empty-direct",
+          "nano-r3-w2-client-job-1-invalid_type-chat",
+          "nano-r3-w2-client-job-1-invalid_type-direct",
+          "nano-r3-w2-client-job-1-missing_argument-chat",
+          "nano-r3-w2-client-job-1-missing_argument-direct",
+          "nano-r3-w2-client-job-1-municipality-chat",
+          "nano-r3-w2-client-job-1-municipality-direct",
+          "nano-r3-w2-client-job-1-station-chat",
+          "nano-r3-w2-client-job-1-station-direct",
+          "nano-r3-w2-client-job-1-transaction-chat",
+          "nano-r3-w2-client-job-1-transaction-direct",
+          "nano-r3-w2-client-job-1-unicode_empty-chat",
+          "nano-r3-w2-client-job-1-unicode_empty-direct",
+          "nano-r3-w2-client-job-1-unknown_tool-chat",
+          "nano-r3-w2-client-job-1-unknown_tool-direct"
+        ],
+        "log_sha256": "12d20df8f057987d33661adbe209aecd5ea117549ed3634682d145565003b907",
+        "external_source_calls": 0
+      },
+      "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+      "all_clients_final_exit_codes": [
+        0,
+        0
+      ],
+      "repetition": 3,
+      "profile": "client",
+      "order": [
+        "server",
+        "client"
+      ],
+      "client_receipts": [
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.85852242799956,
+          "cli_completion_ru_maxrss_raw": 71296,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r3-w2-client-job-0",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "client",
+          "installed_distribution_count": 28,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        },
+        {
+          "status": "completed",
+          "output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+          "seconds_import_and_calls": 1.8747559130024456,
+          "cli_completion_ru_maxrss_raw": 71368,
+          "ru_maxrss_unit": "KiB on Linux; bytes on macOS; platform must be recorded",
+          "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+          "run_tag": "r3-w2-client-job-1",
+          "calls": 16,
+          "forbidden_events": [],
+          "fastmcp_imports": [],
+          "installed_package_set": "client",
+          "installed_distribution_count": 28,
+          "complete_output_reference_match": true,
+          "independent_expected_results_checked": true
+        }
+      ],
+      "raw_receipt_sha256": "7a749e16ec79e8cb221f1ed62259c33ed4cb1d0784d9152dad85b860df162375",
+      "raw_logs": {
+        "client-0.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-0.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "client-1.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "server.stderr.log": "8d320ab214a7696e13d7c17d6632cc371f1f8859cbcf35cb5471b6ec3b9b1a2b",
+        "server.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fixture_shutdown": "intentional SIGTERM after both jobs completed; process reaped"
+    }
+  ],
+  "canonical_output_reference_file": "output-reference.json",
+  "canonical_output_sha256": "393b226a0c82866e82f6395dcf2cab8dcc96f1211dc9e351d348aa6ff865f4af",
+  "canonical_output_file_sha256": "44300b1893827469aa6b16c92f86dd8edc734830b431f886a59053b464208637",
+  "summary": {
+    "server": {
+      "installed_distribution_count": 69,
+      "install_seconds": [
+        12.453697537002881,
+        8.493734886000311,
+        9.847533845997532
+      ],
+      "install_seconds_median": 9.847533845997532,
+      "venv_apparent_bytes": 58981931,
+      "venv_allocated_bytes": 67227648,
+      "cache_apparent_bytes": 70982045,
+      "workloads": {
+        "1": {
+          "batch_seconds": [
+            3.312328243002412,
+            3.061995725001907,
+            3.1482579769981385
+          ],
+          "batch_seconds_median": 3.1482579769981385,
+          "client_sum_rss_samples_bytes": [
+            74022912,
+            74108928,
+            74182656
+          ],
+          "fixture_server_rss_samples_bytes": [
+            89980928,
+            89825280,
+            89890816
+          ],
+          "combined_sum_rss_samples_bytes": [
+            164003840,
+            163934208,
+            164073472
+          ]
+        },
+        "2": {
+          "batch_seconds": [
+            1.9988526050001383,
+            1.8082345990005706,
+            2.121146093999414
+          ],
+          "batch_seconds_median": 1.9988526050001383,
+          "client_sum_rss_samples_bytes": [
+            147726336,
+            147857408,
+            147419136
+          ],
+          "fixture_server_rss_samples_bytes": [
+            89899008,
+            90013696,
+            89952256
+          ],
+          "combined_sum_rss_samples_bytes": [
+            237625344,
+            237871104,
+            237371392
+          ]
+        }
+      }
+    },
+    "client": {
+      "installed_distribution_count": 28,
+      "install_seconds": [
+        7.9935431470003095,
+        8.240399138001521,
+        7.688815176999924
+      ],
+      "install_seconds_median": 7.9935431470003095,
+      "venv_apparent_bytes": 30223954,
+      "venv_allocated_bytes": 32616448,
+      "cache_apparent_bytes": 39438652,
+      "workloads": {
+        "1": {
+          "batch_seconds": [
+            3.0675216150011693,
+            3.1056523250008468,
+            3.35998001599728
+          ],
+          "batch_seconds_median": 3.1056523250008468,
+          "client_sum_rss_samples_bytes": [
+            73252864,
+            73359360,
+            73256960
+          ],
+          "fixture_server_rss_samples_bytes": [
+            89731072,
+            89837568,
+            89743360
+          ],
+          "combined_sum_rss_samples_bytes": [
+            162983936,
+            163196928,
+            163000320
+          ]
+        },
+        "2": {
+          "batch_seconds": [
+            1.911023701002705,
+            1.731926091000787,
+            2.242351368000527
+          ],
+          "batch_seconds_median": 1.911023701002705,
+          "client_sum_rss_samples_bytes": [
+            146108416,
+            146300928,
+            146518016
+          ],
+          "fixture_server_rss_samples_bytes": [
+            90234880,
+            90165248,
+            89997312
+          ],
+          "combined_sum_rss_samples_bytes": [
+            236343296,
+            236466176,
+            236515328
+          ]
+        }
+      }
+    }
+  },
+  "tests": {
+    "preparation_unittest_passed": 21,
+    "unchanged_catalog_unittest_passed": 10,
+    "original_child_integration_tests_run": false,
+    "original_child_integration_test_limit": "Retained unchanged. Trace collection and SDK boundary tests need FastMCP/test-only extras; no extra test closure installed. Full child suite/browser/model lanes not run.",
+    "original_tests_modified": false
+  },
+  "terminal_accounting": {
+    "client_workers": 24,
+    "client_exit_codes": {
+      "0": 24
+    },
+    "fixture_servers": 12,
+    "fixture_exit_codes": {
+      "-15": 12
+    },
+    "fixture_exit_reason": "intentional SIGTERM by finally cleanup after successful client jobs; all reaped",
+    "validated_real_server_tool_calls": 384,
+    "client_forbidden_operation_events": 0,
+    "server_blocked_operation_error_logs_found": false,
+    "initial_terminal_checker_note": "An ad-hoc receipt checker incorrectly required fixture exit0. Corrected to expected intentional SIGTERM; no workload rerun or receipt alteration.",
+    "fixture_server_denied_attempt_count": null,
+    "fixture_server_denied_attempt_limit": "The server audit policy rejects outgoing socket connects/DNS and child execution. Its in-memory denial list was not persisted; intentional SIGTERM may bypass its final check. Absence of blocked-operation errors in stderr is not a measured zero denied-attempt count.",
+    "external_api_call_scope": "Only the fixed mock/error tool allowlist was sent and validated; outgoing server sockets were denied by the process audit policy. No live-source tool/API was exercised."
+  },
+  "raw_artifacts": [
+    {
+      "path": "install-results.json",
+      "bytes": 29967,
+      "sha256": "deac26beb798a0de3b166ca788b834c7a704a2a1eb376f499db59e2a2d335e71"
+    },
+    {
+      "path": "workload-results.json",
+      "bytes": 714767,
+      "sha256": "ecdd2d03bf50e415f58c5acb617a2184f1dad5fc8abe34e1380106a860433784"
+    },
+    {
+      "path": "output-reference.json",
+      "bytes": 16556,
+      "sha256": "44300b1893827469aa6b16c92f86dd8edc734830b431f886a59053b464208637"
+    },
+    {
+      "path": "source-receipt.json",
+      "bytes": 10766,
+      "sha256": "b8842ad174276520cdd1b3e2e15afdd6b3d0bdcabb7f4b8becb724a98b9a3252"
+    },
+    {
+      "path": "preparation-tests.log",
+      "bytes": 2969,
+      "sha256": "f445e7b812f4e814b59ab26a19dd904844e74e0ae817639abcc313a337c92809"
+    },
+    {
+      "path": "catalog-stdlib-tests.log",
+      "bytes": 1491,
+      "sha256": "91fcc49f3405d1c8fbb147f630a8f971d125e088f8554db7ec9e574ee214d8b3"
+    },
+    {
+      "path": "terminal-check.log",
+      "bytes": 301,
+      "sha256": "a43cf29c8d862096c09d82df6a1a870bd2037d99d5a67c460f2c2557089df703"
+    }
+  ],
+  "no_general_speed_claim": true,
+  "model_inference_performed": false,
+  "external_api_calls": 0,
+  "docker_started": false,
+  "browser_started": false,
+  "public_harness_derivation": {
+    "measured_orchestrator_sha256": "4054779a3d620873e13c4cfd00358d7a9af767327e8c6dd2f3a7c9b0fe20a42c",
+    "public_orchestrator_sha256": "1774f0c245903262e12d741c342c85a2189a51b087af6d61ac14086916120de8",
+    "change": "Only execution-host uv absolute path replaced by <uv-0.13.4>; public copy is a reproducibility template, not the exact measured file. Set trusted installed uv path and record new hash before a fresh run.",
+    "measured_worker_sha256": "6eebb2d3681c3774bd675c745b8518657e3ad55a298950085539c2fb8033c813",
+    "public_worker_sha256": "6eebb2d3681c3774bd675c745b8518657e3ad55a298950085539c2fb8033c813"
+  }
+}

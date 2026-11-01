@@ -1,0 +1,600 @@
+{
+  "cases": [
+    {
+      "case": "municipality",
+      "mode": "direct",
+      "chat_wire": null,
+      "mcp_result": {
+        "_meta": {
+          "fastmcp": {
+            "wrap_result": true
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "[{\"code\":\"90001\",\"name\":\"Exampleville\",\"prefecture\":\"Example Region\"}]",
+            "annotations": null,
+            "_meta": null
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "code": "90001",
+              "name": "Exampleville",
+              "prefecture": "Example Region"
+            }
+          ]
+        },
+        "isError": false,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "municipality",
+      "mode": "chat",
+      "chat_wire": {
+        "chat_id": "chat_fixture_municipality",
+        "call_id": "call_fixture_municipality",
+        "user_message": {
+          "role": "user",
+          "content": "Synthetic case: municipality"
+        },
+        "assistant_tool_call_message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_fixture_municipality",
+              "type": "function",
+              "function": {
+                "name": "find_municipalities",
+                "arguments": {
+                  "query": "Exampleville"
+                }
+              }
+            }
+          ]
+        },
+        "tool_result_message": {
+          "role": "tool",
+          "tool_call_id": "call_fixture_municipality",
+          "content": "[{\"code\":\"90001\",\"name\":\"Exampleville\",\"prefecture\":\"Example Region\"}]"
+        }
+      },
+      "mcp_result": {
+        "_meta": {
+          "fastmcp": {
+            "wrap_result": true
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "[{\"code\":\"90001\",\"name\":\"Exampleville\",\"prefecture\":\"Example Region\"}]",
+            "annotations": null,
+            "_meta": null
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "code": "90001",
+              "name": "Exampleville",
+              "prefecture": "Example Region"
+            }
+          ]
+        },
+        "isError": false,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "unicode_empty",
+      "mode": "direct",
+      "chat_wire": null,
+      "mcp_result": {
+        "_meta": {
+          "fastmcp": {
+            "wrap_result": true
+          }
+        },
+        "content": [],
+        "structuredContent": {
+          "result": []
+        },
+        "isError": false,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "unicode_empty",
+      "mode": "chat",
+      "chat_wire": {
+        "chat_id": "chat_fixture_unicode_empty",
+        "call_id": "call_fixture_unicode_empty",
+        "user_message": {
+          "role": "user",
+          "content": "Synthetic case: unicode_empty"
+        },
+        "assistant_tool_call_message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_fixture_unicode_empty",
+              "type": "function",
+              "function": {
+                "name": "find_municipalities",
+                "arguments": {
+                  "query": "サンプル市"
+                }
+              }
+            }
+          ]
+        },
+        "tool_result_message": {
+          "role": "tool",
+          "tool_call_id": "call_fixture_unicode_empty",
+          "content": "[]"
+        }
+      },
+      "mcp_result": {
+        "_meta": {
+          "fastmcp": {
+            "wrap_result": true
+          }
+        },
+        "content": [],
+        "structuredContent": {
+          "result": []
+        },
+        "isError": false,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "station",
+      "mode": "direct",
+      "chat_wire": null,
+      "mcp_result": {
+        "_meta": {
+          "fastmcp": {
+            "wrap_result": true
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "[{\"name\":\"Exampleville\",\"line\":\"JR\"}]",
+            "annotations": null,
+            "_meta": null
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "Exampleville",
+              "line": "JR"
+            }
+          ]
+        },
+        "isError": false,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "station",
+      "mode": "chat",
+      "chat_wire": {
+        "chat_id": "chat_fixture_station",
+        "call_id": "call_fixture_station",
+        "user_message": {
+          "role": "user",
+          "content": "Synthetic case: station"
+        },
+        "assistant_tool_call_message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_fixture_station",
+              "type": "function",
+              "function": {
+                "name": "find_stations",
+                "arguments": {
+                  "municipality_code": "90001"
+                }
+              }
+            }
+          ]
+        },
+        "tool_result_message": {
+          "role": "tool",
+          "tool_call_id": "call_fixture_station",
+          "content": "[{\"name\":\"Exampleville\",\"line\":\"JR\"}]"
+        }
+      },
+      "mcp_result": {
+        "_meta": {
+          "fastmcp": {
+            "wrap_result": true
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "[{\"name\":\"Exampleville\",\"line\":\"JR\"}]",
+            "annotations": null,
+            "_meta": null
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "name": "Exampleville",
+              "line": "JR"
+            }
+          ]
+        },
+        "isError": false,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "empty",
+      "mode": "direct",
+      "chat_wire": null,
+      "mcp_result": {
+        "_meta": {
+          "fastmcp": {
+            "wrap_result": true
+          }
+        },
+        "content": [],
+        "structuredContent": {
+          "result": []
+        },
+        "isError": false,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "empty",
+      "mode": "chat",
+      "chat_wire": {
+        "chat_id": "chat_fixture_empty",
+        "call_id": "call_fixture_empty",
+        "user_message": {
+          "role": "user",
+          "content": "Synthetic case: empty"
+        },
+        "assistant_tool_call_message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_fixture_empty",
+              "type": "function",
+              "function": {
+                "name": "find_stations",
+                "arguments": {
+                  "municipality_code": "00000"
+                }
+              }
+            }
+          ]
+        },
+        "tool_result_message": {
+          "role": "tool",
+          "tool_call_id": "call_fixture_empty",
+          "content": "[]"
+        }
+      },
+      "mcp_result": {
+        "_meta": {
+          "fastmcp": {
+            "wrap_result": true
+          }
+        },
+        "content": [],
+        "structuredContent": {
+          "result": []
+        },
+        "isError": false,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "transaction",
+      "mode": "direct",
+      "chat_wire": null,
+      "mcp_result": {
+        "_meta": {
+          "fastmcp": {
+            "wrap_result": true
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "[{\"municipality_code\":\"90001\",\"year\":2025,\"price_yen\":52000000,\"property_type\":\"condominium\",\"source\":\"mock\"}]",
+            "annotations": null,
+            "_meta": null
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "municipality_code": "90001",
+              "year": 2025,
+              "price_yen": 52000000,
+              "property_type": "condominium",
+              "source": "mock"
+            }
+          ]
+        },
+        "isError": false,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "transaction",
+      "mode": "chat",
+      "chat_wire": {
+        "chat_id": "chat_fixture_transaction",
+        "call_id": "call_fixture_transaction",
+        "user_message": {
+          "role": "user",
+          "content": "Synthetic case: transaction"
+        },
+        "assistant_tool_call_message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_fixture_transaction",
+              "type": "function",
+              "function": {
+                "name": "find_transaction_prices",
+                "arguments": {
+                  "municipality_code": "90001",
+                  "year": 2025
+                }
+              }
+            }
+          ]
+        },
+        "tool_result_message": {
+          "role": "tool",
+          "tool_call_id": "call_fixture_transaction",
+          "content": "[{\"municipality_code\":\"90001\",\"year\":2025,\"price_yen\":52000000,\"property_type\":\"condominium\",\"source\":\"mock\"}]"
+        }
+      },
+      "mcp_result": {
+        "_meta": {
+          "fastmcp": {
+            "wrap_result": true
+          }
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "[{\"municipality_code\":\"90001\",\"year\":2025,\"price_yen\":52000000,\"property_type\":\"condominium\",\"source\":\"mock\"}]",
+            "annotations": null,
+            "_meta": null
+          }
+        ],
+        "structuredContent": {
+          "result": [
+            {
+              "municipality_code": "90001",
+              "year": 2025,
+              "price_yen": 52000000,
+              "property_type": "condominium",
+              "source": "mock"
+            }
+          ]
+        },
+        "isError": false,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "missing_argument",
+      "mode": "direct",
+      "chat_wire": null,
+      "mcp_result": {
+        "_meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "1 validation error for call[find_municipalities]\nquery\n  Missing required argument [type=missing_argument, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.14/v/missing_argument",
+            "annotations": null,
+            "_meta": null
+          }
+        ],
+        "structuredContent": null,
+        "isError": true,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "missing_argument",
+      "mode": "chat",
+      "chat_wire": {
+        "chat_id": "chat_fixture_missing_argument",
+        "call_id": "call_fixture_missing_argument",
+        "user_message": {
+          "role": "user",
+          "content": "Synthetic case: missing_argument"
+        },
+        "assistant_tool_call_message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_fixture_missing_argument",
+              "type": "function",
+              "function": {
+                "name": "find_municipalities",
+                "arguments": {}
+              }
+            }
+          ]
+        },
+        "tool_result_message": {
+          "role": "tool",
+          "tool_call_id": "call_fixture_missing_argument",
+          "content": "1 validation error for call[find_municipalities]\nquery\n  Missing required argument [type=missing_argument, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.14/v/missing_argument"
+        }
+      },
+      "mcp_result": {
+        "_meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "1 validation error for call[find_municipalities]\nquery\n  Missing required argument [type=missing_argument, input_value={}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.14/v/missing_argument",
+            "annotations": null,
+            "_meta": null
+          }
+        ],
+        "structuredContent": null,
+        "isError": true,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "invalid_type",
+      "mode": "direct",
+      "chat_wire": null,
+      "mcp_result": {
+        "_meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "1 validation error for call[find_transaction_prices]\nmunicipality_code\n  Input should be a valid string [type=string_type, input_value=90001, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.14/v/string_type",
+            "annotations": null,
+            "_meta": null
+          }
+        ],
+        "structuredContent": null,
+        "isError": true,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "invalid_type",
+      "mode": "chat",
+      "chat_wire": {
+        "chat_id": "chat_fixture_invalid_type",
+        "call_id": "call_fixture_invalid_type",
+        "user_message": {
+          "role": "user",
+          "content": "Synthetic case: invalid_type"
+        },
+        "assistant_tool_call_message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_fixture_invalid_type",
+              "type": "function",
+              "function": {
+                "name": "find_transaction_prices",
+                "arguments": {
+                  "municipality_code": 90001,
+                  "year": 2025
+                }
+              }
+            }
+          ]
+        },
+        "tool_result_message": {
+          "role": "tool",
+          "tool_call_id": "call_fixture_invalid_type",
+          "content": "1 validation error for call[find_transaction_prices]\nmunicipality_code\n  Input should be a valid string [type=string_type, input_value=90001, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.14/v/string_type"
+        }
+      },
+      "mcp_result": {
+        "_meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "1 validation error for call[find_transaction_prices]\nmunicipality_code\n  Input should be a valid string [type=string_type, input_value=90001, input_type=int]\n    For further information visit https://errors.pydantic.dev/2.14/v/string_type",
+            "annotations": null,
+            "_meta": null
+          }
+        ],
+        "structuredContent": null,
+        "isError": true,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "unknown_tool",
+      "mode": "direct",
+      "chat_wire": null,
+      "mcp_result": {
+        "_meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "Unknown tool: 'find_transaction_price'",
+            "annotations": null,
+            "_meta": null
+          }
+        ],
+        "structuredContent": null,
+        "isError": true,
+        "resultType": "complete"
+      }
+    },
+    {
+      "case": "unknown_tool",
+      "mode": "chat",
+      "chat_wire": {
+        "chat_id": "chat_fixture_unknown_tool",
+        "call_id": "call_fixture_unknown_tool",
+        "user_message": {
+          "role": "user",
+          "content": "Synthetic case: unknown_tool"
+        },
+        "assistant_tool_call_message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_fixture_unknown_tool",
+              "type": "function",
+              "function": {
+                "name": "find_transaction_price",
+                "arguments": {}
+              }
+            }
+          ]
+        },
+        "tool_result_message": {
+          "role": "tool",
+          "tool_call_id": "call_fixture_unknown_tool",
+          "content": "Unknown tool: 'find_transaction_price'"
+        }
+      },
+      "mcp_result": {
+        "_meta": null,
+        "content": [
+          {
+            "type": "text",
+            "text": "Unknown tool: 'find_transaction_price'",
+            "annotations": null,
+            "_meta": null
+          }
+        ],
+        "structuredContent": null,
+        "isError": true,
+        "resultType": "complete"
+      }
+    }
+  ]
+}

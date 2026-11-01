@@ -1,0 +1,438 @@
+{
+  "browser_fixture_requested": false,
+  "html": {
+    "comparison": {
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "mirror: all agree across 2 readers\n"
+    },
+    "facts": {
+      "code": [
+        [
+          "js",
+          "x"
+        ]
+      ],
+      "headings": [
+        [
+          1,
+          "Title"
+        ]
+      ],
+      "images": [
+        [
+          "a.png",
+          "A"
+        ]
+      ],
+      "kind": "html",
+      "links": [
+        "https://example.org"
+      ],
+      "reader": "linkedom@0.18.13",
+      "schema": "mirror-facts/1"
+    }
+  },
+  "markdown": {
+    "bare-url": {
+      "comparison": {
+        "returncode": 1,
+        "stderr": "",
+        "stdout": "split links markdown-it@15.0.3+linkedom@0.18.13: 1 item(s), not shared by all: 0 []\nsplit links marked@18.1.1+linkedom@0.18.13: 2 item(s), not shared by all: 1 ['\"https://example.org/bare\"']\nmirror: 2 deviation(s) across 2 readers\n"
+      },
+      "facts": {
+        "markdown-it": {
+          "code": [],
+          "headings": [
+            [
+              1,
+              "Bare URL"
+            ]
+          ],
+          "images": [],
+          "kind": "markdown",
+          "links": [
+            "https://example.org/angle"
+          ],
+          "reader": "markdown-it@15.0.3+linkedom@0.18.13",
+          "schema": "mirror-facts/1"
+        },
+        "marked": {
+          "code": [],
+          "headings": [
+            [
+              1,
+              "Bare URL"
+            ]
+          ],
+          "images": [],
+          "kind": "markdown",
+          "links": [
+            "https://example.org/bare",
+            "https://example.org/angle"
+          ],
+          "reader": "marked@18.1.1+linkedom@0.18.13",
+          "schema": "mirror-facts/1"
+        }
+      }
+    },
+    "code": {
+      "comparison": {
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "mirror: all agree across 2 readers\n"
+      },
+      "facts": {
+        "markdown-it": {
+          "code": [
+            [
+              "js",
+              "const x = \"<h1>not</h1>\";\n// [not](nope)"
+            ],
+            [
+              "",
+              "indented & <tag>"
+            ]
+          ],
+          "headings": [
+            [
+              1,
+              "Code"
+            ]
+          ],
+          "images": [],
+          "kind": "markdown",
+          "links": [],
+          "reader": "markdown-it@15.0.3+linkedom@0.18.13",
+          "schema": "mirror-facts/1"
+        },
+        "marked": {
+          "code": [
+            [
+              "js",
+              "const x = \"<h1>not</h1>\";\n// [not](nope)"
+            ],
+            [
+              "",
+              "indented & <tag>"
+            ]
+          ],
+          "headings": [
+            [
+              1,
+              "Code"
+            ]
+          ],
+          "images": [],
+          "kind": "markdown",
+          "links": [],
+          "reader": "marked@18.1.1+linkedom@0.18.13",
+          "schema": "mirror-facts/1"
+        }
+      }
+    },
+    "escaped-link": {
+      "comparison": {
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "mirror: all agree across 2 readers\n"
+      },
+      "facts": {
+        "markdown-it": {
+          "code": [],
+          "headings": [
+            [
+              1,
+              "Escaped *literal*"
+            ]
+          ],
+          "images": [],
+          "kind": "markdown",
+          "links": [
+            "https://example.org/a(b)?x=1&y=2"
+          ],
+          "reader": "markdown-it@15.0.3+linkedom@0.18.13",
+          "schema": "mirror-facts/1"
+        },
+        "marked": {
+          "code": [],
+          "headings": [
+            [
+              1,
+              "Escaped *literal*"
+            ]
+          ],
+          "images": [],
+          "kind": "markdown",
+          "links": [
+            "https://example.org/a(b)?x=1&y=2"
+          ],
+          "reader": "marked@18.1.1+linkedom@0.18.13",
+          "schema": "mirror-facts/1"
+        }
+      }
+    },
+    "mirror": {
+      "comparison": {
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "mirror: all agree across 2 readers\n"
+      },
+      "facts": {
+        "markdown-it": {
+          "code": [
+            [
+              "python",
+              "# not a heading\nprint(\"[not](a-link)\")"
+            ]
+          ],
+          "headings": [
+            [
+              1,
+              "Mirror fixture"
+            ],
+            [
+              2,
+              "Section two"
+            ],
+            [
+              3,
+              "Third level"
+            ]
+          ],
+          "images": [
+            [
+              "img/logo.png",
+              "logo"
+            ]
+          ],
+          "kind": "markdown",
+          "links": [
+            "https://example.org/a",
+            "https://example.org/ref"
+          ],
+          "reader": "markdown-it@15.0.3+linkedom@0.18.13",
+          "schema": "mirror-facts/1"
+        },
+        "marked": {
+          "code": [
+            [
+              "python",
+              "# not a heading\nprint(\"[not](a-link)\")"
+            ]
+          ],
+          "headings": [
+            [
+              1,
+              "Mirror fixture"
+            ],
+            [
+              2,
+              "Section two"
+            ],
+            [
+              3,
+              "Third level"
+            ]
+          ],
+          "images": [
+            [
+              "img/logo.png",
+              "logo"
+            ]
+          ],
+          "kind": "markdown",
+          "links": [
+            "https://example.org/a",
+            "https://example.org/ref"
+          ],
+          "reader": "marked@18.1.1+linkedom@0.18.13",
+          "schema": "mirror-facts/1"
+        }
+      }
+    },
+    "raw-html": {
+      "comparison": {
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "mirror: all agree across 2 readers\n"
+      },
+      "facts": {
+        "markdown-it": {
+          "code": [
+            [
+              "txt",
+              "<raw>"
+            ]
+          ],
+          "headings": [
+            [
+              1,
+              "Raw HTML"
+            ],
+            [
+              2,
+              "Raw Ω & text"
+            ]
+          ],
+          "images": [
+            [
+              "raw.png",
+              "A & B"
+            ]
+          ],
+          "kind": "markdown",
+          "links": [
+            "/raw?a=1&b=2"
+          ],
+          "reader": "markdown-it@15.0.3+linkedom@0.18.13",
+          "schema": "mirror-facts/1"
+        },
+        "marked": {
+          "code": [
+            [
+              "txt",
+              "<raw>"
+            ]
+          ],
+          "headings": [
+            [
+              1,
+              "Raw HTML"
+            ],
+            [
+              2,
+              "Raw Ω & text"
+            ]
+          ],
+          "images": [
+            [
+              "raw.png",
+              "A & B"
+            ]
+          ],
+          "kind": "markdown",
+          "links": [
+            "/raw?a=1&b=2"
+          ],
+          "reader": "marked@18.1.1+linkedom@0.18.13",
+          "schema": "mirror-facts/1"
+        }
+      }
+    },
+    "unicode": {
+      "comparison": {
+        "returncode": 0,
+        "stderr": "",
+        "stdout": "mirror: all agree across 2 readers\n"
+      },
+      "facts": {
+        "markdown-it": {
+          "code": [],
+          "headings": [
+            [
+              1,
+              "Café 東京 😀"
+            ],
+            [
+              2,
+              "naïve & Ελληνικά"
+            ]
+          ],
+          "images": [
+            [
+              "img/cat.png",
+              "猫 & 犬"
+            ]
+          ],
+          "kind": "markdown",
+          "links": [
+            "https://example.org/u"
+          ],
+          "reader": "markdown-it@15.0.3+linkedom@0.18.13",
+          "schema": "mirror-facts/1"
+        },
+        "marked": {
+          "code": [],
+          "headings": [
+            [
+              1,
+              "Café 東京 😀"
+            ],
+            [
+              2,
+              "naïve & Ελληνικά"
+            ]
+          ],
+          "images": [
+            [
+              "img/cat.png",
+              "猫 & 犬"
+            ]
+          ],
+          "kind": "markdown",
+          "links": [
+            "https://example.org/u"
+          ],
+          "reader": "marked@18.1.1+linkedom@0.18.13",
+          "schema": "mirror-facts/1"
+        }
+      }
+    }
+  },
+  "original_tests": {
+    "excluded_xlsx": 1,
+    "failed": 0,
+    "full_suite_run": false,
+    "passed": 2,
+    "returncode": 0,
+    "selected": 2,
+    "skipped": 0,
+    "titles": [
+      "HTML reader emits complete facts accepted by compare",
+      "markdown-it and marked agree on the CommonMark fixture"
+    ]
+  },
+  "private_browser_directory_empty": true,
+  "rejections": {
+    "comparator-empty": {
+      "returncode": 2,
+      "stderr": "mirror_check: cannot compare: no facts to compare in the required lists\n",
+      "stdout": ""
+    },
+    "comparator-incomplete": {
+      "returncode": 2,
+      "stderr": "mirror_check: cannot compare: document 1: code must be present as a list\n",
+      "stdout": ""
+    },
+    "comparator-unsupported-kind": {
+      "returncode": 2,
+      "stderr": "mirror_check: cannot compare: document 1: unsupported kind 'unsupported'\n",
+      "stdout": ""
+    },
+    "helper-unsupported-kind": {
+      "returncode": 2,
+      "stderr": "usage: mirror_facts.mjs markdown|html|xlsx FILE|- [--reader markdown:markdown-it/marked html:linkedom xlsx:exceljs/sheetjs]\n",
+      "stdout": ""
+    }
+  },
+  "schema": "btk-fixture-parity/1",
+  "source_pin": "111f6d78befae28acfb198a45b72e5aa0e59dcde",
+  "source_sha256": {
+    "LICENSE": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59",
+    "fixtures/mirror.md": "147d63622fbbdf7da901f296753b022aff775621bf382d5a9059a087a40a2bf2",
+    "package-lock.json": "cdca302fadb502f6ffd0887e47549e8e674f740752e2f2f62e24cd739bd64094",
+    "package.json": "ba6497460d206111c72a735eb0c2ea2ed95eb0acf0f0b0f7ba056fdea0dbcd84",
+    "playwright.browserless.config.ts": "b442c42d6eaed780f8ff892cbbbe94c454c0925beb5e4c0c98825e2b22a48817",
+    "tests/browserless/mirror.spec.ts": "8ef7575c2a658044c043e1f3504044510c4410fb423831e915dfa29ab8d8ddda",
+    "tests/python/test_mirror_check.py": "4831b4130ddfaf30275ec3e83688adcc1902e6cedc957db2f03a4ba2cb56cf27",
+    "tools/mirror_check.py": "f19e0681740f5e382c51fd17439132afc79dfbc6e00f5ac9adb54aca205346ff",
+    "tools/mirror_facts.mjs": "f27642b0f859132ee45f76de2cd617ff9e23f283f64d21556d7736c59ea8028f"
+  },
+  "versions": {
+    "@playwright/test": "1.64.1",
+    "linkedom": "0.18.13",
+    "markdown-it": "15.0.3",
+    "marked": "18.1.1"
+  }
+}

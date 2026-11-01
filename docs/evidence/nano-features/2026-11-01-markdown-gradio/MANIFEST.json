@@ -1,0 +1,81 @@
+{
+  "schema": "nano-public-evidence-manifest/1",
+  "files": [
+    {
+      "path": "PLAN.md",
+      "bytes": 5345,
+      "sha256": "b8a7efab497b02de2440183376cb43f4e6d6e13ee22554dc1fd9e3207b2f8922"
+    },
+    {
+      "path": "REPRODUCE.md",
+      "bytes": 6387,
+      "sha256": "88941910d1c4e75425ca294cd331e62ad21a34237eba78357beaf3830cad3f6a"
+    },
+    {
+      "path": "RESULTS.md",
+      "bytes": 4624,
+      "sha256": "eee4eb94aacc623a2e7cef9d6b375d8e536908dfbaf155734bd467dfe7aab8fe"
+    },
+    {
+      "path": "evidence.json",
+      "bytes": 146433,
+      "sha256": "d5a12713e93f26de2562a0c08aa771133452bbc8f0d33381ef6e708f62793619"
+    },
+    {
+      "path": "gradio_worker.py",
+      "bytes": 16804,
+      "sha256": "b40ffe8241f293df5fb1e72c2fc8b001cdcfc1ce80ffbb9adbc260b7d0a4b91a"
+    },
+    {
+      "path": "host-curl.json",
+      "bytes": 216,
+      "sha256": "f7f44bbdb92e3ee67428d1e3d6d0ecc15c4102ad575629800ae9dc59fc05d127"
+    },
+    {
+      "path": "measure_gradio.py",
+      "bytes": 17114,
+      "sha256": "32b83ea2307d7e55de85ad6b0ec0ace334188fa2918497a32ac42b00b9f54db6"
+    },
+    {
+      "path": "output-reference.json",
+      "bytes": 1927,
+      "sha256": "7c149efb17da4cb38b6169154b98779ecb69d6f6f6e87a1727f659a7f46b38be"
+    },
+    {
+      "path": "requirements-full.txt",
+      "bytes": 130171,
+      "sha256": "987d01a14a05aea1ff32728083698de2562c0b7317adabab846a22391d26cd42"
+    },
+    {
+      "path": "requirements-gradio.txt",
+      "bytes": 77602,
+      "sha256": "e7e4f9846b880863ca769015806348ef1933e742defad088e1f51711bb5c2e22"
+    },
+    {
+      "path": "source-receipt.json",
+      "bytes": 2951,
+      "sha256": "7fbad42851077da90cc90285f7f5e1456031b38c26a2cdd0bdbbbcfc65823836"
+    },
+    {
+      "path": "stage_test_tools.py",
+      "bytes": 1731,
+      "sha256": "9aa83de58016a4d63b09990c1bd2ceef1ed377d063feeefd2144bff1002e166b"
+    },
+    {
+      "path": "test-tools-receipt.json",
+      "bytes": 19792,
+      "sha256": "279ba4e5dbe23d2b7ee9d1c36e7579d4e0fe31b0452458a145468cd1f622853e"
+    },
+    {
+      "path": "test_harness.py",
+      "bytes": 12575,
+      "sha256": "d4fa22bf64a659feb722e21234d74058c5a7aa583fddbd5515ee4583153ed7b1"
+    },
+    {
+      "path": "test_stage_test_tools.py",
+      "bytes": 1365,
+      "sha256": "6d0c601068664900ee8235daffb92106f2c74030daa20926ad5272ba44e533f5"
+    }
+  ],
+  "total_payload_bytes": 445037
+}

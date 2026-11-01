@@ -1,0 +1,387 @@
+{
+  "schema": "nano-node-feature-evidence/1",
+  "observed_on": "2026-11-01",
+  "feature": "ironmate-pptx",
+  "source_repository": "myon-bioinformatics/Ironmate",
+  "source_commit": "af846ee7b1fd440b8379e2a682dfc7d40365b30e",
+  "verified_source_git_blobs": {
+    "package.json": "0e8df818df4469815cec647c920a067b597d1ee2",
+    "package-lock.json": "91b78b2a822095fd1baa75eadf8f537da69333a8",
+    "pptx_render.py": "9f495f34ac3ac24bb8c26127e0156d4cc20dfcf0",
+    "pptx_mapping.py": "704852426b33bad6e0e1b79130d621ac8779564a",
+    "pptx_ooxml.py": "fc5d5b7a949ab4a98f1a213f3d0c73253f61bc43",
+    "scripts/pptxgen_render.mjs": "2894f2b81a48a2a2d38aab30ff76bf6d709ecda7",
+    "scripts/pptxgen_allowlist.json": "49d29e94dfd648f3510c5177656a7d43c21a39ce",
+    "pptx_spec.py": "e7b4d6278132592884a7115a909990326268c644",
+    "tests/test_pptx_mapping.py": "2f4f0bbc35eddff105cabb353c56daa4a73ac5ac",
+    "tests/test_pptxgenjs_image.py": "f4985166a6bdd173f272c45c9300f80e7d0c5e4e",
+    "LICENSE": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6"
+  },
+  "verification_scope": "explicit source-file snapshot; checkout HEAD and ancestry not verified",
+  "preparation": {
+    "tool": "npm",
+    "version": "11.9.0",
+    "mode": "offline package-lock-only; no installation",
+    "baseline_locked_package_records": 198,
+    "feature_locked_package_records": 18,
+    "retained_nonroot_full_records_unchanged": true,
+    "manifest_change": "remove only direct exceljs dependency",
+    "preserved_overrides": {
+      "image-size": "2.0.4",
+      "uuid": "14.0.3"
+    },
+    "npm_root_metadata_changes": {
+      "name": "Ironmate",
+      "engines": {
+        "node": ">=24"
+      }
+    },
+    "projected_manifest_sha256": "61c25e2c37202b9c4bf48672cf773bf7a02e46096656ab4d4d8ab0f39d7e9a53",
+    "projected_lock_sha256": "2217ddab0545f799226c4ff9ed9f4dbaf3c3ef0e3878653ad0b8647e2cf15b06",
+    "official_lock_graph_validation": "npm ls --all --json --package-lock-only --offline exited0 on same projected lock",
+    "node_modules_created": false,
+    "preparer_sha256": "9eb61b9ed43f1aa7e3e7d5dc431757dd6bcf8f945b46adfe48716140c6824337"
+  },
+  "offline_regression_tests": {
+    "passed": 11,
+    "installs": false,
+    "network": false
+  },
+  "runtime_validation": {
+    "executed": true,
+    "unchanged_test_paths": [
+      "tests/test_pptx_mapping.py",
+      "tests/test_pptxgenjs_image.py"
+    ],
+    "existing_tests": {
+      "baseline": {
+        "passed": 8,
+        "skipped": 0
+      },
+      "feature": {
+        "passed": 8,
+        "skipped": 0
+      }
+    },
+    "test_tools": {
+      "pytest": "9.1.1",
+      "iniconfig": "2.3.1",
+      "packaging": "26.3",
+      "pluggy": "1.7.0",
+      "pygments": "2.21.0"
+    },
+    "test_tool_environment": "reused existing exact-version DRA baseline interpreter; excluded from BOTH Node runtime bytes/timings; pytest plugin auto-loading disabled",
+    "oracle": "all ZIP members and parsed XML; omit ZIP metadata and only core created/modified timestamp text; validate content types/relationship targets; Unicode/table/shape/line-plus-triangle/reorder cases and exact embedded PNG",
+    "fixed_fixture_sha256": "3b169e4e10a1b41599410c744de66aba08968d60c01b77604f93c8b15d2c08ab",
+    "semantic_digests": {
+      "rich": "ee4cad3a88b7638415261d86e5a1683453a31a4ab04b6a1ab5d6a85786e4e653",
+      "reordered": "d33a67e0c2079c39c2c9659f87ce9b3180ae319c645ff68ae7e22fef8fdead6a",
+      "image": "5e8703699c2cb13cbfab438c41109faf6b9f71d1c36761fc2dc122db9faf1652"
+    },
+    "workload_jobs": 24,
+    "decks_generated": 72,
+    "all_semantic_digests_equal": true,
+    "output_bytes": {
+      "rich": 65608,
+      "reordered": 65608,
+      "image": 44925
+    },
+    "fixture_correction": "initial comparison failed within baseline: image absolute input paths appeared in default alt text; corrected image fixture explicitly supplies fixed altText. Arbitrary descriptions are NOT normalized; original image test separately ran unchanged.",
+    "initial_failed_attempt_receipt_sha256": "0ff0736c1effb0ab3cfaea740b3255cf5fa569701ab3e717487f1b9d55c72525",
+    "corrected_offline_attempt_receipt_sha256": "43e5f4db119968dd96943d4eb2953a31b57ccc9de1f211c7a3885286c3973cd7",
+    "source_and_manifests_unchanged_after_tests": true,
+    "visual_or_office_equivalence_claimed": false
+  },
+  "measurements": {
+    "status": "three complete matched install pairs; corrected offline oracle and all timing batches complete",
+    "environment": {
+      "os": "Linux-6.18.57-x86_64-with-glibc2.41",
+      "python": "3.12.14",
+      "node": "v24.22.1",
+      "npm": "11.9.0"
+    },
+    "cache_policy": "fresh empty npm cache per trial; filesystem/remote CDN caches not reset",
+    "command": "npm ci --ignore-scripts --no-audit --no-fund --no-update-notifier --registry https://registry.npmjs.org/ --fetch-retries=0 --fetch-timeout=30000; fresh HOME/config/cache and empty user/global npmrc",
+    "size_definition": "sum regular-file st_size and st_blocks*512 separately; excludes directories/symlinks/source/Python test tools; npm cache separate",
+    "raw_install_trials": [
+      {
+        "index": 1,
+        "kind": "baseline",
+        "seconds": 15.042245852999258,
+        "exit_code": 0,
+        "manifest_sha256": "4d85e4e813dcd1455ca41fde2abc2d3460fb87719e62c825736e0db0932a67cd",
+        "lock_sha256": "93f56b964aba777cbc7636a067baa41b3bd9ecff486b078f0fee54f1094a11b8",
+        "installed_package_paths": 198,
+        "node_modules": {
+          "regular_file_count": 6125,
+          "apparent_regular_file_bytes": 40035745,
+          "allocated_regular_file_bytes": 58380288
+        },
+        "cache": {
+          "regular_file_count": 366,
+          "apparent_regular_file_bytes": 8861880,
+          "allocated_regular_file_bytes": 9875456
+        }
+      },
+      {
+        "index": 2,
+        "kind": "feature",
+        "seconds": 4.626663610000833,
+        "exit_code": 0,
+        "manifest_sha256": "61c25e2c37202b9c4bf48672cf773bf7a02e46096656ab4d4d8ab0f39d7e9a53",
+        "lock_sha256": "2217ddab0545f799226c4ff9ed9f4dbaf3c3ef0e3878653ad0b8647e2cf15b06",
+        "installed_package_paths": 18,
+        "node_modules": {
+          "regular_file_count": 407,
+          "apparent_regular_file_bytes": 6949782,
+          "allocated_regular_file_bytes": 8089600
+        },
+        "cache": {
+          "regular_file_count": 38,
+          "apparent_regular_file_bytes": 1781305,
+          "allocated_regular_file_bytes": 1892352
+        }
+      },
+      {
+        "index": 3,
+        "kind": "feature",
+        "seconds": 12.472821486999237,
+        "exit_code": 0,
+        "manifest_sha256": "61c25e2c37202b9c4bf48672cf773bf7a02e46096656ab4d4d8ab0f39d7e9a53",
+        "lock_sha256": "2217ddab0545f799226c4ff9ed9f4dbaf3c3ef0e3878653ad0b8647e2cf15b06",
+        "installed_package_paths": 18,
+        "node_modules": {
+          "regular_file_count": 407,
+          "apparent_regular_file_bytes": 6949782,
+          "allocated_regular_file_bytes": 8089600
+        },
+        "cache": {
+          "regular_file_count": 38,
+          "apparent_regular_file_bytes": 1781323,
+          "allocated_regular_file_bytes": 1892352
+        }
+      },
+      {
+        "index": 4,
+        "kind": "baseline",
+        "seconds": 8.28755969300073,
+        "exit_code": 0,
+        "manifest_sha256": "4d85e4e813dcd1455ca41fde2abc2d3460fb87719e62c825736e0db0932a67cd",
+        "lock_sha256": "93f56b964aba777cbc7636a067baa41b3bd9ecff486b078f0fee54f1094a11b8",
+        "installed_package_paths": 198,
+        "node_modules": {
+          "regular_file_count": 6125,
+          "apparent_regular_file_bytes": 40035745,
+          "allocated_regular_file_bytes": 58380288
+        },
+        "cache": {
+          "regular_file_count": 366,
+          "apparent_regular_file_bytes": 8861682,
+          "allocated_regular_file_bytes": 9875456
+        }
+      },
+      {
+        "index": 5,
+        "kind": "baseline",
+        "seconds": 5.624765664999359,
+        "exit_code": 0,
+        "manifest_sha256": "4d85e4e813dcd1455ca41fde2abc2d3460fb87719e62c825736e0db0932a67cd",
+        "lock_sha256": "93f56b964aba777cbc7636a067baa41b3bd9ecff486b078f0fee54f1094a11b8",
+        "installed_package_paths": 198,
+        "node_modules": {
+          "regular_file_count": 6125,
+          "apparent_regular_file_bytes": 40035745,
+          "allocated_regular_file_bytes": 58380288
+        },
+        "cache": {
+          "regular_file_count": 366,
+          "apparent_regular_file_bytes": 8861682,
+          "allocated_regular_file_bytes": 9875456
+        }
+      },
+      {
+        "index": 6,
+        "kind": "feature",
+        "seconds": 3.598025690000213,
+        "exit_code": 0,
+        "manifest_sha256": "61c25e2c37202b9c4bf48672cf773bf7a02e46096656ab4d4d8ab0f39d7e9a53",
+        "lock_sha256": "2217ddab0545f799226c4ff9ed9f4dbaf3c3ef0e3878653ad0b8647e2cf15b06",
+        "installed_package_paths": 18,
+        "node_modules": {
+          "regular_file_count": 407,
+          "apparent_regular_file_bytes": 6949782,
+          "allocated_regular_file_bytes": 8089600
+        },
+        "cache": {
+          "regular_file_count": 38,
+          "apparent_regular_file_bytes": 1781305,
+          "allocated_regular_file_bytes": 1892352
+        }
+      }
+    ],
+    "install_seconds_median": {
+      "baseline": 8.28755969300073,
+      "feature": 4.626663610000833
+    },
+    "fixed_jobs_per_batch": 2,
+    "tasks_per_worker_job": "rich PPTX + reordered PPTX + PNG PPTX + invalid-arrow rejection + independent structural validation",
+    "timing_scope": "end-to-end Python process plus Node generation, file writes, and structural oracle; not pure render-only time",
+    "raw_workload_batches": [
+      {
+        "kind": "baseline",
+        "repeat": 0,
+        "concurrency": 1,
+        "batch_seconds": 0.7662085739993927,
+        "worker_seconds": [
+          0.3849959960007254,
+          0.3768093779999617
+        ]
+      },
+      {
+        "kind": "feature",
+        "repeat": 0,
+        "concurrency": 1,
+        "batch_seconds": 0.7728740239999752,
+        "worker_seconds": [
+          0.4056417669999064,
+          0.3643505370000639
+        ]
+      },
+      {
+        "kind": "feature",
+        "repeat": 1,
+        "concurrency": 1,
+        "batch_seconds": 0.7784709589996055,
+        "worker_seconds": [
+          0.3912442170003487,
+          0.38609593199907977
+        ]
+      },
+      {
+        "kind": "baseline",
+        "repeat": 1,
+        "concurrency": 1,
+        "batch_seconds": 0.7650346209993586,
+        "worker_seconds": [
+          0.38546327099902555,
+          0.3784460549995856
+        ]
+      },
+      {
+        "kind": "baseline",
+        "repeat": 2,
+        "concurrency": 1,
+        "batch_seconds": 0.7910869939987606,
+        "worker_seconds": [
+          0.38326846200106957,
+          0.4056371790011326
+        ]
+      },
+      {
+        "kind": "feature",
+        "repeat": 2,
+        "concurrency": 1,
+        "batch_seconds": 0.7556543350001448,
+        "worker_seconds": [
+          0.38856207500066375,
+          0.36562326199964446
+        ]
+      },
+      {
+        "kind": "baseline",
+        "repeat": 0,
+        "concurrency": 2,
+        "batch_seconds": 0.42781155800003035,
+        "worker_seconds": [
+          0.42687362499964365,
+          0.38311971700022696
+        ]
+      },
+      {
+        "kind": "feature",
+        "repeat": 0,
+        "concurrency": 2,
+        "batch_seconds": 0.4066294839994953,
+        "worker_seconds": [
+          0.40430512000057206,
+          0.4055321960004221
+        ]
+      },
+      {
+        "kind": "feature",
+        "repeat": 1,
+        "concurrency": 2,
+        "batch_seconds": 0.406056465999427,
+        "worker_seconds": [
+          0.40452136999920185,
+          0.38859180500003276
+        ]
+      },
+      {
+        "kind": "baseline",
+        "repeat": 1,
+        "concurrency": 2,
+        "batch_seconds": 0.42276728399883723,
+        "worker_seconds": [
+          0.416758913999729,
+          0.4213600960010808
+        ]
+      },
+      {
+        "kind": "baseline",
+        "repeat": 2,
+        "concurrency": 2,
+        "batch_seconds": 0.40562284999941767,
+        "worker_seconds": [
+          0.4003521360009472,
+          0.4044574060008017
+        ]
+      },
+      {
+        "kind": "feature",
+        "repeat": 2,
+        "concurrency": 2,
+        "batch_seconds": 0.410834641999827,
+        "worker_seconds": [
+          0.3995305800017377,
+          0.4095280540004751
+        ]
+      }
+    ],
+    "batch_seconds_median": {
+      "baseline": {
+        "1": 0.7662085739993927,
+        "2": 0.42276728399883723
+      },
+      "feature": {
+        "1": 0.7728740239999752,
+        "2": 0.4066294839994953
+      }
+    },
+    "interpretation": "actual dependency bytes reduced; install time variable (one feature trial slower). Both environments support parallel jobs; nano did not materially improve serial workload time. Not a general speed or visual-equivalence guarantee.",
+    "runtime_prerequisites": "Node24.22.1, npm11.9.0 and Python3.12.14 were already installed; their installation time/size is excluded",
+    "install_timing_scope": "wall time of npm ci subprocess only; source staging and offline lock preparation excluded",
+    "hardware_observed_after_run": {
+      "observation": "read-only host facts observed AFTER run, not a measured allocation guarantee",
+      "observed_at_utc": "2026-11-01T02:16:00Z",
+      "cpu_model_names": [
+        "AMD EPYC 9V74 80-Core Processor"
+      ],
+      "logical_cpus_os_cpu_count": 9,
+      "process_affinity_cpu_count": 9,
+      "host_mem_total": "10206472 kB",
+      "cgroup": {
+        "cpu.max": null,
+        "memory.max": null,
+        "memory.high": null,
+        "cpuset.cpus.effective": null
+      }
+    }
+  },
+  "constraints": {
+    "source_dependency_versions_changed": false,
+    "existing_tests_removed": false,
+    "ci_settings_changed": false,
+    "docker_browser_office_model_started": false
+  }
+}

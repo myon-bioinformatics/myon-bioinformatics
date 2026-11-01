@@ -1,0 +1,17 @@
+{
+  "schema": "nano-feature-bundle-sha256/1",
+  "sha256": {
+    "REPRODUCE.md": "e09157f2ef25627a8e6d9b08f6c95e2a0a57ae3e11af012e68b511f7e09ca5be",
+    "evidence.json": "0766d8fae593a030d13bd93911c942eb1a6192d000224edea330f0814bca37c0",
+    "full-facts-reference.json": "756ef6783c8d1343e1ce5dc6b78fad91c7c350c9703a5ba9973a23f21b5f305a",
+    "measure_btk.py": "97d547b671a678f5841aeaf16b147cf893c65041e62bb88f9c2005f1872d2cc3",
+    "run_btk_fixture.py": "a1fe2f1e43138df54170073d45e35ec9dd15c951265fd43ebb866ee034d56add",
+    "source-receipt.json": "d10e9d5b04ad5f3732298460b87209472675f64e47276396d194b4ca085bf814",
+    "test_run_btk_fixture.py": "ad00e796ba8b80868c9bb093d833e6d183c0db70668d51dbc377f62e69956c51"
+  },
+  "parent_files_sha256": {
+    "tools/nano_node.py": "9e042eb70a80c75f99aafb1956386b3f5e27ee795ec501d3bcece3a369d09777",
+    "tests/test_nano_node.py": "01e68a25e169a92d2808e7e78c84edd4bd0eede5a3f0b5472ac6612b2560637f",
+    "tests/test_nano_btk.py": "a8bc4336561384ae8bb092d4b531057222b14c80cfd2235bbdda32e8d042485e"
+  }
+}

@@ -400,5 +400,1658 @@
       "url": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
       "note": "npm dependency URL, already a CDN tarball."
     }
-  ]
+  ],
+  "current_snapshot": {
+    "schema": "nano-screening/1",
+    "observed_at": "2026-10-31T15:31:04Z",
+    "status": "inventory_only",
+    "scope": {
+      "owner": "myon-bioinformatics",
+      "visibility": "public",
+      "archived": false,
+      "screened_repositories": 24,
+      "method": "Connector metadata confirmed public/private=false/nonarchived; full non-truncated Git trees and selected manifests, actual feature consumers and docs read at the listed default-branch commits. Screening is not an exhaustive dynamic-import or transitive closure audit."
+    },
+    "executed_workloads": false,
+    "installations_performed": false,
+    "repositories": [
+      {
+        "repository": "myon-bioinformatics/Aoi",
+        "commit": "385e14a09ad56b69c57ec1cbae04c16299d387c5",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "production_dependencies",
+        "summary": "retain workspace dependencies; shortlist small opt in feature surfaces",
+        "production": [
+          "polars: season aggregation / proposition tables; runtime dependency group",
+          "numpy: linear algebra / vectorized research; runtime group",
+          "httpx: three R001 acquisition scripts",
+          "markdown: DRAgoWing HTML rendering"
+        ],
+        "optional": [
+          "pandas: research/gpt-r001-score-allocation/verify_prediction_independent.py; real import with grouped-column/lstsq checks; not covered by minimums; not a base project dependency",
+          "ortools: season_exact / preclinch CP-SAT; native solver; no stdlib equivalent established",
+          "pycountry: one Netflix research data-build script; existing static inventory evidence only; no replacement investigated",
+          "Docker + digest-pinned llama.cpp server + GGUF: nagoyaction optional local LLM; administrator-supplied image/model identity; do not run, download or infer replacement"
+        ],
+        "development": [
+          "pytest",
+          "coverage",
+          "selectolax (HTML5/Lexbor independent oracle; also historical research HTML users)",
+          "hatchling build backend"
+        ],
+        "minimum_boundary": "five already-stdlib distributions are excluded from new shrink work. Narrow registered APIs, not replacement of analysis cores; QueRyu distribution excludes acquisition/suggestion; DRAgoWing figures still need browser Plotly.js.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "b6d3ab340ccbfc3c474b75694fb628802a1c111d",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/pyproject.toml"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "70b38ecf63226d40c3466fedeb984b9db9ff8f75",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/README.md"
+          },
+          {
+            "path": "docs/distributions.md",
+            "blob_sha": "7fbd01fb7065e48e751e11146478bafc9824d525",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/docs/distributions.md"
+          },
+          {
+            "path": "distributions.json",
+            "blob_sha": "55ad87b22c0658dc42acefc8169d85efa538c3aa",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/distributions.json"
+          },
+          {
+            "path": "docs/contracts/numpy-min-acceptance-v2.md",
+            "blob_sha": "523c1bcaa0e98b7d41915705ff2149a89acb97e8",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/docs/contracts/numpy-min-acceptance-v2.md"
+          },
+          {
+            "path": "mindeps/LIMITS.md",
+            "blob_sha": "aac8d429c54ab418862d41f2ce7d95a811ec9d29",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/mindeps/LIMITS.md"
+          },
+          {
+            "path": "shrink/polars_feasibility.md",
+            "blob_sha": "a3dd939c556b18e023eff2f1bcd3f2b67d8f0e98",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/shrink/polars_feasibility.md"
+          },
+          {
+            "path": "research/gpt-r001-score-allocation/collect.py",
+            "blob_sha": "972b00b500a867ecd87cd5325a7fa89fb6c3b2b6",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/research/gpt-r001-score-allocation/collect.py"
+          },
+          {
+            "path": "research/gpt-r001-score-allocation/verify_prediction_independent.py",
+            "blob_sha": "597a6b573ca76ab881f980a5525dc19bff0c6ad4",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/research/gpt-r001-score-allocation/verify_prediction_independent.py"
+          },
+          {
+            "path": "docs/evidence/third-party-survey.json",
+            "blob_sha": "11f27ab7f870d1cc5ad8b45b5256a39db4196961",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/docs/evidence/third-party-survey.json"
+          },
+          {
+            "path": "nagoyaction/containers/llama.compose.yml",
+            "blob_sha": "a1db00d4a88e3fea5fe83a69256cc5952e4ab52a",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/nagoyaction/containers/llama.compose.yml"
+          },
+          {
+            "path": "shrink/numpy_linalg_min.py",
+            "blob_sha": "63aa0f9cdea8ab39c80e957a6ab12206bdb62290",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/shrink/numpy_linalg_min.py"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/ascii_artist",
+        "commit": "ba9dab5bf58d2d4f91895e357580d8bba1d304a1",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "already_minimal",
+        "summary": "Source runtime and Node package declare no external dependencies.",
+        "production": [],
+        "optional": [
+          "Pages/screenshots require Playwright+Chromium and pinned web-ui assets; capture dependency installed in Pages workflow, outside tests/requirements.txt."
+        ],
+        "development": [
+          "Python>=3.11 environment with pytest>=9.1.1 and PyYAML>=6.0.3."
+        ],
+        "minimum_boundary": "Existing artifact needs no minpy. ascii_artist.cjs is a Python bridge through py_launch.cjs, not a pure-JS/minjs port. HTML emission is not browser rendering verification. Host single-file library and stdlib tests; no Dockerfile/compose found in exact tree. Browser capture is separate publication/test environment.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "8efc1f914c2ce5b022696642d0b4b81bafc19d97",
+            "url": "https://github.com/myon-bioinformatics/ascii_artist/blob/ba9dab5bf58d2d4f91895e357580d8bba1d304a1/pyproject.toml"
+          },
+          {
+            "path": "package.json",
+            "blob_sha": "a6d33fd92f32d54a75ff7a4eabbce9292299abe5",
+            "url": "https://github.com/myon-bioinformatics/ascii_artist/blob/ba9dab5bf58d2d4f91895e357580d8bba1d304a1/package.json"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "8d206eb710159d6a12e13d4bef40104b66ce1b4c",
+            "url": "https://github.com/myon-bioinformatics/ascii_artist/blob/ba9dab5bf58d2d4f91895e357580d8bba1d304a1/README.md"
+          },
+          {
+            "path": "ascii_artist.py",
+            "blob_sha": "80902c1fd0bcf865639180d661dd605c9ef6d7f0",
+            "url": "https://github.com/myon-bioinformatics/ascii_artist/blob/ba9dab5bf58d2d4f91895e357580d8bba1d304a1/ascii_artist.py"
+          },
+          {
+            "path": "ascii_artist.cjs",
+            "blob_sha": "a6fc2977f0ee7c21727314c78694be5f715d68cf",
+            "url": "https://github.com/myon-bioinformatics/ascii_artist/blob/ba9dab5bf58d2d4f91895e357580d8bba1d304a1/ascii_artist.cjs"
+          },
+          {
+            "path": "tests/requirements.txt",
+            "blob_sha": "6410c037a984a7fc9c43e8d9c65225bafe67be16",
+            "url": "https://github.com/myon-bioinformatics/ascii_artist/blob/ba9dab5bf58d2d4f91895e357580d8bba1d304a1/tests/requirements.txt"
+          },
+          {
+            "path": "scripts/capture_pages.py",
+            "blob_sha": "f668bb508215e45d2266599308204705abe8570c",
+            "url": "https://github.com/myon-bioinformatics/ascii_artist/blob/ba9dab5bf58d2d4f91895e357580d8bba1d304a1/scripts/capture_pages.py"
+          },
+          {
+            "path": ".github/workflows/pages.yml",
+            "blob_sha": "2aa5546b734c549ab5a33c5127cdc269aab5a98f",
+            "url": "https://github.com/myon-bioinformatics/ascii_artist/blob/ba9dab5bf58d2d4f91895e357580d8bba1d304a1/.github/workflows/pages.yml"
+          }
+        ],
+        "known_gaps": [
+          "Browser capability/closure is not described by Python test manifest alone; full feature metrics unmeasured."
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/BlueProbe",
+        "commit": "2ea993aaa1416ff9006eba4ebe2fed6d0b49668e",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "optional_features",
+        "summary": "brief exclude stdlib core; retain optional html source feature row",
+        "production": [],
+        "optional": [
+          "mcp-toolcall-lab source-access module or caller-supplied extractor: html_source.HtmlSource generic saved-HTML/snapshot extraction; lazy imports; not installed automatically; offline trusted extractor contract; normal NPB parsing unaffected",
+          "QueRyu source: cache CLI/integration; core blueprobe functions stdlib; CLI imports queryu.Cache when using source cache"
+        ],
+        "development": [
+          "pytest",
+          "selectolax independent HTML5 parity oracle; must not replace it with same stdlib parser being tested",
+          "pinned lab source for optional integration tests"
+        ],
+        "minimum_boundary": "HTMLParser core and Aoi blueprobe_min already stdlib. not CSS rendering/JS execution/HTML5 browser DOM; optional html_source omitted from Aoi bundle because of cycle; no need to invent another core replacement",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "3a70af98c2c4b8859108db54e3a1d9900ba39c12",
+            "url": "https://github.com/myon-bioinformatics/BlueProbe/blob/2ea993aaa1416ff9006eba4ebe2fed6d0b49668e/pyproject.toml"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "3ed28f71770091cf594fcf2ed0efbf4cc629bd4c",
+            "url": "https://github.com/myon-bioinformatics/BlueProbe/blob/2ea993aaa1416ff9006eba4ebe2fed6d0b49668e/README.md"
+          },
+          {
+            "path": "blueprobe.py",
+            "blob_sha": "20bebd1069ce1fba3117685fbbd880f8871cc648",
+            "url": "https://github.com/myon-bioinformatics/BlueProbe/blob/2ea993aaa1416ff9006eba4ebe2fed6d0b49668e/blueprobe.py"
+          },
+          {
+            "path": "html_source.py",
+            "blob_sha": "9da4617298102674c65def3a412e8889ccfa885c",
+            "url": "https://github.com/myon-bioinformatics/BlueProbe/blob/2ea993aaa1416ff9006eba4ebe2fed6d0b49668e/html_source.py"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/browser-test-kit",
+        "commit": "5799b491982e43c6ccc56b50c633715d500bed28",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "optional_features",
+        "summary": "Python >=3.9 base; image_diff >=3.11; uv/dev/browser >=3.11; Node >=24",
+        "production": [],
+        "optional": [
+          "Real browser observe/act/scenario/platform collection: Playwright Python or Node test package, matching Chromium/Firefox/WebKit binaries and OS browser libraries. Preserve engine/profile/headed coverage.",
+          "Independent Markdown/HTML/XLSX mirror readers: Existing npm devDependencies; optional SheetJS reader remains separate. These are purposeful independent comparison implementations.",
+          "Image diff: Already uses vendored stdlib pillow_min; Python >=3.11; no pip Pillow requirement here",
+          "terminal-browser: Separately installed real Chromium CLI/TUI; wrappers alone do not supply browser implementation",
+          "Stagehand/Replay: Planned lanes, not currently proven implementations; do not invent an installed dependency"
+        ],
+        "development": [
+          "python: pytest>=9.0.3, PyYAML>=6.0.3, pip>=26.2",
+          "browser_group: playwright>=1.64.1",
+          "npm_dev: @playwright/test>=1.64.1, exceljs^4.4.0, linkedom^0.18.13, markdown-it^15.0.3, marked^18.1.1"
+        ],
+        "minimum_boundary": "Offline engineering utilities and PNG diff already lightweight. minpy cannot provide browser engines; replacing independent test readers would weaken the tests. Existing docs permit min.js vendoring only for published-page per-visit runtime use, retaining license and pinned provenance. Full platform-specific browser/native-library installation matrix remains existing CI's responsibility.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "11ccae24067a5cc38196b2309f0bedad52ae8b4a",
+            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/pyproject.toml"
+          },
+          {
+            "path": "package.json",
+            "blob_sha": "865216ae1a839dee2ffb35e77faca470fd76c55f",
+            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/package.json"
+          },
+          {
+            "path": "scripts/btk.py",
+            "blob_sha": "04d7921ad4546650a197b0020a81b1c6789fcb92",
+            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/btk.py"
+          },
+          {
+            "path": "scripts/image_diff.py",
+            "blob_sha": "719a0a4bd963911695b76775b5119361f180218a",
+            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/image_diff.py"
+          },
+          {
+            "path": "scripts/mirror_facts.mjs",
+            "blob_sha": "0e36380181db823fbf85d5336df777548851d437",
+            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/mirror_facts.mjs"
+          },
+          {
+            "path": "docs/mirror-tests.md",
+            "blob_sha": "d9c29382642bad55457d0d47f2c3ac370dee542a",
+            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/docs/mirror-tests.md"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/cli_args",
+        "commit": "a47d33e89600c0510214b7169b0e83604bce4a3b",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "already_minimal",
+        "summary": "Python >=3.10; dev >=3.11; optional Node bridge >=24 + Python",
+        "production": [],
+        "optional": [
+          "Command execution requires caller-selected binaries; optional Node launch requires Node24+. pytest_command constructs argv only, no pytest import/install."
+        ],
+        "development": [
+          "pytest>=8"
+        ],
+        "minimum_boundary": "No replacement needed for argparse/subprocess/JSON stdlib surface. Native/CLI subprocess semantics and tests must remain. Root requirements.txt is test compatibility shim, not removable production debt.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "09efddd0b0e9b76b462e087a8f5412c2b24cfa2b",
+            "url": "https://github.com/myon-bioinformatics/cli_args/blob/a47d33e89600c0510214b7169b0e83604bce4a3b/pyproject.toml"
+          },
+          {
+            "path": "requirements.txt",
+            "blob_sha": "012bdab44b490f5235d358f1dbffe6ce2a1cfbad",
+            "url": "https://github.com/myon-bioinformatics/cli_args/blob/a47d33e89600c0510214b7169b0e83604bce4a3b/requirements.txt"
+          },
+          {
+            "path": "cli_args.py",
+            "blob_sha": "a1fc15f5b271c283a90b251d4104806af12f0d47",
+            "url": "https://github.com/myon-bioinformatics/cli_args/blob/a47d33e89600c0510214b7169b0e83604bce4a3b/cli_args.py"
+          },
+          {
+            "path": "cli_args.cjs",
+            "blob_sha": "950254fab9e60b9d332845864b6ed2ca8ce387b9",
+            "url": "https://github.com/myon-bioinformatics/cli_args/blob/a47d33e89600c0510214b7169b0e83604bce4a3b/cli_args.cjs"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "ffe7a95ced95daebc770da4d6c63062845aa5c74",
+            "url": "https://github.com/myon-bioinformatics/cli_args/blob/a47d33e89600c0510214b7169b0e83604bce4a3b/README.md"
+          },
+          {
+            "path": "tests/docker/Dockerfile",
+            "blob_sha": "0be1b2f55ae7ca854904ad5a42c07e3fcfd065e1",
+            "url": "https://github.com/myon-bioinformatics/cli_args/blob/a47d33e89600c0510214b7169b0e83604bce4a3b/tests/docker/Dockerfile"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/DRAgoWing",
+        "commit": "be2185b142aebcbedee97688fe08ee0092179472",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "production_dependencies",
+        "summary": "existing explicit stdlib overlap is best feature level documentation candidate; retain full dependencies",
+        "production": [
+          "polars + numpy: default native overlap",
+          "markdown: htmlout.py render_md extensions",
+          "Plotly.js: browser rendering"
+        ],
+        "optional": [
+          "Chromium: PNG/SVG export; POSIX browser pipe; HTML-only output does not require browser; explicit Chrome override supported; no Kaleido/choreographer needed",
+          "PythDRagoras/QueRyu source: native overlap and registration-status forms; documented PYTHONPATH source coupling"
+        ],
+        "development": [
+          "pytest",
+          "required real Chromium tests in existing CI"
+        ],
+        "minimum_boundary": "_overlap_stdlib.py is already production opt-in and avoids numpy/polars imports. homogeneous scalar typed columns; Int64 and finite floats; first100-row schema constraints; rejects nested values, invalid Unicode, duplicate keys and implicit coercion. Full report still needs Markdown; browser plots still Plotly.js.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "ca7cd1f307080d4c369a5a14031ee2cb4f93f14d",
+            "url": "https://github.com/myon-bioinformatics/DRAgoWing/blob/be2185b142aebcbedee97688fe08ee0092179472/pyproject.toml"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "45f4b9016a1e273519dc1031dc9a1e749cb2a3ec",
+            "url": "https://github.com/myon-bioinformatics/DRAgoWing/blob/be2185b142aebcbedee97688fe08ee0092179472/README.md"
+          },
+          {
+            "path": "overlap.py",
+            "blob_sha": "d4c647dbc94088e92579d1268604b122fe743fcb",
+            "url": "https://github.com/myon-bioinformatics/DRAgoWing/blob/be2185b142aebcbedee97688fe08ee0092179472/overlap.py"
+          },
+          {
+            "path": "_overlap_stdlib.py",
+            "blob_sha": "2f8d43279781daff111f7c9d3e39fa30ad93aac3",
+            "url": "https://github.com/myon-bioinformatics/DRAgoWing/blob/be2185b142aebcbedee97688fe08ee0092179472/_overlap_stdlib.py"
+          },
+          {
+            "path": "htmlout.py",
+            "blob_sha": "a77f851cc6f5c45567bb4c1b7f9a08c1f88011f2",
+            "url": "https://github.com/myon-bioinformatics/DRAgoWing/blob/be2185b142aebcbedee97688fe08ee0092179472/htmlout.py"
+          },
+          {
+            "path": "docs/overlap-stdlib.md",
+            "blob_sha": "b9e8fd232e37605807fbf628d080cdc9c4cb2c84",
+            "url": "https://github.com/myon-bioinformatics/DRAgoWing/blob/be2185b142aebcbedee97688fe08ee0092179472/docs/overlap-stdlib.md"
+          },
+          {
+            "path": "docs/export.md",
+            "blob_sha": "6fe788ebeef2b78ac0ab52c09c68268b6821daa5",
+            "url": "https://github.com/myon-bioinformatics/DRAgoWing/blob/be2185b142aebcbedee97688fe08ee0092179472/docs/export.md"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/Err-o-RoadRunner",
+        "commit": "fd770f22cd409c7da9144d8253c93c3e119c6b54",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "already_minimal",
+        "summary": "Python >=3.11",
+        "production": [],
+        "optional": [
+          "node and gh version probes optional; missing binaries recorded as not found. sentinel executes explicitly requested external command, so that command's runtime is not an Err Python package dependency."
+        ],
+        "development": [
+          "pytest>=9.1.1",
+          "pip>=25.0",
+          "hatchling>=1.32.4"
+        ],
+        "minimum_boundary": "Keep stdlib/local-file implementation and all package/build/test contracts. No minpy/minjs conversion needed; build backend/test pip are not runtime imports.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "4ffa14643606630dff8165d515d6cb5470d8b169",
+            "url": "https://github.com/myon-bioinformatics/Err-o-RoadRunner/blob/fd770f22cd409c7da9144d8253c93c3e119c6b54/pyproject.toml"
+          },
+          {
+            "path": "triage.py",
+            "blob_sha": "31001b3f8a80821b6be246a3c691f0e85d672486",
+            "url": "https://github.com/myon-bioinformatics/Err-o-RoadRunner/blob/fd770f22cd409c7da9144d8253c93c3e119c6b54/triage.py"
+          },
+          {
+            "path": "sentinel.py",
+            "blob_sha": "36c132675aa87274d1d89a574a95a5e5d75cff0a",
+            "url": "https://github.com/myon-bioinformatics/Err-o-RoadRunner/blob/fd770f22cd409c7da9144d8253c93c3e119c6b54/sentinel.py"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "3e393ee76c04a4da5cbefdadbef029483352d74f",
+            "url": "https://github.com/myon-bioinformatics/Err-o-RoadRunner/blob/fd770f22cd409c7da9144d8253c93c3e119c6b54/README.md"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/flutter_navigation_basic",
+        "commit": "b25a76629eee10f72dbf2dd8a492ba3591807d49",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "other_runtime",
+        "summary": "Flutter/Dart application is not a Python/Node stdlib shrink target.",
+        "production": [
+          "Flutter/Dart app; crypto ^3.0.7 (HMAC/digest), image_picker ^1.2.4 (image input), gal ^2.3.3 (gallery output), shared_preferences ^2.5.6 (platform persistence), get ^4.7.3 (legacy/catalogue compatibility)."
+        ],
+        "optional": [
+          "Fixture regeneration: Pillow>=13.0.0 + host ffmpeg and heif-enc; --check remains stdlib-only.",
+          "Browser E2E: @playwright/test ^1.64.0 and browser binaries; actual Flutter build still required for candidate UI proof."
+        ],
+        "development": [
+          "pytest>=9.1.1, PyYAML>=6.0.3; flutter_test SDK, flutter_lints ^6.0.0."
+        ],
+        "minimum_boundary": "Keep static JSON/metadata/oracle/image helpers separate from Flutter build, native plugins, fixture encoders, browser E2E. Pure-Dart checks still need actual Dart. minpy/minjs cannot replace Flutter/platform/browser execution. Host stdlib tooling does not need Docker. Dockerfile.e2e packages Flutter/Python/Node/Deno/three browsers for build/test; moves installation into image, does not eliminate dependencies or become deployed mobile runtime.",
+        "evidence": [
+          {
+            "path": "pubspec.yaml",
+            "blob_sha": "810886941300fa09986069aa164aa078bbb95405",
+            "url": "https://github.com/myon-bioinformatics/flutter_navigation_basic/blob/b25a76629eee10f72dbf2dd8a492ba3591807d49/pubspec.yaml"
+          },
+          {
+            "path": "python/pyproject.toml",
+            "blob_sha": "1b87bab82c5075aaaac7946b3c8576a277f71ac4",
+            "url": "https://github.com/myon-bioinformatics/flutter_navigation_basic/blob/b25a76629eee10f72dbf2dd8a492ba3591807d49/python/pyproject.toml"
+          },
+          {
+            "path": "python/requirements-fixtures.txt",
+            "blob_sha": "c6ee8ba65c16bd303d8fbbaa310ac20a1ca05e4a",
+            "url": "https://github.com/myon-bioinformatics/flutter_navigation_basic/blob/b25a76629eee10f72dbf2dd8a492ba3591807d49/python/requirements-fixtures.txt"
+          },
+          {
+            "path": "e2e/package.json",
+            "blob_sha": "cd8f5f66215f225c7c232b3cfadbc84e7df80396",
+            "url": "https://github.com/myon-bioinformatics/flutter_navigation_basic/blob/b25a76629eee10f72dbf2dd8a492ba3591807d49/e2e/package.json"
+          },
+          {
+            "path": "Dockerfile.e2e",
+            "blob_sha": "b50b8e057c48e3e34b35fea3a27b13cf1a11e96e",
+            "url": "https://github.com/myon-bioinformatics/flutter_navigation_basic/blob/b25a76629eee10f72dbf2dd8a492ba3591807d49/Dockerfile.e2e"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "5bf84a8c80ff510db1f41c140f9a1446cb5113ae",
+            "url": "https://github.com/myon-bioinformatics/flutter_navigation_basic/blob/b25a76629eee10f72dbf2dd8a492ba3591807d49/README.md"
+          },
+          {
+            "path": "python/generate_photo_import_fixtures.py",
+            "blob_sha": "86bc418e7a411b52c07e7fd229c0373af8aaf320",
+            "url": "https://github.com/myon-bioinformatics/flutter_navigation_basic/blob/b25a76629eee10f72dbf2dd8a492ba3591807d49/python/generate_photo_import_fixtures.py"
+          },
+          {
+            "path": "lib/shared/http/request_executor.dart",
+            "blob_sha": "5ef28a401c9b04c90423904312d40f462697e287",
+            "url": "https://github.com/myon-bioinformatics/flutter_navigation_basic/blob/b25a76629eee10f72dbf2dd8a492ba3591807d49/lib/shared/http/request_executor.dart"
+          },
+          {
+            "path": "lib/features/photo_studio/data/image_picker_photo_source.dart",
+            "blob_sha": "96c66803e43c435e2728c047b6ef0d370a16a111",
+            "url": "https://github.com/myon-bioinformatics/flutter_navigation_basic/blob/b25a76629eee10f72dbf2dd8a492ba3591807d49/lib/features/photo_studio/data/image_picker_photo_source.dart"
+          },
+          {
+            "path": "lib/features/photo_studio/data/gal_photo_sink.dart",
+            "blob_sha": "675bfa58f9d0ee2078d50185182ecdb4ba1fbeae",
+            "url": "https://github.com/myon-bioinformatics/flutter_navigation_basic/blob/b25a76629eee10f72dbf2dd8a492ba3591807d49/lib/features/photo_studio/data/gal_photo_sink.dart"
+          },
+          {
+            "path": "lib/core/services/storage_service.dart",
+            "blob_sha": "117b135dd4001516fe73b72fb4215ce5cc6535f8",
+            "url": "https://github.com/myon-bioinformatics/flutter_navigation_basic/blob/b25a76629eee10f72dbf2dd8a492ba3591807d49/lib/core/services/storage_service.dart"
+          }
+        ],
+        "known_gaps": [
+          "Feature install groups are not measured minimal closures; setup/size/runtime metrics unmeasured.",
+          "No removal/migration of existing app/plugin behavior proposed."
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/gh_identity",
+        "commit": "1c8d85cc4a63c0a90faaaabb85ec0663d1367e23",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "optional_features",
+        "summary": "Python >=3.10; dev >=3.11; optional Node wrapper >=24 + Python",
+        "production": [],
+        "optional": [
+          "Optional local Gradio DOM lab: Gradio only on interactive serve path; trusted existing markdown.py required for both paths",
+          "gh preferred when available/authenticated, stdlib urllib fallback for supported REST operations. Git required for local Git/history operations; Python subprocess permission required for bounded transport worker."
+        ],
+        "development": [
+          "pytest>=9.1.1"
+        ],
+        "minimum_boundary": "Existing stdlib fallback is already mini transport. Do not replace Git engine or authenticated/network behavior with a superficial parser. Already offers stdlib static export before Gradio import; can document as lightweight route, not equivalent interactive UI. Do not remove optional renderer or tests.",
+        "evidence": [
+          {
+            "path": "README.md",
+            "blob_sha": "f63005941978cad8cc850ece86c5a78a86c18415",
+            "url": "https://github.com/myon-bioinformatics/gh_identity/blob/1c8d85cc4a63c0a90faaaabb85ec0663d1367e23/README.md"
+          },
+          {
+            "path": "gh_identity.py",
+            "blob_sha": "7e93336bc21c86c1d701b68526a00f188f24e2e7",
+            "url": "https://github.com/myon-bioinformatics/gh_identity/blob/1c8d85cc4a63c0a90faaaabb85ec0663d1367e23/gh_identity.py"
+          },
+          {
+            "path": "gh_identity.cjs",
+            "blob_sha": "f2318a11e1a8239eed67c6cf42e09e941a56b023",
+            "url": "https://github.com/myon-bioinformatics/gh_identity/blob/1c8d85cc4a63c0a90faaaabb85ec0663d1367e23/gh_identity.cjs"
+          },
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "9c91d10f21739894c9ff00487350221900101cd7",
+            "url": "https://github.com/myon-bioinformatics/gh_identity/blob/1c8d85cc4a63c0a90faaaabb85ec0663d1367e23/pyproject.toml"
+          },
+          {
+            "path": "scripts/gh_identity_serve_dom_lab.py",
+            "blob_sha": "76b3563696b2a153136242b31f7b0ae57be871c8",
+            "url": "https://github.com/myon-bioinformatics/gh_identity/blob/1c8d85cc4a63c0a90faaaabb85ec0663d1367e23/scripts/gh_identity_serve_dom_lab.py"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/Ironmate",
+        "commit": "af846ee7b1fd440b8379e2a682dfc7d40365b30e",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "optional_features",
+        "summary": "Python adapters have stdlib baseline; external packages serve explicit image/document features.",
+        "production": [],
+        "optional": [
+          "New PPTX requires Node>=24 + pptxgenjs 4.0.1; XLSX requires Node>=24 + exceljs 4.4.0 (not SheetJS).",
+          "Markdown PPTX requires preinstalled Marp; Mermaid preprocessing additionally mmdc.",
+          "HTML/PDF preview requires Playwright + pypdf + Chromium, despite packages living in dev group.",
+          "JPEG/WebP and photo_grid PNG fallback use Pillow; SVG acceleration uses optional NumPy.",
+          "Separate locked vendor/oci-cost-analysis.py imports pandas; not XLSX converter core."
+        ],
+        "development": [
+          "Dev group: numpy, Pillow, Playwright, pypdf, pytest, PyYAML; use-based classification above prevents mislabelling feature-runtime dependencies.",
+          "Current Marp CI also provisions pinned Marp/Mermaid/Puppeteer/Node-Playwright, CJK fonts, python3-uno and libreoffice-impress. Observed setup only: no inferred special test exception or authorization."
+        ],
+        "minimum_boundary": "Reuse pillow_min PNG/APNG and XML/ZIP/JSON contracts. pillow_min does not implement JPEG/WebP. Whole-repo minpy eligibility not established: sibling/resource/Node/external dependencies remain. npm ci installs BOTH current Node packages, not minimum per feature. Dockerfile.pages only builds/serves static asset allowlist; not a full Ironmate conversion/preview environment. Host Python stdlib image editor remains available; Node/Marp/codec features are independently optional.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "7aa39422293e47efda35f119dc511af1a03c7bea",
+            "url": "https://github.com/myon-bioinformatics/Ironmate/blob/af846ee7b1fd440b8379e2a682dfc7d40365b30e/pyproject.toml"
+          },
+          {
+            "path": "package.json",
+            "blob_sha": "0e8df818df4469815cec647c920a067b597d1ee2",
+            "url": "https://github.com/myon-bioinformatics/Ironmate/blob/af846ee7b1fd440b8379e2a682dfc7d40365b30e/package.json"
+          },
+          {
+            "path": "requirements.txt",
+            "blob_sha": "833560214d7ac3a00c37b465004032a3204b3d93",
+            "url": "https://github.com/myon-bioinformatics/Ironmate/blob/af846ee7b1fd440b8379e2a682dfc7d40365b30e/requirements.txt"
+          },
+          {
+            "path": "pptx_preview.py",
+            "blob_sha": "d8ee61acd43e27925d519fae55ff974967e82bde",
+            "url": "https://github.com/myon-bioinformatics/Ironmate/blob/af846ee7b1fd440b8379e2a682dfc7d40365b30e/pptx_preview.py"
+          },
+          {
+            "path": "scripts/xlsx_io.mjs",
+            "blob_sha": "24fad8586c167a5cb1988b36984d8296baa6ba3e",
+            "url": "https://github.com/myon-bioinformatics/Ironmate/blob/af846ee7b1fd440b8379e2a682dfc7d40365b30e/scripts/xlsx_io.mjs"
+          },
+          {
+            "path": "scripts/pptxgen_render.mjs",
+            "blob_sha": "2894f2b81a48a2a2d38aab30ff76bf6d709ecda7",
+            "url": "https://github.com/myon-bioinformatics/Ironmate/blob/af846ee7b1fd440b8379e2a682dfc7d40365b30e/scripts/pptxgen_render.mjs"
+          },
+          {
+            "path": "Dockerfile.pages",
+            "blob_sha": "6624b5467a89ece77d83b5904ae795420d96d9ff",
+            "url": "https://github.com/myon-bioinformatics/Ironmate/blob/af846ee7b1fd440b8379e2a682dfc7d40365b30e/Dockerfile.pages"
+          },
+          {
+            "path": "pptx_render.py",
+            "blob_sha": "9f495f34ac3ac24bb8c26127e0156d4cc20dfcf0",
+            "url": "https://github.com/myon-bioinformatics/Ironmate/blob/af846ee7b1fd440b8379e2a682dfc7d40365b30e/pptx_render.py"
+          },
+          {
+            "path": "photo_grid.py",
+            "blob_sha": "90ec8ad9deed73b49abd283ec2c62c808982d81b",
+            "url": "https://github.com/myon-bioinformatics/Ironmate/blob/af846ee7b1fd440b8379e2a682dfc7d40365b30e/photo_grid.py"
+          },
+          {
+            "path": "docs/pillow-min.md",
+            "blob_sha": "fbaeb434bbabd6e92951e265592a20aa71f738ac",
+            "url": "https://github.com/myon-bioinformatics/Ironmate/blob/af846ee7b1fd440b8379e2a682dfc7d40365b30e/docs/pillow-min.md"
+          },
+          {
+            "path": ".github/workflows/mcp-tests.yml",
+            "blob_sha": "17ae1ef6c141480e6b42203d0f6e52c7c9dd6f9e",
+            "url": "https://github.com/myon-bioinformatics/Ironmate/blob/af846ee7b1fd440b8379e2a682dfc7d40365b30e/.github/workflows/mcp-tests.yml"
+          }
+        ],
+        "known_gaps": [
+          "pptx_render.py:30 and xlsx_render.py:24 still advise Node 22; current package/docs say >=24.",
+          "Historical prototype python-pptx references are superseded by current source/later docs.",
+          "Structural XLSX checks do not prove Excel rendering/calculation; Marp HTML preview does not render edited PPTX."
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/markdown",
+        "commit": "f04d233d2edc63650439fbb7692434e9f2c66266",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "optional_features",
+        "summary": "markdown.py Python library has no runtime package dependencies.",
+        "production": [],
+        "optional": [
+          "Gradio/Streamlit UI lazily imported; analyze()/build_view() logic remains UI-framework-free.",
+          "Older-Python TOML fallback: Node>=24 + smol-toml; Python>=3.11 uses stdlib tomllib.",
+          "Open WebUI smoke uses Docker + sibling lab mock + fastmcp + external Open WebUI image; not core library or model inference."
+        ],
+        "development": [
+          "pytest>=8.4.2, PyYAML>=6.0.3; frontend group Gradio>=6.30.0, Streamlit>=1.66.0, Playwright>=1.64.0.",
+          "JS mirror readers: linkedom 0.18.13, markdown-it 15.0.3, marked 18.1.1, string-width 8.3.0, smol-toml 1.9.1; browser binaries for optional browser smoke."
+        ],
+        "minimum_boundary": "Single-file core needs no minpy. Normalized HTML tree is not browser DOM. Frontend group installs multiple UI frameworks and Playwright together, not measured minimum for one feature. Older TOML fallback should be independent optional profile. Core is copy-one-file or uv-installable on host. Compose is optional three-service product-integration lab, not minimum runtime; mcp service installs fastmcp at startup and Open WebUI image tracks main.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "031f0def5bebc211a37b85d6ab769ac27721f86e",
+            "url": "https://github.com/myon-bioinformatics/markdown/blob/f04d233d2edc63650439fbb7692434e9f2c66266/pyproject.toml"
+          },
+          {
+            "path": "requirements-frontend.txt",
+            "blob_sha": "525936ba50a2588bd9aa8e306245071dcc98676f",
+            "url": "https://github.com/myon-bioinformatics/markdown/blob/f04d233d2edc63650439fbb7692434e9f2c66266/requirements-frontend.txt"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "70b4eb84c84f8b903952b066d460e1fa836bbc06",
+            "url": "https://github.com/myon-bioinformatics/markdown/blob/f04d233d2edc63650439fbb7692434e9f2c66266/README.md"
+          },
+          {
+            "path": "tests/mirror/package.json",
+            "blob_sha": "96b2213e31ecb3033543142d22705b8b833d07ad",
+            "url": "https://github.com/myon-bioinformatics/markdown/blob/f04d233d2edc63650439fbb7692434e9f2c66266/tests/mirror/package.json"
+          },
+          {
+            "path": "markdown.py",
+            "blob_sha": "9294cabc0d72f457cc2a563812bc31f5848167b4",
+            "url": "https://github.com/myon-bioinformatics/markdown/blob/f04d233d2edc63650439fbb7692434e9f2c66266/markdown.py"
+          },
+          {
+            "path": "demos/gradio_app.py",
+            "blob_sha": "4213a952a450ccc05cf081ee60a270c81a632aba",
+            "url": "https://github.com/myon-bioinformatics/markdown/blob/f04d233d2edc63650439fbb7692434e9f2c66266/demos/gradio_app.py"
+          },
+          {
+            "path": "demos/streamlit_app.py",
+            "blob_sha": "1c65645dfcd95485be199bc4093e87c62f5df0bb",
+            "url": "https://github.com/myon-bioinformatics/markdown/blob/f04d233d2edc63650439fbb7692434e9f2c66266/demos/streamlit_app.py"
+          },
+          {
+            "path": "docker/openwebui-smoke/docker-compose.yml",
+            "blob_sha": "5a7a9c381a0b25d5634bc6ef92f78a5d3e432b85",
+            "url": "https://github.com/myon-bioinformatics/markdown/blob/f04d233d2edc63650439fbb7692434e9f2c66266/docker/openwebui-smoke/docker-compose.yml"
+          },
+          {
+            "path": ".github/workflows/ci.yml",
+            "blob_sha": "909f61cf83bd70ab0edcdcc4dd968d404aa757ef",
+            "url": "https://github.com/myon-bioinformatics/markdown/blob/f04d233d2edc63650439fbb7692434e9f2c66266/.github/workflows/ci.yml"
+          }
+        ],
+        "known_gaps": [
+          "README says frontend wiring remains manual/optional, but current frontend-mock-pytest-latest runs on product_changed; browser frontend-smoke remains workflow_dispatch-only.",
+          "No core parser/browser fidelity replacement established."
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/mcp-toolcall-lab",
+        "commit": "06cdc8e4e14d50de45c8b8122a5ccff6911c3404",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "production_dependencies",
+        "summary": "Project Python >=3.12. Portable execution also Node >=24. Deno for separate Wikipedia MCP deployment. Docker/native llama.cpp/GGUF only their explicit feature/build lanes.",
+        "production": [
+          "fastmcp>=4.1.3",
+          "mcp>=2.3.0",
+          "pydantic>=2.14.1"
+        ],
+        "optional": [
+          "Galleria: Gradio/FastAPI extra plus source-checkout vendored ASCII/Markdown helpers; local UI, no model/GPU/MCP server needed",
+          "Browser and LibreChat/Open WebUI integrations: Playwright + browser binary; Docker product images and services for real chat UIs; existing test extras retained",
+          "Portable execution: Already package-free Python3.12+ and Node24+ via documented source commands; host runtimes still required",
+          "Wikipedia-only Deno MCP: Deno runtime and network; narrow endpoint, not a replacement for full Python FastMCP service",
+          "Real-model benchmarks/static build-time generation: Explicit native llama.cpp server/GGUF or pinned Docker build; model weights and OS native libraries cannot be supplied by minpy/minjs"
+        ],
+        "development": [
+          "test extra: httpx, pytest, pytest-asyncio, PyYAML, starlette, uvicorn; hatchling build backend; preserve all protocol/browser tests."
+        ],
+        "minimum_boundary": "Reuse documented offline source slices instead of claiming whole-package stdlib replacement. FastMCP middleware/session lifecycle, MCP SDK, schema semantics, Gradio and browsers are not replaced by bundling. minpy also rejects non-main __file__/spec_from_file_location and package resources used by several repo/vendor loaders. Existing package metadata still installs core protocol packages even when a caller needs only an offline module; any packaging split is a separately designed/tested change, not an established drop-in solution.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "4c3d89820b99fd11717ce0c454e0149226e8d8cd",
+            "url": "https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/06cdc8e4e14d50de45c8b8122a5ccff6911c3404/pyproject.toml"
+          },
+          {
+            "path": "uv.lock",
+            "blob_sha": "6fd1a4b3a927120d9684d5d3a4e3941de7b13415",
+            "url": "https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/06cdc8e4e14d50de45c8b8122a5ccff6911c3404/uv.lock"
+          },
+          {
+            "path": "src/mcp_toolcall_lab/server.py",
+            "blob_sha": "75086235978da667eb782c236c92dbb62d6867f9",
+            "url": "https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/06cdc8e4e14d50de45c8b8122a5ccff6911c3404/src/mcp_toolcall_lab/server.py"
+          },
+          {
+            "path": "src/mcp_toolcall_lab/github_ops_server.py",
+            "blob_sha": "a08771feeaaac0b57200076db7422558f11eb6af",
+            "url": "https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/06cdc8e4e14d50de45c8b8122a5ccff6911c3404/src/mcp_toolcall_lab/github_ops_server.py"
+          },
+          {
+            "path": "src/mcp_toolcall_lab/chat_sim.py",
+            "blob_sha": "f483d77ceb012469f0f4ff7c69d2277d4742d802",
+            "url": "https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/06cdc8e4e14d50de45c8b8122a5ccff6911c3404/src/mcp_toolcall_lab/chat_sim.py"
+          },
+          {
+            "path": "src/mcp_toolcall_lab/chat_ui.py",
+            "blob_sha": "f45a123e08d475617a3a4d976d30ee7c76cd5ca2",
+            "url": "https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/06cdc8e4e14d50de45c8b8122a5ccff6911c3404/src/mcp_toolcall_lab/chat_ui.py"
+          },
+          {
+            "path": "docs/portable-execution.md",
+            "blob_sha": "a70fbbfa2662e5614276a29fc7078811a70d583b",
+            "url": "https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/06cdc8e4e14d50de45c8b8122a5ccff6911c3404/docs/portable-execution.md"
+          },
+          {
+            "path": "docker/portable-pages/Dockerfile",
+            "blob_sha": "6eb8fd331d56d0d4a4b949d1fc4b3ae6c1d7dd2a",
+            "url": "https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/06cdc8e4e14d50de45c8b8122a5ccff6911c3404/docker/portable-pages/Dockerfile"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/myon-bioinformatics",
+        "commit": "8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "already_minimal",
+        "summary": "Parent runtime tools already use stdlib; excludes deeper dependency removal.",
+        "production": [],
+        "optional": [
+          "Git/gh for explicitly selected repository operations; Node >=24 only for the Python/Node bridge."
+        ],
+        "development": [
+          "pytest, PyYAML, coverage, pip: contributor test group; retain all tests."
+        ],
+        "minimum_boundary": "minpy bundles supported same-repository sources but does not implement external APIs. runtime-profiles.json remains a read-only static plan, not an installed environment.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "3ac8b5fff093bab5802ae85e472c35c80b6fd520",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics/blob/8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4/pyproject.toml"
+          },
+          {
+            "path": "package.json",
+            "blob_sha": "57795ef84e224d17d5cef9952b1fef78da195420",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics/blob/8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4/package.json"
+          },
+          {
+            "path": "preflight.py",
+            "blob_sha": "bed0f2b5e2acdc538739a21a39fb5adc85d4fc61",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics/blob/8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4/preflight.py"
+          },
+          {
+            "path": "node_launch.py",
+            "blob_sha": "5284dc7f99cd5434a0c9db51aec541393ad2e8ae",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics/blob/8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4/node_launch.py"
+          },
+          {
+            "path": "py_launch.cjs",
+            "blob_sha": "ca71c805f316c5cdd0753d55c2a70aa8119cf3ac",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics/blob/8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4/py_launch.cjs"
+          },
+          {
+            "path": "tools/minpy.py",
+            "blob_sha": "c78526b254171975f9441bd518c1648e6f652837",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics/blob/8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4/tools/minpy.py"
+          },
+          {
+            "path": "runtime-profiles.json",
+            "blob_sha": "49b31710c4e9dd6e7c119a9dd820312964d20838",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics/blob/8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4/runtime-profiles.json"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/myon-bioinformatics.github.io",
+        "commit": "1743bdeb3d3698881de1ee37311bd0e3564b7d3c",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "optional_features",
+        "summary": "Published site is static; Python build/import helpers and browser test tools are separate.",
+        "production": [],
+        "optional": [
+          "Browser evidence needs Playwright+Chromium; Stagehand agent/session/model operations separate from import/surface reference and not executed."
+        ],
+        "development": [
+          "npm @playwright/test ^1.64.0, serve ^14.2.6, @browserbasehq/stagehand ^4.2.0; Python pytest>=9.1.1, stagehand>=4.2.1; optional capture playwright>=1.64.0."
+        ],
+        "minimum_boundary": "APNG/PNG montage and public catalog serialization are small stdlib reusable candidates. Browser HTML5 DOM, interaction and rendering cannot be replaced by generator success. No public-scope/API/profile/private-data changes proposed. Host python -m http.server preview needs no test packages. Dockerfile.html-import is build/test-only, provisions npm/browser/Python/pytest; Pages deploys static files, never container.",
+        "evidence": [
+          {
+            "path": "package.json",
+            "blob_sha": "d12b9e2833b96f288663d3f6ff03aee297a57c68",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/1743bdeb3d3698881de1ee37311bd0e3564b7d3c/package.json"
+          },
+          {
+            "path": "Dockerfile.html-import",
+            "blob_sha": "7a66db87e0615e35ca461a49edd7e735953a08eb",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/1743bdeb3d3698881de1ee37311bd0e3564b7d3c/Dockerfile.html-import"
+          },
+          {
+            "path": "tests/requirements.txt",
+            "blob_sha": "f39db5dbd8bf6725844a918368c4115841d4eebe",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/1743bdeb3d3698881de1ee37311bd0e3564b7d3c/tests/requirements.txt"
+          },
+          {
+            "path": "tests/requirements-browser.txt",
+            "blob_sha": "badc20b1cb42d37609279ce830c7d6edcf72689f",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/1743bdeb3d3698881de1ee37311bd0e3564b7d3c/tests/requirements-browser.txt"
+          },
+          {
+            "path": "tools/build_html_import.py",
+            "blob_sha": "6db6e6bc0f8ec4808b85eae02f4cb80142e9d5b0",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/1743bdeb3d3698881de1ee37311bd0e3564b7d3c/tools/build_html_import.py"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "fcebe7c79f73c4bf3cb3306d5346fb283bd8b081",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/1743bdeb3d3698881de1ee37311bd0e3564b7d3c/README.md"
+          },
+          {
+            "path": "tools/build_repos_api.py",
+            "blob_sha": "094c105bfa140af51247b4e9a473519f4ab2a318",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/1743bdeb3d3698881de1ee37311bd0e3564b7d3c/tools/build_repos_api.py"
+          },
+          {
+            "path": "scripts/generate_apng.py",
+            "blob_sha": "2bbe843bf465db1f0c08eaf57801c33cfebb2d67",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/1743bdeb3d3698881de1ee37311bd0e3564b7d3c/scripts/generate_apng.py"
+          },
+          {
+            "path": "scripts/capture_portfolio_evidence.py",
+            "blob_sha": "ffdbf37d979658720808c0daf23dad35187f4c8f",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/1743bdeb3d3698881de1ee37311bd0e3564b7d3c/scripts/capture_portfolio_evidence.py"
+          },
+          {
+            "path": "docs/html-import.md",
+            "blob_sha": "3d4fd1f241fa91b82e725ad567b2bbbee877b53f",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/1743bdeb3d3698881de1ee37311bd0e3564b7d3c/docs/html-import.md"
+          },
+          {
+            "path": "STAGEHAND.md",
+            "blob_sha": "a4614a7000bee2063138f39f0530750fe48bb4dd",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/1743bdeb3d3698881de1ee37311bd0e3564b7d3c/STAGEHAND.md"
+          }
+        ],
+        "known_gaps": [
+          "Docker uses Node 22-bookworm while package engines >=24; unvalidated compatibility drift, not proven runtime failure.",
+          "No Docker/host parity or minimal dependency closure measured."
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/NagoyAction",
+        "commit": "11fc194f5257e090f2b2addd29f10fd8d6986cbe",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "optional_features",
+        "summary": "Python >=3.11; optional Node wrapper >=24 also launches Python -S",
+        "production": [],
+        "optional": [
+          "research_digest.collect optional research feature: Direct import polars; Aoi checkout's parent vendor/markdown.py and cycle data",
+          "Inbox intake / bounded research worker: Aoi queryu/ask, bank, aoi_npb; Aoi research_loop/pythdragoras; worker snapshot requires installed Polars distribution metadata and Aoi uv.lock/pyproject",
+          "Optional llama server hook: Docker/Compose, digest-pinned official llama.cpp image, SHA-verified model bytes"
+        ],
+        "development": [
+          "pytest via uv/Aoi test environment; no root Python manifest in inspected tree"
+        ],
+        "minimum_boundary": "Already stdlib; exclude core replacement. Node wrapper is not a JS-only implementation. Existing byte-pinned polars_min is actual mini coverage: DataFrame, single-column explode, col().is_not_null filter, left join, named rows. Not full Polars; min collection does not prove all research workflows work without Polars. Do not label entire inbox/worker stdlib-only merely because orchestrator imports stdlib. Existing collect mini is not wired as general worker fallback. Existing pipeline definitions do not invoke it; retain optional feature, not candidate for fake stdlib inference.",
+        "evidence": [
+          {
+            "path": "README.md",
+            "blob_sha": "c257b54e4572378443a8fdee688653e82b53e1ac",
+            "url": "https://github.com/myon-bioinformatics/NagoyAction/blob/11fc194f5257e090f2b2addd29f10fd8d6986cbe/README.md"
+          },
+          {
+            "path": "nagoyaction.cjs",
+            "blob_sha": "07360b921ab65ca0a4622d5c8786d89cf51c7598",
+            "url": "https://github.com/myon-bioinformatics/NagoyAction/blob/11fc194f5257e090f2b2addd29f10fd8d6986cbe/nagoyaction.cjs"
+          },
+          {
+            "path": "pipelines/inbox.toml",
+            "blob_sha": "960735aaf16382b913417e36afdc791875b2d41c",
+            "url": "https://github.com/myon-bioinformatics/NagoyAction/blob/11fc194f5257e090f2b2addd29f10fd8d6986cbe/pipelines/inbox.toml"
+          },
+          {
+            "path": "research_digest.py",
+            "blob_sha": "43602586077e0ec38770c7e19baa07a69e6028d9",
+            "url": "https://github.com/myon-bioinformatics/NagoyAction/blob/11fc194f5257e090f2b2addd29f10fd8d6986cbe/research_digest.py"
+          },
+          {
+            "path": "scripts/collect_with_polars_min.py",
+            "blob_sha": "f539620500e855caebd93b00c1a9df720976f121",
+            "url": "https://github.com/myon-bioinformatics/NagoyAction/blob/11fc194f5257e090f2b2addd29f10fd8d6986cbe/scripts/collect_with_polars_min.py"
+          },
+          {
+            "path": "vendor/aoi/shrink/polars_min.py",
+            "blob_sha": "5af0e170973bc8b4c2f3abcec9da5060171c92f5",
+            "url": "https://github.com/myon-bioinformatics/NagoyAction/blob/11fc194f5257e090f2b2addd29f10fd8d6986cbe/vendor/aoi/shrink/polars_min.py"
+          },
+          {
+            "path": "shared-tools.lock.json",
+            "blob_sha": "b21a84be52e2d74b459c6ee24fa936ec984f7fdc",
+            "url": "https://github.com/myon-bioinformatics/NagoyAction/blob/11fc194f5257e090f2b2addd29f10fd8d6986cbe/shared-tools.lock.json"
+          },
+          {
+            "path": "inbox/inbox.py",
+            "blob_sha": "cbdac65bdb6662fd9d3114a42125f5f8ab8c3cec",
+            "url": "https://github.com/myon-bioinformatics/NagoyAction/blob/11fc194f5257e090f2b2addd29f10fd8d6986cbe/inbox/inbox.py"
+          },
+          {
+            "path": "inbox/worker.py",
+            "blob_sha": "c13291a2a7454a12b3a6d521788f2f18d1c64826",
+            "url": "https://github.com/myon-bioinformatics/NagoyAction/blob/11fc194f5257e090f2b2addd29f10fd8d6986cbe/inbox/worker.py"
+          },
+          {
+            "path": "containers/llama.py",
+            "blob_sha": "6dba22ba65982f086edb55f587dc97487f8adf1d",
+            "url": "https://github.com/myon-bioinformatics/NagoyAction/blob/11fc194f5257e090f2b2addd29f10fd8d6986cbe/containers/llama.py"
+          },
+          {
+            "path": "containers/llama.compose.yml",
+            "blob_sha": "a1db00d4a88e3fea5fe83a69256cc5952e4ab52a",
+            "url": "https://github.com/myon-bioinformatics/NagoyAction/blob/11fc194f5257e090f2b2addd29f10fd8d6986cbe/containers/llama.compose.yml"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/nvd_nist_known_vulns",
+        "commit": "b72319ca2ae06847684b50688c711ab9c79d9731",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "already_minimal",
+        "summary": "Python >=3.9; Node >=24 only for optional .cjs launcher; contributor/uv environments >=3.11",
+        "production": [],
+        "optional": [
+          "NVD API access: Network access; optional API key. Offline JSONL/CPE/CVSS helpers do not need network.",
+          "Node CLI entry: Node plus Python interpreter; launcher is not a JS implementation"
+        ],
+        "development": [
+          "pytest>=8",
+          "PyYAML>=6"
+        ],
+        "minimum_boundary": "Single-file standard-library implementation; minpy would not reduce dependencies. Node launcher does not eliminate the Python host runtime. No live NVD requests or CVSS validation performed in this inventory.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "15ec120e932f1aa2fdfd2ba418719b9d9b693053",
+            "url": "https://github.com/myon-bioinformatics/nvd_nist_known_vulns/blob/b72319ca2ae06847684b50688c711ab9c79d9731/pyproject.toml"
+          },
+          {
+            "path": "nvd_nist_known_vulns.py",
+            "blob_sha": "dbfec1209c99f5868b0706c1396a2760c93efc7f",
+            "url": "https://github.com/myon-bioinformatics/nvd_nist_known_vulns/blob/b72319ca2ae06847684b50688c711ab9c79d9731/nvd_nist_known_vulns.py"
+          },
+          {
+            "path": "package.json",
+            "blob_sha": "b415a6236ebaa6c25ce46d3b2b1cbfa314341a30",
+            "url": "https://github.com/myon-bioinformatics/nvd_nist_known_vulns/blob/b72319ca2ae06847684b50688c711ab9c79d9731/package.json"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/PythDRagoras",
+        "commit": "6985419e89b3c02415b92bcc271e892946feb41b",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "production_dependencies",
+        "summary": "retain external numeric core; scoped future candidates only",
+        "production": [
+          "polars: pythdragoras.py/propositions.py/rule_search table engine",
+          "numpy: rule_search bitmatrix and littlebit algorithms"
+        ],
+        "optional": [
+          "Node >=24: three .cjs launchers; thin wrappers launch Python -S; no npm dependencies declared; not an independent JS implementation"
+        ],
+        "development": [
+          "pytest",
+          "Aoi/SakAnalytics fixture/source checkout for tests"
+        ],
+        "minimum_boundary": "Aoi dist/pythdragoras_min.py and native stdlib sensitivity scripts already exist. threshold/provenance generic API is not complete propositions/search replacement; exclude these already-stdlib slices",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "d97c5d59efdb61b4820f26fc6df552a6d7638620",
+            "url": "https://github.com/myon-bioinformatics/PythDRagoras/blob/6985419e89b3c02415b92bcc271e892946feb41b/pyproject.toml"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "ed20768838fdf079edc26325e5453c1839b94a0b",
+            "url": "https://github.com/myon-bioinformatics/PythDRagoras/blob/6985419e89b3c02415b92bcc271e892946feb41b/README.md"
+          },
+          {
+            "path": "package.json",
+            "blob_sha": "67dba83a757056cb52e9cacd6f68bdb3da50d3d0",
+            "url": "https://github.com/myon-bioinformatics/PythDRagoras/blob/6985419e89b3c02415b92bcc271e892946feb41b/package.json"
+          },
+          {
+            "path": "pythdragoras.py",
+            "blob_sha": "cf6b3c3b432f3f3b341233e02c9925f18c153830",
+            "url": "https://github.com/myon-bioinformatics/PythDRagoras/blob/6985419e89b3c02415b92bcc271e892946feb41b/pythdragoras.py"
+          },
+          {
+            "path": "propositions.py",
+            "blob_sha": "b92f602d698ed7bdd36adb9396e2ac25dac7816c",
+            "url": "https://github.com/myon-bioinformatics/PythDRagoras/blob/6985419e89b3c02415b92bcc271e892946feb41b/propositions.py"
+          },
+          {
+            "path": "rule_search.py",
+            "blob_sha": "c92d812317721b14fbd9ecf05f25bcc219acc7d5",
+            "url": "https://github.com/myon-bioinformatics/PythDRagoras/blob/6985419e89b3c02415b92bcc271e892946feb41b/rule_search.py"
+          },
+          {
+            "path": "littlebit_approx.py",
+            "blob_sha": "13c83d2eab328deb49ae9002fc5291db07c21187",
+            "url": "https://github.com/myon-bioinformatics/PythDRagoras/blob/6985419e89b3c02415b92bcc271e892946feb41b/littlebit_approx.py"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/QueRyu",
+        "commit": "4c59cb00ca2ba898573e4af95bc4a63492aa5eb9",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "optional_features",
+        "summary": "brief exclude already no external pip runtime dependencies",
+        "production": [],
+        "optional": [
+          "system LAPACK/BLAS: ask/suggest numerical acceleration; vendored numpy_min auto-loads native libraries via ctypes; fallback stdlib; not pure-only unless NUMPY_MIN_PURE=1",
+          "BlueProbe checkout: source extraction; required source provider on PYTHONPATH, not automatically installed pip dependency"
+        ],
+        "development": [
+          "pytest",
+          "numpy comparison oracle"
+        ],
+        "minimum_boundary": "cache_core/cache_share already stdlib; suggest already consumes vendored numpy_min in the requested main. No new removal candidate; retain comparison oracle and backend tests.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "19fe0f89eb58cdb9a93ab8ccdaba7770f0f4588f",
+            "url": "https://github.com/myon-bioinformatics/QueRyu/blob/4c59cb00ca2ba898573e4af95bc4a63492aa5eb9/pyproject.toml"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "74dd8eedfadfdf4e0b6697ab27756b36274517eb",
+            "url": "https://github.com/myon-bioinformatics/QueRyu/blob/4c59cb00ca2ba898573e4af95bc4a63492aa5eb9/README.md"
+          },
+          {
+            "path": "ask/suggest.py",
+            "blob_sha": "b4e8abc65d378d322ab177cc2a9b429ed3230597",
+            "url": "https://github.com/myon-bioinformatics/QueRyu/blob/4c59cb00ca2ba898573e4af95bc4a63492aa5eb9/ask/suggest.py"
+          },
+          {
+            "path": "queryu.py",
+            "blob_sha": "1995e4827387b2f13ab9887b7fcbef8904be9509",
+            "url": "https://github.com/myon-bioinformatics/QueRyu/blob/4c59cb00ca2ba898573e4af95bc4a63492aa5eb9/queryu.py"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/SakAnalytics",
+        "commit": "f5fe38ffa2b955d6acf7ade0fdf345d1c0735849",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "production_dependencies",
+        "summary": "retain polars core and optional exact solver; scope small slices only",
+        "production": [
+          "polars: sakanalytics aggregation, joins, when/window expressions; moshimo_pool input tables"
+        ],
+        "optional": [
+          "ortools>=9.15.6755: season_exact.py CP-SAT; lazy import; optional season-requirements.txt; forecasts themselves use stdlib; native solver cannot be treated as equivalent small stdlib module",
+          "Node >=24: annual_audit.cjs/synthetic_league.cjs; thin Python -S launchers; no npm runtime dependencies"
+        ],
+        "development": [
+          "pytest",
+          "Aoi/PythDRagoras source and data for integration"
+        ],
+        "minimum_boundary": "epsilon, exact integer/simulation helpers and Aoi period/neighbor API have stdlib slices. do not count these already-lean slices as full-core dependency removal",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "74f7472738a0e13372409961d5abae0f4d40d253",
+            "url": "https://github.com/myon-bioinformatics/SakAnalytics/blob/f5fe38ffa2b955d6acf7ade0fdf345d1c0735849/pyproject.toml"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "45db9e256f03ce6cb5efb499f54798549fe146d4",
+            "url": "https://github.com/myon-bioinformatics/SakAnalytics/blob/f5fe38ffa2b955d6acf7ade0fdf345d1c0735849/README.md"
+          },
+          {
+            "path": "sakanalytics.py",
+            "blob_sha": "59e5726557fa9a6817a8bfefd298cdec54c31478",
+            "url": "https://github.com/myon-bioinformatics/SakAnalytics/blob/f5fe38ffa2b955d6acf7ade0fdf345d1c0735849/sakanalytics.py"
+          },
+          {
+            "path": "moshimo_pool.py",
+            "blob_sha": "912a214f2dc096877a6bbfdbb1bf967943636364",
+            "url": "https://github.com/myon-bioinformatics/SakAnalytics/blob/f5fe38ffa2b955d6acf7ade0fdf345d1c0735849/moshimo_pool.py"
+          },
+          {
+            "path": "season_exact.py",
+            "blob_sha": "06e0e542fadd85d94ac5aa327189aa3df3d30b02",
+            "url": "https://github.com/myon-bioinformatics/SakAnalytics/blob/f5fe38ffa2b955d6acf7ade0fdf345d1c0735849/season_exact.py"
+          },
+          {
+            "path": "season-requirements.txt",
+            "blob_sha": "c9ac6261675ebe69e217c4c5a1082adffb2d8aba",
+            "url": "https://github.com/myon-bioinformatics/SakAnalytics/blob/f5fe38ffa2b955d6acf7ade0fdf345d1c0735849/season-requirements.txt"
+          },
+          {
+            "path": "package.json",
+            "blob_sha": "c396c2fd38bc07656fde23429bd90d4c62eea44b",
+            "url": "https://github.com/myon-bioinformatics/SakAnalytics/blob/f5fe38ffa2b955d6acf7ade0fdf345d1c0735849/package.json"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/search_seq_including_spaces",
+        "commit": "d32be55ff76bbda7455b2ab4c6952b6498cbd321",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "already_minimal",
+        "summary": "Python >=3.10; contributor/uv environments >=3.11",
+        "production": [],
+        "optional": [
+          "Live NCBI/RCSB acquisition: Explicit network access; stdlib HTTP only; no installation",
+          "Live Jev Choice classifier: Explicit API key and remote service; no Python SDK",
+          "Example Docker deployment: Docker is optional deployment tooling, not a Python dependency; docs/ROADMAP_TOOLS.md leaves operational deployment checks separate"
+        ],
+        "development": [
+          "pytest>=9.1.1"
+        ],
+        "minimum_boundary": "Runtime already stdlib. minpy could only consolidate sibling modules, not remove an external dependency; no bundle was generated or promised. Full minpy compatibility of the sibling-module/data graph was not evaluated.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "f18f96a91360750fd07d57f911c42b4982eb361f",
+            "url": "https://github.com/myon-bioinformatics/search_seq_including_spaces/blob/d32be55ff76bbda7455b2ab4c6952b6498cbd321/pyproject.toml"
+          },
+          {
+            "path": "sequence_readers.py",
+            "blob_sha": "22043ba17b3c9dc9266311df8244367d57e7e8d7",
+            "url": "https://github.com/myon-bioinformatics/search_seq_including_spaces/blob/d32be55ff76bbda7455b2ab4c6952b6498cbd321/sequence_readers.py"
+          },
+          {
+            "path": "acquisition.py",
+            "blob_sha": "a7088d8e622ee1444c7e58bd3740646d1fb2450b",
+            "url": "https://github.com/myon-bioinformatics/search_seq_including_spaces/blob/d32be55ff76bbda7455b2ab4c6952b6498cbd321/acquisition.py"
+          },
+          {
+            "path": "sequence_service.py",
+            "blob_sha": "2dfeeab46a089e4ab8ae9f3944801d1f0ff470fa",
+            "url": "https://github.com/myon-bioinformatics/search_seq_including_spaces/blob/d32be55ff76bbda7455b2ab4c6952b6498cbd321/sequence_service.py"
+          },
+          {
+            "path": "jev_adapter.py",
+            "blob_sha": "48fc38ece36fc1da80892f18e3ec589686297bc0",
+            "url": "https://github.com/myon-bioinformatics/search_seq_including_spaces/blob/d32be55ff76bbda7455b2ab4c6952b6498cbd321/jev_adapter.py"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/TalkCompress",
+        "commit": "3669444d1c43ba5a0c872ed7f989d0f5269d1f59",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "optional_features",
+        "summary": "Python >=3.11",
+        "production": [],
+        "optional": [
+          "Live machine translation: deep-translator/network, or argostranslate + offline language packs; fixture engine needs neither",
+          "Exact tokenizer comparison/calibration: tiktoken, tokenizers, downloaded/cached tokenizer dictionaries",
+          "SVG pixel-equivalence rendering: Playwright Python, Chromium, Noto CJK JP fonts/fontconfig; font provenance calls fc-match and dpkg-query",
+          "Optional model verification: llama-cpp-python + local verified GGUF for syntax scripts; external llama CLI or digest-pinned Docker llama.cpp for L3"
+        ],
+        "development": [
+          "pytest>=8",
+          "tiktoken",
+          "tokenizers"
+        ],
+        "minimum_boundary": "Already dependency-light; no core rewrite/removal needed. Estimator is approximate and affects candidate ranking, not a drop-in exact tiktoken implementation. Keep lazy optional imports and fixture/fallback path. stdlib cannot replace translation quality/model semantics; absence currently returns empty candidates/original. Existing stdlib estimator covers an approximation only. Keep exact comparison tests and calibration dependency/environment separate; do not delete dev deps or claim equivalence. stdlib XML canonicalization is not a renderer or pixel-equivalence replacement. Retain opt-in external feature; missing runtime needs explicit failure/feature guidance, not fake success. No mini substitute for actual model inference. Keep explicit --run/manual workflow and evidence requirements. No inference/dictionary/model downloads performed in this inventory.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "9a84cc342a07c71fff3ea24d10a60c8aaff9b2c5",
+            "url": "https://github.com/myon-bioinformatics/TalkCompress/blob/3669444d1c43ba5a0c872ed7f989d0f5269d1f59/pyproject.toml"
+          },
+          {
+            "path": "DensityZip/density_zip.py",
+            "blob_sha": "e27c9784904ce32a2cbcc3c4651c5d89bc8fd1e0",
+            "url": "https://github.com/myon-bioinformatics/TalkCompress/blob/3669444d1c43ba5a0c872ed7f989d0f5269d1f59/DensityZip/density_zip.py"
+          },
+          {
+            "path": "TesseraTalk/tessera_talk.py",
+            "blob_sha": "8159adc6434e76b9e9eff77f754ab69a0a1b80f7",
+            "url": "https://github.com/myon-bioinformatics/TalkCompress/blob/3669444d1c43ba5a0c872ed7f989d0f5269d1f59/TesseraTalk/tessera_talk.py"
+          },
+          {
+            "path": "TesseraTalk/README.md",
+            "blob_sha": "2a86e7d38e0f949d36851357958bdd709e1d13c0",
+            "url": "https://github.com/myon-bioinformatics/TalkCompress/blob/3669444d1c43ba5a0c872ed7f989d0f5269d1f59/TesseraTalk/README.md"
+          },
+          {
+            "path": "scripts/tense_matrix.py",
+            "blob_sha": "0ad5c28eb0e04f731701cc7e9beed3057d293ab1",
+            "url": "https://github.com/myon-bioinformatics/TalkCompress/blob/3669444d1c43ba5a0c872ed7f989d0f5269d1f59/scripts/tense_matrix.py"
+          },
+          {
+            "path": "scripts/tokenizer_compat.py",
+            "blob_sha": "73b54f37b3ed5f6070b0b884535ec64d98f9fdca",
+            "url": "https://github.com/myon-bioinformatics/TalkCompress/blob/3669444d1c43ba5a0c872ed7f989d0f5269d1f59/scripts/tokenizer_compat.py"
+          },
+          {
+            "path": "shared/svg_render.py",
+            "blob_sha": "8109e8d2cf1bae9e4607b56e1ca82bb8d1c25656",
+            "url": "https://github.com/myon-bioinformatics/TalkCompress/blob/3669444d1c43ba5a0c872ed7f989d0f5269d1f59/shared/svg_render.py"
+          },
+          {
+            "path": "scripts/syntax_encoding/llm_roundtrip.py",
+            "blob_sha": "994afc5e80f07592e4f540241fbd8b0958e65dbc",
+            "url": "https://github.com/myon-bioinformatics/TalkCompress/blob/3669444d1c43ba5a0c872ed7f989d0f5269d1f59/scripts/syntax_encoding/llm_roundtrip.py"
+          },
+          {
+            "path": "docs/syntax-pattern-encoding.md",
+            "blob_sha": "f35396e555974f2af458e5a996daaaec160dccce",
+            "url": "https://github.com/myon-bioinformatics/TalkCompress/blob/3669444d1c43ba5a0c872ed7f989d0f5269d1f59/docs/syntax-pattern-encoding.md"
+          },
+          {
+            "path": ".github/workflows/svg-l3.yml",
+            "blob_sha": "017b1026dd0957fe94a9431b40bdcc2421e4d5b7",
+            "url": "https://github.com/myon-bioinformatics/TalkCompress/blob/3669444d1c43ba5a0c872ed7f989d0f5269d1f59/.github/workflows/svg-l3.yml"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/web-ui",
+        "commit": "fe83ddd2913d4cff6bc506886247189e314e0d71",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "optional_features",
+        "summary": "Python HTML helpers and Node package have no installed runtime dependencies.",
+        "production": [],
+        "optional": [
+          "Browser Plotly charts require opt-in UNPINNED plotly.js-dist-min CDN; browser PPTX export requires PptxGenJS 4.0.1 bundle with SRI/JSZip. These are feature-runtime deps outside package manifests.",
+          "Gradio local DOM host; optional Playwright/Chromium checks; Stagehand SDK/agent boundary separate."
+        ],
+        "development": [
+          "pytest>=8, stagehand>=4, PyYAML>=6; gradio group includes Gradio>=6.30.0, Playwright>=1.63.0, pytest>=9.1.1."
+        ],
+        "minimum_boundary": "Single-file HTML emitter and native built-in JS are reusable. web_ui.cjs launches Python, not Node-only/minjs. Generic minpy rejects dynamic __file__/spec_from_file_location/exec loader path; no generated-minpy compatibility claimed. Browser APIs/assets/CSP remain real dependencies. Host static server or HTML emission. No Dockerfile/compose found in exact tree. Optional DOM lab is localhost Gradio, not a required app server.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "8c8263b0ee9e62f51bdb38cf15e5e5706c12fe32",
+            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/pyproject.toml"
+          },
+          {
+            "path": "package.json",
+            "blob_sha": "11f3f218bd35a273beafe5e803114f00a5c50198",
+            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/package.json"
+          },
+          {
+            "path": "web_ui.py",
+            "blob_sha": "371641fe31064f4cc433e70b6cf4df6aec54587f",
+            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/web_ui.py"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "e8084daab7ef05a6a6bca444e37e92b659ad66ab",
+            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/README.md"
+          },
+          {
+            "path": "tests/requirements-gradio.txt",
+            "blob_sha": "6739d16fca59983fa7f1aff5ee18bacce66a316c",
+            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/tests/requirements-gradio.txt"
+          },
+          {
+            "path": "web_ui.cjs",
+            "blob_sha": "effb2f8d05124106587e44aeba4ec09c1995ee45",
+            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/web_ui.cjs"
+          },
+          {
+            "path": "js/flow.cjs",
+            "blob_sha": "240c2192f2808d463f01dba9a8969181045e8b9f",
+            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/js/flow.cjs"
+          },
+          {
+            "path": "tool/web_ui_serve_dom_lab.py",
+            "blob_sha": "e55d0332357cc6be1e7291cf2302bc3f34028ba5",
+            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/tool/web_ui_serve_dom_lab.py"
+          },
+          {
+            "path": "docs/lightweight-js.md",
+            "blob_sha": "5255e4577701ac93fd2c0d2f308ad8ad86422f84",
+            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/docs/lightweight-js.md"
+          },
+          {
+            "path": "docs/local-dom-lab.md",
+            "blob_sha": "1114ff61ef03740c22c5a4ec6eee822636773570",
+            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/docs/local-dom-lab.md"
+          }
+        ],
+        "known_gaps": [
+          "Zero Python/npm runtime manifest deps does not mean optional chart/PPTX output is offline/self-contained.",
+          "Unpinned Plotly asset availability and browser fidelity unmeasured; no asset pin change proposed."
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/xprobe",
+        "commit": "05a6eeee00debb56b3c9b057ef13b4f7df004538",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "optional_features",
+        "summary": "Python >=3.9; Node >=24 for JS entry/YAML and Python<3.11 TOML fallback; dev Python >=3.11",
+        "production": [],
+        "optional": [
+          "load_yaml: Node >=24 + js-yaml; failsafe/core schema contracts; no stdlib YAML equivalent supplied",
+          "load_toml on Python <=3.10: Node >=24 + smol-toml; Python >=3.11 uses stdlib tomllib",
+          "Node CLI: Node >=24 and Python >=3.9; CLI-only Python-backed launcher"
+        ],
+        "development": [
+          "pytest>=8",
+          "pytest-cov>=5",
+          "PyYAML>=6"
+        ],
+        "minimum_boundary": "JSON and modern-Python TOML are already stdlib; canonical xprobe.py is already one file. Bundling JS parser sources would preserve, not remove, their parsing/runtime semantics. Optional Node packages are documented separately rather than installed through package.json; install resolution not tested.",
+        "evidence": [
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "9cce328132ffb1aadb987562deff7896377a2718",
+            "url": "https://github.com/myon-bioinformatics/xprobe/blob/05a6eeee00debb56b3c9b057ef13b4f7df004538/pyproject.toml"
+          },
+          {
+            "path": "xprobe.py",
+            "blob_sha": "b8387362ea58e45a4129a7daa00bc04df66dd0f2",
+            "url": "https://github.com/myon-bioinformatics/xprobe/blob/05a6eeee00debb56b3c9b057ef13b4f7df004538/xprobe.py"
+          },
+          {
+            "path": "package.json",
+            "blob_sha": "11913c12eda693e43e5dc54eedd54c7a1562a6db",
+            "url": "https://github.com/myon-bioinformatics/xprobe/blob/05a6eeee00debb56b3c9b057ef13b4f7df004538/package.json"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "99288fbacc7f3cb9e7659556e75e966debd682da",
+            "url": "https://github.com/myon-bioinformatics/xprobe/blob/05a6eeee00debb56b3c9b057ef13b4f7df004538/README.md"
+          }
+        ]
+      },
+      {
+        "repository": "myon-bioinformatics/yourself",
+        "commit": "38fc067aa3d1bb9ba6ccc874c955a10f8665c4f4",
+        "visibility": "public",
+        "private": false,
+        "archived": false,
+        "classification": "already_minimal",
+        "summary": "Python >=3.11; optional Node entry >=24 + Python",
+        "production": [],
+        "optional": [
+          "Optional local probes observe existing binaries/OS facilities (Docker, dpkg-query etc); missing/unsupported conditions are data, not package-install requests. Optional reach/IMDS use stdlib networking; no live execution performed."
+        ],
+        "development": [
+          "pytest>=8",
+          "pytest-cov>=5",
+          "PyYAML>=6"
+        ],
+        "minimum_boundary": "AGENTS explicitly requires single-stdlib-file observation only. Do not remove host observation features or test dependencies to achieve cosmetic zero-dependency status.",
+        "evidence": [
+          {
+            "path": "AGENTS.md",
+            "blob_sha": "8ad7c2d44e1bc32b4978d20582f40aa940e762bd",
+            "url": "https://github.com/myon-bioinformatics/yourself/blob/38fc067aa3d1bb9ba6ccc874c955a10f8665c4f4/AGENTS.md"
+          },
+          {
+            "path": "pyproject.toml",
+            "blob_sha": "ffa77e04f1b37c240608b63e7ab8b15271dda38a",
+            "url": "https://github.com/myon-bioinformatics/yourself/blob/38fc067aa3d1bb9ba6ccc874c955a10f8665c4f4/pyproject.toml"
+          },
+          {
+            "path": "yourself.py",
+            "blob_sha": "3830ab0961f2c4c8dd98543275d54de96784be6a",
+            "url": "https://github.com/myon-bioinformatics/yourself/blob/38fc067aa3d1bb9ba6ccc874c955a10f8665c4f4/yourself.py"
+          },
+          {
+            "path": "yourself.cjs",
+            "blob_sha": "0e5ad7d790b9deb7cefc9efca07ca6d9b5c39d8b",
+            "url": "https://github.com/myon-bioinformatics/yourself/blob/38fc067aa3d1bb9ba6ccc874c955a10f8665c4f4/yourself.cjs"
+          },
+          {
+            "path": "README.md",
+            "blob_sha": "403052a1d38a63b1ff9df7248d03dd5f87f7fb19",
+            "url": "https://github.com/myon-bioinformatics/yourself/blob/38fc067aa3d1bb9ba6ccc874c955a10f8665c4f4/README.md"
+          }
+        ]
+      }
+    ],
+    "reuse": [
+      {
+        "name": "minpy",
+        "repository": "myon-bioinformatics/myon-bioinformatics",
+        "commit": "8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4",
+        "capability": "Bundle statically reachable same-repository Python modules, with regeneration and source identity checks.",
+        "limit": "Not a NumPy/Polars/parser/framework implementation; third-party allowlisting is not stdlib-only; package data/native extensions and several dynamic loading patterns are unsupported.",
+        "evidence": [
+          {
+            "path": "tools/minpy.py",
+            "blob_sha": "c78526b254171975f9441bd518c1648e6f652837",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics/blob/8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4/tools/minpy.py"
+          },
+          {
+            "path": "docs/minpy.md",
+            "blob_sha": "a326c06216e209be927e2771b431498a1dd77f0a",
+            "url": "https://github.com/myon-bioinformatics/myon-bioinformatics/blob/8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4/docs/minpy.md"
+          }
+        ]
+      },
+      {
+        "name": "Aoi mindeps",
+        "repository": "myon-bioinformatics/Aoi",
+        "commit": "385e14a09ad56b69c57ec1cbae04c16299d387c5",
+        "capability": "Existing opt-in synchronous HTTP client and HTML selector subsets for named research call sites.",
+        "limit": "HTTP exception/streaming/auth/cookie semantics and HTML5 recovery differ; preserve real-package parity tests and do not claim general HTTPX/Lexbor replacement.",
+        "evidence": [
+          {
+            "path": "mindeps/LIMITS.md",
+            "blob_sha": "aac8d429c54ab418862d41f2ce7d95a811ec9d29",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/mindeps/LIMITS.md"
+          },
+          {
+            "path": "mindeps/httpx_min.py",
+            "blob_sha": "e2452063aaa36699d56911d0c31811d221a8e49b",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/mindeps/httpx_min.py"
+          },
+          {
+            "path": "mindeps/selectolax_min.py",
+            "blob_sha": "5270e4c53507864659d1ed9665cbc79478f3b373",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/mindeps/selectolax_min.py"
+          }
+        ]
+      },
+      {
+        "name": "Aoi pkgmin",
+        "repository": "myon-bioinformatics/Aoi",
+        "commit": "385e14a09ad56b69c57ec1cbae04c16299d387c5",
+        "capability": "Records an empty observed used surface for requests/tqdm/Bio in that study.",
+        "limit": "Stand-ins export no functions and raise on attribute use; they are NOT reusable HTTP/progress/sequence implementations.",
+        "evidence": [
+          {
+            "path": "pkgmin/LIMITS.md",
+            "blob_sha": "ea830ea0c4c6ed554f76063935acb37062cc291e",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/pkgmin/LIMITS.md"
+          },
+          {
+            "path": "pkgmin/requests_min.py",
+            "blob_sha": "0b884942b445a63fc473ac31f74e3fb7778bc6d1",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/pkgmin/requests_min.py"
+          },
+          {
+            "path": "pkgmin/tqdm_min.py",
+            "blob_sha": "c538481bf0375771850fa682e54ea2418a54fda4",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/pkgmin/tqdm_min.py"
+          },
+          {
+            "path": "pkgmin/biopython_min.py",
+            "blob_sha": "21d42f91067a51ca7da865c2c75eb247b1dffc0d",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/pkgmin/biopython_min.py"
+          }
+        ]
+      },
+      {
+        "name": "Aoi minimum distributions",
+        "repository": "myon-bioinformatics/Aoi",
+        "commit": "385e14a09ad56b69c57ec1cbae04c16299d387c5",
+        "capability": "Five existing stdlib API bundles for observation/cache/comparison/report/threshold slices.",
+        "limit": "Already-minimal slices are excluded; full analysis remains separate, and DRAgoWing browser plots still need Plotly.js.",
+        "evidence": [
+          {
+            "path": "docs/distributions.md",
+            "blob_sha": "7fbd01fb7065e48e751e11146478bafc9824d525",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/docs/distributions.md"
+          },
+          {
+            "path": "distributions.json",
+            "blob_sha": "55ad87b22c0658dc42acefc8169d85efa538c3aa",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/distributions.json"
+          }
+        ]
+      },
+      {
+        "name": "Aoi numerical subset",
+        "repository": "myon-bioinformatics/Aoi",
+        "commit": "385e14a09ad56b69c57ec1cbae04c16299d387c5",
+        "capability": "Existing explicit pure backend or optional native decomposition subset.",
+        "limit": "Not complete NumPy or ranking equivalence. Auto native discovery is not stdlib-only execution; OS/ABI closure remains separately reviewed.",
+        "evidence": [
+          {
+            "path": "shrink/numpy_min.py",
+            "blob_sha": "8dbd26bc91084cb94f34b19e65aa50a27c9fe0e8",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/shrink/numpy_min.py"
+          },
+          {
+            "path": "docs/contracts/numpy-min-acceptance-v2.md",
+            "blob_sha": "523c1bcaa0e98b7d41915705ff2149a89acb97e8",
+            "url": "https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/docs/contracts/numpy-min-acceptance-v2.md"
+          }
+        ]
+      }
+    ],
+    "minjs_status": "No mini.js/minjs implementation path identified in the 24 pinned Git trees or repository search. Existing min.js references describe distribution/minification, not a verified library API replacement. Node built-ins and existing wrappers remain available; wrappers can still require Python.",
+    "measurements": {
+      "status": "not_measured",
+      "before": {
+        "install_wall_seconds": null,
+        "download_bytes": null,
+        "installed_bytes": null,
+        "node_modules_bytes": null,
+        "locked_package_entries": null,
+        "build_wall_seconds": null,
+        "artifact_bytes": null,
+        "cold_start_seconds": null,
+        "peak_rss_bytes": null,
+        "parallel_workers": null,
+        "aggregate_peak_rss_bytes": null,
+        "correctness_result": null
+      },
+      "after": {
+        "install_wall_seconds": null,
+        "download_bytes": null,
+        "installed_bytes": null,
+        "node_modules_bytes": null,
+        "locked_package_entries": null,
+        "build_wall_seconds": null,
+        "artifact_bytes": null,
+        "cold_start_seconds": null,
+        "peak_rss_bytes": null,
+        "parallel_workers": null,
+        "aggregate_peak_rss_bytes": null,
+        "correctness_result": null
+      },
+      "environment": null,
+      "input_identity": null,
+      "commands": null,
+      "raw_results": null,
+      "note": "Template only. Static lock export validation is not install/build/runtime/parallel measurement."
+    },
+    "changes": {
+      "runtime_files_deleted": 0,
+      "runtime_lines_deleted": 0,
+      "runtime_functions_added": 0,
+      "tests_removed": 0,
+      "dependencies_changed": 0,
+      "child_repositories_changed": 0
+    },
+    "setup_guide": "docs/nano-environments.md",
+    "offline_export_validation": {
+      "tool": "uv 0.13.4",
+      "interpreter": "CPython 3.12.14",
+      "command": "uv export --offline --locked --no-python-downloads --no-default-groups [--group runtime for Aoi] --no-emit-project --format requirements.txt",
+      "installations": false,
+      "results": [
+        {
+          "repository": "myon-bioinformatics/Aoi",
+          "commit": "385e14a09ad56b69c57ec1cbae04c16299d387c5",
+          "input_blobs_unchanged": {
+            "pyproject.toml": "b6d3ab340ccbfc3c474b75694fb628802a1c111d",
+            "uv.lock": "5315fdbd828fea30001f9288fb5b033e0c682a94"
+          },
+          "export_succeeded": true,
+          "selected_group": "runtime"
+        },
+        {
+          "repository": "myon-bioinformatics/PythDRagoras",
+          "commit": "6985419e89b3c02415b92bcc271e892946feb41b",
+          "input_blobs_unchanged": {
+            "pyproject.toml": "d97c5d59efdb61b4820f26fc6df552a6d7638620",
+            "uv.lock": "0ac135831e5cd87dcf1d84035242252454a9a982"
+          },
+          "export_succeeded": true,
+          "selected_group": null
+        },
+        {
+          "repository": "myon-bioinformatics/SakAnalytics",
+          "commit": "f5fe38ffa2b955d6acf7ade0fdf345d1c0735849",
+          "input_blobs_unchanged": {
+            "pyproject.toml": "74f7472738a0e13372409961d5abae0f4d40d253",
+            "uv.lock": "8e499943783a5faffbbaaf8573a3a1eef0d63f2a"
+          },
+          "export_succeeded": true,
+          "selected_group": null
+        },
+        {
+          "repository": "myon-bioinformatics/mcp-toolcall-lab",
+          "commit": "06cdc8e4e14d50de45c8b8122a5ccff6911c3404",
+          "input_blobs_unchanged": {
+            "pyproject.toml": "4c3d89820b99fd11717ce0c454e0149226e8d8cd",
+            "uv.lock": "6fd1a4b3a927120d9684d5d3a4e3941de7b13415"
+          },
+          "export_succeeded": true,
+          "selected_group": null
+        }
+      ]
+    }
+  }
 }

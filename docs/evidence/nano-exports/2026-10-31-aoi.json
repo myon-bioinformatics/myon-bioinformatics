@@ -1,0 +1,90 @@
+{
+  "schema": "nano-export-comparison/1",
+  "observed_at": "2026-10-31T23:01:00Z",
+  "source_repository": "myon-bioinformatics/Aoi",
+  "inventory_source_commit": "385e14a09ad56b69c57ec1cbae04c16299d387c5",
+  "verified_input_blobs": {
+    "pyproject.toml": "b6d3ab340ccbfc3c474b75694fb628802a1c111d",
+    "uv.lock": "5315fdbd828fea30001f9288fb5b033e0c682a94"
+  },
+  "verification_scope": "two_manifest_blobs_only",
+  "checkout_head_verified": false,
+  "uv_version": "uv 0.13.4 (x86_64-unknown-linux-gnu)",
+  "python_version": "3.12.14",
+  "baseline": {
+    "selection": "reviewed default groups dev + runtime; no local project emitted",
+    "command_template": "uv --no-config export --project <two-file-directory> --offline --locked --no-python-downloads --python <current-python> --no-emit-project --no-header --format requirements.txt",
+    "requirements_sha256": "47b2571a299da0344409922a59a8340788feeeb7508237701559eddffe7debd0",
+    "exported_requirement_rows": 20,
+    "requirement_lines": [
+      "anyio==4.15.1 \\",
+      "certifi==2026.10.19 \\",
+      "colorama==0.4.6 ; sys_platform == 'win32' \\",
+      "coverage==7.16.2 \\",
+      "h11==0.16.0 \\",
+      "httpcore==1.0.9 \\",
+      "httpx==0.28.1 \\",
+      "idna==3.20 \\",
+      "iniconfig==2.3.1 \\",
+      "markdown==3.11.2 \\",
+      "numpy==2.4.6 ; python_full_version < '3.12' \\",
+      "numpy==2.5.4 ; python_full_version >= '3.12' \\",
+      "packaging==26.3 \\",
+      "pluggy==1.7.0 \\",
+      "polars==2.0.0 \\",
+      "polars-runtime-32==2.0.0 \\",
+      "pygments==2.21.0 \\",
+      "pytest==9.1.1 \\",
+      "selectolax==1.0.1 \\",
+      "typing-extensions==4.16.0 ; python_full_version < '3.15' \\"
+    ]
+  },
+  "candidate": {
+    "selection": "--no-default-groups --group runtime; no local project emitted",
+    "command_template": "python -S tools/nano_export.py --source <two-file-directory> --output-parent <existing-separate-directory>",
+    "requirements_sha256": "864fa904795ad9179c83c3386d9992d028574c94cd00ce4f88b01203bec80dca",
+    "exported_requirement_rows": 12,
+    "requirement_lines": [
+      "anyio==4.15.1 \\",
+      "certifi==2026.10.19 \\",
+      "h11==0.16.0 \\",
+      "httpcore==1.0.9 \\",
+      "httpx==0.28.1 \\",
+      "idna==3.20 \\",
+      "markdown==3.11.2 \\",
+      "numpy==2.4.6 ; python_full_version < '3.12' \\",
+      "numpy==2.5.4 ; python_full_version >= '3.12' \\",
+      "polars==2.0.0 \\",
+      "polars-runtime-32==2.0.0 \\",
+      "typing-extensions==4.16.0 ; python_full_version < '3.15' \\"
+    ]
+  },
+  "dev_only_names_omitted": [
+    "colorama",
+    "coverage",
+    "iniconfig",
+    "packaging",
+    "pluggy",
+    "pygments",
+    "pytest",
+    "selectolax"
+  ],
+  "parallel_isolation": {
+    "invocations": 2,
+    "distinct_output_directories": true,
+    "matching_requirements_sha256": true,
+    "both_completed_receipts": true,
+    "throughput_measured": false
+  },
+  "installations_performed": false,
+  "workloads_executed": false,
+  "installed_package_count": null,
+  "installed_bytes": null,
+  "install_seconds": null,
+  "build_seconds": null,
+  "limitations": [
+    "Requirement rows retain Python/platform markers, including two NumPy versions; counts are not installed packages.",
+    "No pip install, native loading, browser/model/workload execution, build or performance measurement.",
+    "Only Aoi runtime selection is implemented; full dev/oracle environments and all tests remain unchanged."
+  ]
+}

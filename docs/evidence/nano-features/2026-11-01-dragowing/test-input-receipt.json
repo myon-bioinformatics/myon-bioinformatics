@@ -1,0 +1,9 @@
+{
+  "repository": "myon-bioinformatics/Aoi",
+  "revision": "385e14a09ad56b69c57ec1cbae04c16299d387c5",
+  "path": "aoi_paths.py",
+  "git_blob": "92676ff20301e7e54723b82e47461ea5d1a9c81e",
+  "sha256": "183b5a04e74dceb3d302abe50470f47b2fb00299f8a29473a5dc9018aecd6854",
+  "bytes": 5434,
+  "purpose": "unchanged offline forms test layout helper; added after timing, not part of measured HTML dependency environment"
+}

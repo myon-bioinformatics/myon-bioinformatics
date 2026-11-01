@@ -1,0 +1,256 @@
+{
+  "repository": "myon-bioinformatics/mcp-toolcall-lab",
+  "revision": "06cdc8e4e14d50de45c8b8122a5ccff6911c3404",
+  "tree_truncated": false,
+  "scope": "Partial exact source slice, not complete checkout; no placeholder files. Vendored markdown is lazy and not used by selected deterministic calls.",
+  "files": [
+    {
+      "repository_path": "src/mcp_toolcall_lab/__init__.py",
+      "local_path": "runtime-source/src/mcp_toolcall_lab/__init__.py",
+      "role": "runtime_client_import",
+      "git_blob": "588699ca0e9564aee9d9de9093eca027213dab13",
+      "bytes": 613,
+      "sha256": "3cc7a910eca6a3cbd21c55477d84fd44f1cd8513f5a16ec986fb2d46b9a3e4f8"
+    },
+    {
+      "repository_path": "src/mcp_toolcall_lab/chat_sim.py",
+      "local_path": "runtime-source/src/mcp_toolcall_lab/chat_sim.py",
+      "role": "runtime_client_import",
+      "git_blob": "f483d77ceb012469f0f4ff7c69d2277d4742d802",
+      "bytes": 5749,
+      "sha256": "8bce22e8d063ac65cc1b3002c519e19a6ac268a137b1d3cbe1e1191366e98992"
+    },
+    {
+      "repository_path": "src/mcp_toolcall_lab/record.py",
+      "local_path": "runtime-source/src/mcp_toolcall_lab/record.py",
+      "role": "runtime_client_import",
+      "git_blob": "a49c9e6ed64e2b1203a773f3b76de945d1a5570f",
+      "bytes": 6831,
+      "sha256": "dc9057608233ccb369c357dc9e7e9a7496e1fd7fff0d2df2d09e92338a8c3d57"
+    },
+    {
+      "repository_path": "src/mcp_toolcall_lab/mock/__init__.py",
+      "local_path": "runtime-source/src/mcp_toolcall_lab/mock/__init__.py",
+      "role": "runtime_client_import",
+      "git_blob": "ab3443c8394d4857d9d88241c68aaf3cbac6a01d",
+      "bytes": 771,
+      "sha256": "deb4544360a09ffbc906cbf3d9678dbf1896804f25748cd8127c827cfb9dcbc4"
+    },
+    {
+      "repository_path": "src/mcp_toolcall_lab/mock/common.py",
+      "local_path": "runtime-source/src/mcp_toolcall_lab/mock/common.py",
+      "role": "runtime_client_import",
+      "git_blob": "a07a5c196d7b85dc166c316b6034c9cf9638730d",
+      "bytes": 2694,
+      "sha256": "cc17a4a9590569011dc609aac6fb74f1b755e5b5a5b2d19e7fc46de3064b0e27"
+    },
+    {
+      "repository_path": "src/mcp_toolcall_lab/catalog.py",
+      "local_path": "runtime-source/src/mcp_toolcall_lab/catalog.py",
+      "role": "runtime_client_import",
+      "git_blob": "dfafba180a2b357548aafc0b788430198cff6ada",
+      "bytes": 5720,
+      "sha256": "5add45fd0f496d571c89efff3395afb9bd7235b08ea2b46b8cc3760b80952abd"
+    },
+    {
+      "repository_path": "src/mcp_toolcall_lab/wikipedia_tool.py",
+      "local_path": "runtime-source/src/mcp_toolcall_lab/wikipedia_tool.py",
+      "role": "runtime_client_import",
+      "git_blob": "f945fca16c14d5c9be3a565b2b9b9164f3ac8336",
+      "bytes": 19925,
+      "sha256": "993076aad8d2390794719105391e09787c8fb636525f2af7a32cf7a97ad089b9"
+    },
+    {
+      "repository_path": "src/mcp_toolcall_lab/markdown_lib.py",
+      "local_path": "runtime-source/src/mcp_toolcall_lab/markdown_lib.py",
+      "role": "runtime_client_import",
+      "git_blob": "99e6992ff05c81ff38072e18b94be8b1b5152032",
+      "bytes": 10856,
+      "sha256": "728d34035fe272b0362fa074aa2a66ce223ccf696bf5a3534879ed27167b978a"
+    },
+    {
+      "repository_path": "src/mcp_toolcall_lab/pixiv_dictionary_tool.py",
+      "local_path": "runtime-source/src/mcp_toolcall_lab/pixiv_dictionary_tool.py",
+      "role": "runtime_client_import",
+      "git_blob": "d5b32191df9d3924438db855bbb6fd0eebdd7664",
+      "bytes": 6252,
+      "sha256": "0c0bdd5c15d954c5f4d8da9e579432b9a9f42a4d0319ae4daeee51367a9b6fe3"
+    },
+    {
+      "repository_path": "src/mcp_toolcall_lab/pixiv_markup_normalize.py",
+      "local_path": "runtime-source/src/mcp_toolcall_lab/pixiv_markup_normalize.py",
+      "role": "runtime_client_import",
+      "git_blob": "9c358fd6c7fb81ae3476551a1a05977e62aab000",
+      "bytes": 5390,
+      "sha256": "3bfb42e6c7d77d4dbbf229b91dc65f41b9d3eb3a654cc15dff861f5c16c0dc93"
+    },
+    {
+      "repository_path": "src/mcp_toolcall_lab/server.py",
+      "local_path": "runtime-source/src/mcp_toolcall_lab/server.py",
+      "role": "separate_server_fixture",
+      "git_blob": "75086235978da667eb782c236c92dbb62d6867f9",
+      "bytes": 10968,
+      "sha256": "6a9eac85bc7e4e5617d8b804b00353ed0bfe0e0090aaca204516d21190037260"
+    },
+    {
+      "repository_path": "README.md",
+      "local_path": "source/README.md",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "0a478523fcbf30b5fb40b19de29afb0909d0fd14",
+      "bytes": 23939,
+      "sha256": "9c20b6603202c2c8cd738e3fb98f22f5bb0b156a5e1fb9d68f0ce8ec03f50928"
+    },
+    {
+      "repository_path": "LICENSE",
+      "local_path": "source/LICENSE",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
+      "bytes": 1061,
+      "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
+    },
+    {
+      "repository_path": "pyproject.toml",
+      "local_path": "source/pyproject.toml",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "4c3d89820b99fd11717ce0c454e0149226e8d8cd",
+      "bytes": 1902,
+      "sha256": "5345fc4f17c2ac78997bb180d90cd76d04c9b206b4cb7d6b722a268c76ee0289"
+    },
+    {
+      "repository_path": "uv.lock",
+      "local_path": "source/uv.lock",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "6fd1a4b3a927120d9684d5d3a4e3941de7b13415",
+      "bytes": 429061,
+      "sha256": "2b9436eb92c10b128dc1d2c4627904585d231491a4d2b280fe1b171fee97fff4"
+    },
+    {
+      "repository_path": "openwebui_mcp_mock.py",
+      "local_path": "source/openwebui_mcp_mock.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "ae23cf065167a5f5ffef33cb53e1e89a1a239ea6",
+      "bytes": 68090,
+      "sha256": "b64f6d5be2884b6edb156b77e2654f8aeb48961adc624dfd3fed60c859a1111a"
+    },
+    {
+      "repository_path": "librechat_mcp_mock.py",
+      "local_path": "source/librechat_mcp_mock.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "b835f1c180445f4f4530b0b153fdb0fcd796b80d",
+      "bytes": 68089,
+      "sha256": "843126109e812c100acaeddc60cbd0093963be2c9c77f6e1873a8d176d4e2303"
+    },
+    {
+      "repository_path": "src/mcp_toolcall_lab/export.py",
+      "local_path": "source/src/mcp_toolcall_lab/export.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "7ecb6d7a88a356359262734c2e006934ec68ac54",
+      "bytes": 3952,
+      "sha256": "57d2fde9798fa2df99acd3c6046239bf71276fd2e40848367cc105581a4ea28f"
+    },
+    {
+      "repository_path": "tests/__init__.py",
+      "local_path": "source/tests/__init__.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "9b2e2a2a3d02ffd425536c6b2b3361c62cfbb83f",
+      "bytes": 83,
+      "sha256": "7f7aa3205591a4e73a55eda3518d8ed5b72436a09a78165fc5a09ac13fa5c812"
+    },
+    {
+      "repository_path": "tests/conftest.py",
+      "local_path": "source/tests/conftest.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "c60187be336bb328e32b97254fb3c34c1ac42318",
+      "bytes": 604,
+      "sha256": "647ab8405c2cea2618e04b6cd3bee9668341d86df53eca01f0e55552ee575c76"
+    },
+    {
+      "repository_path": "tests/test_trace.py",
+      "local_path": "source/tests/test_trace.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "7be3c388f32a474b326b66d423f80774a79930d9",
+      "bytes": 5253,
+      "sha256": "064550aefac8fd9ee5e75c6ba7323209f196953bd20aa3fe80308803759761b9"
+    },
+    {
+      "repository_path": "tests/test_sdk_transport_boundaries.py",
+      "local_path": "source/tests/test_sdk_transport_boundaries.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "3339d6b0c929a0d87dc8d715357442de66f1ef6e",
+      "bytes": 9762,
+      "sha256": "7ef6f438957524d3dcf1434e57c55d8c09732e783b199217689bdd0bcc1cd369"
+    },
+    {
+      "repository_path": "tests/test_mock_common.py",
+      "local_path": "source/tests/test_mock_common.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "d15460733d90309a207908117b1a9ed0281faaa7",
+      "bytes": 2255,
+      "sha256": "8c35551c37f3707b847583d0f2153fb5c78c8769b526edd5c5901d5e9d60cd08"
+    },
+    {
+      "repository_path": "tests/test_catalog.py",
+      "local_path": "source/tests/test_catalog.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "271718ea84f6d10c216f7a448d3bf1aa4c01d52e",
+      "bytes": 3479,
+      "sha256": "413ce7f9ed21a1819fc332b870bb949aeab1f0718c43890b9665673d77d85983"
+    },
+    {
+      "repository_path": "tests/test_record.py",
+      "local_path": "source/tests/test_record.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "b191f62f472940d2efd9dc1a06588e64d757f39c",
+      "bytes": 7486,
+      "sha256": "a6cd03504266d5a8be3ff8478736d37971fce32908bd93df62ef0c951e933fb2"
+    },
+    {
+      "repository_path": "tests/test_streamable_http_protocol.py",
+      "local_path": "source/tests/test_streamable_http_protocol.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "a24f478cfab477c6a4f20d589e262a883a3c64ed",
+      "bytes": 8463,
+      "sha256": "0bbf363014358b00d27ba99959671bb246414f7a88154fcff14f1f4cdbc106f8"
+    },
+    {
+      "repository_path": "tests/test_schema.py",
+      "local_path": "source/tests/test_schema.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "ac8048b9779c48c30c36e5e367c160ba7e2d5137",
+      "bytes": 6732,
+      "sha256": "25f8b264f3ecff160f615c2d6f0f6e9f5022fa9078fa9ed36a65e76ef37ab0b1"
+    },
+    {
+      "repository_path": "tests/test_httpx_protocol.py",
+      "local_path": "source/tests/test_httpx_protocol.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "6a4ffb978b2edae4106e574d8e238b97278a7772",
+      "bytes": 7954,
+      "sha256": "8ef2d7c1ca90e4e0c829a5ba921a1327a38855a16616832899df4d3e5a7f8b0c"
+    },
+    {
+      "repository_path": "tests/test_server.py",
+      "local_path": "source/tests/test_server.py",
+      "role": "reference_or_future_unchanged_test",
+      "git_blob": "e6fbb336f818552eb789b1dced5b457c2262f786",
+      "bytes": 2299,
+      "sha256": "e479907137a1e15f7a2b89e146656173b4bb9c540984bf3e42313fc52f3190a3"
+    },
+    {
+      "repository_path": null,
+      "local_path": "requirements-client.txt",
+      "role": "offline_lock_export_client",
+      "git_blob": null,
+      "bytes": 33778,
+      "sha256": "fa419ca86125d9fbf8f2096e693f990f094467ac31c00a626f616b1b9c83c839"
+    },
+    {
+      "repository_path": null,
+      "local_path": "requirements-server.txt",
+      "role": "offline_lock_export_default",
+      "git_blob": null,
+      "bytes": 60477,
+      "sha256": "c3421afc2f37b20dd7289f414187e4ffa27f1988db9c52634b169aed52472d4e"
+    }
+  ]
+}

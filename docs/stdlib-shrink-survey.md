@@ -1,5 +1,22 @@
 # Stdlib shrink survey
 
+## Current screening (2026-10-31)
+
+The additive `current_snapshot` in [stdlib-shrink-queue.json](stdlib-shrink-queue.json)
+screens the 24 public, non-archived repositories at immutable default-branch
+commits. Read [nano environments](nano-environments.md) for feature boundaries,
+minimal setup recipes, test preservation and explicitly unmeasured costs.
+Already-stdlib cores are excluded from deeper reduction work, not from tests.
+This snapshot is advisory: no dependency, adopted source pin, CI or Pages change.
+
+## Historical survey (2026-10-20)
+
+Everything below, and the JSON's original top-level `queue` and `inventory`, is
+historical evidence at the named commits, **not a current handoff or instruction
+to resolve latest packages**. Later implementations and removals are recorded in
+`current_snapshot`; do not repeat them. In particular, the old SheetJS and
+Pillow-required descriptions below are not statements about current main.
+
 Four production dependencies are ready to hand to parallel agents, one item each. The machine-readable list is [stdlib-shrink-queue.json](stdlib-shrink-queue.json). Everything else in the public account is a test harness, an optional accelerator that already has a stdlib path, a native or framework library, a vendored copy of an archived template, or work already owned inside Aoi.
 
 | Priority | Repo | Package | Difficulty | Approach |
