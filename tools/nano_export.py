@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Export the reviewed Aoi research-runtime lock subset; never install or execute it.
+"""Export a reviewed feature's locked requirements; never install or execute it.
 
 Python 3.11+ stdlib. The two input blobs, not a complete checkout or ancestry,
-are verified against the existing parent inventory. uv is a trusted local tool.
+are verified against explicit source pins and the existing parent inventory.
+uv is a trusted local tool.
 """
 from __future__ import annotations
 
@@ -24,6 +25,14 @@ REPOSITORY = "myon-bioinformatics/Aoi"
 LIMIT = 2 * 1024 * 1024
 ROOT_PACKAGES = {"polars", "numpy", "httpx", "markdown"}
 DEV_PACKAGES = {"pytest", "coverage", "selectolax"}
+DRAGOWING_PIN = {
+    "repository": "myon-bioinformatics/DRAgoWing",
+    "commit": "be2185b142aebcbedee97688fe08ee0092179472",
+    "input_blobs_unchanged": {
+        "pyproject.toml": "ca7cd1f307080d4c369a5a14031ee2cb4f93f14d",
+        "uv.lock": "2788b84741af5ec04d59e5074e4010e067495654",
+    },
+}
 
 
 def _read(path):
@@ -92,7 +101,40 @@ def _run(argv, directory, env, destination, timeout):
     return _read(destination)
 
 
-def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY):
+def _dragowing_inputs(source, inventory):
+    """One reviewed Markdown-only recipe, not a dependency resolver."""
+    catalog = _read(inventory)
+    snapshot = json.loads(catalog)["current_snapshot"]
+    entries = [r for r in snapshot["repositories"]
+               if r["repository"] == DRAGOWING_PIN["repository"]]
+    if snapshot["schema"] != "nano-screening/1" or len(entries) != 1:
+        raise ValueError("expected one reviewed DRAgoWing record")
+    entry = entries[0]
+    if (entry["commit"] != DRAGOWING_PIN["commit"] or entry["private"] is not False
+            or entry["visibility"] != "public" or entry["archived"] is not False):
+        raise ValueError("unsupported DRAgoWing source identity")
+    data = {name: _read(source / name)
+            for name in DRAGOWING_PIN["input_blobs_unchanged"]}
+    if any(_blob(data[name]) != digest
+           for name, digest in DRAGOWING_PIN["input_blobs_unchanged"].items()):
+        raise ValueError("reviewed DRAgoWing input blob mismatch")
+    project = tomllib.loads(data["pyproject.toml"].decode("utf-8"))
+    lock = tomllib.loads(data["uv.lock"].decode("utf-8"))
+    if (project["project"]["name"] != "dragowing" or project["tool"]["uv"] != {"package": False}
+            or set(project["dependency-groups"]) != {"dev"}
+            or lock["version"] != 1 or lock["revision"] != 5):
+        raise ValueError("unsupported DRAgoWing project/lock structure")
+    own = [p for p in lock["package"] if p["name"] == "dragowing"]
+    if len(own) != 1 or own[0]["source"] != {"virtual": "."}:
+        raise ValueError("unsupported DRAgoWing local project")
+    for package in lock["package"]:
+        if package["name"] != "dragowing" and package["source"] != {"registry": "https://pypi.org/simple"}:
+            raise ValueError("path, Git or workspace dependencies are not supported")
+    return data, DRAGOWING_PIN, hashlib.sha256(catalog).hexdigest()
+
+
+def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY,
+            feature="aoi-research-runtime"):
     """Return a completed artifact directory; remove this invocation's output on failure."""
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("timeout must be finite and positive")
@@ -100,12 +142,20 @@ def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY):
     parent = Path(output_parent).resolve(strict=True)
     if not source.is_dir() or not parent.is_dir() or parent == source or source in parent.parents:
         raise ValueError("output parent must be an existing directory outside the input directory")
-    data, pin, inventory_sha = _inputs(source, Path(inventory))
+    if feature == "aoi-research-runtime":
+        data, pin, inventory_sha = _inputs(source, Path(inventory))
+        repository, groups, pruned = REPOSITORY, ["runtime"], []
+    elif feature == "dragowing-html":
+        data, pin, inventory_sha = _dragowing_inputs(source, Path(inventory))
+        repository, groups, pruned = DRAGOWING_PIN["repository"], [], ["numpy", "polars"]
+    else:
+        raise ValueError("unsupported named feature")
     executable = shutil.which(uv)
     if executable is None:
         raise ValueError("local uv executable not found")
     executable = str(Path(executable).resolve(strict=True))
-    work = Path(tempfile.mkdtemp(prefix="aoi-runtime-", dir=parent))
+    prefix = "aoi-runtime-" if feature == "aoi-research-runtime" else "dragowing-html-"
+    work = Path(tempfile.mkdtemp(prefix=prefix, dir=parent))
     try:
         stage = work / "inputs"
         stage.mkdir(mode=0o700)
@@ -123,8 +173,12 @@ def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY):
         pending = work / ".requirements.tmp"
         argv = [executable, "--no-config", "export", "--project", str(stage),
                 "--offline", "--locked", "--no-python-downloads", "--python", sys.executable,
-                "--no-default-groups", "--group", "runtime", "--no-emit-project",
+                "--no-default-groups", "--no-emit-project",
                 "--no-header", "--format", "requirements.txt"]
+        for group in groups:
+            argv += ["--group", group]
+        for package in pruned:
+            argv += ["--prune", package]
         exported = _run(argv, work, env, pending, timeout)
         text = exported.decode("utf-8")
         for line in text.splitlines():
@@ -133,24 +187,28 @@ def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY):
                     and not re.match(r"^[A-Za-z0-9][A-Za-z0-9_.-]*==", stripped)):
                 raise ValueError("non-registry requirement emitted")
         names = re.findall(r"^([A-Za-z0-9][A-Za-z0-9_.-]*)==", text, re.MULTILINE)
-        if not ROOT_PACKAGES.issubset(names) or DEV_PACKAGES.intersection(names):
+        if feature == "dragowing-html" and names != ["markdown"]:
+            raise ValueError("export does not match the Markdown-only selection")
+        if feature == "aoi-research-runtime" and (not ROOT_PACKAGES.issubset(names) or DEV_PACKAGES.intersection(names)):
             raise ValueError("export does not match the runtime-only selection")
         # Do not publish success if either source or staged inputs changed.
         for name, content in data.items():
             if _read(source / name) != content or _read(stage / name) != content:
                 raise ValueError("input changed during export: " + name)
         receipt = {
-            "schema": "nano-locked-export/1", "recipe": "aoi-research-runtime",
-            "source_repository": REPOSITORY, "inventory_source_commit": pin["commit"],
+            "schema": "nano-locked-export/1", "recipe": feature,
+            "source_repository": repository, "inventory_source_commit": pin["commit"],
             "inventory_sha256": inventory_sha, "verified_input_blobs": pin["input_blobs_unchanged"],
             "verification_scope": "two_manifest_blobs_only", "checkout_head_verified": False,
             "uv_version": version, "python_version": sys.version.split()[0],
-            "groups": ["runtime"], "default_groups": False, "project_emitted": False,
+            "groups": groups, "default_groups": False, "project_emitted": False,
             "requirements_sha256": hashlib.sha256(exported).hexdigest(),
             "requirements_bytes": len(exported), "exported_requirement_rows": len(names),
             "exported_package_names": sorted(set(names)), "installations_performed": False,
             "workloads_executed": False, "installed_bytes": None, "install_seconds": None,
         }
+        if pruned:
+            receipt["pruned_packages"] = pruned
         (work / ".receipt.tmp").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
         version_file.unlink()
         shutil.rmtree(work / "cache", ignore_errors=True)
@@ -164,12 +222,14 @@ def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", required=True, type=Path, help="directory containing the two reviewed Aoi inputs")
+    parser.add_argument("--source", required=True, type=Path, help="directory containing the two reviewed inputs")
+    parser.add_argument("--feature", choices=("aoi-research-runtime", "dragowing-html"),
+                        default="aoi-research-runtime", help="explicit reviewed feature; Aoi remains the default")
     parser.add_argument("--output-parent", required=True, type=Path, help="existing directory outside the input directory")
     parser.add_argument("--uv", default="uv", help="trusted installed uv executable (never downloaded)")
     args = parser.parse_args(argv)
     try:
-        result = prepare(args.source, args.output_parent, uv=args.uv)
+        result = prepare(args.source, args.output_parent, uv=args.uv, feature=args.feature)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
         print("nano-export-error: " + str(exc), file=sys.stderr)
         return 2

@@ -16,8 +16,8 @@ For example, Ironmate's lazy PDF-preview imports are optional feature runtime
 dependencies even though its manifest lists them in `dev`.
 
 The inventory stage added no runtime implementation or deletion. Its snapshot
-counts remain historical. The follow-up adds one parent preparation tool,
-`tools/nano_export.py`, not a new application/library replacement. No dependency
+counts remain historical. Follow-ups add explicit parent preparation tools,
+`tools/nano_export.py` and `tools/nano_node.py`, not new application/library replacements. No dependency
 upgrade/removal, adopted pin, child change, CI/Pages setting or test exception is
 introduced. Application/runtime files and lines deleted: **0/0**; application
 functions added: **0**; tests removed: **0**.
@@ -82,6 +82,16 @@ Changing delivery from pip/npm to a downloaded wheel/CDN is not elimination.
 
 ## Reproducible preparation without changing a repository
 
+### Measured cross-repository features (2026-11-01)
+
+The [two feature environments](nano-feature-environments.md) extend preparation
+past Aoi: complete DRAgoWing HTML generation with its existing explicit stdlib
+overlap backend, and Ironmate PPTX generation without the XLSX engine.
+Existing versions were installed in separate local environments and outputs
+compared. These actual installed counts/bytes must not be confused with the
+Aoi **export-row** comparison below or the historical inventory's null metrics.
+The old runtime-profile schema and planning-only evidence remain unchanged.
+
 ### Executable Aoi runtime-only preparer (follow-up)
 
 `tools/nano_export.py` operationalizes one package-bearing selection: Aoi's
@@ -129,7 +139,7 @@ test -s "$NANO_EXPORT/receipt.json" && test -s "$NANO_EXPORT/requirements.txt" |
   --only-binary=:all: -r "$NANO_EXPORT/requirements.txt"
 ```
 
-This installation was **not run** and still needs compatible wheels. The manual
+This Aoi installation was **not run** and still needs compatible wheels. The manual
 recipe below instead creates `FEATURE_WORK/runtime.txt`; its variables and
 filenames are not the helper's output contract.
 
@@ -140,7 +150,7 @@ pygments, pytest and selectolax. Both NumPy marker branches remain; these are
 **not installed-package counts**. Two simultaneous real offline helper calls
 completed in distinct directories with the same requirements digest, without
 changing source files. This checks output isolation, **not parallel speedup**.
-No installed bytes, install/build time or runtime performance was measured.
+No Aoi installed bytes, install/build time or runtime performance was measured.
 
 ### Manual recipes and remaining features
 
@@ -236,7 +246,9 @@ exports. See uv's [group/lock semantics](https://docs.astral.sh/uv/concepts/proj
 
 ### 3. Reuse existing reduced-dependency feature switches
 
-These are existing entrypoints, not new installation or parity claims:
+These are existing entrypoints recorded at inventory time, not themselves new
+installation or parity claims. The [DRA HTML follow-up](nano-feature-environments.md)
+now separately measures one complete supported feature path:
 
 | Feature | Existing selection | Boundary |
 |---|---|---|
@@ -247,10 +259,14 @@ These are existing entrypoints, not new installation or parity claims:
 
 ### 4. npm, apt and Docker remain feature-specific
 
-Ironmate's current locked npm runtime has ExcelJS and PptxGenJS. Its existing
+Ironmate's unchanged locked npm runtime has ExcelJS and PptxGenJS. Its existing
 `npm ci --ignore-scripts` installs that declared closure; the manifest does not
-currently split the two into separately installable features. Do not hand-edit
-the lock or claim only one engine was installed. Browser-test-kit's npm mirror
+split the two into separately installable features. The initial inventory did
+not install either closure. The [2026-11-01 parent preparer and measurement](nano-feature-environments.md)
+now uses official npm's verified lock-only projection in a separate workdir to
+install PPTX alone, without editing the child manifest/lock. Do not hand-edit
+the lock or infer a one-engine install from the original command.
+Browser-test-kit's npm mirror
 dependencies are independent validation engines, not disposable runtime bloat.
 Use its existing locked browserless test recipe rather than downloading engines
 for offline utilities. Existing unpinned `npm i --no-save` examples (such as
@@ -290,7 +306,10 @@ costs. Compare identical inputs and full outputs/errors; retain raw logs and
 the measured regression, even if the candidate is worse. Shared-page memory
 and cached downloads must not be counted as independent-worker savings.
 
-Neither install/build savings nor concurrent throughput has been measured.
+At the 2026-10-31 inventory stage, neither install/build savings nor concurrent
+throughput had been measured. The [two selected follow-ups](nano-feature-environments.md)
+now record actual dependency bytes, install samples and fixed-volume parallel
+workloads separately; the historical JSON null template is not overwritten.
 All test matrices, browser engines, independent oracles and error cases stay.
 **No cross-engine comparison is surrendered by this PR**; an old Ironmate
 instruction is not a new exception for this work.
@@ -300,13 +319,16 @@ instruction is not a new exception for this work.
 ```sh
 python -S -m unittest discover -s tests -p 'test_nano_inventory.py' -v
 python -S -m unittest discover -s tests -p 'test_nano_export.py' -v
+python -S -m unittest discover -s tests -p 'test_nano_dragowing.py' -v
+python -S -m unittest discover -s tests -p 'test_nano_node.py' -v
 python -S -m unittest discover -s tests -p 'test_runtime_plan.py' -v
 python -S tests/stdlib_runtime_smoke.py
 ```
 
 The inventory checks validate public-scope metadata, immutable source-link shape
 and absence of invented execution evidence. The preparer tests use synthetic
-inputs/fake uv to check failure cleanup, exact selection, input mutation and
-parallel output independence. Neither suite fetches sources or executes the
-listed features. The separate evidence above records real offline uv exports.
-The existing Python workflow discovers the added test; no workflow is modified.
+inputs/fake uv/npm to check failure cleanup, exact selection, input mutation and
+parallel output independence. These suites do not fetch sources or execute the
+listed features. Separate evidence records real offline exports and the two
+explicitly selected install/workload comparisons. The existing Python workflow
+discovers the added tests; no workflow is modified.

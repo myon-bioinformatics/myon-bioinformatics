@@ -1,0 +1,35 @@
+{
+  "fixtures": {
+    "edge257": {
+      "propositions.jsonl": {
+        "bytes": 253,
+        "sha256": "121b530fb4da945f2da208a0e6c1a6ff9b1c928038be81e396a791a378654758"
+      },
+      "season.jsonl": {
+        "bytes": 39131,
+        "sha256": "f70623c2d8b624ed65a4f2c99ce2da77e4208c5b9862ebd6911284c582de7bb7"
+      }
+    },
+    "one": {
+      "propositions.jsonl": {
+        "bytes": 253,
+        "sha256": "121b530fb4da945f2da208a0e6c1a6ff9b1c928038be81e396a791a378654758"
+      },
+      "season.jsonl": {
+        "bytes": 155,
+        "sha256": "2ecde3e5c1ad7d50598ad875127572727a99be85b87cf98aeba20f6c4172e1fa"
+      }
+    },
+    "unsupported": {
+      "propositions.jsonl": {
+        "bytes": 253,
+        "sha256": "121b530fb4da945f2da208a0e6c1a6ff9b1c928038be81e396a791a378654758"
+      },
+      "season.jsonl": {
+        "bytes": 154,
+        "sha256": "8ff0eca4ed69dfc085dfe3ca32ae72873597c23d54dc83a64844d62268e3861f"
+      }
+    }
+  },
+  "generator": "benchmark_dra_html.py"
+}

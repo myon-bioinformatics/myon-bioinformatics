@@ -1,0 +1,14 @@
+{
+  "schema": "nano-evidence-bundle/1",
+  "sha256": {
+    "evidence.json": "cba1dc2ec9ee770af10646466c9589933e8a42949178fcf792a2f0fc622ee6d5",
+    "measure_node.py": "419ce6f618ffc7837c2b5aa293bfda3c66ec7de3e97f294207fcc435476bf159",
+    "measure_node_offline.py": "827002b16478bc379bcce250220eae64ec681d230d9e38bd76dd370f90df23ad",
+    "run_pptx_fixture.py": "3b169e4e10a1b41599410c744de66aba08968d60c01b77604f93c8b15d2c08ab",
+    "REPRODUCE.md": "af9f8f076f42ca8b29c1a2cdc4913c39258363fef12bfd0452a2d4946ea71fe4"
+  },
+  "parent_files_sha256": {
+    "tools/nano_node.py": "9eb61b9ed43f1aa7e3e7d5dc431757dd6bcf8f945b46adfe48716140c6824337",
+    "tests/test_nano_node.py": "01e68a25e169a92d2808e7e78c84edd4bd0eede5a3f0b5472ac6612b2560637f"
+  }
+}
