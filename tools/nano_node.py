@@ -64,6 +64,17 @@ BTK_EXPECTED_PATHS = frozenset("node_modules/" + path for path in (
     "linkedom", "linkify-it", "markdown-it", "marked", "mdurl", "nth-check",
     "playwright", "playwright-core", "punycode.js", "uc.micro", "uhyphen",
 ))
+MARKDOWN_FEATURE = "markdown-toml"
+MARKDOWN_REPOSITORY = "myon-bioinformatics/markdown"
+MARKDOWN_COMMIT = "6ffef17031cf10edbeda71718c44ad739735f87e"
+# --source points to tests/mirror, not the repository root. This selector is
+# dependency-only: it never stages or chooses application/test source files.
+MARKDOWN_SOURCE_BLOBS = {
+    "package.json": "96b2213e31ecb3033543142d22705b8b833d07ad",
+    "package-lock.json": "2d97cdb6c5d5e809ab94500c9903c88cf54d1c4d",
+}
+MARKDOWN_SELECTED = {"smol-toml": "1.9.1"}
+MARKDOWN_EXPECTED_PATHS = frozenset({"node_modules/smol-toml"})
 UNSUPPORTED = frozenset(("peerDependencies", "peerDependenciesMeta",
     "optionalDependencies", "hasInstallScript", "link", "inBundle", "dev", "optional"))
 
@@ -85,8 +96,11 @@ def read_snapshot(source: Path, *, blobs=None) -> dict[str, bytes]:
         data = path.read_bytes()
         if len(data) > MAX_INPUT_BYTES:
             raise ValueError(f"source grew beyond the size limit: {name}")
-        if git_blob(data) != expected:
-            raise ValueError(f"source Git blob mismatch: {name}")
+        actual = git_blob(data)
+        if actual != expected:
+            raise ValueError(f"source Git blob mismatch: {name}; expected {expected}, got {actual}. "
+                             "Review the changed inputs and coordinate a fixed parent selector-pin update; "
+                             "do not disable this guard.")
         result[name] = data
     return result
 
@@ -98,6 +112,12 @@ def validate_original(manifest: dict, lock: dict, *, feature="ironmate-pptx") ->
     elif feature == BTK_FEATURE:
         key, expected = "devDependencies", {**BTK_SELECTED, "exceljs": "^4.4.0"}
         overrides = {"uuid": "^14.0.3", "minimatch": "^11.0.1"}
+    elif feature == MARKDOWN_FEATURE:
+        key, expected = "devDependencies", {
+            "linkedom": "0.18.13", "markdown-it": "15.0.3", "marked": "18.1.1",
+            "string-width": "8.3.0", **MARKDOWN_SELECTED,
+        }
+        overrides = None
     else:
         raise ValueError("unsupported named feature")
     if manifest.get(key) != expected:
@@ -112,9 +132,9 @@ def validate_original(manifest: dict, lock: dict, *, feature="ironmate-pptx") ->
         if not path:
             continue
         allowed = set()
-        if feature == BTK_FEATURE:
+        if feature in (BTK_FEATURE, MARKDOWN_FEATURE):
             if entry.get("dev") is not True:
-                raise ValueError(f"unexpected BTK development marker: {path}")
+                raise ValueError(f"unexpected development marker: {path}")
             allowed.add("dev")
             # One reviewed optional peer, NOT an allow-all peer resolver.
             # Exact input blobs and full retained record equality remain required.
@@ -138,6 +158,8 @@ def validate_projection(original: dict, projected: dict, *, feature="ironmate-pp
         paths, name, key, selected = EXPECTED_PATHS, "Ironmate", "dependencies", {"pptxgenjs": "4.0.1"}
     elif feature == BTK_FEATURE:
         paths, name, key, selected = BTK_EXPECTED_PATHS, "browser-test-kit", "devDependencies", BTK_SELECTED
+    elif feature == MARKDOWN_FEATURE:
+        paths, name, key, selected = MARKDOWN_EXPECTED_PATHS, "markdown-toml", "devDependencies", MARKDOWN_SELECTED
     else:
         raise ValueError("unsupported named feature")
     expected = json.loads(json.dumps(original))
@@ -147,14 +169,16 @@ def validate_projection(original: dict, projected: dict, *, feature="ironmate-pp
     expected["packages"] = {path: entry for path, entry in expected["packages"].items()
                             if not path or path in paths}
     expected["packages"][""][key] = selected
-    expected["packages"][""]["engines"] = {"node": ">=24"}
+    if feature != MARKDOWN_FEATURE:
+        expected["packages"][""]["engines"] = {"node": ">=24"}
     if set(projected.get("packages", {})) != {"", *paths}:
         raise ValueError("npm projection has an unexpected package path set")
     if projected != expected:
         raise ValueError("npm changed a retained lock record or metadata")
 
 
-def prepare(source: Path, output_dir: Path, npm: str = "npm", *, feature="ironmate-pptx") -> Path:
+def prepare(source: Path, output_dir: Path, npm: str = "npm", *,
+            feature="ironmate-pptx", dependencies_only=False) -> Path:
     """Return an atomic, private preparation directory; failures remove only ours."""
     source_root, output_dir = source.resolve(), output_dir.resolve()
     if output_dir == source_root or source_root in output_dir.parents:
@@ -167,8 +191,16 @@ def prepare(source: Path, output_dir: Path, npm: str = "npm", *, feature="ironma
         blobs, paths = BTK_SOURCE_BLOBS, BTK_EXPECTED_PATHS
         repository, commit, project_name = BTK_REPOSITORY, BTK_COMMIT, "browser-test-kit"
         key, selected = "devDependencies", BTK_SELECTED
+    elif feature == MARKDOWN_FEATURE:
+        if not dependencies_only:
+            raise ValueError("markdown-toml requires --dependencies-only")
+        blobs, paths = MARKDOWN_SOURCE_BLOBS, MARKDOWN_EXPECTED_PATHS
+        repository, commit, project_name = MARKDOWN_REPOSITORY, MARKDOWN_COMMIT, "markdown-toml"
+        key, selected = "devDependencies", MARKDOWN_SELECTED
     else:
         raise ValueError("unsupported named feature")
+    if dependencies_only:
+        blobs = {name: blobs[name] for name in ("package.json", "package-lock.json")}
     snapshot = read_snapshot(source, blobs=blobs)
     manifest = json.loads(snapshot["package.json"])
     original = json.loads(snapshot["package-lock.json"])
@@ -236,12 +268,16 @@ def prepare(source: Path, output_dir: Path, npm: str = "npm", *, feature="ironma
                 "--cache", "<private-work>/cache"],
             "baseline_locked_package_records": len(original["packages"]) - 1,
             "candidate_locked_package_records": len(paths),
-            "retained_full_records_unchanged": True, "preserved_overrides": manifest["overrides"],
-            "npm_root_metadata_changes": {"name": project_name, "engines": {"node": ">=24"}},
+            "retained_full_records_unchanged": True, "preserved_overrides": manifest.get("overrides"),
+            "npm_root_metadata_changes": ({"name": project_name} if feature == MARKDOWN_FEATURE
+                                          else {"name": project_name, "engines": {"node": ">=24"}}),
             "projected_manifest_sha256": hashlib.sha256(candidate).hexdigest(),
             "projected_lock_sha256": hashlib.sha256((project / "package-lock.json").read_bytes()).hexdigest(),
             "installed_package_count": None, "installed_bytes": None, "installation_seconds": None,
         }
+        if dependencies_only:
+            receipt.update(dependencies_only=True, application_source_staged=False,
+                           verification_scope="two pinned package inputs only; live tests are not selected or copied")
         (work / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
         if final.exists():
             raise ValueError("result destination already exists")
@@ -257,10 +293,13 @@ def main() -> None:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--npm", default="npm")
-    parser.add_argument("--feature", choices=("ironmate-pptx", BTK_FEATURE), default="ironmate-pptx")
+    parser.add_argument("--feature", choices=("ironmate-pptx", BTK_FEATURE, MARKDOWN_FEATURE), default="ironmate-pptx")
+    parser.add_argument("--dependencies-only", action="store_true",
+                        help="verify/stage only package.json and package-lock.json; never copy historical source/tests")
     args = parser.parse_args()
     try:
-        result = prepare(args.source, args.output_dir, args.npm, feature=args.feature)
+        result = prepare(args.source, args.output_dir, args.npm, feature=args.feature,
+                         dependencies_only=args.dependencies_only)
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         parser.exit(1, f"nano-node: {exc}\n")
     print(result)

@@ -87,6 +87,30 @@ p.write_text(json.dumps(d))
             self.prepare()
         self.assertFalse(self.output.exists())
 
+    def test_dependency_only_ignores_but_never_stages_live_source(self):
+        # A later live test/source edit must neither become a historical staged
+        # test nor require a parent manifest-pin refresh.
+        (self.source / "LICENSE").write_text("changed live checkout")
+        (self.source / "tests").mkdir()
+        (self.source / "tests/new.spec.ts").write_text("throw new Error('do not execute')")
+        result = nano.prepare(self.source, self.output, str(self.npm),
+                              feature=nano.BTK_FEATURE, dependencies_only=True)
+        self.assertEqual({p.name for p in (result / "browser-test-kit").iterdir()},
+                         {"package.json", "package-lock.json"})
+        receipt = json.loads((result / "receipt.json").read_text())
+        self.assertEqual(set(receipt["source_git_blobs"]), {"package.json", "package-lock.json"})
+        self.assertTrue(receipt["dependencies_only"])
+        self.assertFalse(receipt["application_source_staged"])
+        with self.assertRaisesRegex(ValueError, "blob mismatch"):
+            self.prepare()  # The existing full-snapshot default stays strict.
+
+    def test_dependency_only_still_rejects_changed_package_inputs(self):
+        (self.source / "package.json").write_text("{}")
+        with self.assertRaisesRegex(ValueError, "blob mismatch"):
+            nano.prepare(self.source, self.output, str(self.npm),
+                         feature=nano.BTK_FEATURE, dependencies_only=True)
+        self.assertFalse(self.output.exists())
+
     def test_only_exact_linkedom_optional_canvas_peer_allowed(self):
         for mode in ("required", "version", "extra", "foreign", "canvas", "dev"):
             value = json.loads(json.dumps(self.lock))
