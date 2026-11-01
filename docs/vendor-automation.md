@@ -118,10 +118,10 @@ python vendor_sync.py evidence --root . --manifest vendor.lock.json --runtime-ev
 
 ### Node launcher for vendored Python CLIs (`py_launch.cjs`)
 
-Parent-owned `py_launch.cjs` is a single CommonJS module (Node >= 24, `node:`
+Parent-owned `py_launch.cjs` is a single CommonJS module (Node >= 26, `node:`
 builtins only) that spawns a stdlib Python script with argv passthrough, inherited
 stdio, and exit-code forwarding (exit code 2 on spawn failure, missing
-interpreter, signal, or a Node older than 24). A signal prints its name on
+interpreter, signal, or a Node older than 26). A signal prints its name on
 stderr. Set `jsonErrors: true` or `PY_LAUNCH_ERROR_FORMAT=json` to emit one
 stderr object `{ok:false, code, message, hint, exit_code}` for those launcher
 failures. The switch does not read argv, so the child tool keeps its own
@@ -129,7 +129,7 @@ failures. The switch does not read argv, so the child tool keeps its own
 input, timeout, maxBuffer, maxInputBytes, responseMaxBytes, env, noSite, isolated, envVar })`
 with `spawnSync`, surfacing stderr on failure. `maxBuffer` and `responseMaxBytes`
 are mutually exclusive; `env` merges over `process.env` without injecting
-`PYTHONUTF8` / `PYTHONIOENCODING`. Requires Node 24+. Interpreter resolution
+`PYTHONUTF8` / `PYTHONIOENCODING`. Requires Node 26+. Interpreter resolution
 order: explicit `python`, `process.env[envVar]`
 (for example Ironmate's `IRONMATE_PYTHON`), `PYTHON`, `python3`, `python`, and
 on Windows `py -3`. Python older than 3.9 is rejected with a clear message (exit
@@ -181,7 +181,7 @@ Node with argv passthrough, optional stdin/stdout capture as bytes, and inherite
 stdio in `main()`. Library callers use `run(target, *args, node=..., input=...,
 timeout=..., max_input_bytes=..., response_max_bytes=..., env=..., env_var=...)`
 or `run_argv(argv, ...)` for `-e` one-liners. `env` merges over `os.environ`
-case-insensitively on Windows. Node 24+ is required (`resolve_node` probes
+case-insensitively on Windows. Node 26+ is required (`resolve_node` probes
 `node --version`). Resolution order: explicit `node`, `os.environ[env_var]`
 (for example `CLI_ARGS_NODE` or `NODE`), then `shutil.which("node")`. Explicit
 `node` or a set `env_var` value does not fall back. Windows `.cmd`/`.bat` shims

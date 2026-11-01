@@ -37,7 +37,7 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "vendor-catalog.json"
 UV_FLOOR = (3, 11, 0)
-NODE_FLOOR = 24
+NODE_FLOOR = 26
 NODE_SUFFIXES = {".js", ".cjs", ".mjs"}
 MAX_BYTES = 2_000_000
 USER_AGENT = "vendor-dispatch/1"
@@ -241,7 +241,7 @@ def classify(source, env, probe):
         if env.node is None:
             return Decision("skip", "node is not on PATH")
         if env.node < NODE_FLOOR:
-            return Decision("skip", "node " + str(env.node) + " is older than 24")
+            return Decision("skip", "node " + str(env.node) + " is older than 26")
         if env.offline:
             return Decision("skip", "offline. node fetch was not run")
         if isinstance(probe, Exception):
@@ -399,7 +399,7 @@ def npm_install(repository, commit, package_name, exported_paths):
     npm = shutil.which("npm")
     node = shutil.which("node")
     if not npm or not node:
-        raise RuntimeError("npm and Node 24+ are required for npm Git install")
+        raise RuntimeError("npm and Node 26+ are required for npm Git install")
     if not re.fullmatch(r"(?:@[A-Za-z0-9_.-]+/)?[A-Za-z0-9_.-]+", package_name):
         raise RuntimeError("invalid npm package name")
     with tempfile.TemporaryDirectory(prefix="vendor-dispatch-npm-") as tmp:

@@ -76,7 +76,7 @@ function runNodeMain(scriptRel, extraArgv, opts = {}) {
 }
 
 describe("py_launch Node runtime", () => {
-  it("requires Node 24+", () => {
+  it("requires Node 26+", () => {
     assert.ok(
       NODE_MAJOR >= MIN_NODE[0],
       `requires Node ${MIN_NODE[0]}+ (running ${process.versions.node})`,
@@ -752,16 +752,16 @@ describe("py_launch.mapLaunchError", () => {
 });
 
 describe("py_launch.assertNodeVersion", () => {
-  it("enforces the Node 24+ floor", () => {
-    assert.equal(MIN_NODE[0], 24);
+  it("enforces the Node 26+ floor", () => {
+    assert.equal(MIN_NODE[0], 26);
     if (NODE_MAJOR >= MIN_NODE[0]) {
       assertNodeVersion();
     } else {
-      assert.throws(() => assertNodeVersion(), /requires Node 24\+/);
+      assert.throws(() => assertNodeVersion(), /requires Node 26\+/);
     }
     assert.throws(
       () => assertNodeVersion("22.0.0"),
-      /requires Node 24\+ \(this process is Node 22\.0\.0\)/,
+      /requires Node 26\+ \(this process is Node 22\.0\.0\)/,
     );
   });
 });

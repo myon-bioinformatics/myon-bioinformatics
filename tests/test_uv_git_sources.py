@@ -77,7 +77,7 @@ def _catalog():
 
 
 def _env(module, **overrides):
-    values = dict(python=(3, 12, 0), no_site=False, offline=False, uv=True, node=24)
+    values = dict(python=(3, 12, 0), no_site=False, offline=False, uv=True, node=26)
     values.update(overrides)
     return module.Env(**values)
 
@@ -174,7 +174,7 @@ def test_environment_skips_are_explicit():
     missing_uv = module.classify("gh_ops.py", _env(module, uv=False), None)
     assert missing_uv.reason == "uv is not on PATH"
     old_node = module.classify("py_launch.cjs", _env(module, node=22), None)
-    assert old_node.action == "skip" and "older than 24" in old_node.reason
+    assert old_node.action == "skip" and "older than 26" in old_node.reason
     no_node = module.classify("py_launch.cjs", _env(module, node=None), None)
     assert no_node.reason == "node is not on PATH"
     asset = module.classify("LICENSE", _env(module), None)

@@ -4,7 +4,7 @@ Library: ``run(target, *args, node=..., input=..., timeout=..., max_input_bytes=
 response_max_bytes=..., env=..., env_var=...)`` returns stdout/stderr as ``bytes``.
 ``run_argv(argv, ...)`` prepends a resolved Node executable to ``argv``.
 
-Node resolution (first match that runs Node 24+): explicit ``node``,
+Node resolution (first match that runs Node 26+): explicit ``node``,
 ``os.environ[env_var]`` when set, then ``shutil.which("node")``. Explicit ``node`` or a
 set ``env_var`` value does not fall back to later candidates. Windows ``.cmd``/``.bat``
 shims are never spawned with ``shell=True``; explicit paths are rejected.
@@ -27,7 +27,7 @@ import sys
 import threading
 from typing import Any, Mapping, Optional, Sequence, Union
 
-MIN_NODE_MAJOR = 24
+MIN_NODE_MAJOR = 26
 DEFAULT_ENV_VAR = "NODE"
 DEFAULT_PROBE_TIMEOUT = 5.0
 HOST_RESPONSE_MARGIN_BYTES = 512
@@ -183,7 +183,7 @@ def resolve_node(
     probe: bool = True,
     probe_timeout: float = DEFAULT_PROBE_TIMEOUT,
 ) -> str:
-    """Locate a Node 24+ executable.
+    """Locate a Node 26+ executable.
 
     Explicit ``node`` or a set ``env_var`` environment value must work as given;
     auto-discovery uses ``shutil.which('node')`` on ``PATH``.

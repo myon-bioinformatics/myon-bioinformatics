@@ -10,7 +10,7 @@ See the [small-runtime principle](small-runtime-principles.md).
 
 | Profile | Runtime requirements | Optional / separate work |
 |---|---|---|
-| `stdlib-core` | Python 3.9+ and its `json` module; no third-party package | Parent-owned `node_launch.py` / `py_launch.cjs`, with Node 24+ only when the bridge is needed |
+| `stdlib-core` | Python 3.9+ and its `json` module; no third-party package | Parent-owned `node_launch.py` / `py_launch.cjs`, with Node 26+ only when the bridge is needed |
 | `aoi-numeric-native` | Aoi `shrink/numpy_min.py`, Python 3.11+, `ctypes`; candidate target Debian 13 / amd64 / glibc, LP64 32-bit integers, listed BLAS/LAPACK symbols and package versions | Node bridge is not needed for numeric work. Research-wide NumPy/Polars, browser, model and developer environments are separate |
 
 `runtime-profiles.json` is descriptive metadata, **not a second adoption ledger**.
