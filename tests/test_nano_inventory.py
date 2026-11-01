@@ -58,6 +58,19 @@ class NanoInventoryTests(unittest.TestCase):
                                      "https://github.com/{}/blob/{}/{}".format(
                                          entry["repository"], entry["commit"], source["path"]))
 
+    def test_delivery_matrix_covers_every_screened_repository_once(self):
+        guide = (ROOT / "docs/nano-environments.md").read_text()
+        table = guide.split("| Repository |", 1)[1].split("### Coverage", 1)[0]
+        rows = [line.split("|")[1:-1] for line in table.splitlines()
+                if line.startswith("| ")]
+        self.assertTrue(all(len(row) == 4 for row in rows))
+        self.assertTrue(all(row[3].strip() for row in rows))
+        names = [row[0].strip() for row in rows]
+        expected = [entry["repository"].split("/", 1)[1]
+                    for entry in self.snapshot["repositories"]]
+        self.assertCountEqual(names, expected)
+        self.assertEqual(len(names), len(set(names)))
+
     def test_measurements_and_execution_are_not_claimed(self):
         measurements = self.snapshot["measurements"]
         self.assertEqual(measurements["status"], "not_measured")

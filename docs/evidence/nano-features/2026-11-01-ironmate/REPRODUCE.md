@@ -28,13 +28,20 @@ existing tests remain unchanged.
 
 ## Stage outside both repositories
 
-Set `PARENT` to the parent checkout and `IRON_SOURCE` to the exact Ironmate
+This historical experiment pins the parent helper at
+`b8deca83c3ced32c5ac1e24e68e36cb3bc546a4c`. Use an existing parent checkout at
+that revision, **not the latest helper**, so the manifest's original measured
+helper/test hashes remain meaningful. Later feature additions do not change
+this evidence or its source identity. A missing revision is a setup failure;
+do not bypass the hash check or relabel a newer helper as the measured one.
+
+Set `PARENT` to that fixed parent checkout and `IRON_SOURCE` to the exact Ironmate
 source snapshot. Create a fresh work directory; do not execute the harness in
 the child checkout or overwrite an earlier run.
 
 ```sh
 set -eu
-PARENT=/path/to/parent
+PARENT=/path/to/parent-at-b8deca83
 IRON_SOURCE=/path/to/Ironmate-at-af846ee7
 BUNDLE="$PARENT/docs/evidence/nano-features/2026-11-01-ironmate"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/nano-pptx-XXXXXXXX")

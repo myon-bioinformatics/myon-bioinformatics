@@ -33,6 +33,22 @@ DRAGOWING_PIN = {
         "uv.lock": "2788b84741af5ec04d59e5074e4010e067495654",
     },
 }
+MCP_CLIENT_PIN = {
+    "repository": "myon-bioinformatics/mcp-toolcall-lab",
+    "commit": "06cdc8e4e14d50de45c8b8122a5ccff6911c3404",
+    "input_blobs_unchanged": {
+        "pyproject.toml": "4c3d89820b99fd11717ce0c454e0149226e8d8cd",
+        "uv.lock": "6fd1a4b3a927120d9684d5d3a4e3941de7b13415",
+    },
+}
+MCP_CLIENT_PACKAGES = frozenset((
+    "annotated-types", "anyio", "attrs", "cffi", "click", "cryptography", "h11",
+    "httpcore2", "httpx2", "httpx2-jsfetch", "idna", "jsonschema",
+    "jsonschema-specifications", "mcp", "mcp-types", "opentelemetry-api",
+    "pycparser", "pydantic", "pydantic-core", "pyjwt", "python-multipart",
+    "pywin32", "referencing", "rpds-py", "sse-starlette", "starlette",
+    "truststore", "typing-extensions", "typing-inspection", "uvicorn",
+))
 
 
 def _read(path):
@@ -133,6 +149,43 @@ def _dragowing_inputs(source, inventory):
     return data, DRAGOWING_PIN, hashlib.sha256(catalog).hexdigest()
 
 
+def _mcp_client_inputs(source, inventory):
+    """Keep the real SDK closure, excluding only the separately hosted FastMCP server."""
+    catalog = _read(inventory)
+    snapshot = json.loads(catalog)["current_snapshot"]
+    entries = [r for r in snapshot["repositories"]
+               if r["repository"] == MCP_CLIENT_PIN["repository"]]
+    if snapshot["schema"] != "nano-screening/1" or len(entries) != 1:
+        raise ValueError("expected one reviewed MCP lab record")
+    entry = entries[0]
+    if (entry["commit"] != MCP_CLIENT_PIN["commit"] or entry["private"] is not False
+            or entry["visibility"] != "public" or entry["archived"] is not False):
+        raise ValueError("unsupported MCP lab source identity")
+    data = {name: _read(source / name)
+            for name in MCP_CLIENT_PIN["input_blobs_unchanged"]}
+    if any(_blob(data[name]) != digest
+           for name, digest in MCP_CLIENT_PIN["input_blobs_unchanged"].items()):
+        raise ValueError("reviewed MCP lab input blob mismatch")
+    project = tomllib.loads(data["pyproject.toml"].decode("utf-8"))
+    lock = tomllib.loads(data["uv.lock"].decode("utf-8"))
+    if (project["project"]["name"] != "mcp-toolcall-lab"
+            or project["project"]["requires-python"] != ">=3.12"
+            or project["project"]["dependencies"] != ["fastmcp>=4.1.3", "mcp>=2.3.0", "pydantic>=2.14.1"]
+            or set(project["project"]["optional-dependencies"]) != {"galleria", "test", "browser-test"}
+            or project.get("dependency-groups")
+            or project["tool"]["uv"] != {"override-dependencies": [
+                "pillow>=13.0.0", "safehttpx>=0.2.0", "tomlkit>=0.15.2", "pyee>=15.0.0"]}
+            or lock["version"] != 1 or lock["revision"] != 5):
+        raise ValueError("unsupported MCP lab project/lock structure")
+    own = [p for p in lock["package"] if p["name"] == "mcp-toolcall-lab"]
+    if len(own) != 1 or own[0]["source"] != {"editable": "."}:
+        raise ValueError("unsupported MCP lab local project")
+    for package in lock["package"]:
+        if package["name"] != "mcp-toolcall-lab" and package["source"] != {"registry": "https://pypi.org/simple"}:
+            raise ValueError("path, Git or workspace dependencies are not supported")
+    return data, MCP_CLIENT_PIN, hashlib.sha256(catalog).hexdigest()
+
+
 def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY,
             feature="aoi-research-runtime"):
     """Return a completed artifact directory; remove this invocation's output on failure."""
@@ -148,13 +201,16 @@ def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY,
     elif feature == "dragowing-html":
         data, pin, inventory_sha = _dragowing_inputs(source, Path(inventory))
         repository, groups, pruned = DRAGOWING_PIN["repository"], [], ["numpy", "polars"]
+    elif feature == "mcp-chat-client":
+        data, pin, inventory_sha = _mcp_client_inputs(source, Path(inventory))
+        repository, groups, pruned = MCP_CLIENT_PIN["repository"], [], ["fastmcp"]
     else:
         raise ValueError("unsupported named feature")
     executable = shutil.which(uv)
     if executable is None:
         raise ValueError("local uv executable not found")
     executable = str(Path(executable).resolve(strict=True))
-    prefix = "aoi-runtime-" if feature == "aoi-research-runtime" else "dragowing-html-"
+    prefix = "aoi-runtime-" if feature == "aoi-research-runtime" else feature + "-"
     work = Path(tempfile.mkdtemp(prefix=prefix, dir=parent))
     try:
         stage = work / "inputs"
@@ -191,6 +247,8 @@ def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY,
             raise ValueError("export does not match the Markdown-only selection")
         if feature == "aoi-research-runtime" and (not ROOT_PACKAGES.issubset(names) or DEV_PACKAGES.intersection(names)):
             raise ValueError("export does not match the runtime-only selection")
+        if feature == "mcp-chat-client" and (set(names) != MCP_CLIENT_PACKAGES or len(names) != len(MCP_CLIENT_PACKAGES)):
+            raise ValueError("export does not match the reviewed MCP SDK client closure")
         # Do not publish success if either source or staged inputs changed.
         for name, content in data.items():
             if _read(source / name) != content or _read(stage / name) != content:
@@ -223,7 +281,7 @@ def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY,
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True, type=Path, help="directory containing the two reviewed inputs")
-    parser.add_argument("--feature", choices=("aoi-research-runtime", "dragowing-html"),
+    parser.add_argument("--feature", choices=("aoi-research-runtime", "dragowing-html", "mcp-chat-client"),
                         default="aoi-research-runtime", help="explicit reviewed feature; Aoi remains the default")
     parser.add_argument("--output-parent", required=True, type=Path, help="existing directory outside the input directory")
     parser.add_argument("--uv", default="uv", help="trusted installed uv executable (never downloaded)")

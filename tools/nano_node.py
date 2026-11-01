@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare the pinned Ironmate PPTX source slice with npm, offline; never install.
+"""Prepare one explicitly reviewed Node feature with npm, offline; never install.
 
 This is a fixed snapshot contract, not a general npm dependency resolver. npm
 projects the existing lock; the result must retain exactly the reviewed records.
@@ -38,6 +38,32 @@ EXPECTED_PATHS = frozenset("node_modules/" + path for path in (
     "lie", "pako", "pptxgenjs", "pptxgenjs/node_modules/@types/node",
     "process-nextick-args", "setimmediate", "undici-types", "util-deprecate",
 ))
+BTK_FEATURE = "browser-test-kit-document-mirrors"
+BTK_REPOSITORY = "myon-bioinformatics/browser-test-kit"
+BTK_COMMIT = "111f6d78befae28acfb198a45b72e5aa0e59dcde"
+BTK_SOURCE_BLOBS = {
+    "package.json": "9dbada6ad25af5051818d4399796d8d2cfc400c6",
+    "package-lock.json": "b0191e266c3516596cb4c6a9ad69b47628551145",
+    "tools/mirror_facts.mjs": "9b63b223619e2051aa1df81a574b8734ae4fbd17",
+    "tools/mirror_check.py": "c37ee194ca98245755458ce1a17f41a1aea47c79",
+    "tests/browserless/mirror.spec.ts": "30d14101cd1b294a05d1b817cd908e824858eea8",
+    "tests/python/test_mirror_check.py": "f7ae34a8e1e738d44f9a7af5e7dc4e5332b2b9d5",
+    "playwright.browserless.config.ts": "1d3990ea0e09c37a8ab82d74b8368a9d97da436f",
+    "fixtures/mirror.md": "7f4ee2e50ebce5682d508d382caa8e5a76a4b750",
+    "LICENSE": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
+}
+BTK_SELECTED = {"@playwright/test": ">=1.64.1", "linkedom": "^0.18.13",
+                "markdown-it": "^15.0.3", "marked": "^18.1.1"}
+BTK_EXPECTED_PATHS = frozenset("node_modules/" + path for path in (
+    "@playwright/test", "argparse", "boolbase", "css-select", "css-what", "cssom",
+    "dom-serializer", "domelementtype", "domhandler", "domutils", "entities",
+    "html-escaper", "htmlparser2", "htmlparser2/node_modules/dom-serializer",
+    "htmlparser2/node_modules/dom-serializer/node_modules/entities",
+    "htmlparser2/node_modules/domelementtype", "htmlparser2/node_modules/domhandler",
+    "htmlparser2/node_modules/domutils", "htmlparser2/node_modules/entities",
+    "linkedom", "linkify-it", "markdown-it", "marked", "mdurl", "nth-check",
+    "playwright", "playwright-core", "punycode.js", "uc.micro", "uhyphen",
+))
 UNSUPPORTED = frozenset(("peerDependencies", "peerDependenciesMeta",
     "optionalDependencies", "hasInstallScript", "link", "inBundle", "dev", "optional"))
 
@@ -46,11 +72,11 @@ def git_blob(data: bytes) -> str:
     return hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
 
 
-def read_snapshot(source: Path) -> dict[str, bytes]:
+def read_snapshot(source: Path, *, blobs=None) -> dict[str, bytes]:
     """Read once, rejecting symlinks and files from a different snapshot."""
     source = source.absolute()
     result = {}
-    for name, expected in SOURCE_BLOBS.items():
+    for name, expected in (SOURCE_BLOBS if blobs is None else blobs).items():
         path = source / name
         if any(p.is_symlink() for p in (path, *path.parents)):
             raise ValueError(f"symlink input is unsupported: {name}")
@@ -65,19 +91,41 @@ def read_snapshot(source: Path) -> dict[str, bytes]:
     return result
 
 
-def validate_original(manifest: dict, lock: dict) -> None:
-    if manifest.get("dependencies") != {"exceljs": "4.4.0", "pptxgenjs": "4.0.1"}:
+def validate_original(manifest: dict, lock: dict, *, feature="ironmate-pptx") -> None:
+    if feature == "ironmate-pptx":
+        key, expected = "dependencies", {"exceljs": "4.4.0", "pptxgenjs": "4.0.1"}
+        overrides = {"image-size": "2.0.4", "uuid": "14.0.3"}
+    elif feature == BTK_FEATURE:
+        key, expected = "devDependencies", {**BTK_SELECTED, "exceljs": "^4.4.0"}
+        overrides = {"uuid": "^14.0.3", "minimatch": "^11.0.1"}
+    else:
+        raise ValueError("unsupported named feature")
+    if manifest.get(key) != expected:
         raise ValueError("unsupported original direct dependencies")
-    if manifest.get("overrides") != {"image-size": "2.0.4", "uuid": "14.0.3"}:
+    if manifest.get("overrides") != overrides:
         raise ValueError("unsupported original overrides")
     if lock.get("lockfileVersion") != 3 or not isinstance(lock.get("packages"), dict):
         raise ValueError("only the reviewed npm lock v3 is supported")
-    if lock["packages"].get("", {}).get("dependencies") != manifest["dependencies"]:
+    if lock["packages"].get("", {}).get(key) != manifest[key]:
         raise ValueError("original manifest/lock mismatch")
     for path, entry in lock["packages"].items():
         if not path:
             continue
-        if UNSUPPORTED.intersection(entry):
+        allowed = set()
+        if feature == BTK_FEATURE:
+            if entry.get("dev") is not True:
+                raise ValueError(f"unexpected BTK development marker: {path}")
+            allowed.add("dev")
+            # One reviewed optional peer, NOT an allow-all peer resolver.
+            # Exact input blobs and full retained record equality remain required.
+            if path == "node_modules/linkedom":
+                if (entry.get("peerDependencies") != {"canvas": ">= 2"}
+                        or entry.get("peerDependenciesMeta") != {"canvas": {"optional": True}}):
+                    raise ValueError("unsupported linkedom optional canvas peer")
+                allowed.update(("peerDependencies", "peerDependenciesMeta"))
+            if path == "node_modules/canvas" or path.endswith("/node_modules/canvas"):
+                raise ValueError("canvas is absent from the reviewed feature closure")
+        if (UNSUPPORTED - allowed).intersection(entry):
             raise ValueError(f"unsupported graph fields: {path}")
         if not entry.get("resolved", "").startswith("https://registry.npmjs.org/"):
             raise ValueError(f"non-registry package: {path}")
@@ -85,39 +133,55 @@ def validate_original(manifest: dict, lock: dict) -> None:
             raise ValueError(f"unlocked package: {path}")
 
 
-def validate_projection(original: dict, projected: dict) -> None:
+def validate_projection(original: dict, projected: dict, *, feature="ironmate-pptx") -> None:
+    if feature == "ironmate-pptx":
+        paths, name, key, selected = EXPECTED_PATHS, "Ironmate", "dependencies", {"pptxgenjs": "4.0.1"}
+    elif feature == BTK_FEATURE:
+        paths, name, key, selected = BTK_EXPECTED_PATHS, "browser-test-kit", "devDependencies", BTK_SELECTED
+    else:
+        raise ValueError("unsupported named feature")
     expected = json.loads(json.dumps(original))
     # npm records the private staging directory name and synchronizes engines
     # from the unchanged manifest; neither is a dependency/version change.
-    expected["name"] = "Ironmate"
+    expected["name"] = name
     expected["packages"] = {path: entry for path, entry in expected["packages"].items()
-                            if not path or path in EXPECTED_PATHS}
-    expected["packages"][""]["dependencies"] = {"pptxgenjs": "4.0.1"}
+                            if not path or path in paths}
+    expected["packages"][""][key] = selected
     expected["packages"][""]["engines"] = {"node": ">=24"}
-    if set(projected.get("packages", {})) != {"", *EXPECTED_PATHS}:
+    if set(projected.get("packages", {})) != {"", *paths}:
         raise ValueError("npm projection has an unexpected package path set")
     if projected != expected:
         raise ValueError("npm changed a retained lock record or metadata")
 
 
-def prepare(source: Path, output_dir: Path, npm: str = "npm") -> Path:
+def prepare(source: Path, output_dir: Path, npm: str = "npm", *, feature="ironmate-pptx") -> Path:
     """Return an atomic, private preparation directory; failures remove only ours."""
     source_root, output_dir = source.resolve(), output_dir.resolve()
     if output_dir == source_root or source_root in output_dir.parents:
         raise ValueError("output directory must be outside the source snapshot")
-    snapshot = read_snapshot(source)
+    if feature == "ironmate-pptx":
+        blobs, paths = SOURCE_BLOBS, EXPECTED_PATHS
+        repository, commit, project_name = REPOSITORY, COMMIT, "Ironmate"
+        key, selected = "dependencies", {"pptxgenjs": "4.0.1"}
+    elif feature == BTK_FEATURE:
+        blobs, paths = BTK_SOURCE_BLOBS, BTK_EXPECTED_PATHS
+        repository, commit, project_name = BTK_REPOSITORY, BTK_COMMIT, "browser-test-kit"
+        key, selected = "devDependencies", BTK_SELECTED
+    else:
+        raise ValueError("unsupported named feature")
+    snapshot = read_snapshot(source, blobs=blobs)
     manifest = json.loads(snapshot["package.json"])
     original = json.loads(snapshot["package-lock.json"])
-    validate_original(manifest, original)
+    validate_original(manifest, original, feature=feature)
     executable = shutil.which(npm)
     if executable is None:
         raise ValueError("npm executable not found")
     executable = str(Path(executable).resolve())
     output_dir.mkdir(parents=True, exist_ok=True)
-    work = Path(tempfile.mkdtemp(prefix=".nano-ironmate-pptx-", dir=output_dir))
+    work = Path(tempfile.mkdtemp(prefix=f".nano-{feature}-", dir=output_dir))
     final = work.with_name(work.name[1:])
     try:
-        project = work / "Ironmate"
+        project = work / project_name
         inputs = work / "inputs"
         project.mkdir()
         inputs.mkdir()
@@ -127,7 +191,7 @@ def prepare(source: Path, output_dir: Path, npm: str = "npm") -> Path:
             dest.write_bytes(data)
             if name in ("package.json", "package-lock.json"):
                 (inputs / name).write_bytes(data)
-        manifest["dependencies"] = {"pptxgenjs": "4.0.1"}
+        manifest[key] = selected
         candidate = (json.dumps(manifest, indent=2) + "\n").encode()
         (project / "package.json").write_bytes(candidate)
         for name in ("home", "config", "cache"):
@@ -153,17 +217,17 @@ def prepare(source: Path, output_dir: Path, npm: str = "npm") -> Path:
             raise ValueError(f"offline npm lock projection failed (exit {run.returncode})")
         if (project / "node_modules").exists():
             raise ValueError("unexpected node_modules during lock-only preparation")
-        validate_projection(original, json.loads((project / "package-lock.json").read_bytes()))
+        validate_projection(original, json.loads((project / "package-lock.json").read_bytes()), feature=feature)
         if (project / "package.json").read_bytes() != candidate:
             raise ValueError("npm changed the projected manifest")
         for name, data in snapshot.items():
             if name not in ("package.json", "package-lock.json") and (project / name).read_bytes() != data:
                 raise ValueError(f"staged source changed: {name}")
-        if read_snapshot(source) != snapshot:
+        if read_snapshot(source, blobs=blobs) != snapshot:
             raise ValueError("source changed during preparation")
         receipt = {
-            "feature": "ironmate-pptx", "repository": REPOSITORY, "source_commit": COMMIT,
-            "checkout_head_verified": False, "source_git_blobs": SOURCE_BLOBS,
+            "feature": feature, "repository": repository, "source_commit": commit,
+            "checkout_head_verified": False, "source_git_blobs": blobs,
             "npm_version": version, "npm_executable": executable,
             "action": "offline official-npm lock-only preparation; no installation",
             "command_arguments": command[1:7] + [
@@ -171,9 +235,9 @@ def prepare(source: Path, output_dir: Path, npm: str = "npm") -> Path:
                 "--globalconfig", "<private-work>/global.npmrc",
                 "--cache", "<private-work>/cache"],
             "baseline_locked_package_records": len(original["packages"]) - 1,
-            "candidate_locked_package_records": len(EXPECTED_PATHS),
+            "candidate_locked_package_records": len(paths),
             "retained_full_records_unchanged": True, "preserved_overrides": manifest["overrides"],
-            "npm_root_metadata_changes": {"name": "Ironmate", "engines": {"node": ">=24"}},
+            "npm_root_metadata_changes": {"name": project_name, "engines": {"node": ">=24"}},
             "projected_manifest_sha256": hashlib.sha256(candidate).hexdigest(),
             "projected_lock_sha256": hashlib.sha256((project / "package-lock.json").read_bytes()).hexdigest(),
             "installed_package_count": None, "installed_bytes": None, "installation_seconds": None,
@@ -193,9 +257,10 @@ def main() -> None:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--npm", default="npm")
+    parser.add_argument("--feature", choices=("ironmate-pptx", BTK_FEATURE), default="ironmate-pptx")
     args = parser.parse_args()
     try:
-        result = prepare(args.source, args.output_dir, args.npm)
+        result = prepare(args.source, args.output_dir, args.npm, feature=args.feature)
     except (ValueError, OSError, subprocess.SubprocessError) as exc:
         parser.exit(1, f"nano-node: {exc}\n")
     print(result)

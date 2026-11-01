@@ -1,0 +1,544 @@
+{
+  "schema": "nano-btk-document-mirrors-evidence/1",
+  "observed_on": "2026-11-01",
+  "feature": "browser-test-kit-document-mirrors",
+  "repository": "myon-bioinformatics/browser-test-kit",
+  "source_commit": "111f6d78befae28acfb198a45b72e5aa0e59dcde",
+  "verification_scope": "fixed9-file snapshot; checkout HEAD/ancestry not verified",
+  "runtime": {
+    "os": "Linux-6.18.57-x86_64-with-glibc2.41",
+    "python": "3.12.14",
+    "node": "v24.22.1",
+    "npm": "11.9.0"
+  },
+  "hardware_before_run": {
+    "observation": "read before timed installs; not a resource allocation guarantee",
+    "logical_cpus": 9,
+    "affinity_cpus": 9,
+    "cpu_models": [
+      "AMD EPYC 9V74 80-Core Processor"
+    ],
+    "mem_total": "10206472 kB",
+    "cgroup": {
+      "cpu.max": null,
+      "memory.max": null,
+      "memory.high": null,
+      "cpuset.cpus.effective": null
+    }
+  },
+  "source_receipt": "source-receipt.json",
+  "fixture_sha256": "a1fe2f1e43138df54170073d45e35ec9dd15c951265fd43ebb866ee034d56add",
+  "preparer_sha256": "9e042eb70a80c75f99aafb1956386b3f5e27ee795ec501d3bcece3a369d09777",
+  "source_and_installed_manifests_unchanged_after_run": true,
+  "selection": {
+    "baseline_locked_paths": 221,
+    "feature_locked_paths": 30,
+    "selected_roots": {
+      "@playwright/test": ">=1.64.1",
+      "linkedom": "^0.18.13",
+      "markdown-it": "^15.0.3",
+      "marked": "^18.1.1"
+    },
+    "overrides": {
+      "uuid": "^14.0.3",
+      "minimatch": "^11.0.1"
+    },
+    "retained_nonroot_records_identical": true,
+    "peer_policy": "Only linkedom canvas >=2 marked optional; canvas remains absent. All other peer/optional/link/install-script graph fields rejected.",
+    "runtime_only_27_record_projection": "offline analysis only, not installed/measured; test-enabled30 is the selected feature"
+  },
+  "install_scope": "npm ci only, fresh cache/HOME/user+global config each trial; no scripts/audit/funding/update checks; existing host Node/npm/Python excluded; source/preparation excluded from install time",
+  "cache_policy": "fresh empty npm cache per trial; no filesystem or remote CDN cache reset",
+  "size_definition": "regular-file st_size and st_blocks*512 under node_modules, excluding symlinks/directory metadata; cache separate; not network transfer or whole image size",
+  "install_command": "npm ci --ignore-scripts --no-audit --no-fund --no-update-notifier --registry https://registry.npmjs.org/ --fetch-retries=0 --fetch-timeout=30000 with private cache and empty user/global config; PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1",
+  "raw_install_trials": [
+    {
+      "index": 1,
+      "kind": "baseline",
+      "status": "finished",
+      "manifest_sha256": "ba6497460d206111c72a735eb0c2ea2ed95eb0acf0f0b0f7ba056fdea0dbcd84",
+      "lock_sha256": "cdca302fadb502f6ffd0887e47549e8e674f740752e2f2f62e24cd739bd64094",
+      "seconds": 9.686578985001688,
+      "exit_code": 0,
+      "installed_package_paths": 221,
+      "node_modules": {
+        "regular_file_count": 7315,
+        "apparent_regular_file_bytes": 61017247,
+        "allocated_regular_file_bytes": 82751488
+      },
+      "cache": {
+        "regular_file_count": 412,
+        "apparent_regular_file_bytes": 13353117,
+        "allocated_regular_file_bytes": 14499840
+      },
+      "installed_paths_match_lock": true
+    },
+    {
+      "index": 2,
+      "kind": "feature",
+      "status": "finished",
+      "manifest_sha256": "91b053fd5836eab929768f8b8ead6f318176bee14387b37df442cde890ab6863",
+      "lock_sha256": "6eee408764ee4b265dfe152b9a87708d3119412af903a776e789833d598c775c",
+      "seconds": 14.984129700998892,
+      "exit_code": 0,
+      "installed_package_paths": 30,
+      "node_modules": {
+        "regular_file_count": 1376,
+        "apparent_regular_file_bytes": 25424737,
+        "allocated_regular_file_bytes": 29356032
+      },
+      "cache": {
+        "regular_file_count": 62,
+        "apparent_regular_file_bytes": 5642352,
+        "allocated_regular_file_bytes": 5816320
+      },
+      "installed_paths_match_lock": true
+    },
+    {
+      "index": 3,
+      "kind": "feature",
+      "status": "finished",
+      "manifest_sha256": "91b053fd5836eab929768f8b8ead6f318176bee14387b37df442cde890ab6863",
+      "lock_sha256": "6eee408764ee4b265dfe152b9a87708d3119412af903a776e789833d598c775c",
+      "seconds": 3.7637666949995037,
+      "exit_code": 0,
+      "installed_package_paths": 30,
+      "node_modules": {
+        "regular_file_count": 1376,
+        "apparent_regular_file_bytes": 25424737,
+        "allocated_regular_file_bytes": 29356032
+      },
+      "cache": {
+        "regular_file_count": 62,
+        "apparent_regular_file_bytes": 5642322,
+        "allocated_regular_file_bytes": 5816320
+      },
+      "installed_paths_match_lock": true
+    },
+    {
+      "index": 4,
+      "kind": "baseline",
+      "status": "finished",
+      "manifest_sha256": "ba6497460d206111c72a735eb0c2ea2ed95eb0acf0f0b0f7ba056fdea0dbcd84",
+      "lock_sha256": "cdca302fadb502f6ffd0887e47549e8e674f740752e2f2f62e24cd739bd64094",
+      "seconds": 7.5883587419994,
+      "exit_code": 0,
+      "installed_package_paths": 221,
+      "node_modules": {
+        "regular_file_count": 7315,
+        "apparent_regular_file_bytes": 61017247,
+        "allocated_regular_file_bytes": 82751488
+      },
+      "cache": {
+        "regular_file_count": 412,
+        "apparent_regular_file_bytes": 13353117,
+        "allocated_regular_file_bytes": 14499840
+      },
+      "installed_paths_match_lock": true
+    },
+    {
+      "index": 5,
+      "kind": "baseline",
+      "status": "finished",
+      "manifest_sha256": "ba6497460d206111c72a735eb0c2ea2ed95eb0acf0f0b0f7ba056fdea0dbcd84",
+      "lock_sha256": "cdca302fadb502f6ffd0887e47549e8e674f740752e2f2f62e24cd739bd64094",
+      "seconds": 8.343233708001208,
+      "exit_code": 0,
+      "installed_package_paths": 221,
+      "node_modules": {
+        "regular_file_count": 7315,
+        "apparent_regular_file_bytes": 61017247,
+        "allocated_regular_file_bytes": 82751488
+      },
+      "cache": {
+        "regular_file_count": 412,
+        "apparent_regular_file_bytes": 13353117,
+        "allocated_regular_file_bytes": 14499840
+      },
+      "installed_paths_match_lock": true
+    },
+    {
+      "index": 6,
+      "kind": "feature",
+      "status": "finished",
+      "manifest_sha256": "91b053fd5836eab929768f8b8ead6f318176bee14387b37df442cde890ab6863",
+      "lock_sha256": "6eee408764ee4b265dfe152b9a87708d3119412af903a776e789833d598c775c",
+      "seconds": 7.253136074999929,
+      "exit_code": 0,
+      "installed_package_paths": 30,
+      "node_modules": {
+        "regular_file_count": 1376,
+        "apparent_regular_file_bytes": 25424737,
+        "allocated_regular_file_bytes": 29356032
+      },
+      "cache": {
+        "regular_file_count": 62,
+        "apparent_regular_file_bytes": 5642322,
+        "allocated_regular_file_bytes": 5816320
+      },
+      "installed_paths_match_lock": true
+    }
+  ],
+  "install_median_seconds": {
+    "baseline": 8.343233708001208,
+    "feature": 7.253136074999929
+  },
+  "workload_scope": "two fixed independent jobs per batch; stage source privately, shared dependency directory used read-only; each job runs full fact/error assertions and two original no-browser tests. Timings include source staging, Python/Node startup, test runner, I/O and assertions.",
+  "raw_workload_batches": [
+    {
+      "kind": "baseline",
+      "repeat": 0,
+      "concurrency": 1,
+      "fixed_jobs": 2,
+      "status": "passed",
+      "batch_seconds": 8.843244882002182,
+      "workers": [
+        {
+          "seconds": 4.504742471002828,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31900
+        },
+        {
+          "seconds": 4.334361542998522,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31901
+        }
+      ]
+    },
+    {
+      "kind": "feature",
+      "repeat": 0,
+      "concurrency": 1,
+      "fixed_jobs": 2,
+      "status": "passed",
+      "batch_seconds": 8.885644927002431,
+      "workers": [
+        {
+          "seconds": 4.414593322999281,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31840
+        },
+        {
+          "seconds": 4.468876817001728,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31845
+        }
+      ]
+    },
+    {
+      "kind": "feature",
+      "repeat": 1,
+      "concurrency": 1,
+      "fixed_jobs": 2,
+      "status": "passed",
+      "batch_seconds": 9.044747220999852,
+      "workers": [
+        {
+          "seconds": 4.433154402999207,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31849
+        },
+        {
+          "seconds": 4.6094593339985295,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31847
+        }
+      ]
+    },
+    {
+      "kind": "baseline",
+      "repeat": 1,
+      "concurrency": 1,
+      "fixed_jobs": 2,
+      "status": "passed",
+      "batch_seconds": 8.81026029900022,
+      "workers": [
+        {
+          "seconds": 4.337663674999931,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31900
+        },
+        {
+          "seconds": 4.47068947599837,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31901
+        }
+      ]
+    },
+    {
+      "kind": "baseline",
+      "repeat": 2,
+      "concurrency": 1,
+      "fixed_jobs": 2,
+      "status": "passed",
+      "batch_seconds": 8.668668203001289,
+      "workers": [
+        {
+          "seconds": 4.353427702997578,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31902
+        },
+        {
+          "seconds": 4.312176045001252,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31903
+        }
+      ]
+    },
+    {
+      "kind": "feature",
+      "repeat": 2,
+      "concurrency": 1,
+      "fixed_jobs": 2,
+      "status": "passed",
+      "batch_seconds": 8.726117248999799,
+      "workers": [
+        {
+          "seconds": 4.2289482279993535,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31841
+        },
+        {
+          "seconds": 4.494835442001204,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31844
+        }
+      ]
+    },
+    {
+      "kind": "baseline",
+      "repeat": 0,
+      "concurrency": 2,
+      "fixed_jobs": 2,
+      "status": "passed",
+      "batch_seconds": 4.665616922000481,
+      "workers": [
+        {
+          "seconds": 4.663986158997432,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31900
+        },
+        {
+          "seconds": 4.494557024001551,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31899
+        }
+      ]
+    },
+    {
+      "kind": "feature",
+      "repeat": 0,
+      "concurrency": 2,
+      "fixed_jobs": 2,
+      "status": "passed",
+      "batch_seconds": 4.807292850000522,
+      "workers": [
+        {
+          "seconds": 4.741499862000637,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31848
+        },
+        {
+          "seconds": 4.80528074799804,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31847
+        }
+      ]
+    },
+    {
+      "kind": "feature",
+      "repeat": 1,
+      "concurrency": 2,
+      "fixed_jobs": 2,
+      "status": "passed",
+      "batch_seconds": 4.752784263000649,
+      "workers": [
+        {
+          "seconds": 4.751205995999044,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31848
+        },
+        {
+          "seconds": 4.71571497900004,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31843
+        }
+      ]
+    },
+    {
+      "kind": "baseline",
+      "repeat": 1,
+      "concurrency": 2,
+      "fixed_jobs": 2,
+      "status": "passed",
+      "batch_seconds": 4.758124541000143,
+      "workers": [
+        {
+          "seconds": 4.7566742849994625,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31898
+        },
+        {
+          "seconds": 4.60047177999877,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31897
+        }
+      ]
+    },
+    {
+      "kind": "baseline",
+      "repeat": 2,
+      "concurrency": 2,
+      "fixed_jobs": 2,
+      "status": "passed",
+      "batch_seconds": 4.790140062999853,
+      "workers": [
+        {
+          "seconds": 4.733776325003419,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31898
+        },
+        {
+          "seconds": 4.788235795000219,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31897
+        }
+      ]
+    },
+    {
+      "kind": "feature",
+      "repeat": 2,
+      "concurrency": 2,
+      "fixed_jobs": 2,
+      "status": "passed",
+      "batch_seconds": 4.711267179998686,
+      "workers": [
+        {
+          "seconds": 4.525037921997864,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31848
+        },
+        {
+          "seconds": 4.709412965999945,
+          "digests": {
+            "full_parity_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b"
+          },
+          "result_json_bytes": 31849
+        }
+      ]
+    }
+  ],
+  "batch_median_seconds": {
+    "baseline": {
+      "1": 8.81026029900022,
+      "2": 4.758124541000143
+    },
+    "feature": {
+      "1": 8.885644927002431,
+      "2": 4.752784263000649
+    }
+  },
+  "parity": {
+    "reference_file": "full-facts-reference.json",
+    "canonical_sha256": "576776e73b23c2bb5954a36a5b2f60454dd044026db5fbe08b6556a64e31777b",
+    "jobs": 24,
+    "batches": 12,
+    "exact_full_parity_equal": true,
+    "markdown_cases_per_reader": 6,
+    "markdown_readers": [
+      "markdown-it",
+      "marked"
+    ],
+    "html_reader": "linkedom",
+    "expected_dialect_disagreement_retained": true,
+    "explicit_rejection_cases_per_job": 4,
+    "original_node_tests_unique": 2,
+    "original_node_test_executions": 48,
+    "original_node_test_failures": 0,
+    "original_node_test_skips": 0,
+    "full_child_suite_run": false,
+    "XLSX_case_and_real_browser_lanes": "unchanged and outside selected feature; not removed/skipped-as-success"
+  },
+  "original_python_comparator_tests": {
+    "versions": {
+      "pytest": "9.1.1",
+      "iniconfig": "2.3.1",
+      "packaging": "26.3",
+      "pluggy": "1.7.0",
+      "pygments": "2.21.0"
+    },
+    "source_pin": "111f6d78befae28acfb198a45b72e5aa0e59dcde",
+    "counts": {
+      "tests": 54,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "tool_environment": "chosen existing DRA test interpreter; excluded from Node runtime metrics; not asserted to be BTK uv.lock selection"
+  },
+  "fixture_fake_tests_passed": 5,
+  "preparer_tests_passed": 17,
+  "browser_engine_downloads_or_launches": false,
+  "docker_model_external_api_operations": false,
+  "rss_measurement": null,
+  "failure_summary": {
+    "install_attempted": 6,
+    "install_completed": 6,
+    "install_failed": 0,
+    "workload_jobs_failed": 0,
+    "fixture_corrections": 0,
+    "retries": 0
+  },
+  "interpretation": "dependency bytes reduced. Install times variable; first feature install was slower than its paired baseline. No serial workload improvement demonstrated; both environments already parallelized. This is facts/schema/test parity, not arbitrary HTML/browser rendering or complete repository equivalence.",
+  "raw_audit": {
+    "install_and_workload_receipt_sha256": "e0dda07159577a73c4d36c9343571fbf8827558bfb8a17233b50e05964fd5d78",
+    "comparator_junit_sha256": "1319534b224b0e8b936a029ac89f481600d958616d71798ba12cd449578b7971",
+    "logs": "raw local logs/receipts preserved unchanged, not published with machine-local paths"
+  }
+}

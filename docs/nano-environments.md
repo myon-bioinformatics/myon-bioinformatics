@@ -17,7 +17,7 @@ dependencies even though its manifest lists them in `dev`.
 
 The inventory stage added no runtime implementation or deletion. Its snapshot
 counts remain historical. Follow-ups add explicit parent preparation tools,
-`tools/nano_export.py` and `tools/nano_node.py`, not new application/library replacements. No dependency
+`tools/nano_export.py` and `tools/nano_node.py`, not new application/library replacements. No repository dependency
 upgrade/removal, adopted pin, child change, CI/Pages setting or test exception is
 introduced. Application/runtime files and lines deleted: **0/0**; application
 functions added: **0**; tests removed: **0**.
@@ -29,32 +29,77 @@ v1 API, frozen source/package examples and null execution evidence.
 Each row's exact revision, manifests and actual consumer source blobs are in
 `current_snapshot.repositories`; package names alone are not proof of use.
 
-| Repository | Core / deeper-work decision | Dependencies to retain for selected features |
-|---|---|---|
-| Aoi | Five min distributions already exist; do not rewrite them | Research runtime group: Polars, NumPy, HTTPX, Python-Markdown; separate CP-SAT/Pandas research and native backend boundaries |
-| PythDRagoras | Full analysis remains package-bearing | Polars expressions and broad NumPy APIs, including operations outside the existing minimum |
-| SakAnalytics | Full analysis remains package-bearing | Polars; optional OR-Tools exact solver; retain complete numerical tests |
-| DRAgoWing | Existing explicit stdlib overlap path is a useful minimal slice | Full path still uses Python-Markdown; rendered plots need Plotly.js, exports need Chromium; default overlap retains Polars/NumPy |
-| mcp-toolcall-lab | Reuse existing portable-execution slice; full server is not stdlib | FastMCP/MCP/Pydantic; optional UI/browser/model/product-integration environments remain separate |
-| NagoyAction | Pipeline runner already stdlib | Existing digest `polars_min` covers one path only; inbox/worker still needs Aoi sources and Polars metadata; optional model/Docker hook |
-| QueRyu | Already no mandatory pip runtime dependency | BlueProbe source integration; optional ctypes LAPACK/BLAS auto-discovery is not pure-only execution |
-| BlueProbe | Observation/cache core already stdlib | Optional lab extractor bridge or caller-provided extractor; preserve Lexbor comparison tests |
-| Ironmate | Python core/PNG paths already minimal | Optional ExcelJS/PptxGenJS, Pillow/NumPy, Playwright + pypdf, LibreOffice/UNO features; no repeated SheetJS removal |
-| markdown | Conversion core already stdlib | Optional frontends and independent Node mirrors; legacy-Python TOML parser path is separate |
-| web-ui | Python/Node core has no installed runtime packages | Optional Gradio; generated Plotly/PptxGenJS browser resources remain actual dependencies |
-| browser-test-kit | Core and current PNG diff already stdlib | Real browser engines and independent Markdown/HTML/XLSX mirror readers are purposeful tests/features |
-| xprobe | Canonical core already one stdlib file | YAML needs Node + js-yaml; TOML uses tomllib on Python 3.11+, Node + smol-toml on older Python |
-| TalkCompress | Compression/estimator core already stdlib | Exact tokenizers, translation engines/packs, SVG renderer/fonts and explicitly selected model verification are not replaced by estimates/XML |
-| gh_identity | Core and Node wrapper already minimal | HTML-only DOM-lab export avoids Gradio; interactive lab still needs it; wrapper also needs Python |
-| flutter_navigation_basic | Flutter/Dart application, not a Python/Node replacement target | Existing SDK/packages/browser matrix; optional photo regeneration needs Pillow and host encoders |
-| myon-bioinformatics.github.io | Static site/core import helpers already minimal | Browser/Stagehand developer lanes; optional import Docker image is not a production requirement |
-| ascii_artist | Stdlib text-rendering core: exclude deeper reduction | Preserve tests and existing Pages browser capture tools |
-| search_seq_including_spaces | Stdlib readers/acquisition: exclude deeper reduction | Live endpoints need explicit network/service access, not a new SDK |
-| nvd_nist_known_vulns | Stdlib implementation: exclude deeper reduction | Live NVD access is distinct from offline helpers; Node launcher still needs Python |
-| yourself | Stdlib environment inspection: exclude deeper reduction | Retain developer tests; optional launcher hosts |
-| cli_args | Stdlib argument handling: exclude deeper reduction | Explicitly executed commands have their own prerequisites |
-| Err-o-RoadRunner | Stdlib diagnostics: exclude deeper reduction | Build/test tools and the explicitly inspected/executed programs remain separate |
-| myon-bioinformatics | Stdlib parent tools: exclude deeper reduction | Git/gh when selected, Node for bridge, full contributor/oracle environment |
+| Repository | Core / deeper-work decision | Dependencies to retain for selected features | Delivery status / next concrete decision |
+|---|---|---|---|
+| Aoi | Five min distributions already exist; do not rewrite them | Research runtime group: Polars, NumPy, HTTPX, Python-Markdown; separate CP-SAT/Pandas research and native backend boundaries | **Prepared:** runtime-only export; 20→12 rows, not installed counts. Remaining research APIs stay package-bearing. |
+| PythDRagoras | Full analysis remains package-bearing | Polars expressions and broad NumPy APIs, including operations outside the existing minimum | **Retain:** native analysis needs real Polars/NumPy; a bundler is not a replacement. Next work needs representative analysis parity, not another source-only demo. |
+| SakAnalytics | Full analysis remains package-bearing | Polars; optional OR-Tools exact solver; retain complete numerical tests | **Retain:** separate ordinary analysis from optional CP-SAT; do not remove solver/native tests or claim a stdlib equivalent. |
+| DRAgoWing | Existing explicit stdlib overlap path is a useful minimal slice | Full path still uses Python-Markdown; rendered plots need Plotly.js, exports need Chromium; default overlap retains Polars/NumPy | **Measured:** complete HTML+Markdown/stdlib feature; native/browser exports remain separate. |
+| mcp-toolcall-lab | Reuse existing portable-execution slice; full server is not stdlib | FastMCP/MCP/Pydantic; optional UI/browser/model/product-integration environments remain separate | **Measured caller feature:** 69→28 installed distributions; separate full server still required, so no whole-host saving claim. |
+| NagoyAction | Pipeline runner already stdlib | Existing digest `polars_min` covers one path only; inbox/worker still needs Aoi sources and Polars metadata; optional model/Docker hook | **Retain feature boundary:** keep existing min collector; full worker still requires Aoi source and installed Polars metadata. Do not repeat the already-minimal runner. |
+| QueRyu | Already no mandatory pip runtime dependency | BlueProbe source integration; optional ctypes LAPACK/BLAS auto-discovery is not pure-only execution | **Core excluded:** already vendored numpy_min; retain optional native acceleration and BlueProbe integration. |
+| BlueProbe | Observation/cache core already stdlib | Optional lab extractor bridge or caller-provided extractor; preserve Lexbor comparison tests | **Core excluded:** retain explicitly selected extractor bridge; no new mandatory package to remove. |
+| Ironmate | Python core/PNG paths already minimal | Optional ExcelJS/PptxGenJS, Pillow/NumPy, Playwright + pypdf, LibreOffice/UNO features; no repeated SheetJS removal | **Measured:** PPTX-only 18 installed paths; XLSX, codecs, preview and UNO remain independently optional. |
+| markdown | Conversion core already stdlib | Optional frontends and independent Node mirrors; legacy-Python TOML parser path is separate | **Core excluded:** later split interactive Gradio/Streamlit from browser tests only if selected; preserve independent mirror engines. |
+| web-ui | Python/Node core has no installed runtime packages | Optional Gradio; generated Plotly/PptxGenJS browser resources remain actual dependencies | **Core excluded:** later isolate real Gradio serving from Stagehand/browser tooling; browser assets are not replaced by HTML generation. |
+| browser-test-kit | Core and current PNG diff already stdlib | Real browser engines and independent Markdown/HTML/XLSX mirror readers are purposeful tests/features | **Measured mirror feature:** 221→30 installed package paths, both engines and original test runner retained; unrelated XLSX tests stay in the full lane. |
+| xprobe | Canonical core already one stdlib file | YAML needs Node + js-yaml; TOML uses tomllib on Python 3.11+, Node + smol-toml on older Python | **Core excluded:** YAML/legacy TOML need genuine parsers; fixed optional npm lock is missing, so no reproducible new install claim. |
+| TalkCompress | Compression/estimator core already stdlib | Exact tokenizers, translation engines/packs, SVG renderer/fonts and explicitly selected model verification are not replaced by estimates/XML | **Core excluded:** keep tokenizer/translation/render/model environments explicit; fixture output is not exact external-feature parity. |
+| gh_identity | Core and Node wrapper already minimal | HTML-only DOM-lab export avoids Gradio; interactive lab still needs it; wrapper also needs Python | **Core excluded:** static export already avoids Gradio; retain interactive serving and authenticated Git/GitHub semantics. |
+| flutter_navigation_basic | Flutter/Dart application, not a Python/Node replacement target | Existing SDK/packages/browser matrix; optional photo regeneration needs Pillow and host encoders | **Other runtime:** preserve actual Flutter/Dart build and platform plugins; do not count Python tooling as app reduction. |
+| myon-bioinformatics.github.io | Static site/core import helpers already minimal | Browser/Stagehand developer lanes; optional import Docker image is not a production requirement | **Core excluded:** host static build/serve already available; retain browser validation separately from publication. |
+| ascii_artist | Stdlib text-rendering core: exclude deeper reduction | Preserve tests and existing Pages browser capture tools | **Excluded:** already minimal core; retain browser capture tests. |
+| search_seq_including_spaces | Stdlib readers/acquisition: exclude deeper reduction | Live endpoints need explicit network/service access, not a new SDK | **Excluded:** already stdlib; explicit live acquisition remains separate. |
+| nvd_nist_known_vulns | Stdlib implementation: exclude deeper reduction | Live NVD access is distinct from offline helpers; Node launcher still needs Python | **Excluded:** already stdlib; network/API access is not package setup. |
+| yourself | Stdlib environment inspection: exclude deeper reduction | Retain developer tests; optional launcher hosts | **Excluded:** already stdlib observation; missing inspected programs are data, not install requests. |
+| cli_args | Stdlib argument handling: exclude deeper reduction | Explicitly executed commands have their own prerequisites | **Excluded:** already stdlib; selected child command owns its runtime. |
+| Err-o-RoadRunner | Stdlib diagnostics: exclude deeper reduction | Build/test tools and the explicitly inspected/executed programs remain separate | **Excluded:** already stdlib; keep diagnostic/test contracts. |
+| myon-bioinformatics | Stdlib parent tools: exclude deeper reduction | Git/gh when selected, Node for bridge, full contributor/oracle environment | **Excluded core / coordinator:** owns opt-in preparation and coverage; old runtime-profile/planner API unchanged. |
+
+### Coverage is not a claim that every repository has been minimized
+
+The table covers every repository in the **original 24-public snapshot** once.
+It distinguishes seven already-minimal whole-core exclusions, eleven other
+repositories with retained optional/native/service boundaries, one Flutter/Dart
+application, and five selected repositories (Aoi, DRAgoWing, Ironmate, MCP lab,
+browser-test-kit). A selected feature does not complete all features in its
+repository. DRA HTML, Ironmate PPTX, MCP chat client and BTK document mirrors have bounded
+installed-output measurements; Aoi remains export-only.
+No unmeasured row is marked complete merely because its source was inspected.
+
+Do not rerun a broad census for each change. Keep the original source pins as
+historical evidence and refresh only the selected feature's relevant inputs.
+The [second measured pair](nano-client-mirror-environments.md) is **MCP SDK chat
+client** and **BTK Markdown/HTML mirror checks**, retaining their real SDK/parser
+implementations and every existing full-suite test. The next unselected work
+would be a genuine interactive Gradio/Streamlit feature boundary, or a specific
+PythDRagoras/SakAnalytics analysis workload—not re-demonstrating a stdlib core.
+Those remaining features have no new installation/performance evidence here.
+
+### Docker boundary: host execution versus actual integration products
+
+- DRA HTML, Ironmate PPTX and the selected MCP client/BTK mirror paths can use
+  installed host Python/Node plus their feature packages. No container is needed
+  to prepare them. A separately running MCP server remains a real prerequisite
+  for client protocol work; it is not counted as removed by thinning the client.
+- MCP portable source execution already works without Docker; do not count that
+  existing stdlib slice again. Its build-time model summaries still need the
+  real pinned model/runtime, and LibreChat/Open WebUI tests need actual product
+  services. A no-model/source-only export does not replace those checks.
+- Portfolio's Dockerfile is a combined static-build/browser-test recipe, not a
+  deployed Pages runtime. Host static build/serve remains available. Its recorded
+  Node22 image versus Node24+ manifest mismatch is not silently repaired here.
+- Markdown's Compose setup tests real Open WebUI/FastMCP integration; it is not
+  required for core conversion. web-ui/ascii_artist host paths are already
+  package-free; optional Gradio and browser assets remain actual dependencies.
+- Flutter's E2E image packages its real SDK/browsers. TalkCompress/Aoi/NagoyAction
+  model hooks and native libraries are opt-in features, not substitutes supplied
+  by minpy/minjs. Their installed/native/model measurements are outside
+  these two selected preparation recipes.
+
+No Docker image/build setting, Pages publisher or CI job is removed or altered.
+Avoiding Docker for a selected host feature is not evidence of reduced image
+build time, equivalent isolation, or elimination of service/native dependencies.
 
 ### Reuse before writing another minimum
 
@@ -90,7 +135,9 @@ overlap backend, and Ironmate PPTX generation without the XLSX engine.
 Existing versions were installed in separate local environments and outputs
 compared. These actual installed counts/bytes must not be confused with the
 Aoi **export-row** comparison below or the historical inventory's null metrics.
-The old runtime-profile schema and planning-only evidence remain unchanged.
+The [MCP client / BTK mirrors follow-up](nano-client-mirror-environments.md) adds
+two further selected environments with explicit server/test accounting. The
+old runtime-profile schema and planning-only evidence remain unchanged.
 
 ### Executable Aoi runtime-only preparer (follow-up)
 
@@ -283,8 +330,8 @@ by another consumer.
 
 Host Python/Node processes already support many source-only features without
 Docker. That does not replace Docker isolation or the real products used by
-integration tests. Portfolio's optional import Dockerfile currently says Node22
-while its manifest requires Node24+; that source mismatch is recorded, not
+integration tests. Portfolio's refreshed `6a7efcd1` [import Dockerfile](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/6a7efcd1d3ec6775aa181fdd1b81f133e5537da9/Dockerfile.html-import) says Node22
+while its [manifest](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/6a7efcd1d3ec6775aa181fdd1b81f133e5537da9/package.json) requires Node24+; its [host builder](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/6a7efcd1d3ec6775aa181fdd1b81f133e5537da9/tools/build_html_import.py) remains separate. That source mismatch is recorded, not
 fixed or treated as a validated recipe. No Docker/browser/model was run here.
 
 ## Parallel workers and measurements
@@ -307,8 +354,8 @@ the measured regression, even if the candidate is worse. Shared-page memory
 and cached downloads must not be counted as independent-worker savings.
 
 At the 2026-10-31 inventory stage, neither install/build savings nor concurrent
-throughput had been measured. The [two selected follow-ups](nano-feature-environments.md)
-now record actual dependency bytes, install samples and fixed-volume parallel
+throughput had been measured. The four selected features in [DRA/Ironmate](nano-feature-environments.md) and
+[MCP/BTK](nano-client-mirror-environments.md) now record actual dependency bytes, install samples and fixed-volume parallel
 workloads separately; the historical JSON null template is not overwritten.
 All test matrices, browser engines, independent oracles and error cases stay.
 **No cross-engine comparison is surrendered by this PR**; an old Ironmate
@@ -321,6 +368,8 @@ python -S -m unittest discover -s tests -p 'test_nano_inventory.py' -v
 python -S -m unittest discover -s tests -p 'test_nano_export.py' -v
 python -S -m unittest discover -s tests -p 'test_nano_dragowing.py' -v
 python -S -m unittest discover -s tests -p 'test_nano_node.py' -v
+python -S -m unittest discover -s tests -p 'test_nano_mcp_client.py' -v
+python -S -m unittest discover -s tests -p 'test_nano_btk.py' -v
 python -S -m unittest discover -s tests -p 'test_runtime_plan.py' -v
 python -S tests/stdlib_runtime_smoke.py
 ```
@@ -329,6 +378,6 @@ The inventory checks validate public-scope metadata, immutable source-link shape
 and absence of invented execution evidence. The preparer tests use synthetic
 inputs/fake uv/npm to check failure cleanup, exact selection, input mutation and
 parallel output independence. These suites do not fetch sources or execute the
-listed features. Separate evidence records real offline exports and the two
+listed features. Separate evidence records real offline exports and the four
 explicitly selected install/workload comparisons. The existing Python workflow
 discovers the added tests; no workflow is modified.
