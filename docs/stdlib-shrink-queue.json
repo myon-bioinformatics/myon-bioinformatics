@@ -1164,7 +1164,7 @@
       },
       {
         "repository": "myon-bioinformatics/myon-bioinformatics",
-        "commit": "8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4",
+        "source_commit": "8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4",
         "visibility": "public",
         "private": false,
         "archived": false,
@@ -1851,7 +1851,7 @@
       {
         "name": "minpy",
         "repository": "myon-bioinformatics/myon-bioinformatics",
-        "commit": "8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4",
+        "source_commit": "8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4",
         "capability": "Bundle statically reachable same-repository Python modules, with regeneration and source identity checks.",
         "limit": "Not a NumPy/Polars/parser/framework implementation; third-party allowlisting is not stdlib-only; package data/native extensions and several dynamic loading patterns are unsupported.",
         "evidence": [
