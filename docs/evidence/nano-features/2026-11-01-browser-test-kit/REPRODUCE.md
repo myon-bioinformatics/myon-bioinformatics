@@ -11,8 +11,10 @@ is included in this bundle. All existing child tests remain unchanged.
   `source-receipt.json` identifies the nine required files by Git blob, SHA-256
   and immutable public URL. The helper verifies this bounded snapshot, not
   checkout HEAD or ancestry. Use an existing checkout or exact file snapshot.
-- Use a parent checkout containing this bundle whose helper and tests match
-  `manifest.json`. The publication commit is recorded in the parent PR.
+- This historical experiment uses the parent checkout at
+  `3128b4019b9949a6ccc80c686cd84c93f04af119`, whose helper and tests match
+  `manifest.json`. Newer dependency-only CI preparation does not relabel the
+  measured helper or results; keep this historical checkout for reproduction.
   **Do not blindly use the latest helper**, bypass its hash checks, or relabel
   a newer helper as the one measured here.
 - The observed host already had Python 3.12.14, Node 24.22.1 and npm 11.9.0;
@@ -30,7 +32,7 @@ or overwrite an earlier run.
 
 ```sh
 set -eu
-PARENT=/path/to/parent-with-matching-bundle
+PARENT=/path/to/parent-at-3128b401
 BTK_SOURCE=/path/to/browser-test-kit-at-111f6d78
 BUNDLE="$PARENT/docs/evidence/nano-features/2026-11-01-browser-test-kit"
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/nano-btk-XXXXXXXX")
