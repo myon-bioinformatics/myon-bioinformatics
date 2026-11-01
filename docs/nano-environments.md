@@ -40,7 +40,7 @@ Each row's exact revision, manifests and actual consumer source blobs are in
 | QueRyu | Already no mandatory pip runtime dependency | BlueProbe source integration; optional ctypes LAPACK/BLAS auto-discovery is not pure-only execution | **Core excluded:** already vendored numpy_min; retain optional native acceleration and BlueProbe integration. |
 | BlueProbe | Observation/cache core already stdlib | Optional lab extractor bridge or caller-provided extractor; preserve Lexbor comparison tests | **Core excluded:** retain explicitly selected extractor bridge; no new mandatory package to remove. |
 | Ironmate | Python core/PNG paths already minimal | Optional ExcelJS/PptxGenJS, Pillow/NumPy, Playwright + pypdf, LibreOffice/UNO features; no repeated SheetJS removal | **Measured:** PPTX-only 18 installed paths; XLSX, codecs, preview and UNO remain independently optional. |
-| markdown | Conversion core already stdlib | Optional frontends and independent Node mirrors; legacy-Python TOML parser path is separate | **Core excluded:** later split interactive Gradio/Streamlit from browser tests only if selected; preserve independent mirror engines. |
+| markdown | Conversion core already stdlib | Optional frontends and independent Node mirrors; legacy-Python TOML parser path is separate | **Measured Gradio feature:**72→52 installed distributions for text-input API; conversion core stays excluded, Streamlit/browser/mirror tests stay in their full lanes. |
 | web-ui | Python/Node core has no installed runtime packages | Optional Gradio; generated Plotly/PptxGenJS browser resources remain actual dependencies | **Core excluded:** later isolate real Gradio serving from Stagehand/browser tooling; browser assets are not replaced by HTML generation. |
 | browser-test-kit | Core and current PNG diff already stdlib | Real browser engines and independent Markdown/HTML/XLSX mirror readers are purposeful tests/features | **Measured mirror feature:** 221→30 installed package paths, both engines and original test runner retained; unrelated XLSX tests stay in the full lane. |
 | xprobe | Canonical core already one stdlib file | YAML needs Node + js-yaml; TOML uses tomllib on Python 3.11+, Node + smol-toml on older Python | **Core excluded:** YAML/legacy TOML need genuine parsers; fixed optional npm lock is missing, so no reproducible new install claim. |
@@ -59,22 +59,23 @@ Each row's exact revision, manifests and actual consumer source blobs are in
 ### Coverage is not a claim that every repository has been minimized
 
 The table covers every repository in the **original 24-public snapshot** once.
-It distinguishes seven already-minimal whole-core exclusions, eleven other
+It distinguishes seven already-minimal whole-core exclusions, ten other
 repositories with retained optional/native/service boundaries, one Flutter/Dart
-application, and five selected repositories (Aoi, DRAgoWing, Ironmate, MCP lab,
-browser-test-kit). A selected feature does not complete all features in its
-repository. DRA HTML, Ironmate PPTX, MCP chat client and BTK document mirrors have bounded
-installed-output measurements; Aoi remains export-only.
+application, and six selected repositories (Aoi, DRAgoWing, Ironmate, MCP lab,
+browser-test-kit, markdown). A selected feature does not complete all features in its
+repository. DRA HTML, Ironmate PPTX, MCP chat client, BTK document mirrors and
+Markdown Gradio have bounded installed-output measurements; Aoi remains export-only.
 No unmeasured row is marked complete merely because its source was inspected.
 
 Do not rerun a broad census for each change. Keep the original source pins as
 historical evidence and refresh only the selected feature's relevant inputs.
 The [second measured pair](nano-client-mirror-environments.md) is **MCP SDK chat
 client** and **BTK Markdown/HTML mirror checks**, retaining their real SDK/parser
-implementations and every existing full-suite test. The next unselected work
-would be a genuine interactive Gradio/Streamlit feature boundary, or a specific
-PythDRagoras/SakAnalytics analysis workload—not re-demonstrating a stdlib core.
-Those remaining features have no new installation/performance evidence here.
+implementations and every existing full-suite test. The final preparation-wave
+measurement selects [Markdown Gradio](nano-gradio-environment.md), not its
+already-stdlib converter. Stop speculative feature additions here and separately
+plan child adoption of the reviewed opt-in recipes. Remaining genuine native,
+solver, browser and service dependencies are retained, not labeled minimized.
 
 ### Docker boundary: host execution versus actual integration products
 
@@ -95,7 +96,7 @@ Those remaining features have no new installation/performance evidence here.
 - Flutter's E2E image packages its real SDK/browsers. TalkCompress/Aoi/NagoyAction
   model hooks and native libraries are opt-in features, not substitutes supplied
   by minpy/minjs. Their installed/native/model measurements are outside
-  these two selected preparation recipes.
+  the selected preparation recipes.
 
 No Docker image/build setting, Pages publisher or CI job is removed or altered.
 Avoiding Docker for a selected host feature is not evidence of reduced image
@@ -354,8 +355,9 @@ the measured regression, even if the candidate is worse. Shared-page memory
 and cached downloads must not be counted as independent-worker savings.
 
 At the 2026-10-31 inventory stage, neither install/build savings nor concurrent
-throughput had been measured. The four selected features in [DRA/Ironmate](nano-feature-environments.md) and
-[MCP/BTK](nano-client-mirror-environments.md) now record actual dependency bytes, install samples and fixed-volume parallel
+throughput had been measured. The five selected features in [DRA/Ironmate](nano-feature-environments.md),
+[MCP/BTK](nano-client-mirror-environments.md) and
+[Markdown Gradio](nano-gradio-environment.md) now record actual dependency bytes, install samples and fixed-volume parallel
 workloads separately; the historical JSON null template is not overwritten.
 All test matrices, browser engines, independent oracles and error cases stay.
 **No cross-engine comparison is surrendered by this PR**; an old Ironmate
@@ -370,6 +372,7 @@ python -S -m unittest discover -s tests -p 'test_nano_dragowing.py' -v
 python -S -m unittest discover -s tests -p 'test_nano_node.py' -v
 python -S -m unittest discover -s tests -p 'test_nano_mcp_client.py' -v
 python -S -m unittest discover -s tests -p 'test_nano_btk.py' -v
+python -S -m unittest discover -s tests -p 'test_nano_markdown_gradio.py' -v
 python -S -m unittest discover -s tests -p 'test_runtime_plan.py' -v
 python -S tests/stdlib_runtime_smoke.py
 ```
@@ -378,6 +381,6 @@ The inventory checks validate public-scope metadata, immutable source-link shape
 and absence of invented execution evidence. The preparer tests use synthetic
 inputs/fake uv/npm to check failure cleanup, exact selection, input mutation and
 parallel output independence. These suites do not fetch sources or execute the
-listed features. Separate evidence records real offline exports and the four
+listed features. Separate evidence records real offline exports and the five
 explicitly selected install/workload comparisons. The existing Python workflow
 discovers the added tests; no workflow is modified.

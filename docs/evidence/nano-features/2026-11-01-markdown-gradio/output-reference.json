@@ -1,0 +1,50 @@
+[
+  {
+    "case": "rich",
+    "input": "# Title\n\n[docs](https://example.com)\n\n![alt text](img.png)\n",
+    "http_complete_payload": [
+      "# Title",
+      "- docs: https://example.com",
+      "- alt text: img.png",
+      "{\n  \"heading_count\": 1,\n  \"link_count\": 1,\n  \"image_count\": 1,\n  \"code_block_count\": 0,\n  \"raw_html_count\": 0,\n  \"urls\": [\n    \"https://example.com\",\n    \"img.png\"\n  ]\n}"
+    ],
+    "gradio_client_complete_payload": [
+      "# Title",
+      "- docs: https://example.com",
+      "- alt text: img.png",
+      "{\n  \"heading_count\": 1,\n  \"link_count\": 1,\n  \"image_count\": 1,\n  \"code_block_count\": 0,\n  \"raw_html_count\": 0,\n  \"urls\": [\n    \"https://example.com\",\n    \"img.png\"\n  ]\n}"
+    ]
+  },
+  {
+    "case": "empty",
+    "input": "",
+    "http_complete_payload": [
+      "(none)",
+      "(none)",
+      "(none)",
+      "{\n  \"heading_count\": 0,\n  \"link_count\": 0,\n  \"image_count\": 0,\n  \"code_block_count\": 0,\n  \"raw_html_count\": 0,\n  \"urls\": []\n}"
+    ],
+    "gradio_client_complete_payload": [
+      "(none)",
+      "(none)",
+      "(none)",
+      "{\n  \"heading_count\": 0,\n  \"link_count\": 0,\n  \"image_count\": 0,\n  \"code_block_count\": 0,\n  \"raw_html_count\": 0,\n  \"urls\": []\n}"
+    ]
+  },
+  {
+    "case": "unicode_code",
+    "input": "# 日本語\n\n## Second\n\n```text\nliteral\n```\n",
+    "http_complete_payload": [
+      "# 日本語\n## Second",
+      "(none)",
+      "(none)",
+      "{\n  \"heading_count\": 2,\n  \"link_count\": 0,\n  \"image_count\": 0,\n  \"code_block_count\": 1,\n  \"raw_html_count\": 0,\n  \"urls\": []\n}"
+    ],
+    "gradio_client_complete_payload": [
+      "# 日本語\n## Second",
+      "(none)",
+      "(none)",
+      "{\n  \"heading_count\": 2,\n  \"link_count\": 0,\n  \"image_count\": 0,\n  \"code_block_count\": 1,\n  \"raw_html_count\": 0,\n  \"urls\": []\n}"
+    ]
+  }
+]

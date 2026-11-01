@@ -49,6 +49,26 @@ MCP_CLIENT_PACKAGES = frozenset((
     "pywin32", "referencing", "rpds-py", "sse-starlette", "starlette",
     "truststore", "typing-extensions", "typing-inspection", "uvicorn",
 ))
+MARKDOWN_GRADIO_PIN = {
+    "repository": "myon-bioinformatics/markdown",
+    "commit": "f04d233d2edc63650439fbb7692434e9f2c66266",
+    "input_blobs_unchanged": {
+        "pyproject.toml": "031f0def5bebc211a37b85d6ab769ac27721f86e",
+        "uv.lock": "39599c712c22eddc9b2d42bd0f0a13cab90b7f38",
+    },
+}
+MARKDOWN_GRADIO_PACKAGES = frozenset((
+    "annotated-doc", "annotated-types", "anyio", "audioop-lts", "brotli",
+    "certifi", "click", "colorama", "fastapi", "filelock", "fsspec", "gradio",
+    "gradio-client", "groovy", "h11", "hf-gradio", "hf-xet", "httpcore",
+    "httpcore2", "httpx", "httpx2", "huggingface-hub", "idna", "jinja2",
+    "markdown-it-py", "markupsafe", "mdurl", "numpy", "opentelemetry-api",
+    "orjson", "packaging", "pandas", "pillow", "pydantic", "pydantic-core",
+    "pydub", "pygments", "python-dateutil", "python-multipart", "pytz", "pyyaml",
+    "rich", "safehttpx", "semantic-version", "shellingham", "six", "starlette",
+    "tomlkit", "tqdm", "truststore", "typer", "typing-extensions",
+    "typing-inspection", "tzdata", "uvicorn",
+))
 
 
 def _read(path):
@@ -186,6 +206,48 @@ def _mcp_client_inputs(source, inventory):
     return data, MCP_CLIENT_PIN, hashlib.sha256(catalog).hexdigest()
 
 
+def _markdown_gradio_inputs(source, inventory):
+    """Retain real Gradio; exclude the independent Streamlit/browser frontends."""
+    catalog = _read(inventory)
+    snapshot = json.loads(catalog)["current_snapshot"]
+    entries = [r for r in snapshot["repositories"]
+               if r["repository"] == MARKDOWN_GRADIO_PIN["repository"]]
+    if snapshot["schema"] != "nano-screening/1" or len(entries) != 1:
+        raise ValueError("expected one reviewed Markdown record")
+    entry = entries[0]
+    if (entry["commit"] != MARKDOWN_GRADIO_PIN["commit"] or entry["private"] is not False
+            or entry["visibility"] != "public" or entry["archived"] is not False):
+        raise ValueError("unsupported Markdown source identity")
+    data = {name: _read(source / name)
+            for name in MARKDOWN_GRADIO_PIN["input_blobs_unchanged"]}
+    if any(_blob(data[name]) != digest
+           for name, digest in MARKDOWN_GRADIO_PIN["input_blobs_unchanged"].items()):
+        raise ValueError("reviewed Markdown input blob mismatch")
+    project = tomllib.loads(data["pyproject.toml"].decode("utf-8"))
+    lock = tomllib.loads(data["uv.lock"].decode("utf-8"))
+    if (project["project"]["name"] != "md-market"
+            or project["project"]["requires-python"] != ">=3.11"
+            or project["project"]["dependencies"] != []
+            or project["project"].get("optional-dependencies")
+            or project["dependency-groups"] != {
+                "dev": ["pytest>=8.4.2", "PyYAML>=6.0.3"],
+                "frontend": ["gradio>=6.30.0", "streamlit>=1.66.0", "playwright>=1.64.0"]}
+            or project["tool"]["uv"] != {
+                "environments": ["sys_platform != 'emscripten' and python_version >= '3.11'"],
+                "override-dependencies": ["pillow>=13.0.0", "safehttpx>=0.2.0", "tomlkit>=0.15.2"],
+                "dependency-groups": {"dev": {"requires-python": ">=3.11"},
+                                      "frontend": {"requires-python": ">=3.11"}}}
+            or lock["version"] != 1 or lock["revision"] != 5):
+        raise ValueError("unsupported Markdown project/lock structure")
+    own = [p for p in lock["package"] if p["name"] == "md-market"]
+    if len(own) != 1 or own[0]["source"] != {"editable": "."}:
+        raise ValueError("unsupported Markdown local project")
+    for package in lock["package"]:
+        if package["name"] != "md-market" and package["source"] != {"registry": "https://pypi.org/simple"}:
+            raise ValueError("path, Git or workspace dependencies are not supported")
+    return data, MARKDOWN_GRADIO_PIN, hashlib.sha256(catalog).hexdigest()
+
+
 def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY,
             feature="aoi-research-runtime"):
     """Return a completed artifact directory; remove this invocation's output on failure."""
@@ -204,6 +266,9 @@ def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY,
     elif feature == "mcp-chat-client":
         data, pin, inventory_sha = _mcp_client_inputs(source, Path(inventory))
         repository, groups, pruned = MCP_CLIENT_PIN["repository"], [], ["fastmcp"]
+    elif feature == "markdown-gradio":
+        data, pin, inventory_sha = _markdown_gradio_inputs(source, Path(inventory))
+        repository, groups, pruned = MARKDOWN_GRADIO_PIN["repository"], ["frontend"], ["streamlit", "playwright"]
     else:
         raise ValueError("unsupported named feature")
     executable = shutil.which(uv)
@@ -249,6 +314,11 @@ def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY,
             raise ValueError("export does not match the runtime-only selection")
         if feature == "mcp-chat-client" and (set(names) != MCP_CLIENT_PACKAGES or len(names) != len(MCP_CLIENT_PACKAGES)):
             raise ValueError("export does not match the reviewed MCP SDK client closure")
+        if feature == "markdown-gradio" and (
+                set(names) != MARKDOWN_GRADIO_PACKAGES
+                or len(names) != len(MARKDOWN_GRADIO_PACKAGES) + 1
+                or names.count("numpy") != 2):
+            raise ValueError("export does not match the reviewed Markdown Gradio closure")
         # Do not publish success if either source or staged inputs changed.
         for name, content in data.items():
             if _read(source / name) != content or _read(stage / name) != content:
@@ -281,7 +351,7 @@ def prepare(source, output_parent, *, uv="uv", timeout=60, inventory=INVENTORY,
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", required=True, type=Path, help="directory containing the two reviewed inputs")
-    parser.add_argument("--feature", choices=("aoi-research-runtime", "dragowing-html", "mcp-chat-client"),
+    parser.add_argument("--feature", choices=("aoi-research-runtime", "dragowing-html", "mcp-chat-client", "markdown-gradio"),
                         default="aoi-research-runtime", help="explicit reviewed feature; Aoi remains the default")
     parser.add_argument("--output-parent", required=True, type=Path, help="existing directory outside the input directory")
     parser.add_argument("--uv", default="uv", help="trusted installed uv executable (never downloaded)")
