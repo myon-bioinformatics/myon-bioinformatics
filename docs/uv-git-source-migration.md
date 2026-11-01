@@ -15,7 +15,7 @@ A green parent check does not block a child merge and is not reviewer approval.
 
 `pilot/vendor_dispatch.py` reads `vendor-catalog.json` only. It skips with a
 reason when the current environment cannot run uv: `python -S`, Python older
-than 3.11, uv missing, or an offline run. Node older than 24, or Node missing,
+than 3.11, uv missing, or an offline run. Node older than 26, or Node missing,
 skips Node entries the same way. Those skips are the environment. They do not
 classify the tool as unable to move.
 

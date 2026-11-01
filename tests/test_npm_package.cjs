@@ -10,7 +10,7 @@ const manifest = require(path.join(root, 'package.json'));
 
 test('Git package entry point and minimal packed files', () => {
   assert.equal(manifest.private, true);
-  assert.equal(manifest.engines.node, '>=24');
+  assert.equal(manifest.engines.node, '>=26');
   assert.deepEqual(manifest.files, ['py_launch.cjs', 'LICENSE']);
   assert.equal(manifest.exports['./py_launch'], './py_launch.cjs');
   assert.deepEqual(Object.keys(manifest.dependencies || {}), []);

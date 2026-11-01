@@ -5,7 +5,7 @@
   "description": "Node.js entry points for myon-bioinformatics shared portable tools",
   "license": "MIT",
   "engines": {
-    "node": ">=24"
+    "node": ">=26"
   },
   "type": "commonjs",
   "files": [

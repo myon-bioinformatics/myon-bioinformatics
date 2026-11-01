@@ -50,6 +50,6 @@ def test_node_python_39_lane_uses_uv_on_current_runner_without_changing_modern_m
     assert modern["runs-on"] == "${{ matrix.os }}"
     assert modern["strategy"]["matrix"] == {
         "os": ["ubuntu-latest", "macos-latest", "windows-latest"],
-        "node": ["24", "latest"],
+        "node": ["26", "latest"],
         "python": ["3.11", "3.12"],
     }

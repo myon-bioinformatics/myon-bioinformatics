@@ -1,4 +1,4 @@
-"""Unit tests for node_launch.py (requires Node 24+ when probing PATH)."""
+"""Unit tests for node_launch.py (requires Node 26+ when probing PATH)."""
 from __future__ import annotations
 
 import os
@@ -217,7 +217,7 @@ def test_node_or_command_wraps_js():
 
 def test_py39_import():
     subprocess.run(
-        [sys.executable, "-c", "import node_launch; assert node_launch.MIN_NODE_MAJOR == 24"],
+        [sys.executable, "-c", "import node_launch; assert node_launch.MIN_NODE_MAJOR == 26"],
         cwd=ROOT,
         check=True,
     )

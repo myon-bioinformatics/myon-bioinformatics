@@ -1,6 +1,6 @@
 "use strict";
 /**
- * Shared Node launcher for single-file stdlib Python tools (Node >= 24, node: builtins only).
+ * Shared Node launcher for single-file stdlib Python tools (Node >= 26, node: builtins only).
  *
  * CLI: require("./vendor/py_launch.cjs").main(__dirname + "/tool.py", { envVar: "MY_TOOL_PYTHON", noSite: true })
  * Library: run(scriptPath, args, { python, input, timeout, maxBuffer, maxInputBytes, responseMaxBytes, env, noSite, isolated, envVar }).
@@ -27,7 +27,7 @@
 const { spawn, spawnSync } = require("node:child_process");
 const { platform } = require("node:os");
 
-const MIN_NODE = [24, 0];
+const MIN_NODE = [26, 0];
 const MIN_PYTHON = [3, 9];
 const DEFAULT_ENV_VAR = "PYTHON";
 const DEFAULT_PROBE_TIMEOUT_MS = 5_000;
