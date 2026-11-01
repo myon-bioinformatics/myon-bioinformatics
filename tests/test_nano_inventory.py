@@ -28,7 +28,8 @@ class NanoInventoryTests(unittest.TestCase):
         for entry in entries:
             with self.subTest(repository=entry["repository"]):
                 self.assertRegex(entry["repository"], r"^myon-bioinformatics/[A-Za-z0-9_.-]+$")
-                self.assertRegex(entry["commit"], r"^[0-9a-f]{40}$")
+                commit_key = "source_commit" if entry["repository"] == "myon-bioinformatics/myon-bioinformatics" else "commit"
+                self.assertRegex(entry[commit_key], r"^[0-9a-f]{40}$")
                 self.assertEqual(entry["visibility"], "public")
                 self.assertIs(entry["private"], False)
                 self.assertIs(entry["archived"], False)
@@ -56,7 +57,7 @@ class NanoInventoryTests(unittest.TestCase):
                     self.assertRegex(source["blob_sha"], r"^[0-9a-f]{40}$")
                     self.assertEqual(source["url"],
                                      "https://github.com/{}/blob/{}/{}".format(
-                                         entry["repository"], entry["commit"], source["path"]))
+                                         entry["repository"], entry.get("source_commit", entry.get("commit")), source["path"]))
 
     def test_delivery_matrix_covers_every_screened_repository_once(self):
         guide = (ROOT / "docs/nano-environments.md").read_text()
@@ -70,6 +71,40 @@ class NanoInventoryTests(unittest.TestCase):
                     for entry in self.snapshot["repositories"]]
         self.assertCountEqual(names, expected)
         self.assertEqual(len(names), len(set(names)))
+
+    def test_parent_inventory_provenance_is_not_an_active_consumer_pin(self):
+        from tools.parent_pin_check import PARENT_REPOSITORY, evaluate, scan_text_files
+        from unittest.mock import patch
+
+        records = [entry for entry in self.snapshot["repositories"] + self.snapshot["reuse"]
+                   if entry["repository"] == PARENT_REPOSITORY]
+        self.assertEqual(len(records), 2)
+        historical = "8d0bfcb7aaf955c25f2f8612b21a5321b44d09c4"
+        for entry in records:
+            self.assertNotIn("commit", entry)
+            self.assertNotIn("sha", entry)
+            self.assertEqual(entry["source_commit"], historical)
+        inventory = {"docs/stdlib-shrink-queue.json": json.dumps(self.catalog)}
+        self.assertEqual(scan_text_files(inventory), [])
+
+        # Provenance is not a blanket exclusion: real consumer locks/workflows
+        # must still be detected, and stale pins must still fail strict mode.
+        controls = {
+            "vendor.lock.json": json.dumps({"files": [{
+                "repository": PARENT_REPOSITORY, "commit": historical,
+                "destination": "vendor/tool.py",
+            }]}),
+            ".github/workflows/control.yml":
+                f"uses: {PARENT_REPOSITORY}/.github/workflows/reusable.yml@{historical}\n",
+        }
+        pins = scan_text_files(inventory | controls)
+        self.assertEqual({pin["kind"] for pin in pins}, {"json-commit", "workflow-uses", "text-reference"})
+        self.assertEqual({pin["file"] for pin in pins}, set(controls))
+        with patch("tools.parent_pin_check.pin_behind_main", return_value=True):
+            report = evaluate(pins, parent_repository=PARENT_REPOSITORY,
+                              main_sha="f" * 40, token=None, enforce=True)
+        self.assertFalse(report["ok"])
+        self.assertTrue(report["stale"])
 
     def test_measurements_and_execution_are_not_claimed(self):
         measurements = self.snapshot["measurements"]
