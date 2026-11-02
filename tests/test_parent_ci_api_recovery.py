@@ -94,3 +94,55 @@ def test_json_cache_returns_independent_values_and_expires(monkeypatch):
     audit()
     audit()
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize(('message', 'reason'), [
+    ('GitHub Actions is not permitted to create or approve pull requests.',
+     'actions_pr_creation_disabled'),
+    ('Resource not accessible by integration', 'integration_access_denied'),
+    ('Resource not accessible by personal access token', 'token_access_denied'),
+])
+def test_pr_forbidden_classifies_only_known_messages(monkeypatch, capsys, message, reason):
+    import json
+    calls = []
+    token = 'never-print-this-secret'
+    def fetch(request, timeout):
+        calls.append(request)
+        body = json.dumps({'message': message, 'extra': token + '/private/name'}).encode()
+        raise HTTPError(request.full_url, 403, token,
+                        {'X-RateLimit-Remaining': '4996'}, BytesIO(body))
+    monkeypatch.setattr(sync, 'urlopen', fetch)
+    with pytest.raises(HTTPError) as caught:
+        sync._github_api('POST', 'https://api.github.com/repos/private/name/pulls', token, {})
+    assert len(calls) == 1
+    log = capsys.readouterr().err + str(caught.value)
+    assert reason in log
+    assert token not in log and 'private/name' not in log and message not in log
+
+
+@pytest.mark.parametrize('body', [
+    b'{"message":"secret/private/repository"}', b'not json', b'[]',
+    b'{"message":[]}', b'x' * 8193,
+])
+def test_pr_forbidden_unknown_body_remains_private(monkeypatch, capsys, body):
+    def fetch(request, timeout):
+        raise HTTPError(request.full_url, 403, 'forbidden', {}, BytesIO(body))
+    monkeypatch.setattr(sync, 'urlopen', fetch)
+    with pytest.raises(HTTPError) as caught:
+        sync._github_api('POST', 'https://api.github.com/repos/private/name/pulls', 'token', {})
+    log = capsys.readouterr().err + str(caught.value)
+    assert '"reason"' not in log and 'secret' not in log and 'private/name' not in log
+
+
+@pytest.mark.parametrize(('method', 'path', 'headers'), [
+    ('GET', 'pulls', {}), ('POST', 'contents', {}),
+    ('POST', 'pulls', {'X-RateLimit-Remaining': '0'}),
+])
+def test_pr_reason_is_not_inferred_outside_non_rate_limited_pull_creation(method, path, headers, capsys):
+    class UnreadableBody(BytesIO):
+        def read(self, count):
+            pytest.fail('body must not be read in this context')
+    error = HTTPError('https://api.github.com/repos/private/name/' + path,
+                      403, 'forbidden', headers, UnreadableBody())
+    sync._report_github_error(error, method, 'token')
+    assert '\"reason\"' not in capsys.readouterr().err

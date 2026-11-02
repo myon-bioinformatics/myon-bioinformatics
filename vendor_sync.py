@@ -132,8 +132,28 @@ def _report_github_error(error, method, token, *, rate_limited=None):
         rate_limited = error.code == 429 or (error.code == 403 and (
             response_headers.get("X-RateLimit-Remaining") == "0" or
             response_headers.get("Retry-After") is not None))
+    # Only emit fixed diagnostic codes, never an API message/body (which may
+    # contain repository names or credentials). Historical generic 403s cannot
+    # be classified retrospectively from status/remaining-quota headers alone.
+    reason = None
+    if error.code == 403 and not rate_limited and method == "POST" and endpoint == "pulls":
+        try:
+            raw = error.read(8193)
+            payload = json.loads(raw) if len(raw) <= 8192 else None
+            message = payload.get("message") if isinstance(payload, dict) else None
+            if isinstance(message, str):
+                reason = {
+                    "GitHub Actions is not permitted to create or approve pull requests.":
+                        "actions_pr_creation_disabled",
+                    "Resource not accessible by integration": "integration_access_denied",
+                    "Resource not accessible by personal access token": "token_access_denied",
+                }.get(message)
+        except (ValueError, OSError, TypeError):
+            pass
     detail = {"status": error.code, "authenticated": bool(token),
               "rate_limited": rate_limited, "endpoint_family": endpoint}
+    if reason is not None:
+        detail["reason"] = reason
     for key in ("X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After", "X-GitHub-Request-Id"):
         if (error.headers or {}).get(key) is not None:
             detail[key] = _redact_secrets(str(error.headers[key]), token=token)
@@ -453,6 +473,29 @@ def public_repository_page_record(repository):
 
 
 def _public_git_snapshot(repository, ref, sources, *, remote=None):
+    """Reuse immutable regular blobs only within the current parent audit."""
+    cache = _PARENT_FETCH_CACHE.get()
+    if cache is None or not isinstance(ref, str) or not re.fullmatch(r"[0-9a-f]{40}", ref):
+        return _read_public_git_snapshot(repository, ref, sources, remote=remote)
+    paths = tuple(sorted(set(sources)))
+    if not paths:
+        return _read_public_git_snapshot(repository, ref, paths, remote=remote)
+    key = ("git-blobs", repository, ref, remote)
+    known = cache.get(key, {})
+    missing = [path for path in paths if path not in known]
+    if missing:
+        resolved, files = _read_public_git_snapshot(repository, ref, missing, remote=remote)
+        if resolved != ref:
+            raise ValueError("Git snapshot SHA mismatch")
+        # Publish only after the complete requested subset succeeds. A failed
+        # read or mismatched revision must never become a cached success.
+        selected = {path: files[path] for path in missing}
+        known = {**known, **selected}
+        cache[key] = known
+    return ref, {path: known[path] for path in paths}
+
+
+def _read_public_git_snapshot(repository, ref, sources, *, remote=None):
     """Read public Git objects in a temporary bare repo on API rate limits."""
 
     def attempt():
