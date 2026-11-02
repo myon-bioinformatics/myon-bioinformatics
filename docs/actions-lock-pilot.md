@@ -62,3 +62,18 @@ does not inspect upstream composite-action contents or prove dependency closure.
 
 The first actual onboarded CI run and artifact preservation must succeed before
 merging. Dependabot's future lock regeneration remains a separate observation.
+
+## Updating without duplicating settings
+
+The official tool version, annotated tag SHA and underlying commit SHA are held
+once in `actions-lock-tool.json`. Both generation and verification call
+`scripts/install_actions_lock.py`, which validates that manifest and verifies
+the upstream objects before installing the release. Update the three reviewed
+values together in one PR; no repository-variable settings need a separate edit.
+Both CI paths are triggered when the manifest or installer changes.
+
+The pilot remote is derived from `${{ github.server_url }}` and
+`${{ github.repository }}` through an environment variable, so renaming or
+copying the repository does not require changing a literal clone URL.
+Runtime paths continue to use `${{ runner.temp }}`. Action `uses` references stay
+literal because they participate in static resolution and dependency review.
