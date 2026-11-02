@@ -170,3 +170,23 @@ def test_cli_runs_a_project_and_returns_pytest_code(tmp_path):
     bad = subprocess.run([sys.executable, "-S", str(SCRIPT), "--requirements", "nope.txt"], cwd=tmp_path,
                          capture_output=True, text=True)
     assert bad.returncode == 3
+
+
+def test_cli_preserves_plugin_startup_errors_in_json(tmp_path):
+    """Exercise real pytest startup, rather than mocked return codes."""
+    (tmp_path / "broken_brief_plugin.py").write_text(
+        'raise ImportError("brief plugin dependency unavailable")\n', encoding="utf-8")
+    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", PYTHONPATH=str(tmp_path))
+    for plugin, code, diagnostic in [
+        ("absent_brief_plugin", 4, "absent_brief_plugin"),
+        ("broken_brief_plugin", 3, "brief plugin dependency unavailable"),
+    ]:
+        done = subprocess.run(
+            [sys.executable, "-S", str(SCRIPT), "--json", "--", "-p", plugin],
+            cwd=tmp_path, env=env, capture_output=True, text=True,
+        )
+        assert done.returncode == code, done.stdout + done.stderr
+        payload = json.loads(done.stdout)
+        assert payload["ok"] is False
+        assert payload["exit_code"] == code
+        assert diagnostic in "\n".join(payload["lines"])
