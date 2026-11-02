@@ -69,8 +69,6 @@ jobs:
           EXCLUDE_GLOBS: ${{ inputs.exclude-globs }}
           SKIP_DEFAULT_EXCLUDES: ${{ inputs.skip-default-excludes }}
           RUN_FLEET: ${{ inputs.fleet }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_REF: ${{ github.ref }}
         run: |
           set -euo pipefail
           args=(--parent "$PARENT_REPOSITORY" --event "$GITHUB_EVENT_NAME" --ref "$GITHUB_REF")

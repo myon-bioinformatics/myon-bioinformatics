@@ -64,8 +64,6 @@ jobs:
       - name: Unit regressions
         run: uv run pytest -q tests/test_vendor_lock_reconcile.py tests/test_vendor_consumers.py tests/test_vendor_catalog.py tests/test_vendor_fleet_plan.py tests/test_duplicate_files_report.py
       - name: Fetch real consumer locks (read only)
-        env:
-          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
           mkdir -p reports
@@ -77,7 +75,7 @@ jobs:
           )
           # PRs validate the proposed parent baseline, including coordinated
           # child relocations. Main/dispatch still observe actual live main.
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             args+=(--heads child-heads.json)
           fi
           python -S vendor_lock_reconcile.py "${args[@]}"

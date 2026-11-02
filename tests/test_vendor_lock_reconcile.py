@@ -312,7 +312,7 @@ def test_reconcile_workflow_selects_recorded_heads_only_for_pr(tmp_path, event):
     stub.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE_ARGS"\n')
     stub.chmod(0o755)
     capture = tmp_path / 'args.txt'
-    env = dict(os.environ, EVENT_NAME=event, CAPTURE_ARGS=str(capture),
+    env = dict(os.environ, GITHUB_EVENT_NAME=event, CAPTURE_ARGS=str(capture),
                PATH=str(tmp_path) + os.pathsep + os.environ.get('PATH', ''))
     subprocess.run([bash, '-euo', 'pipefail', '-c', script], cwd=tmp_path, env=env, check=True)
     args = capture.read_text().splitlines()
