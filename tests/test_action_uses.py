@@ -227,7 +227,7 @@ def test_workflow_lint_lane_checks_hashes_strict_on_main_and_schedule():
     assert "schedule" in workflow["on"]
     assert workflow["permissions"] == {"contents": "read"}
     job = workflow["jobs"]["action-uses"]
-    step = job["steps"][-1]
+    step = next(s for s in job["steps"] if s.get("name") == "Check action pins and release hashes")
     run = step["run"]
     assert run.index("python3 -S scripts/check_action_uses.py\n") < run.index("--check-hashes")
     assert "python3 -S scripts/check_action_uses.py --check-hashes --warn" in run
@@ -254,7 +254,7 @@ def test_pr_workflow_does_not_warn_away_style_failure(tmp_path):
     import yaml
     workflow = yaml.load((ROOT / ".github/workflows/actionlint.yml").read_text(),
                          Loader=yaml.BaseLoader)
-    run = workflow["jobs"]["action-uses"]["steps"][-1]["run"]
+    run = next(s["run"] for s in workflow["jobs"]["action-uses"]["steps"] if s.get("name") == "Check action pins and release hashes")
     _write(tmp_path, "steps:\n  - uses: anthropics/claude-code-action@v1\n")
     script = tmp_path / "scripts/check_action_uses.py"
     script.parent.mkdir()
@@ -267,3 +267,75 @@ def test_pr_workflow_does_not_warn_away_style_failure(tmp_path):
     assert result.returncode == 1
     assert "action は 40 桁 SHA" in result.stderr
     assert "::warning::" not in result.stderr
+
+
+def _lock(root, workflow='.github/workflows/ci.yml', commit=SHA, owner=1):
+    p = root / '.github/workflows/actions.lock'
+    p.write_text(f"""version: 'v0.0.3'
+workflows:
+    '{workflow}':
+        - 'actions/checkout@v7.0.1'
+dependencies:
+    'actions/checkout@v7.0.1':
+        ref: 'v7.0.1'
+        commit: 'sha1-{commit}'
+        owner_id: {owner}
+        repo_id: 2
+""")
+
+
+def test_lock_is_scoped_and_hash_and_identity_are_verified(tmp_path):
+    _write(tmp_path, 'steps:\n  - uses: actions/checkout@v7.0.1\n')
+    _lock(tmp_path)
+    assert uses.style_problems(tmp_path) == []
+    assert uses.hash_problems(tmp_path, lambda repo, tag: SHA, lambda repo: (1, 2)) == []
+    other = tmp_path / '.github/workflows/other.yml'
+    other.write_text('steps:\n  - uses: actions/checkout@v7.0.1\n')
+    assert len(uses.style_problems(tmp_path)) == 1
+    _write(tmp_path, 'steps:\n  - uses: actions/setup-python@v7.0.1\n')
+    assert any('missing from workflow lock' in x for x in uses.style_problems(tmp_path))
+
+
+def test_lock_provenance_failures_are_not_waived(tmp_path):
+    _write(tmp_path, 'steps:\n  - uses: actions/checkout@v7.0.1\n')
+    _lock(tmp_path)
+    with pytest.raises(uses.HashCheckError, match='commit mismatch'):
+        uses.hash_problems(tmp_path, lambda repo, tag: OTHER, lambda repo: (1, 2))
+    with pytest.raises(uses.HashCheckError, match='identity mismatch'):
+        uses.hash_problems(tmp_path, lambda repo, tag: SHA, lambda repo: (99, 2))
+
+
+@pytest.mark.parametrize('replacement', [
+    ("version: 'v0.0.3'", "version: 'v0.0.99'"),
+    ("owner_id: 1", "owner_id: true"),
+    ("owner_id: 1", "owner_id: 0"),
+    ("owner_id: 1", "owner_id: 1\n        owner_id: 1"),
+    ("commit: 'sha1-", "commit: 'sha256-"),
+    ("ref: 'v7.0.1'", "ref: 'main'"),
+    ("'.github/workflows/ci.yml'", "'templates/ci.workflow.yml'"),
+    ("repo_id: 2", "repo_id: &id 2"),
+])
+def test_malformed_lock_never_exempts_tags(tmp_path, replacement):
+    _write(tmp_path, 'steps:\n  - uses: actions/checkout@v7.0.1\n')
+    _lock(tmp_path)
+    p = tmp_path / '.github/workflows/actions.lock'
+    p.write_text(p.read_text().replace(*replacement))
+    assert uses.style_problems(tmp_path)
+    with pytest.raises(uses.HashCheckError):
+        uses.hash_problems(tmp_path, lambda repo, tag: SHA)
+
+
+def test_lock_identity_failure_remains_error_under_warn(tmp_path):
+    _write(tmp_path, 'steps:\n  - uses: actions/checkout@v7.0.1\n')
+    _lock(tmp_path)
+    assert uses.main(['--root', str(tmp_path), '--check-hashes', '--warn'],
+                     resolve=lambda repo, tag: SHA,
+                     identity=lambda repo: (99, 2)) == 2
+
+
+def test_reusable_workflow_cannot_be_exempted_by_lock(tmp_path):
+    _write(tmp_path, 'jobs:\n  x:\n    uses: actions/checkout/.github/workflows/ci.yml@v7.0.1\n')
+    _lock(tmp_path)
+    p = tmp_path / '.github/workflows/actions.lock'
+    p.write_text(p.read_text().replace('actions/checkout@', 'actions/checkout/.github/workflows/ci.yml@'))
+    assert uses.style_problems(tmp_path)

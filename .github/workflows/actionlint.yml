@@ -7,12 +7,16 @@ on:
       - "templates/*.workflow.yml"
       - "scripts/check_action_uses.py"
       - "tests/test_action_uses.py"
+      - "actions-lock-tool.json"
+      - "scripts/install_actions_lock.py"
   push:
     paths:
       - ".github/workflows/**"
       - "templates/*.workflow.yml"
       - "scripts/check_action_uses.py"
       - "tests/test_action_uses.py"
+      - "actions-lock-tool.json"
+      - "scripts/install_actions_lock.py"
   # タグと SHA の照合は、タグの付け替えを拾うため毎日も回す（07:00 UTC）。
   schedule:
     - cron: "0 7 * * *"
@@ -49,6 +53,18 @@ jobs:
           else
             python3 -S scripts/check_action_uses.py --check-hashes --warn
           fi
+
+      - name: Verify adopted action lockfile with official generator
+        if: hashFiles('.github/workflows/actions.lock') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -S scripts/install_actions_lock.py
+          python3 -S scripts/check_action_uses.py --list-locked-workflows > "$RUNNER_TEMP/locked-workflows"
+          mapfile -t workflows < "$RUNNER_TEMP/locked-workflows"
+          gh actions-lock --verify "${workflows[@]}"
 
   actionlint:
     uses: ./.github/workflows/reusable-actionlint.yml

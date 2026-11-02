@@ -5,6 +5,8 @@ on:
       - ".github/workflows/actions-lock-pilot.yml"
       - ".github/workflows/workflow-wrapper-tests.yml"
       - "docs/actions-lock-pilot.md"
+      - "actions-lock-tool.json"
+      - "scripts/install_actions_lock.py"
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,24 +24,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag_sha=8030edf41a48291d48ac67090ab27e9949225de2
-          commit_sha=d5dca22a06ff8590d50b41612038996800cfb336
-          actual_tag=$(gh api repos/github/gh-actions-lock/git/ref/tags/v0.2.0 --jq '[.object.type, .object.sha] | join(" ")')
-          test "$actual_tag" = "tag $tag_sha"
-          actual_commit=$(gh api "repos/github/gh-actions-lock/git/tags/$tag_sha" --jq '[.object.type, .object.sha] | join(" ")')
-          test "$actual_commit" = "commit $commit_sha"
-          gh extension install github/gh-actions-lock --pin v0.2.0
+          python3 -S scripts/install_actions_lock.py
       - name: Generate and verify an isolated candidate
         env:
           GH_TOKEN: ${{ github.token }}
           PILOT_ROOT: ${{ runner.temp }}/actions-lock-pilot
+          PILOT_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}.git
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$PILOT_ROOT/.github/workflows"
           cp .github/workflows/workflow-wrapper-tests.yml "$PILOT_ROOT/.github/workflows/"
           git -C "$PILOT_ROOT" init --quiet
-          git -C "$PILOT_ROOT" remote add origin https://github.com/myon-bioinformatics/myon-bioinformatics.git
+          git -C "$PILOT_ROOT" remote add origin "$PILOT_REPOSITORY_URL"
           cd "$PILOT_ROOT"
           gh actions-lock .github/workflows/workflow-wrapper-tests.yml
           gh actions-lock --verify .github/workflows/workflow-wrapper-tests.yml
