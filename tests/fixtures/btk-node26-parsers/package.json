@@ -1,0 +1,21 @@
+{
+  "private": true,
+  "overrides": {
+    "uuid": "^14.0.3",
+    "minimatch": "^11.0.1"
+  },
+  "scripts": {
+    "test:node": "playwright test",
+    "test:browserless": "playwright test --config=playwright.browserless.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": ">=1.64.1",
+    "exceljs": "^4.4.0",
+    "linkedom": "^0.18.14",
+    "markdown-it": "^15.0.3",
+    "marked": "^18.1.2"
+  },
+  "engines": {
+    "node": ">=26"
+  }
+}
