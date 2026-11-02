@@ -36,8 +36,6 @@ jobs:
         # Release-hash mismatches may warn on PR/non-main pushes; style errors
         # and API validation failures remain errors. Main/schedule are strict.
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          GITHUB_REF: ${{ github.ref }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -45,9 +43,9 @@ jobs:
           # mismatches may be report-only before main integration.
           python3 -S scripts/check_action_uses.py
           strict=0
-          if [[ "$EVENT_NAME" == "schedule" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
             strict=1
-          elif [[ "$EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
+          elif [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/main" ]]; then
             strict=1
           fi
           if [[ "$strict" == "1" ]]; then
