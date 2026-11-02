@@ -37,3 +37,23 @@ fetch-reuse comparison (3→2) measures a separate improvement.
 Validation includes real-Git regular/executable files and literal nested,
 Unicode, space and bracket names; existing missing/symlink/gitlink/oversize
 and ambient-credential rejection tests remain in the relevant suite.
+
+
+## Promisor verification, 2026-11-03
+
+The local regression server explicitly enables `uploadpack.allowFilter` and is
+accessed through a `file://` remote. Immediately before sizing, `rev-list
+--objects --missing=print FETCH_HEAD` proves both fixture blobs are absent.
+The normal case then checks commit/blob/bytes for both requested files. The
+oversized case rejects before any `cat-file blob` content read. This validates
+lazy blob sizing rather than a local server that ignores blob:none.
+
+A separate read-only probe used the actual GitHub parent at immutable commit
+`d04de02a93d06f87fb5ae97bf86d43496f0ec157`. Before sizing, 374 blob objects were
+missing. The reader successfully returned LICENSE (1061 bytes, SHA-256
+`15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59`)
+and vendor_sync.py (129453 bytes, SHA-256
+`42a723ffafb2fa25fca66f32eccb8a0aa42a53d40db3818961493ed9e919514e`).
+Both match the clean checkout bytes at that revision. The two controlled
+file-remote cases are offline CI regressions; the public GitHub probe is a
+one-off observation, not an added network test or a latency benchmark.
