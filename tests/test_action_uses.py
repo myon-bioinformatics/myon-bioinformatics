@@ -232,7 +232,7 @@ def test_workflow_lint_lane_checks_hashes_strict_on_main_and_schedule():
     assert run.index("python3 -S scripts/check_action_uses.py\n") < run.index("--check-hashes")
     assert "python3 -S scripts/check_action_uses.py --check-hashes --warn" in run
     assert "python3 -S scripts/check_action_uses.py --check-hashes\n" in run
-    assert '"$EVENT_NAME" == "schedule"' in run
+    assert '"$GITHUB_EVENT_NAME" == "schedule"' in run
     assert '"$GITHUB_REF" == "refs/heads/main"' in run
     assert step["env"]["GITHUB_TOKEN"] == "${{ github.token }}"
     assert job["steps"][0]["with"]["persist-credentials"] == "false"
@@ -261,7 +261,7 @@ def test_pr_workflow_does_not_warn_away_style_failure(tmp_path):
     script.write_text((ROOT / "scripts/check_action_uses.py").read_text())
     env = {key: value for key, value in os.environ.items()
            if key not in {"GITHUB_TOKEN", "GH_TOKEN"}}
-    env.update(EVENT_NAME="pull_request", GITHUB_REF="refs/pull/187/merge")
+    env.update(GITHUB_EVENT_NAME="pull_request", GITHUB_REF="refs/pull/187/merge")
     result = subprocess.run(["bash", "-c", run], cwd=tmp_path, env=env,
                             capture_output=True, text=True, timeout=20)
     assert result.returncode == 1
