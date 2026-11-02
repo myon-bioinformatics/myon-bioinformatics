@@ -69,7 +69,7 @@ The official tool version, annotated tag SHA and underlying commit SHA are held
 once in `actions-lock-tool.json`. Both generation and verification call
 `scripts/install_actions_lock.py`, which validates that manifest and verifies
 the upstream objects before installing the release. Update the three reviewed
-values together in one PR; no repository-variable settings need a separate edit.
+source values and the reviewed Linux amd64 binary SHA-256 together in one PR; no repository-variable settings need a separate edit.
 Both CI paths are triggered when the manifest or installer changes.
 
 The pilot remote is derived from `${{ github.server_url }}` and
@@ -77,3 +77,11 @@ The pilot remote is derived from `${{ github.server_url }}` and
 copying the repository does not require changing a literal clone URL.
 Runtime paths continue to use `${{ runner.temp }}`. Action `uses` references stay
 literal because they participate in static resolution and dependency review.
+
+The installer additionally hashes the installed `linux-amd64` executable before
+any `gh actions-lock` invocation. A missing binary, digest mismatch, unsupported
+platform, or installation failure stops the job. The digest in the manifest was
+reviewed from the official immutable v0.2.0 release asset (11,456,696 bytes):
+https://github.com/github/gh-actions-lock/releases/tag/v0.2.0 . Git object checks
+alone do not authenticate release binary bytes; both gates are required. This
+byte pin is not a claim of a reproducible build or independent source attestation.
