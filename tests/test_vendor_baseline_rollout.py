@@ -15,7 +15,7 @@ import vendor_sync
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = json.loads((ROOT / "tests/fixtures/fleet_vendor_locks_20261029.json").read_text())
-# Preserve the previous observation; only this reviewed child was re-observed.
+# Preserve historical fixtures; reviewed consumer snapshots override them below.
 REFRESHED_FIXTURES = {
     "myon-bioinformatics/flutter_navigation_basic": json.loads(
         (ROOT / "tests/fixtures/flutter_adopted_vendor_235.json").read_text()),
