@@ -523,16 +523,27 @@ def _read_public_git_snapshot(repository, ref, sources, *, remote=None):
             commit = git("rev-parse", "FETCH_HEAD^{commit}").decode().strip()
             _hex(commit, 40)
             files = {}
-            for source in sources:
-                obj = commit + ":" + source
-                record = git("ls-tree", commit, "--", source).split(b"\t", 1)[0].split()
-                if len(record) != 3 or record[0] not in (b"100644", b"100755") or record[1] != b"blob":
+            paths = tuple(sorted(set(sources)))
+            entries = {}
+            if paths:
+                # One literal, NUL-delimited tree read supplies mode/blob/size
+                # for all requested files. No API recursive-tree truncation or
+                # pathname quoting ambiguity is involved in this local Git read.
+                listing = git("--literal-pathspecs", "ls-tree", "-rlz", "--full-tree",
+                              commit, "--", *paths)
+                for row in listing.split(b"\0"):
+                    if row:
+                        metadata, path = row.split(b"\t", 1)
+                        entries[path.decode("utf-8")] = metadata.split()
+            for source in paths:
+                record = entries.get(source, ())
+                if len(record) != 4 or record[0] not in (b"100644", b"100755") or record[1] != b"blob":
                     raise ValueError("source must be a regular file")
                 blob = record[2].decode()
-                size = int(git("cat-file", "-s", obj))
+                size = int(record[3])
                 if size > MAX_BYTES:
                     raise ValueError("download exceeds byte limit")
-                files[source] = (blob, git("cat-file", "blob", obj))
+                files[source] = (blob, git("cat-file", "blob", commit + ":" + source))
             return commit, files
 
     label = _redact_secrets("public git snapshot " + repository)

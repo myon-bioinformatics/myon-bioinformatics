@@ -73,3 +73,39 @@ def test_moving_refs_and_unscoped_calls_are_never_cached(monkeypatch):
             sync._public_git_snapshot('o/r', 'main', [])
     audit()
     assert len(calls) == 4
+
+
+def test_real_git_batch_tree_preserves_literal_paths_modes_sizes_and_bytes(tmp_path, monkeypatch):
+    import subprocess
+    repo = tmp_path / 'source'
+    repo.mkdir()
+    def git(*args):
+        return subprocess.check_output(['git', '-C', str(repo), *args],
+                                       stderr=subprocess.DEVNULL).decode().strip()
+    git('init', '-b', 'main')
+    git('config', 'user.name', 'Fixture')
+    git('config', 'user.email', 'fixture@example.invalid')
+    paths = ['a.py', 'nested/日本語.py', 'literal[1].py', 'with space.py']
+    for name in paths:
+        path = repo / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(('data: ' + name + '\n').encode())
+    git('add', '.')
+    git('update-index', '--chmod=+x', 'a.py')
+    git('commit', '-m', 'fixture')
+    commit = git('rev-parse', 'HEAD')
+    calls = []
+    original = subprocess.run
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return original(argv, **kwargs)
+    monkeypatch.setattr(sync.subprocess, 'run', run)
+    resolved, files = sync._read_public_git_snapshot('public/fixture', commit, paths, remote=repo.as_uri())
+    assert resolved == commit and set(files) == set(paths)
+    for name in paths:
+        data = (repo / name).read_bytes()
+        assert files[name] == (sync.git_blob(data), data)
+    assert sum('ls-tree' in c for c in calls) == 1
+    assert sum('cat-file' in c for c in calls) == len(paths)
+    assert not any('cat-file' in c and '-s' in c for c in calls)
+    assert next(c for c in calls if 'ls-tree' in c).count('--literal-pathspecs') == 1
