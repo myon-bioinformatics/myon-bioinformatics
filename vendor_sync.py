@@ -473,6 +473,29 @@ def public_repository_page_record(repository):
 
 
 def _public_git_snapshot(repository, ref, sources, *, remote=None):
+    """Reuse immutable regular blobs only within the current parent audit."""
+    cache = _PARENT_FETCH_CACHE.get()
+    if cache is None or not isinstance(ref, str) or not re.fullmatch(r"[0-9a-f]{40}", ref):
+        return _read_public_git_snapshot(repository, ref, sources, remote=remote)
+    paths = tuple(sorted(set(sources)))
+    if not paths:
+        return _read_public_git_snapshot(repository, ref, paths, remote=remote)
+    key = ("git-blobs", repository, ref, remote)
+    known = cache.get(key, {})
+    missing = [path for path in paths if path not in known]
+    if missing:
+        resolved, files = _read_public_git_snapshot(repository, ref, missing, remote=remote)
+        if resolved != ref:
+            raise ValueError("Git snapshot SHA mismatch")
+        # Publish only after the complete requested subset succeeds. A failed
+        # read or mismatched revision must never become a cached success.
+        selected = {path: files[path] for path in missing}
+        known = {**known, **selected}
+        cache[key] = known
+    return ref, {path: known[path] for path in paths}
+
+
+def _read_public_git_snapshot(repository, ref, sources, *, remote=None):
     """Read public Git objects in a temporary bare repo on API rate limits."""
 
     def attempt():

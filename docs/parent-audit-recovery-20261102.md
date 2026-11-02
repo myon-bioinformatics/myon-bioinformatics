@@ -56,3 +56,30 @@ Do not infer one of these causes from a generic 403, bypass policy with a second
 credential, retry an ambiguous write, or report automatic recovery as verified.
 
 Track continuing fleet governance in [issue #56](https://github.com/myon-bioinformatics/myon-bioinformatics/issues/56).
+
+## Reduce repeated observations without weakening identity checks
+
+Parent audits now reuse successfully read regular Git blobs by
+(repository, immutable commit, remote) within one invocation. Overlapping file
+subsets fetch only missing blobs, so another consumer of the same source does
+not fetch the same files again. Mutable refs are never cached, failed/incomplete
+reads are never published, and returned dictionaries cannot mutate cached data.
+The cache is discarded at audit completion. First-parent source checks,
+repository ID/visibility checks, byte digests and approval boundaries remain.
+This reduces snapshot reads; it is not a measured hosted-CI speedup claim.
+
+Repository IDs already guard name/identity mismatches in child observations.
+In reusable Actions callers, `${{ github.repository_id }}` can supply the caller's
+identity; it does not itself resolve a reviewed source commit or approve a lock.
+A recursive Git tree can batch path/blob discovery, but must be tied to a frozen
+commit and checked for `truncated`. GitHub documents a 100,000-entry / 7 MB limit;
+a truncated tree requires nonrecursive subtree traversal, not approval from an
+incomplete list. Tree SHA-1 entries alone do not replace source first-parent
+checks, regular-file modes, SHA-256 verification or changed-lock review.
+Reference: https://docs.github.com/en/rest/git/trees#get-a-tree
+
+A local real-Git file-remote probe used three observations (`a`+`LICENSE`,
+`a`+`b`, `LICENSE`) at one committed revision: unscoped reads performed three
+fetches, scoped reads performed two (second fetch requested only `b`), and all
+returned commit/blob/byte results were equal. This measures request reuse on a
+local fixture, not network latency or whole-fleet throughput.
