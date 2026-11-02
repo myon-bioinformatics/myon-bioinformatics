@@ -64,6 +64,13 @@ BTK_EXPECTED_PATHS = frozenset("node_modules/" + path for path in (
     "linkedom", "linkify-it", "markdown-it", "marked", "mdurl", "nth-check",
     "playwright", "playwright-core", "punycode.js", "uc.micro", "uhyphen",
 ))
+# Node 26 metadata snapshot; historical BTK_* remains immutable for measured recipes.
+BTK_NODE26_FEATURE = "browser-test-kit-document-mirrors-node26"
+BTK_NODE26_COMMIT = "8de4a8c145a1361c477c67e87f0e74a1c45faa50"
+BTK_NODE26_SOURCE_BLOBS = {'package.json': 'f9181fcad964a6eeb3f9a6a183f60df5fc65a159', 'package-lock.json': 'a8c85049bd6d4509d9c3f16afc214fe4f5d2d06a'}
+BTK_NODE26_SELECTED = dict(BTK_SELECTED)
+BTK_NODE26_EXPECTED_PATHS = BTK_EXPECTED_PATHS
+
 MARKDOWN_FEATURE = "markdown-toml"
 MARKDOWN_REPOSITORY = "myon-bioinformatics/markdown"
 MARKDOWN_COMMIT = "6ffef17031cf10edbeda71718c44ad739735f87e"
@@ -109,6 +116,11 @@ def validate_original(manifest: dict, lock: dict, *, feature="ironmate-pptx") ->
     if feature == "ironmate-pptx":
         key, expected = "dependencies", {"exceljs": "4.4.0", "pptxgenjs": "4.0.1"}
         overrides = {"image-size": "2.0.4", "uuid": "14.0.3"}
+    elif feature == BTK_NODE26_FEATURE:
+        key, expected = "devDependencies", {**BTK_NODE26_SELECTED, "exceljs": "^4.4.0"}
+        overrides = {"uuid": "^14.0.3", "minimatch": "^11.0.1"}
+        if manifest.get("engines") != {"node": ">=26"}:
+            raise ValueError("unsupported Node 26 engines")
     elif feature == BTK_FEATURE:
         key, expected = "devDependencies", {**BTK_SELECTED, "exceljs": "^4.4.0"}
         overrides = {"uuid": "^14.0.3", "minimatch": "^11.0.1"}
@@ -132,7 +144,7 @@ def validate_original(manifest: dict, lock: dict, *, feature="ironmate-pptx") ->
         if not path:
             continue
         allowed = set()
-        if feature in (BTK_FEATURE, MARKDOWN_FEATURE):
+        if feature in (BTK_FEATURE, BTK_NODE26_FEATURE, MARKDOWN_FEATURE):
             if entry.get("dev") is not True:
                 raise ValueError(f"unexpected development marker: {path}")
             allowed.add("dev")
@@ -156,6 +168,8 @@ def validate_original(manifest: dict, lock: dict, *, feature="ironmate-pptx") ->
 def validate_projection(original: dict, projected: dict, *, feature="ironmate-pptx") -> None:
     if feature == "ironmate-pptx":
         paths, name, key, selected = EXPECTED_PATHS, "Ironmate", "dependencies", {"pptxgenjs": "4.0.1"}
+    elif feature == BTK_NODE26_FEATURE:
+        paths, name, key, selected = BTK_NODE26_EXPECTED_PATHS, "browser-test-kit", "devDependencies", BTK_NODE26_SELECTED
     elif feature == BTK_FEATURE:
         paths, name, key, selected = BTK_EXPECTED_PATHS, "browser-test-kit", "devDependencies", BTK_SELECTED
     elif feature == MARKDOWN_FEATURE:
@@ -170,7 +184,7 @@ def validate_projection(original: dict, projected: dict, *, feature="ironmate-pp
                             if not path or path in paths}
     expected["packages"][""][key] = selected
     if feature != MARKDOWN_FEATURE:
-        expected["packages"][""]["engines"] = {"node": ">=24"}
+        expected["packages"][""]["engines"] = {"node": ">=26" if feature == BTK_NODE26_FEATURE else ">=24"}
     if set(projected.get("packages", {})) != {"", *paths}:
         raise ValueError("npm projection has an unexpected package path set")
     if projected != expected:
@@ -187,6 +201,12 @@ def prepare(source: Path, output_dir: Path, npm: str = "npm", *,
         blobs, paths = SOURCE_BLOBS, EXPECTED_PATHS
         repository, commit, project_name = REPOSITORY, COMMIT, "Ironmate"
         key, selected = "dependencies", {"pptxgenjs": "4.0.1"}
+    elif feature == BTK_NODE26_FEATURE:
+        if not dependencies_only:
+            raise ValueError("Node 26 BTK profile requires --dependencies-only")
+        blobs, paths = BTK_NODE26_SOURCE_BLOBS, BTK_NODE26_EXPECTED_PATHS
+        repository, commit, project_name = BTK_REPOSITORY, BTK_NODE26_COMMIT, "browser-test-kit"
+        key, selected = "devDependencies", BTK_NODE26_SELECTED
     elif feature == BTK_FEATURE:
         blobs, paths = BTK_SOURCE_BLOBS, BTK_EXPECTED_PATHS
         repository, commit, project_name = BTK_REPOSITORY, BTK_COMMIT, "browser-test-kit"
@@ -270,7 +290,7 @@ def prepare(source: Path, output_dir: Path, npm: str = "npm", *,
             "candidate_locked_package_records": len(paths),
             "retained_full_records_unchanged": True, "preserved_overrides": manifest.get("overrides"),
             "npm_root_metadata_changes": ({"name": project_name} if feature == MARKDOWN_FEATURE
-                                          else {"name": project_name, "engines": {"node": ">=24"}}),
+                                          else {"name": project_name, "engines": {"node": ">=26" if feature == BTK_NODE26_FEATURE else ">=24"}}),
             "projected_manifest_sha256": hashlib.sha256(candidate).hexdigest(),
             "projected_lock_sha256": hashlib.sha256((project / "package-lock.json").read_bytes()).hexdigest(),
             "installed_package_count": None, "installed_bytes": None, "installation_seconds": None,
@@ -293,7 +313,7 @@ def main() -> None:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--npm", default="npm")
-    parser.add_argument("--feature", choices=("ironmate-pptx", BTK_FEATURE, MARKDOWN_FEATURE), default="ironmate-pptx")
+    parser.add_argument("--feature", choices=("ironmate-pptx", BTK_FEATURE, BTK_NODE26_FEATURE, MARKDOWN_FEATURE), default="ironmate-pptx")
     parser.add_argument("--dependencies-only", action="store_true",
                         help="verify/stage only package.json and package-lock.json; never copy historical source/tests")
     args = parser.parse_args()
