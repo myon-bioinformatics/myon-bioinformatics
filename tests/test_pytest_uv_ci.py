@@ -38,7 +38,15 @@ def test_pytest_workflows_use_uv_run_pytest():
         assert "uv run pytest" in text, name
         assert "python -m pytest" not in text, name
         assert "python -m pip install" not in text, name
-        assert SETUP_UV in text, name
+        if name == "workflow-wrapper-tests.yml":
+            import yaml
+            lock = yaml.safe_load((WORKFLOWS / "actions.lock").read_text(encoding="utf-8"))
+            ref = "astral-sh/setup-uv@v10.3.3"
+            assert f"uses: {ref}" in text
+            assert ref in lock["workflows"][f".github/workflows/{name}"]
+            assert lock["dependencies"][ref]["commit"] == "sha1-" + SETUP_UV.split("@", 1)[1].split()[0]
+        else:
+            assert SETUP_UV in text, name
         assert 'UV_LOCKED: "1"' in text, name
     candidate = (WORKFLOWS / "vendor-candidate.yml").read_text(encoding="utf-8")
     assert "uv run python -S vendor_candidate.py" in candidate
