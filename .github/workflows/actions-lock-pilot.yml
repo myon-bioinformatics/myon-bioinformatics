@@ -19,7 +19,12 @@ jobs:
       - name: Install pinned official generator
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh extension install github/gh-actions-lock --pin 8030edf41a48291d48ac67090ab27e9949225de2
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual=$(gh api repos/github/gh-actions-lock/commits/v0.2.0 --jq .sha)
+          test "$actual" = 8030edf41a48291d48ac67090ab27e9949225de2
+          gh extension install github/gh-actions-lock --pin v0.2.0
       - name: Generate and verify an isolated candidate
         env:
           GH_TOKEN: ${{ github.token }}
