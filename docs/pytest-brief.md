@@ -38,11 +38,13 @@ python -S pytest_brief.py --requirements tool/python/requirements.txt -- tool/py
   not start or finish normally.
 - `--python PATH`: interpreter used for pip and pytest (default: `sys.executable`).
 - `--json`: print `{ok, exit_code, installed, lines, hint}` instead of text lines.
-  Exit 3 still means a requirement failed and pytest did not run. The pip tail stays on stderr.
+  Dependency failures use exit 3 and include an `error` field; the pip tail stays on stderr.
+  A pytest startup/internal error can also return 3, without the dependency `error` field.
 
 ## Exit status
 
 - `0`: all tests passed (or were skipped)
 - `1`: test failures
-- `3`: dependency analysis or installation failed
+- `3`: dependency analysis/installation failed, or pytest reported an internal error
+- `4`: pytest usage error, including an explicitly requested plugin that cannot be found (pytest 9.2+)
 - anything else: pytest's own exit code, passed through
