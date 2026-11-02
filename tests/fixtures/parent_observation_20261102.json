@@ -1,0 +1,34 @@
+{
+  "myon-bioinformatics/Err-o-RoadRunner": {
+    "lock_sha256": "49051c0c8548c796c2540a708e49ca7e5da51999a1944b87cd4c95e98c19f379",
+    "sha": "fd770f22cd409c7da9144d8253c93c3e119c6b54"
+  },
+  "myon-bioinformatics/ascii_artist": {
+    "lock_sha256": "c9850bc46f2439a33645772529b92cb36c130b4d63f1d5e5be0111ec966029d8",
+    "sha": "ba9dab5bf58d2d4f91895e357580d8bba1d304a1"
+  },
+  "myon-bioinformatics/gh_identity": {
+    "lock_sha256": "4363a61c996ae0c754c73b016a4f24978b5686e84f65f493605ec222f61b2da9",
+    "sha": "1c8d85cc4a63c0a90faaaabb85ec0663d1367e23"
+  },
+  "myon-bioinformatics/markdown": {
+    "lock_sha256": "b7cf187fe8199f8aaa4da87eada1dc93fb9d5f53585cc9d1782d6f1e49f0d49b",
+    "sha": "b032d911646d78087c0fbebf81149f05b664c3c6"
+  },
+  "myon-bioinformatics/myon-bioinformatics": {
+    "lock_sha256": "4b0b3d3669472b5791cf8e1919f9a774b7f9c10ee692e4cbf273d5364e0cb5ed",
+    "sha": "8ce289a78754cf8ca0ae2ca3889b52281929fdc4"
+  },
+  "myon-bioinformatics/nvd_nist_known_vulns": {
+    "lock_sha256": "6193f0bd7ac08ec52f9ceed9e2a81566f2310a4308323ea1f9a190abf8fcd8e1",
+    "sha": "b72319ca2ae06847684b50688c711ab9c79d9731"
+  },
+  "myon-bioinformatics/search_seq_including_spaces": {
+    "lock_sha256": "b496cf01d5a50d1d23dd770dcd0e5d39b81b14b22fc94465af9f2c871f377b93",
+    "sha": "d32be55ff76bbda7455b2ab4c6952b6498cbd321"
+  },
+  "myon-bioinformatics/yourself": {
+    "lock_sha256": "5c0637919f8f7481af87a707ee5de83b4655d3b01aac5f0ba6892e75068bb0f1",
+    "sha": "38fc067aa3d1bb9ba6ccc874c955a10f8665c4f4"
+  }
+}

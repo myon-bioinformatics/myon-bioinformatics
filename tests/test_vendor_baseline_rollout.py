@@ -54,7 +54,13 @@ def test_observed_lock_topology_and_immutable_revision(name):
     heads = vendor_sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
     fixture = REFRESHED_FIXTURES.get(name, FIXTURES[name])
     lock = vendor_sync.validate(fixture["lock"])
-    assert heads["heads"][name]["sha"] == fixture["sha"]
+    observed = json.loads((ROOT / "tests/fixtures/parent_observation_20261102.json").read_text())
+    expected_sha = fixture["sha"]
+    if name in observed:
+        digest = hashlib.sha256(json.dumps(lock, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        assert digest == observed[name]["lock_sha256"]
+        expected_sha = observed[name]["sha"]
+    assert heads["heads"][name]["sha"] == expected_sha
     assert vendor_consumers.compare(registry, lock, name)["matches"]
     if name != vendor_sync.PARENT_REPOSITORY:
         assert all(row["ref"] == row["commit"] for row in lock["files"])
