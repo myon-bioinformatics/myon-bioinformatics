@@ -1,0 +1,45 @@
+name: Actions lockfile pilot
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/actions-lock-pilot.yml"
+      - ".github/workflows/workflow-wrapper-tests.yml"
+      - "docs/actions-lock-pilot.md"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned official generator
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh extension install github/gh-actions-lock --pin 8030edf41a48291d48ac67090ab27e9949225de2
+      - name: Generate and verify an isolated candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PILOT_ROOT: ${{ runner.temp }}/actions-lock-pilot
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$PILOT_ROOT/.github/workflows"
+          cp .github/workflows/workflow-wrapper-tests.yml "$PILOT_ROOT/.github/workflows/"
+          git -C "$PILOT_ROOT" init --quiet
+          git -C "$PILOT_ROOT" remote add origin https://github.com/myon-bioinformatics/myon-bioinformatics.git
+          cd "$PILOT_ROOT"
+          gh actions-lock .github/workflows/workflow-wrapper-tests.yml
+          gh actions-lock --verify .github/workflows/workflow-wrapper-tests.yml
+          gh actions-lock --verify-local .github/workflows/workflow-wrapper-tests.yml
+      - name: Preserve candidate for review
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: actions-lock-pilot
+          path: ${{ runner.temp }}/actions-lock-pilot/.github/workflows/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
