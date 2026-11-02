@@ -5,7 +5,8 @@
 
 方針（2026-10-31 myon さんの判断）:
 
-- 外部の action（actions/*、astral-sh/setup-uv、サードパーティを含むすべて）は、
+- ロック採用 workflow は actions.lock の完全バージョンタグ・commit・IDを検証する。
+- 未採用 workflow / templates の外部の action（actions/*、astral-sh/setup-uv、サードパーティを含むすべて）は、
   そのリリースの 40 桁 commit SHA と行末の `# vX.Y.Z`。
 - 同じリポジトリの action / reusable workflow は相対パス（./）。docker:// はそのまま。
 - 親 myon-bioinformatics/myon-bioinformatics の reusable workflow は
@@ -164,9 +165,94 @@ def _style_problem(raw: str, comment: str) -> str | None:
     return None
 
 
+def action_lock(root: Path) -> dict:
+    """Read the official generator's v0.0.3 YAML subset; reject other syntax."""
+    path = root / '.github/workflows/actions.lock'
+    if not path.exists():
+        return {'workflows': {}, 'dependencies': {}}
+    data = {}
+    section = None
+    entry = None
+    for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+        if not line.strip() or line.lstrip().startswith('#'):
+            continue
+        def bad():
+            raise ValueError(f'actions.lock:{number}: unsupported or duplicate lockfile entry')
+        if line == "version: 'v0.0.3'":
+            if 'version' in data:
+                bad()
+            data['version'] = 'v0.0.3'
+        elif line in ('workflows:', 'dependencies:'):
+            section = line[:-1]
+            if section in data:
+                bad()
+            data[section] = {}
+            entry = None
+        elif section and (match := re.fullmatch(r"    '([^'\\]+)':", line)):
+            entry = match[1]
+            if entry in data[section]:
+                bad()
+            data[section][entry] = [] if section == 'workflows' else {}
+        elif section == 'workflows' and entry and (match := re.fullmatch(r"        - '([^'\\]+)'", line)):
+            if match[1] in data[section][entry]:
+                bad()
+            data[section][entry].append(match[1])
+        elif section == 'dependencies' and entry and (match := re.fullmatch(r"        (ref|commit|owner_id|repo_id): (?:'([^'\\]+)'|([0-9]+))", line)):
+            field, string, integer = match.groups()
+            if field in data[section][entry]:
+                bad()
+            data[section][entry][field] = int(integer) if integer else string
+        else:
+            bad()
+    if set(data) != {'version', 'workflows', 'dependencies'} or not data.get('workflows'):
+        raise ValueError('actions.lock: incomplete lockfile')
+    for workflow, refs in data['workflows'].items():
+        if (not re.fullmatch(r'\.github/workflows/[A-Za-z0-9_.-]+\.ya?ml', workflow)
+                or not (root / workflow).is_file() or not refs):
+            raise ValueError('actions.lock: invalid workflow path or empty dependencies')
+        if any(ref not in data['dependencies'] for ref in refs):
+            raise ValueError('actions.lock: workflow dependency missing')
+    for ref, record in data['dependencies'].items():
+        action, sep, tag = ref.rpartition('@')
+        if (not sep or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*', action)
+                or '.github/workflows/' in action or not PATCH.fullmatch(tag)
+                or set(record) != {'ref', 'commit', 'owner_id', 'repo_id'}
+                or record['ref'] != tag or not isinstance(record['commit'], str)
+                or not re.fullmatch(r'sha1-[0-9a-f]{40}', record['commit'])
+                or any(type(record[k]) is not int or record[k] <= 0 for k in ('owner_id', 'repo_id'))):
+            raise ValueError('actions.lock: invalid dependency record')
+    return data
+
+
+def _locked(root, lock, path, raw):
+    rel = path.relative_to(root).as_posix()
+    return (raw in lock['workflows'].get(rel, [])
+            and raw in lock['dependencies'])
+
+
+def github_action_identity(repository):
+    data = _github_json(f'https://api.github.com/repos/{repository}')
+    owner = data.get('owner', {})
+    if type(data.get('id')) is not int or type(owner.get('id')) is not int:
+        raise HashCheckError(f'{repository}: invalid repository identity')
+    return owner['id'], data['id']
+
+
 def style_problems(root: Path) -> list[str]:
     found: list[str] = []
+    try:
+        lock = action_lock(root)
+    except (ValueError, OSError) as exc:
+        return [str(exc)]
     for path, lineno, raw, comment in _iter_uses(root):
+        if _locked(root, lock, path, raw):
+            continue
+        rel = path.relative_to(root).as_posix()
+        if (rel in lock['workflows'] and '@' in raw
+                and not raw.startswith(('./', 'docker://'))
+                and '.github/workflows/' not in raw):
+            found.append(f'{rel}:{lineno}: action missing from workflow lock ({raw})')
+            continue
         problem = _style_problem(raw, comment)
         if problem:
             rel = path.relative_to(root).as_posix()
@@ -217,10 +303,27 @@ def github_tag_commit(repository: str, tag: str) -> str:
     raise HashCheckError(f"{repository}@{tag} の commit を解決できない")
 
 
-def hash_problems(root: Path, resolve=github_tag_commit) -> list[str]:
+def hash_problems(root: Path, resolve=github_tag_commit, identity=github_action_identity) -> list[str]:
     """action の SHA が、コメントのリリースタグの commit と一致するか。"""
     found: list[str] = []
     resolved: dict[tuple[str, str], str] = {}
+    try:
+        lock = action_lock(root)
+    except (ValueError, OSError) as exc:
+        raise HashCheckError(str(exc)) from exc
+    identities = {}
+    for ref, record in lock['dependencies'].items():
+        repository = '/'.join(ref.split('@')[0].split('/')[:2])
+        tag = record['ref']
+        key = (repository, tag)
+        if key not in resolved:
+            resolved[key] = resolve(repository, tag).lower()
+        if resolved[key] != record['commit'][5:]:
+            raise HashCheckError(f'actions.lock: {ref} release commit mismatch')
+        if repository not in identities:
+            identities[repository] = identity(repository)
+        if identities[repository] != (record['owner_id'], record['repo_id']):
+            raise HashCheckError(f'actions.lock: {ref} repository identity mismatch')
     for path, lineno, raw, comment in _iter_uses(root):
         if "@" not in raw:
             continue
@@ -242,7 +345,7 @@ def hash_problems(root: Path, resolve=github_tag_commit) -> list[str]:
     return found
 
 
-def main(argv: list[str] | None = None, resolve=github_tag_commit) -> int:
+def main(argv: list[str] | None = None, resolve=github_tag_commit, identity=github_action_identity) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--warn", action="store_true", help="不一致を警告にして終了コード 0")
@@ -251,13 +354,21 @@ def main(argv: list[str] | None = None, resolve=github_tag_commit) -> int:
         action="store_true",
         help="action の SHA をリリースタグの commit と照合する",
     )
+    parser.add_argument("--list-locked-workflows", action="store_true", help="print validated onboarded workflow paths")
     args = parser.parse_args(argv)
     root = args.root.resolve()
+    if args.list_locked_workflows:
+        try:
+            print('\n'.join(action_lock(root)['workflows']))
+        except (ValueError, OSError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        return 0
     found = style_problems(root)
     hash_error = None
     if args.check_hashes:
         try:
-            found.extend(hash_problems(root, resolve))
+            found.extend(hash_problems(root, resolve, identity))
         except HashCheckError as exc:
             hash_error = exc
     if hash_error is not None:
