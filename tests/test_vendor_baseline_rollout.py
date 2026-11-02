@@ -22,6 +22,9 @@ REFRESHED_FIXTURES = {
     "myon-bioinformatics/Ironmate": json.loads(
         (ROOT / "tests/fixtures/ironmate_adopted_vendor_20261031.json").read_text()),
 }
+REFRESHED_FIXTURES.update(json.loads(
+    (ROOT / "tests/fixtures/reviewed_child_locks_20261103.json").read_text()))
+
 # Registry entries enrolled after the 2026-10-29 observation. The parent registry
 # must land before the child lock (the child CI reads the live registry), so these
 # are excluded from the frozen-baseline comparison until the baseline is re-observed.
