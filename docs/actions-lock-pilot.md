@@ -1,7 +1,10 @@
 # Actions dependency lockfile pilot
 
-The read-only `Actions lockfile pilot` workflow runs the official generator pinned
-at `8030edf41a48291d48ac67090ab27e9949225de2` (v0.2.0) against an isolated copy
+The read-only `Actions lockfile pilot` workflow checks that the v0.2.0 release
+tag resolves to `8030edf41a48291d48ac67090ab27e9949225de2`, then installs
+the official release binary using `gh extension install --pin v0.2.0`.
+The binary is release-distributed, not locally built from that source commit.
+The generator runs against an isolated copy
 of `workflow-wrapper-tests.yml`. It then runs online provenance verification and
 offline coverage verification. The candidate workflow and machine-generated
 `actions.lock` are retained together in the `actions-lock-pilot` artifact for
