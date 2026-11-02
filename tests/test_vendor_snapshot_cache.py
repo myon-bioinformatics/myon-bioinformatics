@@ -109,3 +109,47 @@ def test_real_git_batch_tree_preserves_literal_paths_modes_sizes_and_bytes(tmp_p
     assert sum('cat-file' in c for c in calls) == len(paths)
     assert not any('cat-file' in c and '-s' in c for c in calls)
     assert next(c for c in calls if 'ls-tree' in c).count('--literal-pathspecs') == 1
+
+
+@pytest.mark.parametrize('oversized', [False, True])
+def test_real_promisor_snapshot_sizes_missing_blobs(tmp_path, monkeypatch, oversized):
+    import subprocess
+    repo = tmp_path / 'source'
+    repo.mkdir()
+    def git(*args):
+        return subprocess.check_output(['git', '-C', str(repo), *args],
+                                       stderr=subprocess.DEVNULL).decode().strip()
+    git('init', '-b', 'main')
+    git('config', 'user.name', 'Fixture')
+    git('config', 'user.email', 'fixture@example.invalid')
+    git('config', 'uploadpack.allowFilter', 'true')
+    (repo / 'a.py').write_bytes(b'content\n')
+    (repo / 'LICENSE').write_bytes(b'license\n')
+    git('add', '.')
+    git('commit', '-m', 'fixture')
+    commit = git('rev-parse', 'HEAD')
+    missing_before, content_reads = [], []
+    original = subprocess.run
+    def run(argv, **kwargs):
+        if 'cat-file' in argv and 'blob' in argv:
+            content_reads.append(argv)
+        if 'ls-tree' in argv:
+            prefix = argv[:argv.index('--literal-pathspecs')]
+            result = original(prefix + ['rev-list', '--objects', '--missing=print', 'FETCH_HEAD'],
+                              env=kwargs['env'], capture_output=True, timeout=10)
+            assert result.returncode == 0
+            missing_before.extend(line for line in result.stdout.splitlines() if line.startswith(b'?'))
+        return original(argv, **kwargs)
+    monkeypatch.setattr(sync.subprocess, 'run', run)
+    if oversized:
+        monkeypatch.setattr(sync, 'MAX_BYTES', 3)
+        with pytest.raises(ValueError, match='byte limit'):
+            sync._read_public_git_snapshot('public/fixture', commit, ['a.py', 'LICENSE'], remote=repo.as_uri())
+    else:
+        resolved, files = sync._read_public_git_snapshot('public/fixture', commit,
+                                                        ['a.py', 'LICENSE'], remote=repo.as_uri())
+        assert resolved == commit
+        assert files['a.py'] == (sync.git_blob(b'content\n'), b'content\n')
+        assert files['LICENSE'] == (sync.git_blob(b'license\n'), b'license\n')
+    assert len(content_reads) == (0 if oversized else 2)
+    assert len(missing_before) == 2  # Proves the server actually honored blob:none.
