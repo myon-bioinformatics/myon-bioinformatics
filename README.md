@@ -358,3 +358,9 @@ placed into consumer trees. See [catalog coverage](docs/vendor-catalog-coverage.
 Local prerequisite observations: `python -S preflight.py --root . --require git
 --python-min 3.11`. Optional `--runtime-facts` connects yourself's OS/runtime JSON
 without importing another checkout; see [preflight usage and limits](docs/preflight.md).
+
+## Focused test discovery
+
+See [standard-library discovery commands](docs/unittest-discovery.md) for
+validated `python -S -m unittest discover` recipes, filename/name filtering,
+and the boundary with the full pytest suite.
