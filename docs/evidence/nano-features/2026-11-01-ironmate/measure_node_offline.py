@@ -29,7 +29,8 @@ def main():
     prior = args.installed_trials.resolve()
     receipt_bytes = (prior/'receipt.json').read_bytes()
     prior_report = json.loads(receipt_bytes)
-    assert len(prior_report['installs']) == 6 and all(r['exit_code']==0 for r in prior_report['installs'])
+    if not (len(prior_report['installs']) == 6 and all(r['exit_code']==0 for r in prior_report['installs'])):
+        raise AssertionError('measure_node_offline:32: validation failed')
     work = Path(tempfile.mkdtemp(prefix='offline-fixed-alttext-', dir=prior))
     (BASE/'latest-offline.txt').write_text(str(work)+'\n')
     snapshot = nano.read_snapshot(source)
@@ -41,19 +42,24 @@ def main():
         manifest = json.loads((project/'package.json').read_bytes())
         lock = json.loads((project/'package-lock.json').read_bytes())
         if kind=='baseline':
-            assert (project/'package.json').read_bytes()==snapshot['package.json']
-            assert (project/'package-lock.json').read_bytes()==snapshot['package-lock.json']
+            if not ((project/'package.json').read_bytes()==snapshot['package.json']):
+                raise AssertionError('measure_node_offline:44: validation failed')
+            if not ((project/'package-lock.json').read_bytes()==snapshot['package-lock.json']):
+                raise AssertionError('measure_node_offline:45: validation failed')
         else:
             expected=json.loads(snapshot['package.json']); expected['dependencies']={'pptxgenjs':'4.0.1'}
-            assert manifest==expected
+            if not (manifest==expected):
+                raise AssertionError('measure_node_offline:48: validation failed')
             nano.validate_projection(original_lock, lock)
         for name, data in snapshot.items():
             if name not in ('package.json','package-lock.json'):
-                assert (project/name).read_bytes()==data
+                if not ((project/name).read_bytes()==data):
+                    raise AssertionError('measure_node_offline:52: validation failed')
         for path, package in lock['packages'].items():
             if path:
                 installed=json.loads((project/path/'package.json').read_bytes())
-                assert installed['version']==package['version'], (kind,path)
+                if not (installed['version']==package['version']):
+                    raise AssertionError((kind,path))
     env = {k:v for k,v in os.environ.items() if not k.lower().startswith('npm_config_')
            and k not in ('NODE_OPTIONS','NODE_PATH','NODE_ENV','PYTHONPATH','PYTHONHOME')}
     env.update(PYTHONDONTWRITEBYTECODE='1', PYTHONNOUSERSITE='1')
@@ -98,7 +104,8 @@ def main():
                     batch=time.perf_counter()-start
                     for worker in workers:
                         if reference is None: reference=worker['digests']
-                        assert worker['digests']==reference, 'independent ZIP/XML semantic mismatch'
+                        if not (worker['digests']==reference):
+                            raise AssertionError('independent ZIP/XML semantic mismatch')
                     report['workloads'].append({'kind':kind,'repeat':repeat,'concurrency':concurrency,
                                                 'batch_seconds':batch,'workers':workers})
                     save()
