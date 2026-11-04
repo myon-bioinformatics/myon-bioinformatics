@@ -329,6 +329,22 @@ glibc/LP64; no apt closure, hashes or ABI were verified by this inventory.
 one shared object, assume musl/ILP64 compatibility, or remove OS packages needed
 by another consumer.
 
+A feature that does need apt packages can keep them in plain-text list files
+(one group per file, one `name` or `name=version` per line, whole-line `#`
+comments) and apply them with `tools/nano_apt.py`; a Dockerfile can read the same
+files with `grep -v '^#' FILE | xargs apt-get install -y --no-install-recommends`.
+
+```sh
+python -S tools/nano_apt.py --list apt-runtime.txt [--list apt-test.txt] [--install]
+```
+
+Without `--install` it only reports (exit 1 when something is missing). With it,
+`apt-get update` and `install` run only for missing or version-mismatched
+packages, then the result is re-checked with `dpkg-query`; nothing runs when
+all are present or when `apt-get`/`dpkg-query` are absent (reported as
+`apt_unavailable`). It does not choose packages, resolve closures or pin hashes,
+so the Debian 13/amd64 caveats above still apply. No CI step or child rollout is added.
+
 Host Python/Node processes already support many source-only features without
 Docker. That does not replace Docker isolation or the real products used by
 integration tests. Portfolio's refreshed `6a7efcd1` [import Dockerfile](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/6a7efcd1d3ec6775aa181fdd1b81f133e5537da9/Dockerfile.html-import) says Node22
@@ -373,6 +389,7 @@ python -S -m unittest discover -s tests -p 'test_nano_node.py' -v
 python -S -m unittest discover -s tests -p 'test_nano_mcp_client.py' -v
 python -S -m unittest discover -s tests -p 'test_nano_btk.py' -v
 python -S -m unittest discover -s tests -p 'test_nano_markdown_gradio.py' -v
+python -S -m unittest discover -s tests -p 'test_nano_apt.py' -v
 python -S -m unittest discover -s tests -p 'test_runtime_plan.py' -v
 python -S tests/stdlib_runtime_smoke.py
 ```
