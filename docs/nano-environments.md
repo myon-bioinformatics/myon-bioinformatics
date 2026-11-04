@@ -335,7 +335,8 @@ comments) and apply them with `tools/nano_apt.py`; a Dockerfile can read the sam
 files with `grep -v '^#' FILE | xargs apt-get install -y --no-install-recommends`.
 
 ```sh
-python -S tools/nano_apt.py --list apt-runtime.txt [--list apt-test.txt] [--install]
+python -S tools/nano_apt.py --list apt-runtime.txt [--list apt-test.txt] [--install] \
+  [--receipt receipt.json] [--log apt.log]
 ```
 
 Without `--install` it only reports (exit 1 when something is missing). With it,
@@ -344,6 +345,16 @@ packages, then the result is re-checked with `dpkg-query`; nothing runs when
 all are present or when `apt-get`/`dpkg-query` are absent (reported as
 `apt_unavailable`). It does not choose packages, resolve closures or pin hashes,
 so the Debian 13/amd64 caveats above still apply. No CI step or child rollout is added.
+
+`--receipt FILE` writes the same JSON report to a new file (installed versions
+before and after, list SHA-256, OS id/version, seconds). `--log FILE` keeps
+apt's own output in a new file and prints only its summary line, plus the last
+lines on failure. Existing files are never overwritten (exit 2 before anything runs).
+apt runs with bounded retries and timeouts given per call by `-o`
+(`Acquire::Retries=1`, `Acquire::http/https::Timeout=15`, `APT::Update::Error-Mode=any`),
+so `/etc/apt` is not written. These are per-file limits, not a total deadline; keep
+the step's own `timeout-minutes`. Strace-based audits, cgroup measurement and
+service start-up stay in `tools/constrained_lab_*.py`, not here.
 
 Host Python/Node processes already support many source-only features without
 Docker. That does not replace Docker isolation or the real products used by
