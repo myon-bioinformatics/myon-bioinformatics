@@ -86,12 +86,19 @@ def merge(paths):
     return merged
 
 
+class PackageQueryError(RuntimeError):
+    """Package observation failed; missing packages cannot be inferred."""
+
+
 def observe(packages, dpkg_query):
     """Return {name: installed version or None} from dpkg-query; run nothing else."""
-    proc = subprocess.run([dpkg_query, "-W", "-f", QUERY] + sorted(packages),
-                          capture_output=True, text=True, env=ENV)
+    try:
+        proc = subprocess.run([dpkg_query, "-W", "-f", QUERY] + sorted(packages),
+                              capture_output=True, text=True, env=ENV)
+    except OSError as exc:
+        raise PackageQueryError("dpkg-query could not start: " + str(exc)) from exc
     if proc.returncode not in (0, 1):
-        raise subprocess.CalledProcessError(proc.returncode, proc.args, output=proc.stdout, stderr=proc.stderr)
+        raise PackageQueryError(f"dpkg-query failed: exit {proc.returncode}")
     seen = {}
     for line in proc.stdout.splitlines():
         parts = line.split()
@@ -319,8 +326,8 @@ def main(argv=None):
                         result["packages"] = after
                         ok = all(row["state"] == "ok" for row in after.values())
                         result["status"], code = ("installed", 0) if ok else ("failed", 3)
-        except subprocess.CalledProcessError as exc:
-            result.update(status="failed", error=f"dpkg-query failed: exit {exc.returncode}")
+        except PackageQueryError as exc:
+            result.update(status="failed", error=str(exc))
             result.setdefault("packages", {})
             result.setdefault("before", {})
             code = 2
