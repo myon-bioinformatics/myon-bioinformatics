@@ -90,6 +90,8 @@ def observe(packages, dpkg_query):
     """Return {name: installed version or None} from dpkg-query; run nothing else."""
     proc = subprocess.run([dpkg_query, "-W", "-f", QUERY] + sorted(packages),
                           capture_output=True, text=True, env=ENV)
+    if proc.returncode not in (0, 1):
+        raise subprocess.CalledProcessError(proc.returncode, proc.args, output=proc.stdout, stderr=proc.stderr)
     seen = {}
     for line in proc.stdout.splitlines():
         parts = line.split()
@@ -287,35 +289,41 @@ def main(argv=None):
         result.update(status="apt_unavailable", packages={}, before={})
         code = 0
     else:
-        rows = judge(packages, observe(packages, dpkg_query))
-        todo = [name + ("=" + row["wanted"] if row["wanted"] else "")
-                for name, row in rows.items() if row["state"] != "ok"]
-        result.update(packages=rows, before={name: row["installed"] for name, row in rows.items()},
-                      to_install=todo, status="satisfied" if not todo else "missing")
-        code = 0 if not todo else 1
-        if todo and (args.install or args.download_only):
-            prefix = [] if os.geteuid() == 0 else [shutil.which("sudo", path=PATH) or "", "-n"]
-            if prefix and not prefix[0]:
-                result.update(status="failed", error="root or sudo is required")
-                print("nano_apt: root or sudo is required", file=sys.stderr)
-                code = 2
-            else:
-                skip = False
-                if args.install and args.state:
-                    final, waited = join(args.state)
-                    skip = bool(final and final.get("status") == "downloaded"
-                                and final.get("to_install") == todo and final.get("list_sha256") == digests)
-                    result["joined"] = {"state": final.get("status") if final else "none",
-                                        "waited": round(waited, 3), "skipped_update": skip}
-                if not install(todo, apt_get, prefix, result, args.log, args.download_only, skip):
-                    result["status"], code = "failed", 3
-                elif args.download_only:
-                    result["status"], code = "downloaded", 0
+        try:
+            rows = judge(packages, observe(packages, dpkg_query))
+            todo = [name + ("=" + row["wanted"] if row["wanted"] else "")
+                    for name, row in rows.items() if row["state"] != "ok"]
+            result.update(packages=rows, before={name: row["installed"] for name, row in rows.items()},
+                          to_install=todo, status="satisfied" if not todo else "missing")
+            code = 0 if not todo else 1
+            if todo and (args.install or args.download_only):
+                prefix = [] if os.geteuid() == 0 else [shutil.which("sudo", path=PATH) or "", "-n"]
+                if prefix and not prefix[0]:
+                    result.update(status="failed", error="root or sudo is required")
+                    print("nano_apt: root or sudo is required", file=sys.stderr)
+                    code = 2
                 else:
-                    after = judge(packages, observe(packages, dpkg_query))
-                    result["packages"] = after
-                    ok = all(row["state"] == "ok" for row in after.values())
-                    result["status"], code = ("installed", 0) if ok else ("failed", 3)
+                    skip = False
+                    if args.install and args.state:
+                        final, waited = join(args.state)
+                        skip = bool(final and final.get("status") == "downloaded"
+                                    and final.get("to_install") == todo and final.get("list_sha256") == digests)
+                        result["joined"] = {"state": final.get("status") if final else "none",
+                                            "waited": round(waited, 3), "skipped_update": skip}
+                    if not install(todo, apt_get, prefix, result, args.log, args.download_only, skip):
+                        result["status"], code = "failed", 3
+                    elif args.download_only:
+                        result["status"], code = "downloaded", 0
+                    else:
+                        after = judge(packages, observe(packages, dpkg_query))
+                        result["packages"] = after
+                        ok = all(row["state"] == "ok" for row in after.values())
+                        result["status"], code = ("installed", 0) if ok else ("failed", 3)
+        except subprocess.CalledProcessError as exc:
+            result.update(status="failed", error=f"dpkg-query failed: exit {exc.returncode}")
+            result.setdefault("packages", {})
+            result.setdefault("before", {})
+            code = 2
     result["seconds"] = round(time.monotonic() - started, 3)
     if args.download_only and args.state:
         write_state(args.state, dict(result, pid=os.getpid()))
