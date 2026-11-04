@@ -88,3 +88,10 @@ to list cases without running test bodies (collection still imports modules
 and can execute collection hooks). Use pytest’s `-k` for name selection.
 Unittest discovery imports modules and executes collected tests. Neither is
 a side-effect-free source search.
+
+## Separate implementation scope
+
+These PRs document existing CLI entry points only. They do not implement
+in-process selection or reuse through `unittest.TestLoader`, `discover()`,
+`loadTestsFromName()` or `testNamePatterns`. That implementation remains a
+separate, unaddressed scope; no runtime reduction is claimed by this audit.
