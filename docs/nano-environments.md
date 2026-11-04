@@ -329,6 +329,63 @@ glibc/LP64; no apt closure, hashes or ABI were verified by this inventory.
 one shared object, assume musl/ILP64 compatibility, or remove OS packages needed
 by another consumer.
 
+A feature that does need apt packages can keep them in plain-text list files
+(one group per file, one `name` or `name=version` per line, whole-line `#`
+comments) and apply them with `tools/nano_apt.py`; a Dockerfile can read the same
+files with `grep -v '^#' FILE | xargs apt-get install -y --no-install-recommends`.
+
+```sh
+python -S tools/nano_apt.py --list apt-runtime.txt [--list apt-test.txt] [--install] \
+  [--receipt receipt.json] [--log apt.log]
+```
+
+Without `--install` it only reports (exit 1 when something is missing). With it,
+`apt-get update` and `install` run only for missing or version-mismatched
+packages, then the result is re-checked with `dpkg-query`; nothing runs when
+all are present or when `apt-get`/`dpkg-query` are absent (reported as
+`apt_unavailable`). It does not choose packages, resolve closures or pin hashes,
+so the Debian 13/amd64 caveats above still apply. No CI step or child rollout is added.
+
+`--receipt FILE` writes the same JSON report to a new file (installed versions
+before and after, list SHA-256, OS id/version, seconds). `--log FILE` keeps
+apt's own output in a new file and prints only its summary line, plus the last
+lines on failure. Existing files are never overwritten (exit 2 before anything runs).
+apt runs with bounded retries and timeouts given per call by `-o`
+(`Acquire::Retries=1`, `Acquire::http/https::Timeout=15`, `APT::Update::Error-Mode=any`),
+so `/etc/apt` is not written. These are per-file limits, not a total deadline; keep
+the step's own `timeout-minutes`. Strace-based audits, cgroup measurement and
+service start-up stay in `tools/constrained_lab_*.py`, not here.
+
+To overlap the download with slower setup, start it first and join it later:
+
+```sh
+python -S tools/nano_apt.py --list apt-runtime.txt --background --state apt.state  # returns at once
+uv sync && npm ci                                                                  # other preparation
+python -S tools/nano_apt.py --list apt-runtime.txt --install --state apt.state --receipt receipt.json
+```
+
+`--background` detaches this tool as `--download-only` (`apt-get update`, then
+`install --download-only` for what is missing) and writes `apt.state`,
+`apt.state.pid` and `apt.state.log`; all three are reserved as new files before
+spawning, never overwriting pre-existing outputs. Use a directory you own and
+control: this is collision protection, not protection against another writer
+replacing directory entries during state updates or failure cleanup.
+`--install --state` waits for it (up to 600 s, and not at all when the process is
+already gone), then skips `update` only if the download finished and the missing
+packages and list SHA-256 are identical; any other outcome runs the normal
+`update` + `install`. The receipt records this under `joined`. `--download-only`
+also works on its own and does not install, so its `packages` stay missing.
+apt still takes one lock at a time, so only work that does not call apt overlaps.
+
+Measured once on an Ubuntu 24.04 container as root (4 small packages, 10 s of
+simulated other work, empty apt lists and cache): 17.7 s serial against 12.1 s
+overlapped, because the 6.6 s update + download hid behind the other work.
+With only 1 s of other work the overlapped run was slower in both repeats
+(9.7 s against 7.1 s, 9.9 s against 9.2 s): the split costs a second apt
+dependency pass, roughly 1 s. The gain is bounded by the shorter of the
+download and the other work; use it when the other work is longer. Not run on
+GitHub Actions, so a process surviving between steps there is unverified.
+
 Host Python/Node processes already support many source-only features without
 Docker. That does not replace Docker isolation or the real products used by
 integration tests. Portfolio's refreshed `6a7efcd1` [import Dockerfile](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/6a7efcd1d3ec6775aa181fdd1b81f133e5537da9/Dockerfile.html-import) says Node22
@@ -373,6 +430,7 @@ python -S -m unittest discover -s tests -p 'test_nano_node.py' -v
 python -S -m unittest discover -s tests -p 'test_nano_mcp_client.py' -v
 python -S -m unittest discover -s tests -p 'test_nano_btk.py' -v
 python -S -m unittest discover -s tests -p 'test_nano_markdown_gradio.py' -v
+python -S -m unittest discover -s tests -p 'test_nano_apt.py' -v
 python -S -m unittest discover -s tests -p 'test_runtime_plan.py' -v
 python -S tests/stdlib_runtime_smoke.py
 ```
