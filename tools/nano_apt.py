@@ -20,6 +20,7 @@ were fetched, and installs from the downloaded files. apt itself still runs one 
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import hashlib
 import json
 import os
@@ -193,20 +194,37 @@ def join(path):
 
 def start_background(args):
     """Start this tool detached with --download-only; its own output goes to STATE.log."""
-    with open(args.state, "x", encoding="utf-8") as stream:  # refuses an existing state
-        json.dump({"status": "starting"}, stream)
     argv = [sys.executable, "-S", os.path.abspath(__file__)]
     for path in args.list:
         argv += ["--list", path]
     argv += ["--download-only", "--state", args.state]
+    created, proc = [], None
     try:
-        with open(args.state + ".log", "w", encoding="utf-8") as log:
+        with ExitStack() as stack:
+            streams = []
+            # Reserve every output before spawning. Exclusive creation also rejects
+            # symlinks and files appearing after the CLI's friendly preflight check.
+            for path in (args.state, args.state + ".log", args.state + ".pid"):
+                stream = stack.enter_context(open(path, "x", encoding="utf-8"))
+                created.append((path, os.fstat(stream.fileno())))
+                streams.append(stream)
+            state, log, pid = streams
+            json.dump({"status": "starting"}, state)
+            state.flush()
             proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                                     start_new_session=True, close_fds=True)
+            pid.write(str(proc.pid))
     except OSError:
-        os.unlink(args.state)
+        # Once spawned, retain outputs for diagnostics and a possible later join.
+        if proc is None:
+            for path, owned in reversed(created):
+                try:
+                    current = os.lstat(path)
+                    if (current.st_dev, current.st_ino) == (owned.st_dev, owned.st_ino):
+                        os.unlink(path)
+                except FileNotFoundError:
+                    pass
         raise
-    Path(args.state + ".pid").write_text(str(proc.pid), encoding="utf-8")
     return proc.pid
 
 
@@ -244,7 +262,10 @@ def main(argv=None):
     started = time.monotonic()
     try:
         packages = merge(args.list)
-        for out in (args.receipt, args.log, args.state if args.background else None):
+        outputs = [args.receipt, args.log]
+        if args.background:
+            outputs += [args.state, args.state + ".log", args.state + ".pid"]
+        for out in outputs:
             if out and os.path.lexists(out):
                 raise ValueError(out + ": already exists; a new file is required")
         digests = {path: hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in args.list}

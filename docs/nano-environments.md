@@ -366,7 +366,10 @@ python -S tools/nano_apt.py --list apt-runtime.txt --install --state apt.state -
 
 `--background` detaches this tool as `--download-only` (`apt-get update`, then
 `install --download-only` for what is missing) and writes `apt.state`,
-`apt.state.pid` and `apt.state.log`; all three are new files, never overwritten.
+`apt.state.pid` and `apt.state.log`; all three are reserved as new files before
+spawning, never overwriting pre-existing outputs. Use a directory you own and
+control: this is collision protection, not protection against another writer
+replacing directory entries during state updates or failure cleanup.
 `--install --state` waits for it (up to 600 s, and not at all when the process is
 already gone), then skips `update` only if the download finished and the missing
 packages and list SHA-256 are identical; any other outcome runs the normal

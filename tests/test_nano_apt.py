@@ -300,6 +300,96 @@ class NanoAptTests(unittest.TestCase):
             code, _ = self.call(["--list", listing, "--background", "--state", str(state)], Fake({}))
         self.assertEqual((code, state.exists()), (2, False))
 
+    def test_background_refuses_each_existing_output_without_spawning(self):
+        listing = self.lst("a.txt", "git\n")
+        for suffix in ("", ".log", ".pid"):
+            for kind in ("file", "symlink", "dangling", "directory"):
+                with self.subTest(suffix=suffix, kind=kind):
+                    folder = self.root / (kind + (suffix or ".state"))
+                    folder.mkdir()
+                    state = folder / "dl.state"
+                    taken = Path(str(state) + suffix)
+                    target = folder / "target"
+                    if kind == "file":
+                        taken.write_text("keep", encoding="utf-8")
+                    elif kind == "directory":
+                        taken.mkdir()
+                    else:
+                        if kind == "symlink":
+                            target.write_text("keep", encoding="utf-8")
+                        taken.symlink_to(target)
+                    fake = Fake({})
+                    with patch.object(nano.subprocess, "Popen") as spawn:
+                        code, _ = self.call(["--list", listing, "--background", "--state", str(state)], fake)
+                    self.assertEqual((code, fake.calls), (2, []))
+                    spawn.assert_not_called()
+                    self.assertEqual(sorted(p.name for p in folder.glob("dl.state*")), [taken.name])
+                    if kind == "file":
+                        self.assertEqual(taken.read_text(encoding="utf-8"), "keep")
+                    elif kind == "symlink":
+                        self.assertTrue(taken.is_symlink())
+                        self.assertEqual(target.read_text(encoding="utf-8"), "keep")
+                    elif kind == "dangling":
+                        self.assertTrue(taken.is_symlink())
+                        self.assertFalse(target.exists())
+
+    def test_background_exclusive_creation_handles_a_preflight_race(self):
+        listing = self.lst("a.txt", "git\n")
+        for suffix in ("", ".log", ".pid"):
+            with self.subTest(suffix=suffix):
+                state = self.root / ("race" + (suffix or ".state"))
+                taken = Path(str(state) + suffix)
+                real_start = nano.start_background
+
+                def race(args):
+                    taken.write_text("racing writer", encoding="utf-8")
+                    return real_start(args)
+
+                with patch.object(nano, "start_background", race), \
+                        patch.object(nano.subprocess, "Popen") as spawn:
+                    code, _ = self.call(["--list", listing, "--background", "--state", str(state)], Fake({}))
+                self.assertEqual(code, 2)
+                spawn.assert_not_called()
+                self.assertEqual(taken.read_text(encoding="utf-8"), "racing writer")
+                self.assertEqual(sorted(p.name for p in self.root.glob(state.name + "*")), [taken.name])
+
+    def test_background_spawn_failure_removes_all_reserved_outputs_and_can_retry(self):
+        listing, state = self.lst("a.txt", "git\n"), self.root / "dl.state"
+        args = ["--list", listing, "--background", "--state", str(state)]
+        with patch.object(nano.subprocess, "Popen", side_effect=OSError("no exec")):
+            code, _ = self.call(args, Fake({}))
+        self.assertEqual(code, 2)
+        self.assertEqual(list(self.root.glob("dl.state*")), [])
+        with patch.object(nano.subprocess, "Popen") as spawn:
+            spawn.return_value.pid = 4242
+            code, _ = self.call(args, Fake({}))
+        self.assertEqual(code, 0)
+        self.assertEqual(Path(str(state) + ".pid").read_text(encoding="utf-8"), "4242")
+
+    def test_background_failed_spawn_cleanup_tolerates_missing_or_replaced_output(self):
+        listing = self.lst("a.txt", "git\n")
+        for replaced in (False, True):
+            with self.subTest(replaced=replaced):
+                state = self.root / ("replaced" if replaced else "missing")
+                pid = Path(str(state) + ".pid")
+
+                def fail_spawn(*args, **kwargs):
+                    # Keep the original inode alive while replacing its name.
+                    pid.rename(self.root / "old-pid")
+                    if replaced:
+                        pid.write_text("keep replacement", encoding="utf-8")
+                    raise OSError("no exec")
+
+                with patch.object(nano.subprocess, "Popen", fail_spawn):
+                    code, _ = self.call(["--list", listing, "--background", "--state", str(state)], Fake({}))
+                self.assertEqual(code, 2)
+                self.assertFalse(state.exists())
+                self.assertFalse(Path(str(state) + ".log").exists())
+                if replaced:
+                    self.assertEqual(pid.read_text(encoding="utf-8"), "keep replacement")
+                else:
+                    self.assertFalse(pid.exists())
+
     def test_background_flag_combinations_are_usage_errors(self):
         listing, state = self.lst("a.txt", "git\n"), str(self.root / "dl.state")
         for extra in (["--background"], ["--background", "--state", state, "--install"],
