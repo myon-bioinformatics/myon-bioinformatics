@@ -57,3 +57,21 @@ class QueryFailureTests(unittest.TestCase):
         self.assertEqual(report['status'], 'failed')
         self.assertEqual(json.loads(state.read_text())['status'], 'failed')
         self.assertEqual(report['executed'], [])
+
+    def test_query_spawn_error_is_reported_without_apt(self):
+        for exception in (FileNotFoundError('executable disappeared'),
+                          PermissionError('executable denied')):
+            for mode in ([], ['--install'], ['--download-only']):
+                calls = []
+                def run(argv, **kwargs):
+                    calls.append(argv)
+                    if not argv[0].endswith('dpkg-query'):
+                        self.fail('apt must not run when observation cannot start')
+                    raise exception
+                with self.subTest(exception=type(exception).__name__, mode=mode):
+                    code, report = self.call(['--list', self.lst('packages.txt', 'git\n')] + mode, run)
+                    self.assertEqual(code, 2)
+                    self.assertEqual(report['status'], 'failed')
+                    self.assertIn('dpkg-query could not start', report['error'])
+                    self.assertEqual(report['executed'], [])
+                    self.assertEqual(len(calls), 1)
