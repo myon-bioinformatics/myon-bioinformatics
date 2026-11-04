@@ -354,6 +354,7 @@ placed into consumer trees. See [catalog coverage](docs/vendor-catalog-coverage.
 [Convention-driven file and symbol discovery](docs/convention-discovery.md) gives verified one-liners for this repository. Supply filename/name rules to inspect production code, configuration and workflows with the shared stdlib-only xprobe tool.
 
 [Cross-repository use cases and connection candidates](docs/cross-repository-use-cases.md) records the entry points and verification status of the 23 public, non-archived repositories observed on 2026-10-21.
+That survey includes this parent repository. The [2026-11-03 unittest audit](docs/unittest-discovery.md#cross-repository-audit-2026-11-03) covers 24 repositories, also including this parent, with TalkCompress added.
 
 Local prerequisite observations: `python -S preflight.py --root . --require git
 --python-min 3.11`. Optional `--runtime-facts` connects yourself's OS/runtime JSON
