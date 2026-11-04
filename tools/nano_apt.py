@@ -11,6 +11,11 @@ case". Without apt-get/dpkg-query nothing is run and that fact is reported.
 list SHA-256, OS id/version, seconds) to a new file. ``--log FILE`` keeps apt's own
 output in a new file and prints only its summary line (plus the tail on failure).
 apt runs with bounded retries/timeouts given by ``-o``, so /etc/apt is never written.
+
+``--background --state FILE`` starts ``update`` + ``install --download-only`` as a detached
+process and returns at once, so slower setup (uv sync, npm ci) can overlap the download.
+A later ``--install --state FILE`` waits for it, skips ``update`` when the same packages
+were fetched, and installs from the downloaded files. apt itself still runs one at a time.
 """
 from __future__ import annotations
 
@@ -35,6 +40,8 @@ QUERY = "${Package} ${db:Status-Abbrev} ${Version}\n"
 # wrote to /etc/apt/apt.conf.d, here passed per call instead.
 ACQUIRE = ["-o", "Acquire::Retries=1", "-o", "Acquire::http::Timeout=15",
            "-o", "Acquire::https::Timeout=15", "-o", "APT::Update::Error-Mode=any"]
+WAIT_SECONDS = 600  # longest a later --install waits for a background download
+POLL_SECONDS = 0.2
 SUMMARY = re.compile(r"\d+ upgraded, \d+ newly installed, \d+ to remove and \d+ not upgraded\.")
 
 
@@ -116,10 +123,11 @@ def summarize(path):
             "tail": lines[-10:]}
 
 
-def install(todo, apt_get, prefix, result, log_path):
-    """update + install; True when both exit 0. Records the log summary in result."""
-    steps = [prefix + [apt_get] + ACQUIRE + ["update"],
-             prefix + [apt_get] + ACQUIRE + ["install", "-y", "--no-install-recommends"] + todo]
+def install(todo, apt_get, prefix, result, log_path, download_only=False, skip_update=False):
+    """update + install (or only download); True when every step exits 0. Records the log summary."""
+    steps = [] if skip_update else [prefix + [apt_get] + ACQUIRE + ["update"]]
+    steps.append(prefix + [apt_get] + ACQUIRE + ["install", "-y", "--no-install-recommends"]
+                 + (["--download-only"] if download_only else []) + todo)
     ok, log = True, (open(log_path, "x", encoding="utf-8") if log_path else None)
     try:
         for step in steps:
@@ -141,6 +149,67 @@ def install(todo, apt_get, prefix, result, log_path):
     return ok
 
 
+def write_state(path, data):
+    tmp = "%s.%d.tmp" % (path, os.getpid())
+    with open(tmp, "w", encoding="utf-8") as stream:
+        json.dump(data, stream, sort_keys=True)
+    os.replace(tmp, path)
+
+
+def read_json(path):
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:  # exists but is not ours to signal
+        return True
+    return True
+
+
+def join(path):
+    """Wait for a background download; returns (final state or None, seconds waited)."""
+    started = time.monotonic()
+    while True:
+        state, waited = read_json(path), time.monotonic() - started
+        if state is None or state.get("status") not in ("starting", "running"):
+            return state, waited
+        pid = read_json(path + ".pid")
+        if isinstance(pid, int) and not alive(pid):
+            state = read_json(path)  # it may have finished between the two reads
+            if state and state.get("status") not in ("starting", "running"):
+                return state, waited
+            return {"status": "failed", "reason": "background process exited early"}, waited
+        if waited >= WAIT_SECONDS:
+            return {"status": "timeout"}, waited
+        time.sleep(POLL_SECONDS)
+
+
+def start_background(args):
+    """Start this tool detached with --download-only; its own output goes to STATE.log."""
+    with open(args.state, "x", encoding="utf-8") as stream:  # refuses an existing state
+        json.dump({"status": "starting"}, stream)
+    argv = [sys.executable, "-S", os.path.abspath(__file__)]
+    for path in args.list:
+        argv += ["--list", path]
+    argv += ["--download-only", "--state", args.state]
+    try:
+        with open(args.state + ".log", "w", encoding="utf-8") as log:
+            proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+                                    start_new_session=True, close_fds=True)
+    except OSError:
+        os.unlink(args.state)
+        raise
+    Path(args.state + ".pid").write_text(str(proc.pid), encoding="utf-8")
+    return proc.pid
+
+
 def os_info():
     info = {}
     try:
@@ -159,19 +228,36 @@ def main(argv=None):
                         help="package list file (one group); repeat for several groups")
     parser.add_argument("--install", action="store_true",
                         help="apt-get update + install what is missing (default: report only)")
+    parser.add_argument("--download-only", action="store_true",
+                        help="apt-get update + download what is missing, without installing")
+    parser.add_argument("--background", action="store_true",
+                        help="run --download-only detached and return at once (needs --state)")
+    parser.add_argument("--state", metavar="FILE",
+                        help="state of a background download: --background creates it, --install waits on it")
     parser.add_argument("--receipt", metavar="FILE", help="write the JSON report to this new file")
     parser.add_argument("--log", metavar="FILE", help="keep apt output in this new file (with --install)")
     args = parser.parse_args(argv)
+    if args.background and (args.install or args.download_only or args.receipt or args.log or not args.state):
+        parser.error("--background takes --list and --state only")
+    if args.download_only and args.install:
+        parser.error("--download-only and --install are mutually exclusive")
     started = time.monotonic()
     try:
         packages = merge(args.list)
-        for out in (args.receipt, args.log):
+        for out in (args.receipt, args.log, args.state if args.background else None):
             if out and os.path.lexists(out):
                 raise ValueError(out + ": already exists; a new file is required")
         digests = {path: hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in args.list}
+        if args.background:
+            pid = start_background(args)
+            print(json.dumps({"schema": SCHEMA, "status": "started", "pid": pid, "state": args.state,
+                              "log": args.state + ".log", "lists": args.list}, sort_keys=True, indent=2))
+            return 0
     except (ValueError, OSError) as exc:
         print(json.dumps({"schema": SCHEMA, "error": str(exc)}), file=sys.stderr)
         return 2
+    if args.download_only and args.state:
+        write_state(args.state, {"status": "running", "pid": os.getpid()})
     result = {"schema": SCHEMA, "lists": args.list, "list_sha256": digests, "os": os_info(),
               "executed": [], "log": None}
     apt_get = shutil.which("apt-get", path=PATH)
@@ -186,19 +272,32 @@ def main(argv=None):
         result.update(packages=rows, before={name: row["installed"] for name, row in rows.items()},
                       to_install=todo, status="satisfied" if not todo else "missing")
         code = 0 if not todo else 1
-        if todo and args.install:
+        if todo and (args.install or args.download_only):
             prefix = [] if os.geteuid() == 0 else [shutil.which("sudo", path=PATH) or "", "-n"]
             if prefix and not prefix[0]:
-                print(json.dumps({"schema": SCHEMA, "error": "root or sudo is required"}), file=sys.stderr)
-                return 2
-            if not install(todo, apt_get, prefix, result, args.log):
-                result["status"], code = "failed", 3
+                result.update(status="failed", error="root or sudo is required")
+                print("nano_apt: root or sudo is required", file=sys.stderr)
+                code = 2
             else:
-                after = judge(packages, observe(packages, dpkg_query))
-                result["packages"] = after
-                ok = all(row["state"] == "ok" for row in after.values())
-                result["status"], code = ("installed", 0) if ok else ("failed", 3)
+                skip = False
+                if args.install and args.state:
+                    final, waited = join(args.state)
+                    skip = bool(final and final.get("status") == "downloaded"
+                                and final.get("to_install") == todo and final.get("list_sha256") == digests)
+                    result["joined"] = {"state": final.get("status") if final else "none",
+                                        "waited": round(waited, 3), "skipped_update": skip}
+                if not install(todo, apt_get, prefix, result, args.log, args.download_only, skip):
+                    result["status"], code = "failed", 3
+                elif args.download_only:
+                    result["status"], code = "downloaded", 0
+                else:
+                    after = judge(packages, observe(packages, dpkg_query))
+                    result["packages"] = after
+                    ok = all(row["state"] == "ok" for row in after.values())
+                    result["status"], code = ("installed", 0) if ok else ("failed", 3)
     result["seconds"] = round(time.monotonic() - started, 3)
+    if args.download_only and args.state:
+        write_state(args.state, dict(result, pid=os.getpid()))
     text = json.dumps(result, ensure_ascii=True, sort_keys=True, indent=2)
     print(text)
     if args.receipt:

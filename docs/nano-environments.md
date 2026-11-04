@@ -356,6 +356,33 @@ so `/etc/apt` is not written. These are per-file limits, not a total deadline; k
 the step's own `timeout-minutes`. Strace-based audits, cgroup measurement and
 service start-up stay in `tools/constrained_lab_*.py`, not here.
 
+To overlap the download with slower setup, start it first and join it later:
+
+```sh
+python -S tools/nano_apt.py --list apt-runtime.txt --background --state apt.state  # returns at once
+uv sync && npm ci                                                                  # other preparation
+python -S tools/nano_apt.py --list apt-runtime.txt --install --state apt.state --receipt receipt.json
+```
+
+`--background` detaches this tool as `--download-only` (`apt-get update`, then
+`install --download-only` for what is missing) and writes `apt.state`,
+`apt.state.pid` and `apt.state.log`; all three are new files, never overwritten.
+`--install --state` waits for it (up to 600 s, and not at all when the process is
+already gone), then skips `update` only if the download finished and the missing
+packages and list SHA-256 are identical; any other outcome runs the normal
+`update` + `install`. The receipt records this under `joined`. `--download-only`
+also works on its own and does not install, so its `packages` stay missing.
+apt still takes one lock at a time, so only work that does not call apt overlaps.
+
+Measured once on an Ubuntu 24.04 container as root (4 small packages, 10 s of
+simulated other work, empty apt lists and cache): 17.7 s serial against 12.1 s
+overlapped, because the 6.6 s update + download hid behind the other work.
+With only 1 s of other work the overlapped run was slower in both repeats
+(9.7 s against 7.1 s, 9.9 s against 9.2 s): the split costs a second apt
+dependency pass, roughly 1 s. The gain is bounded by the shorter of the
+download and the other work; use it when the other work is longer. Not run on
+GitHub Actions, so a process surviving between steps there is unverified.
+
 Host Python/Node processes already support many source-only features without
 Docker. That does not replace Docker isolation or the real products used by
 integration tests. Portfolio's refreshed `6a7efcd1` [import Dockerfile](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/6a7efcd1d3ec6775aa181fdd1b81f133e5537da9/Dockerfile.html-import) says Node22

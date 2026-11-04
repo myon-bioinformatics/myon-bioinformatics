@@ -4,10 +4,13 @@ import importlib.util
 import io
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -38,7 +41,7 @@ class Fake:
                                                stdout="\n".join(lines) + "\n", stderr="")
         if kwargs.get("stderr") == subprocess.STDOUT:  # --log mode: apt output goes to the log file
             kwargs["stdout"].write(self.apt_output.get("update" if "update" in argv else "install", ""))
-        if "install" in argv:
+        if "install" in argv and "--download-only" not in argv:
             if self.apt_rc == 0:
                 for item in argv[argv.index("install") + 3:]:
                     name, _, version = item.partition("=")
@@ -209,6 +212,172 @@ class NanoAptTests(unittest.TestCase):
         code, result = self.call(["--list", self.lst("a.txt", "git\n"), "--log", str(log)], Fake({}))
         self.assertEqual((code, result["log"]), (1, None))
         self.assertFalse(log.exists())
+
+    def final_state(self, listing, todo, status="downloaded", name="dl.state", **extra):
+        digest = hashlib.sha256(Path(listing).read_bytes()).hexdigest()
+        state = {"status": status, "to_install": todo, "list_sha256": {listing: digest}}
+        state.update(extra)
+        path = self.root / name
+        path.write_text(json.dumps(state), encoding="utf-8")
+        return str(path)
+
+    def test_download_only_fetches_without_installing_or_reverifying(self):
+        fake = Fake({"git": "1:2.0"})
+        listing = self.lst("a.txt", "git\ntzdata\n")
+        code, result = self.call(["--list", listing, "--download-only"], fake)
+        self.assertEqual((code, result["status"]), (0, "downloaded"))
+        self.assertEqual(result["executed"], [
+            apt("update"), apt("install", "-y", "--no-install-recommends", "--download-only", "tzdata")])
+        self.assertEqual(result["packages"]["tzdata"]["state"], "missing")  # nothing was installed
+        self.assertEqual([argv[0] for argv, _ in fake.calls].count("/fake/dpkg-query"), 1)
+
+    def test_download_only_with_nothing_missing_does_nothing(self):
+        fake = Fake({"git": "1:2.0"})
+        code, result = self.call(["--list", self.lst("a.txt", "git\n"), "--download-only"], fake)
+        self.assertEqual((code, result["status"], result["executed"]), (0, "satisfied", []))
+
+    def test_download_only_failure_is_exit_3(self):
+        code, result = self.call(["--list", self.lst("a.txt", "git\n"), "--download-only"], Fake({}, apt_rc=100))
+        self.assertEqual((code, result["status"]), (3, "failed"))
+
+    def test_child_publishes_running_then_the_final_result_as_state(self):
+        state = self.root / "dl.state"
+        seen = []
+
+        class Peek(Fake):
+            def __call__(self, argv, **kwargs):
+                if argv[0] == "/fake/apt-get" and "update" in argv:
+                    seen.append(json.loads(state.read_text(encoding="utf-8")))
+                return super().__call__(argv, **kwargs)
+        code, result = self.call(["--list", self.lst("a.txt", "git\n"), "--download-only", "--state", str(state)],
+                                 Peek({}))
+        self.assertEqual((code, seen), (0, [{"status": "running", "pid": os.getpid()}]))
+        final = json.loads(state.read_text(encoding="utf-8"))
+        self.assertEqual(final, dict(result, pid=os.getpid()))
+        self.assertEqual((final["status"], final["to_install"]), ("downloaded", ["git"]))
+        self.assertEqual([p.name for p in self.root.iterdir() if p.name.endswith(".tmp")], [])
+
+    def test_child_without_root_or_sudo_leaves_a_failed_state(self):
+        state = self.root / "dl.state"
+        bare = {k: v for k, v in FAKE_BIN.items() if k != "sudo"}
+        code, _ = self.call(["--list", self.lst("a.txt", "git\n"), "--download-only", "--state", str(state)],
+                            Fake({}), euid=1000, which=bare)
+        self.assertEqual((code, json.loads(state.read_text(encoding="utf-8"))["status"]), (2, "failed"))
+
+    def test_background_starts_a_detached_download_and_returns_at_once(self):
+        listing, state = self.lst("a.txt", "git\n"), self.root / "dl.state"
+        started = []
+
+        class Proc:
+            pid = 4242
+
+        def popen(argv, **kwargs):
+            started.append((argv, kwargs))
+            return Proc()
+        fake = Fake({})
+        with patch.object(nano.subprocess, "Popen", popen):
+            code, result = self.call(["--list", listing, "--background", "--state", str(state)], fake)
+        self.assertEqual(code, 0)
+        self.assertEqual(fake.calls, [])  # the starter itself runs no apt and no dpkg-query
+        argv, kwargs = started[0]
+        self.assertEqual(argv, [sys.executable, "-S", os.path.abspath(nano.__file__), "--list", listing,
+                                "--download-only", "--state", str(state)])
+        self.assertTrue(kwargs["start_new_session"])
+        self.assertEqual(kwargs["stdin"], subprocess.DEVNULL)
+        self.assertEqual(result, {"schema": nano.SCHEMA, "status": "started", "pid": 4242, "state": str(state),
+                                  "log": str(state) + ".log", "lists": [listing]})
+        self.assertEqual(json.loads(state.read_text(encoding="utf-8")), {"status": "starting"})
+        self.assertEqual(Path(str(state) + ".pid").read_text(encoding="utf-8"), "4242")
+
+    def test_background_refuses_an_existing_state_and_cleans_up_when_spawn_fails(self):
+        listing, state = self.lst("a.txt", "git\n"), self.root / "dl.state"
+        state.write_text("keep", encoding="utf-8")
+        with patch.object(nano.subprocess, "Popen", side_effect=AssertionError("must not start")):
+            code, _ = self.call(["--list", listing, "--background", "--state", str(state)], Fake({}))
+        self.assertEqual((code, state.read_text(encoding="utf-8")), (2, "keep"))
+        state.unlink()
+        with patch.object(nano.subprocess, "Popen", side_effect=OSError("no exec")):
+            code, _ = self.call(["--list", listing, "--background", "--state", str(state)], Fake({}))
+        self.assertEqual((code, state.exists()), (2, False))
+
+    def test_background_flag_combinations_are_usage_errors(self):
+        listing, state = self.lst("a.txt", "git\n"), str(self.root / "dl.state")
+        for extra in (["--background"], ["--background", "--state", state, "--install"],
+                      ["--background", "--state", state, "--receipt", str(self.root / "r.json")],
+                      ["--download-only", "--install"]):
+            with self.subTest(extra=extra), self.assertRaises(SystemExit) as caught:
+                self.call(["--list", listing] + extra, Fake({}))
+            self.assertEqual(caught.exception.code, 2)
+        self.assertEqual(list(self.root.glob("dl.state*")), [])
+
+    def test_install_joins_a_matching_download_and_skips_update(self):
+        listing = self.lst("a.txt", "git\ntzdata\n")
+        state = self.final_state(listing, ["git", "tzdata"])
+        code, result = self.call(["--list", listing, "--install", "--state", state], Fake({}))
+        self.assertEqual((code, result["status"]), (0, "installed"))
+        self.assertEqual(result["executed"], [apt("install", "-y", "--no-install-recommends", "git", "tzdata")])
+        self.assertEqual((result["joined"]["state"], result["joined"]["skipped_update"]), ("downloaded", True))
+
+    def test_install_does_not_trust_a_download_of_something_else(self):
+        listing = self.lst("a.txt", "git\ntzdata\n")
+        cases = {"other packages": self.final_state(listing, ["git"], name="other.state"),
+                 "download failed": self.final_state(listing, ["git", "tzdata"], status="failed", name="failed.state")}
+        for label, state in cases.items():
+            with self.subTest(label), patch.object(nano, "WAIT_SECONDS", 1):
+                code, result = self.call(["--list", listing, "--install", "--state", state], Fake({}))
+                self.assertEqual((code, result["status"]), (0, "installed"))
+                self.assertEqual(result["executed"][0], apt("update"))
+                self.assertFalse(result["joined"]["skipped_update"])
+        state = self.final_state(listing, ["git", "tzdata"], name="edited.state")
+        Path(listing).write_text("# edited\ngit\ntzdata\n", encoding="utf-8")  # same packages, different file
+        code, result = self.call(["--list", listing, "--install", "--state", state], Fake({}))
+        self.assertEqual(result["executed"][0], apt("update"))
+        self.assertFalse(result["joined"]["skipped_update"])
+
+    def test_install_without_a_usable_state_falls_back_to_the_full_path(self):
+        listing = self.lst("a.txt", "git\n")
+        gone, junk = str(self.root / "missing.state"), self.root / "junk.state"
+        junk.write_text("{not json", encoding="utf-8")
+        for state in (gone, str(junk)):
+            with self.subTest(state=state):
+                code, result = self.call(["--list", listing, "--install", "--state", state], Fake({}))
+                self.assertEqual((code, result["executed"][0]), (0, apt("update")))
+                self.assertEqual(result["joined"]["state"], "none")
+
+    def test_install_does_not_wait_for_a_dead_download(self):
+        listing = self.lst("a.txt", "git\n")
+        state = self.final_state(listing, ["git"], status="running", pid=99999999)
+        Path(state + ".pid").write_text("99999999", encoding="utf-8")
+        with patch.object(nano, "alive", lambda pid: False), patch.object(nano, "WAIT_SECONDS", 30):
+            code, result = self.call(["--list", listing, "--install", "--state", state], Fake({}))
+        self.assertEqual((code, result["executed"][0]), (0, apt("update")))
+        self.assertEqual(result["joined"]["state"], "failed")
+        self.assertLess(result["joined"]["waited"], 5)
+
+    def test_install_stops_waiting_after_the_limit(self):
+        listing = self.lst("a.txt", "git\n")
+        state = self.final_state(listing, ["git"], status="running")
+        Path(state + ".pid").write_text(str(os.getpid()), encoding="utf-8")
+        with patch.object(nano, "WAIT_SECONDS", 0.3), patch.object(nano, "POLL_SECONDS", 0.05):
+            code, result = self.call(["--list", listing, "--install", "--state", state], Fake({}))
+        self.assertEqual((code, result["executed"][0]), (0, apt("update")))
+        self.assertEqual(result["joined"]["state"], "timeout")
+        self.assertGreaterEqual(result["joined"]["waited"], 0.3)
+
+    def test_install_waits_for_a_running_download_then_skips_update(self):
+        listing = self.lst("a.txt", "git\n")
+        state = self.final_state(listing, ["git"], status="running")
+        Path(state + ".pid").write_text(str(os.getpid()), encoding="utf-8")
+        done = json.loads(Path(state).read_text(encoding="utf-8"))
+        done["status"] = "downloaded"
+        timer = threading.Timer(0.3, nano.write_state, (state, done))
+        timer.start()
+        self.addCleanup(timer.join)
+        with patch.object(nano, "POLL_SECONDS", 0.05):
+            code, result = self.call(["--list", listing, "--install", "--state", state], Fake({}))
+        self.assertEqual((code, result["executed"]), (0, [apt("install", "-y", "--no-install-recommends", "git")]))
+        self.assertGreaterEqual(result["joined"]["waited"], 0.2)
+        self.assertTrue(result["joined"]["skipped_update"])
 
     def test_without_apt_nothing_runs(self):
         fake = Fake({})
