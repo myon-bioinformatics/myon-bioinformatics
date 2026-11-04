@@ -1,8 +1,9 @@
 # Focused standard-library test discovery
 
 Run from this repository root with Python 3.11 or newer. These commands use
-Python’s built-in test runner; no pip, uv sync, pytest or browser installation
-is needed for the listed checks. `-S` keeps site-packages out of the interpreter.
+Python’s built-in test runner; the listed checks need no third-party package
+or browser installation. `-S` disables automatic `site` initialization and its
+usual site-packages path additions; it is not a complete isolation boundary.
 
 ```sh
 python -S -m unittest discover -s tests -p test_runtime_plan.py -v
@@ -32,12 +33,16 @@ this local command. No custom discovery runner is required.
 
 ## Cross-repository audit (2026-11-03)
 
-The scope is the account’s 24 public, non-archived repositories. Sources were
-checked out from their default branches; the short revisions below identify
-the snapshots and are not vendor pins or a live CI registry.
+The 2026-11-03 audit covers 24 public, non-archived repositories, including
+this parent repository. The [2026-10-21 use-case audit](cross-repository-use-cases.md)
+covered 23 repositories and also included this parent; this audit additionally
+includes TalkCompress. Sources were checked out from their default branches;
+the short revisions below identify the snapshots and are not vendor pins or
+a live CI registry.
 
 On Linux / CPython 3.12.14, 21 focused commands across 18 repositories completed
-with exit 0, totaling 435 executed tests (Aoi/subtree checks may overlap).
+with exit 0, totaling 435 reported test cases, including skips
+(Aoi/subtree checks may overlap).
 An additional name-filtered command was verified in each of those repositories.
 This is not full-suite or cross-version validation.
 
@@ -54,7 +59,7 @@ This is not full-suite or cross-version validation.
 | SakAnalytics | `95cfacd4f8ae` | No unittest.TestCase classes found in the inspected test files. Preserve pytest; use its `--collect-only -q` after preparing the existing project dependencies and Aoi prerequisites where required. Not executed in this audit. |
 | TalkCompress | `13bc33517ef7` | `python -S -m unittest discover -s tests -p 'test_session_*.py' -v` — 10 tests |
 | ascii_artist | `a9af65cc443e` | `python -S -m unittest discover -s tests -p 'test_flow_*.py' -v` — 19 tests |
-| browser-test-kit | `cc7322bc2e0a` | `python -S -m unittest discover -s tests/stdlib -p 'test*.py' -v` — 5 tests<br>`python -S -m unittest discover -s tests/python -p 'test_nano_bun*.py' -v` — 49 tests |
+| browser-test-kit | `cc7322bc2e0a` | `python -S -m unittest discover -s tests/stdlib -p 'test*.py' -v` — 4 passed, 1 skipped<br>`python -S -m unittest discover -s tests/python -p 'test_nano_bun*.py' -v` — 49 tests |
 | cli_args | `5059570cdc0c` | `python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v` — 3 tests |
 | flutter_navigation_basic | `39d659ebffa5` | `python -S -m unittest discover -s python/tests -p test_flutter_focused_ci_contract.py -v` — 4 tests<br>`python -S -m unittest discover -s .github/scripts -p test_ci_status_label.py -v` — 13 tests |
 | gh_identity | `1dd9b6041c1c` | `python -S -m unittest discover -s tests -p test_gh_identity.py -v` — 66 tests |
