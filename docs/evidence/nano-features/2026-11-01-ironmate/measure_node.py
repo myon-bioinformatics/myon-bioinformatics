@@ -86,7 +86,8 @@ def main():
                     shutil.copyfile(prepared/'Ironmate'/name,project/name)
                 expected_manifest = json.loads(snapshot['package.json'])
                 expected_manifest['dependencies'] = {'pptxgenjs':'4.0.1'}
-                assert json.loads((project/'package.json').read_bytes()) == expected_manifest, 'changed prepared manifest'
+                if not (json.loads((project/'package.json').read_bytes()) == expected_manifest):
+                    raise AssertionError('changed prepared manifest')
                 nano.validate_projection(lock, json.loads((project/'package-lock.json').read_bytes()))
             original = {name:(project/name).read_bytes() for name in ('package.json','package-lock.json')}
             local,args = settings(root)
@@ -102,12 +103,14 @@ def main():
             save()
             if proc.returncode:
                 raise RuntimeError(f'npm ci failed: {root}/npm.stderr')
-            assert all((project/name).read_bytes()==data for name,data in original.items())
+            if not (all((project/name).read_bytes()==data for name,data in original.items())):
+                raise AssertionError('measure_node:105: validation failed')
             listing = subprocess.run([npm,'ls','--all','--parseable','--offline',*args],cwd=project,env=local,
                                      capture_output=True,text=True,timeout=30)
             (root/'npm-ls.stdout').write_text(listing.stdout)
             (root/'npm-ls.stderr').write_text(listing.stderr)
-            assert listing.returncode==0, listing.stderr
+            if not (listing.returncode==0):
+                raise AssertionError(listing.stderr)
             paths = set(line for line in listing.stdout.splitlines() if line)
             paths.discard(str(project))
             item.update(installed_package_paths=len(paths),node_modules=size(project/'node_modules'),cache=size(root/'cache'))
@@ -146,7 +149,8 @@ def main():
                     batch=time.perf_counter()-start
                     for worker in workers:
                         if reference is None: reference=worker['digests']
-                        assert worker['digests']==reference, 'independent ZIP/XML semantic mismatch'
+                        if not (worker['digests']==reference):
+                            raise AssertionError('independent ZIP/XML semantic mismatch')
                     report['workloads'].append({'kind':kind,'repeat':repeat,'concurrency':concurrency,
                                                 'batch_seconds':batch,'workers':workers})
                     save()

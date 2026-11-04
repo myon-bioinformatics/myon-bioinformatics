@@ -33,16 +33,21 @@ def tree(node):
 
 def inspect(path):
     with ZipFile(path) as archive:
-        assert archive.testzip() is None
+        if not (archive.testzip() is None):
+            raise AssertionError('run_pptx_fixture:36: validation failed')
         names = archive.namelist()
-        assert len(names) == len(set(names)), 'duplicate ZIP member'
-        assert all(not n.startswith('/') and '..' not in PurePosixPath(n).parts for n in names)
+        if not (len(names) == len(set(names))):
+            raise AssertionError('duplicate ZIP member')
+        if not (all(not n.startswith('/') and '..' not in PurePosixPath(n).parts for n in names)):
+            raise AssertionError('run_pptx_fixture:39: validation failed')
         files = {n for n in names if not n.endswith('/')}
-        assert '[Content_Types].xml' in files and 'ppt/presentation.xml' in files
+        if not ('[Content_Types].xml' in files and 'ppt/presentation.xml' in files):
+            raise AssertionError('run_pptx_fixture:41: validation failed')
         types = ET.fromstring(archive.read('[Content_Types].xml'))
         defaults = {x.attrib['Extension'] for x in types if x.tag.endswith('Default')}
         overrides = {x.attrib['PartName'].lstrip('/') for x in types if x.tag.endswith('Override')}
-        assert all(n == '[Content_Types].xml' or n in overrides or n.rsplit('.', 1)[-1] in defaults for n in files)
+        if not (all(n == '[Content_Types].xml' or n in overrides or n.rsplit('.', 1)[-1] in defaults for n in files)):
+            raise AssertionError('run_pptx_fixture:45: validation failed')
         semantic = {}
         texts = []
         for name in sorted(files):
@@ -55,13 +60,16 @@ def inspect(path):
                             child.text = '<TIMESTAMP>'
                 if name.endswith('.rels'):
                     ids = [child.attrib['Id'] for child in root]
-                    assert len(ids) == len(set(ids))
+                    if not (len(ids) == len(set(ids))):
+                        raise AssertionError('run_pptx_fixture:58: validation failed')
                     parent = '' if name == '_rels/.rels' else str(PurePosixPath(name).parent.parent)
                     for rel in root:
-                        assert rel.attrib.get('TargetMode') != 'External'
+                        if not (rel.attrib.get('TargetMode') != 'External'):
+                            raise AssertionError('run_pptx_fixture:61: validation failed')
                         target = rel.attrib['Target']
                         resolved = target.lstrip('/') if target.startswith('/') else posixpath.normpath(posixpath.join(parent, target))
-                        assert resolved in files, (name, resolved)
+                        if not (resolved in files):
+                            raise AssertionError((name, resolved))
                 if name.startswith('ppt/slides/slide') and name.endswith('.xml'):
                     texts.extend(node.text for node in root.iter() if node.tag == '{http://schemas.openxmlformats.org/drawingml/2006/main}t')
                 semantic[name] = tree(root)
@@ -80,10 +88,13 @@ for name, display in (('rich', None), ('reordered', [1, 0])):
     expected = canonical_spec(spec)
     if display:
         expected['slides'] = [expected['slides'][i] for i in display]
-    assert actual == expected, 'public spec parity (secondary same-implementation check)'
+    if not (actual == expected):
+        raise AssertionError('public spec parity (secondary same-implementation check)')
     results[name] = inspect(path)
-    assert UNICODE in results[name]['texts']
-    assert '項目' in results[name]['texts'] and '値 & <' in results[name]['texts']
+    if not (UNICODE in results[name]['texts']):
+        raise AssertionError('run_pptx_fixture:85: validation failed')
+    if not ('項目' in results[name]['texts'] and '値 & <' in results[name]['texts']):
+        raise AssertionError('run_pptx_fixture:86: validation failed')
 
 bad = {'width': 10, 'height': 7.5, 'slides': [{'objects': [{'op': 'line', 'options': {
     'x': 0, 'y': 0, 'w': 1, 'h': 0,
@@ -92,7 +103,8 @@ bad = {'width': 10, 'height': 7.5, 'slides': [{'objects': [{'op': 'line', 'optio
 try:
     render_bytes(bad)
 except ValueError as exc:
-    assert 'endArrowType' in str(exc)
+    if not ('endArrowType' in str(exc)):
+        raise AssertionError('run_pptx_fixture:95: validation failed')
     results['invalid_arrow_rejected'] = True
 else:
     raise AssertionError('unsupported arrow accepted')
@@ -103,17 +115,20 @@ else:
 test_tree = ast.parse((source / 'tests/test_pptxgenjs_image.py').read_text())
 script = next(ast.literal_eval(n.value) for n in test_tree.body if isinstance(n, ast.Assign)
               and any(isinstance(t, ast.Name) and t.id == '_NODE_SCRIPT' for t in n.targets))
-assert script.count('slide.addImage({ path:') == 1
+if not (script.count('slide.addImage({ path:') == 1):
+    raise AssertionError('run_pptx_fixture:106: validation failed')
 script = script.replace('slide.addImage({ path:', "slide.addImage({ altText: 'nano-fixture-png', path:")
 png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAD0lEQVQImWNgYGBgAAAABQABDavlc2QAAAABJRU5ErkJggg==')
 image_path, deck = output / 'dot.png', output / 'image.pptx'
 image_path.write_bytes(png)
 run = subprocess.run(['node', '-e', script, str(image_path), str(deck)], cwd=source,
                      capture_output=True, text=True, timeout=60)
-assert run.returncode == 0, run.stderr
+if not (run.returncode == 0):
+    raise AssertionError(run.stderr)
 with ZipFile(deck) as archive:
     media = [n for n in archive.namelist() if n.startswith('ppt/media/') and not n.endswith('/')]
-    assert len(media) == 1 and archive.read(media[0]) == png
+    if not (len(media) == 1 and archive.read(media[0]) == png):
+        raise AssertionError('run_pptx_fixture:116: validation failed')
 results['image'] = inspect(deck)
 results['normalization'] = ['ZIP archive metadata omitted', 'docProps/core.xml dcterms:created and dcterms:modified text only']
 results['visual_or_office_validation'] = False

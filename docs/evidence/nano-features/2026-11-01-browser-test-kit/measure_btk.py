@@ -99,7 +99,8 @@ def main():
                     shutil.copyfile(prepared/'browser-test-kit'/name,project/name)
                 expected_manifest = json.loads(snapshot['package.json'])
                 expected_manifest['devDependencies'] = nano.BTK_SELECTED
-                assert json.loads((project/'package.json').read_bytes()) == expected_manifest, 'changed prepared manifest'
+                if not (json.loads((project/'package.json').read_bytes()) == expected_manifest):
+                    raise AssertionError('changed prepared manifest')
                 nano.validate_projection(lock, json.loads((project/'package-lock.json').read_bytes()), feature=nano.BTK_FEATURE)
             original = {name:(project/name).read_bytes() for name in ('package.json','package-lock.json')}
             local,args = settings(root)
@@ -125,17 +126,20 @@ def main():
             save()
             if code != 0:
                 raise RuntimeError(f'npm ci failed: {root}/npm.stderr')
-            assert all((project/name).read_bytes()==data for name,data in original.items())
+            if not (all((project/name).read_bytes()==data for name,data in original.items())):
+                raise AssertionError('measure_btk:128: validation failed')
             listing = subprocess.run([npm,'ls','--all','--parseable','--offline',*args],cwd=project,env=local,
                                      capture_output=True,text=True,timeout=30)
             (root/'npm-ls.stdout').write_text(listing.stdout)
             (root/'npm-ls.stderr').write_text(listing.stderr)
-            assert listing.returncode==0, listing.stderr
+            if not (listing.returncode==0):
+                raise AssertionError(listing.stderr)
             paths = set(line for line in listing.stdout.splitlines() if line)
             paths.discard(str(project))
             relative_paths = {Path(path).relative_to(project).as_posix() for path in paths}
             expected_paths = set(json.loads((project/'package-lock.json').read_bytes())['packages']) - {''}
-            assert relative_paths == expected_paths, 'installed package paths differ from reviewed lock'
+            if not (relative_paths == expected_paths):
+                raise AssertionError('installed package paths differ from reviewed lock')
             item.update(installed_package_paths=len(paths),node_modules=size(project/'node_modules'),cache=size(root/'cache'))
             item['installed_paths_match_lock'] = True
             projects[kind] = project
@@ -177,7 +181,8 @@ def main():
                     batch=time.perf_counter()-start
                     for worker in workers:
                         if reference is None: reference=worker['digests']
-                        assert worker['digests']==reference, 'complete fact JSON/test-outcome parity mismatch'
+                        if not (worker['digests']==reference):
+                            raise AssertionError('complete fact JSON/test-outcome parity mismatch')
                     batch_record.update(status='passed',batch_seconds=batch,workers=workers)
                     save()
         nano.read_snapshot(source, blobs=nano.BTK_SOURCE_BLOBS)
