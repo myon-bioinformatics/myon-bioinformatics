@@ -1,6 +1,7 @@
 """Offline adoption experiment for Ironmate #203 at 77b4a584795c.
 
-Every command is intercepted; these tests never invoke host apt or dpkg.
+Install commands are mocked; one guarded inherited observation runs real dpkg-query.
+Host apt and other mutating commands are prohibited.
 """
 import subprocess
 from unittest.mock import patch
@@ -64,11 +65,17 @@ class AdoptionTests(base.NanoAptTests):
         code, result = self.call(['--list', self.lst('empty.txt', '# comment\n'), '--install'], Fake({}))
         self.assertEqual((code, result['status']), (0, 'satisfied'))
 
-    def test_query_failure_is_currently_treated_as_missing(self):
+    def test_query_failure_stops_before_install(self):
         def broken(argv, **kw):
             return subprocess.CompletedProcess(argv, 2, stdout='', stderr='database error')
-        code, result = self.call(['--list', self.groups()[0]], broken)
-        self.assertEqual((code, result['status']), (1, 'missing'))
+        calls = []
+        def guarded(argv, **kw):
+            calls.append(list(argv))
+            self.assertTrue(argv[0].endswith('dpkg-query'))
+            return broken(argv, **kw)
+        code, result = self.call(['--list', self.groups()[0], '--install'], guarded)
+        self.assertEqual((code, result['status']), (2, 'failed'))
+        self.assertEqual(len(calls), 1)
 
     def test_real_dpkg_query_is_read_only(self):
         real_run = subprocess.run
