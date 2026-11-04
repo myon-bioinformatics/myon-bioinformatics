@@ -1120,7 +1120,7 @@ def _audit_failure_message(error, token=None):
     return AUDIT_SOURCE_ERROR
 
 
-def build_expected_child_lock(registry, document, consumer, *, token=None):
+def _load_recorded_child_lock(registry, document, consumer, *, token=None):
     """Load adopted pins from the immutable child revision recorded by the parent.
 
     The catalog is a recommendation, not the adopted lock. Retaining the existing
@@ -1145,6 +1145,13 @@ def build_expected_child_lock(registry, document, consumer, *, token=None):
     lock = validate(json.loads(text))
     if any(item["ref"] != item["commit"] for item in lock["files"]):
         raise ValueError("adopted child lock requires ref=commit SHA")
+    return lock
+
+
+def build_expected_child_lock(registry, document, consumer, *, token=None):
+    """Load immutable adopted pins and enforce the complete registered topology."""
+    import vendor_consumers
+    lock = _load_recorded_child_lock(registry, document, consumer, token=token)
     if not vendor_consumers.compare(registry, lock, consumer)["matches"]:
         raise ValueError("consumer topology mismatch against parent registry")
     return lock
@@ -1886,8 +1893,9 @@ def pending_enrollments(registry, base_registry, parent_repository=PARENT_REPOSI
     Only pure additions qualify. Changed or removed entries, new consumers,
     state changes, and the parent's own entries (checked from local PR bytes)
     are never pending and stay strict.
-    Pending entries are not validated at PR time; the child PR that adopts
-    them validates them, and push/schedule runs remain strict.
+    These are pending candidates. run_parent_child_ci keeps already adopted
+    entries strict and defers only additions absent from the recorded child
+    lock. Push/schedule runs remain strict.
     """
     import vendor_consumers
     registry = vendor_consumers.validate(registry)
@@ -1926,6 +1934,33 @@ def _registry_without_pending(registry, pending):
     return registry
 
 
+def _unadopted_pending_enrollments(registry, document, pending, monitored, *, token=None):
+    """Defer only additions absent from the parent's recorded immutable lock.
+
+    Presence does not approve a file: retained entries still undergo the full
+    topology, source provenance and byte audit. Failed reads stay strict too.
+    Never consult an unmonitored/private repository or a mutable live head.
+    """
+    selected = {name.casefold() for name in monitored}
+    locks = {}
+    result = []
+    for entry in pending:
+        name = entry["consumer"]
+        key = name.casefold()
+        if key not in selected:
+            continue
+        if key not in locks:
+            try:
+                lock = _load_recorded_child_lock(registry, document, name, token=token)
+                locks[key] = {_entry_key(item) for item in lock["files"]}
+            except (ValueError, OSError, subprocess.SubprocessError):
+                # The regular audit reports the failure; do not hide additions.
+                locks[key] = None
+        if locks[key] is not None and _entry_key(entry) not in locks[key]:
+            result.append(entry)
+    return result
+
+
 @_parent_fetch_scope
 def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, token=None,
                         autofix=False, parent_repository=PARENT_REPOSITORY, local_roots=None,
@@ -1936,9 +1971,12 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         raise ValueError("base registry is only accepted with PR validation")
     pending = (pending_enrollments(registry, base_registry, parent_repository)
                if base_registry is not None else [])
-    audit_registry = _registry_without_pending(registry, pending) if pending else registry
     ref = document["ref"]
     monitored = monitored_repositories(registry, token=token)
+    pending = _unadopted_pending_enrollments(
+        registry, document, pending, monitored, token=token,
+    ) if pending else []
+    audit_registry = _registry_without_pending(registry, pending) if pending else registry
     drift = []
     identity_failures = []
     missing_heads = []

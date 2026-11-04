@@ -783,6 +783,11 @@
           "repository": "myon-bioinformatics/web-ui",
           "source": "js/collection.js",
           "destination": "tools/vendor/web-ui/js/collection.js"
+        },
+        {
+          "repository": "myon-bioinformatics/web-ui",
+          "source": "web_ui.py",
+          "destination": "tools/vendor/web-ui-generator/web_ui.py"
         }
       ]
     }

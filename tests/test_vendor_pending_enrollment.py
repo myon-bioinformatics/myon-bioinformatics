@@ -65,8 +65,14 @@ def test_new_consumer_and_parent_entries_are_not_pending():
     assert sync.pending_enrollments(head, base) == []
 
 
-def _run(monkeypatch, tmp_path, registry, **kwargs):
+def _run(monkeypatch, tmp_path, registry, *, adopted=None, **kwargs):
     seen = {}
+    adopted = _registry() if adopted is None else adopted
+    def load_recorded(registry, document, name, **kwargs):
+        assert name == CHILD
+        assert document["heads"][CHILD]["sha"] == "1" * 40
+        return {"files": adopted["consumers"][0]["entries"]}
+    monkeypatch.setattr(sync, "_load_recorded_child_lock", load_recorded)
     sha = "1" * 40
     head = {"sha": sha, "repository_id": 5}
     (tmp_path / "templates").mkdir()
@@ -83,7 +89,7 @@ def _run(monkeypatch, tmp_path, registry, **kwargs):
         seen["registry"] = audit_registry
         normalized = vendor_consumers.validate(audit_registry)
         child = [c for c in normalized["consumers"] if c["repository"] == CHILD][0]
-        ok = len(child["entries"]) == 1  # the child main lock has only tool.py
+        ok = child["entries"] == vendor_consumers.validate(adopted)["consumers"][0]["entries"]
         failures = [] if ok else [{"repository": CHILD, "message": "consumer topology mismatch against parent registry"}]
         return [], {"failures": [], "missing": []}, {"checked": [], "failures": failures,
                                                      "failure_count": len(failures)}
@@ -143,3 +149,43 @@ def test_workflow_passes_base_registry_only_for_pull_requests():
     assert "--base-registry" in block
     assert 'git show "$PR_BASE_SHA:vendor-consumers.json"' in block
     assert text.count("--base-registry") == 1
+
+
+def test_pr_addition_already_in_recorded_lock_remains_audited(monkeypatch, tmp_path):
+    report, seen = _run(monkeypatch, tmp_path, _registry(NEW), adopted=_registry(NEW),
+                        pr_validation=True, base_registry=_registry())
+    assert report["pending_enrollment_count"] == 0
+    assert report["failure_count"] == 0
+    assert seen["registry"] == _registry(NEW)
+
+
+def test_partial_adoption_only_defers_absent_entries(monkeypatch, tmp_path):
+    other = {"repository": "owner/other", "source": "y.py", "destination": "vendor/y.py"}
+    report, seen = _run(monkeypatch, tmp_path, _registry(NEW, other), adopted=_registry(NEW),
+                        pr_validation=True, base_registry=_registry())
+    assert report["pending_enrollment_count"] == 1
+    assert report["failure_count"] == 0
+    assert seen["registry"] == _registry(NEW)
+
+
+def test_failed_recorded_lock_read_does_not_defer_validation(monkeypatch):
+    def fail(*args, **kwargs):
+        raise ValueError("child repository id mismatch")
+    monkeypatch.setattr(sync, "_load_recorded_child_lock", fail)
+    pending = sync.pending_enrollments(_registry(NEW), _registry())
+    assert sync._unadopted_pending_enrollments(_registry(NEW), {}, pending, [CHILD]) == []
+
+
+def test_unmonitored_pending_consumer_is_not_fetched_or_reported(monkeypatch):
+    def fail(*args, **kwargs):
+        raise AssertionError("unmonitored repository fetched")
+    monkeypatch.setattr(sync, "_load_recorded_child_lock", fail)
+    pending = sync.pending_enrollments(_registry(NEW), _registry())
+    assert sync._unadopted_pending_enrollments(_registry(NEW), {}, pending, []) == []
+
+
+def test_present_but_changed_source_is_not_mistaken_for_adoption(monkeypatch, tmp_path):
+    wrong = {**NEW, "source": "wrong.py"}
+    report, _ = _run(monkeypatch, tmp_path, _registry(NEW), adopted=_registry(wrong),
+                     pr_validation=True, base_registry=_registry())
+    assert report["failure_count"] == 1

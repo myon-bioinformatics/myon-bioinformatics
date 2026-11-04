@@ -30,14 +30,19 @@ REFRESHED_FIXTURES.update(json.loads(
 # are excluded from the frozen-baseline comparison until the baseline is re-observed.
 POST_BASELINE_ENROLLMENTS = {
     "myon-bioinformatics/Ironmate": {"vendor/fetch_module.py", "vendor/Aoi-LICENSE"},
+    "myon-bioinformatics/myon-bioinformatics.github.io": {"tools/vendor/web-ui-generator/web_ui.py"},
 }
 
 
 def baseline_registry(registry):
     registry = copy.deepcopy(registry)
     for consumer in registry["consumers"]:
-        drop = (set() if consumer["repository"] in REFRESHED_FIXTURES
-                else POST_BASELINE_ENROLLMENTS.get(consumer["repository"], set()))
+        name = consumer["repository"]
+        fixture = REFRESHED_FIXTURES.get(name, FIXTURES.get(name))
+        adopted = {e["destination"] for e in fixture["lock"]["files"]} if fixture else set()
+        # A reviewed refresh may still predate a later, explicitly listed addition.
+        # Once the refreshed fixture adopts that path, it is checked normally.
+        drop = POST_BASELINE_ENROLLMENTS.get(name, set()) - adopted
         consumer["entries"] = [e for e in consumer["entries"]
                                if e["destination"] not in drop and e.get("license") not in drop]
     return registry
