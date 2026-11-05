@@ -205,7 +205,7 @@ Cross-browser testing reference kit: Playwright Node and Python lanes on Chromiu
 
 `playwright` `cross-browser` `testing`
 
-### [web-ui](https://github.com/myon-bioinformatics/web-ui)
+### [PySaiyanWeBoo](https://github.com/myon-bioinformatics/PySaiyanWeBoo)
 
 Shared, build-free CSS themes, UI components and small JavaScript utilities for the static pages of these projects, including layout presets that switch without reloading.
 

@@ -321,7 +321,7 @@
       "verification_record": "cross-repository-verification-20261021.md"
     },
     {
-      "repository": "myon-bioinformatics/web-ui",
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
       "stage": "表示",
       "use_case": "共通UIとHTML生成を報告画面へ再利用する",
       "entrypoint": "from web_ui import render_document",
@@ -329,7 +329,7 @@
       "status": "validated_existing",
       "verification": "selected table, escaped text diagram and inline SVG rendered into one HTML; 62 subtests",
       "readme_blob": "3bd50be4beb6bb74258d4a06393b77a34993d062",
-      "source_url": "https://github.com/myon-bioinformatics/web-ui/blob/main/README.md",
+      "source_url": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/main/README.md",
       "observed_head": "859132ebecb491553dd053acf52964c9ba2f89c8",
       "focused_tests_passed": 13,
       "limitations": "Caller authors and escapes HTML; trusted_html is not a sanitizer.",

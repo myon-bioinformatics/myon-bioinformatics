@@ -213,7 +213,7 @@ def test_checked_in_registry_and_parent_lock():
         "myon-bioinformatics/mcp-toolcall-lab",
         "myon-bioinformatics/Ironmate",
         "myon-bioinformatics/browser-test-kit",
-        "myon-bioinformatics/web-ui",
+        "myon-bioinformatics/PySaiyanWeBoo",
         "myon-bioinformatics/flutter_navigation_basic",
         "myon-bioinformatics/Aoi",
         "myon-bioinformatics/Err-o-RoadRunner",

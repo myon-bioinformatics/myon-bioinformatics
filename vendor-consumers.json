@@ -368,33 +368,33 @@
           "license": "vendor/cli_args-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "tool/flow_diagram.py",
           "destination": "vendor/web_ui_flow.py",
           "license": "vendor/web-ui-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "examples/pr-flow.json",
           "destination": "examples/flow.json"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "tool/flow_diagram.py",
           "destination": "vendor/web_ui/tool/flow_diagram.py"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "tool/flow_patch.py",
           "destination": "vendor/web_ui/tool/flow_patch.py"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "js/flow.cjs",
           "destination": "vendor/web_ui/js/flow.cjs"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "js/flow-patch.cjs",
           "destination": "vendor/web_ui/js/flow-patch.cjs"
         },
@@ -452,7 +452,7 @@
       ]
     },
     {
-      "repository": "myon-bioinformatics/web-ui",
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
       "state": "locked",
       "lock": "vendor.lock.json",
       "entries": [
@@ -591,7 +591,7 @@
           "license": "vendor/markdown-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "web_ui.py",
           "destination": "vendor/web_ui.py",
           "license": "vendor/web-ui-LICENSE"
@@ -729,43 +729,43 @@
           "license": "tools/vendor/lab/LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "css/base.css",
           "destination": "tools/vendor/web-ui/css/base.css",
           "license": "tools/vendor/web-ui/LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "css/components.css",
           "destination": "tools/vendor/web-ui/css/components.css"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "css/themes/modern.css",
           "destination": "tools/vendor/web-ui/css/themes/modern.css"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "css/tokens.css",
           "destination": "tools/vendor/web-ui/css/tokens.css"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "js/navigation.js",
           "destination": "tools/vendor/web-ui/js/navigation.js"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "js/ui.js",
           "destination": "tools/vendor/web-ui/js/ui.js"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "web_ui.py",
           "destination": "tools/vendor/web-ui/web_ui.py"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "js/controls.js",
           "destination": "tools/vendor/web-ui/js/controls.js"
         },
@@ -780,12 +780,12 @@
           "destination": "tools/vendor/ironmate/pillow_min.py"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "js/collection.js",
           "destination": "tools/vendor/web-ui/js/collection.js"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "web_ui.py",
           "destination": "tools/vendor/web-ui-generator/web_ui.py"
         }

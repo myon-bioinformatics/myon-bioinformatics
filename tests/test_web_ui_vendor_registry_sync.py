@@ -44,4 +44,4 @@ def test_node_launch_is_registered_for_web_ui_not_auto_proposed():
     assert node_launch[0]["action"] == "registered"
     assert node_launch[0]["destination"] == "vendor/node_launch.py"
     assert result["counts"]["registered"] == 2
-    assert result["counts"]["skipped"] == 36
+    assert result["counts"]["skipped"] == 37  # catalog source repo renamed web-ui -> PySaiyanWeBoo

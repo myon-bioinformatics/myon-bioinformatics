@@ -268,7 +268,7 @@
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion."
     },
     {
-      "repository": "myon-bioinformatics/web-ui",
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
       "commit": "484ec248cb523ce158abb00741d26fd0da9217e3",
       "source": "web_ui.py",
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",

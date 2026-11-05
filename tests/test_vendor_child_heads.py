@@ -167,14 +167,14 @@ def test_first_parent_accepts_squash_merge_commit(tmp_path):
 def test_web_ui_pr39_intermediate_pin_rejected_on_github():
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     intermediate = sync._github_json(
-        "https://api.github.com/repos/myon-bioinformatics/web-ui/commits/77ff511", token,
+        "https://api.github.com/repos/myon-bioinformatics/PySaiyanWeBoo/commits/77ff511", token,
     )["sha"]
     merge_commit = sync._github_json(
-        "https://api.github.com/repos/myon-bioinformatics/web-ui/commits/349b1f5", token,
+        "https://api.github.com/repos/myon-bioinformatics/PySaiyanWeBoo/commits/349b1f5", token,
     )["sha"]
     with pytest.raises(ValueError, match="not merged"):
-        sync.commit_merged_into_default("myon-bioinformatics/web-ui", intermediate, token=token)
-    sync.commit_merged_into_default("myon-bioinformatics/web-ui", merge_commit, token=token)
+        sync.commit_merged_into_default("myon-bioinformatics/PySaiyanWeBoo", intermediate, token=token)
+    sync.commit_merged_into_default("myon-bioinformatics/PySaiyanWeBoo", merge_commit, token=token)
 
 
 def test_commit_merged_git_auth_never_embeds_token_in_command_or_errors(monkeypatch):
