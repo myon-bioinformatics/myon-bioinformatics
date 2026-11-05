@@ -33,6 +33,8 @@ def load(filename):
         return historical["registry"]
     if requested == "child-heads.json":
         return historical["heads"]
+    if requested == "vendor-catalog.json":
+        return historical["catalog"]
     return json.loads((ROOT / filename).read_text(encoding="utf-8"))
 
 

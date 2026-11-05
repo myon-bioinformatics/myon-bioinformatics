@@ -19,6 +19,8 @@ def load(path):
         return historical["registry"]
     if requested == "child-heads.json":
         return historical["heads"]
+    if requested == "vendor-catalog.json":
+        return historical["catalog"]
     return json.loads((ROOT / path).read_text())
 
 
@@ -44,4 +46,4 @@ def test_node_launch_is_registered_for_web_ui_not_auto_proposed():
     assert node_launch[0]["action"] == "registered"
     assert node_launch[0]["destination"] == "vendor/node_launch.py"
     assert result["counts"]["registered"] == 2
-    assert result["counts"]["skipped"] == 37  # catalog source repo renamed web-ui -> PySaiyanWeBoo
+    assert result["counts"]["skipped"] == 36
