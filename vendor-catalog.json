@@ -342,7 +342,7 @@
       }
     },
     {
-      "repository": "myon-bioinformatics/browser-test-kit",
+      "repository": "myon-bioinformatics/BrowserTestKit",
       "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
       "reason": "Catalog gap: already locked by consumers but previously uncatalogued; pinned to the commit locked by the most consumers registered in vendor-consumers.json. Not an automatic promotion.",
       "source": "scripts/check_evidence.py",
@@ -362,7 +362,7 @@
       }
     },
     {
-      "repository": "myon-bioinformatics/browser-test-kit",
+      "repository": "myon-bioinformatics/BrowserTestKit",
       "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
       "reason": "Catalog gap: already locked by consumers but previously uncatalogued; pinned to the commit locked by the most consumers registered in vendor-consumers.json. Not an automatic promotion.",
       "source": "scripts/jsonl_digest.py",
@@ -382,7 +382,7 @@
       }
     },
     {
-      "repository": "myon-bioinformatics/browser-test-kit",
+      "repository": "myon-bioinformatics/BrowserTestKit",
       "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
       "reason": "Catalog gap: already locked by consumers but previously uncatalogued; pinned to the commit locked by the most consumers registered in vendor-consumers.json. Not an automatic promotion.",
       "source": "scripts/check_png.py",
@@ -438,7 +438,7 @@
       }
     },
     {
-      "repository": "myon-bioinformatics/browser-test-kit",
+      "repository": "myon-bioinformatics/BrowserTestKit",
       "commit": "2ee9b584340954cb5a2618e6abd8f892544c467b",
       "reason": "Browser evidence image diff loads vendored Ironmate pillow_min (stdlib only); reviewed default-branch merge for browser-test-kit #112. Enroll only with the companion pillow_min lock.",
       "source": "scripts/image_diff.py",
@@ -459,7 +459,7 @@
       "reason": "Stdlib-only Pillow 13-compatible imaging surface (pillow_min.py) owned by Ironmate; reviewed default-branch merge for Ironmate #154 (Refs Ironmate #153).",
       "source": "pillow_min.py",
       "consumers": {
-        "myon-bioinformatics/browser-test-kit": {
+        "myon-bioinformatics/BrowserTestKit": {
           "enrollment": "enrolled",
           "reason": "already_locked_by_consumer"
         },
@@ -478,7 +478,7 @@
       }
     },
     {
-      "repository": "myon-bioinformatics/browser-test-kit",
+      "repository": "myon-bioinformatics/BrowserTestKit",
       "commit": "61872b2df6da908152bc8f965832da79dd97d6b9",
       "reason": "Playwright interaction helpers vendored into flutter e2e; explicit consumer enrollment only.",
       "source": "scripts/interaction.mjs",
@@ -544,7 +544,7 @@
       }
     },
     {
-      "repository": "myon-bioinformatics/browser-test-kit",
+      "repository": "myon-bioinformatics/BrowserTestKit",
       "commit": "8d8512fefea38993e5b3695c0706075cf05071ad",
       "source": "scripts/browser_execution.mjs",
       "reason": "Shared browser worker budget and seeded exploration from Flutter #206; updated to reviewed browser-test-kit #85 default-branch merge to bound disappearing-candidate state checks and retain failure receipts. Enrolled only for Flutter #207; interaction.mjs and MIT license remain independently pinned.",

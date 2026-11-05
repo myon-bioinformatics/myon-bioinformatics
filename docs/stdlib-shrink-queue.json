@@ -232,7 +232,7 @@
       ]
     },
     {
-      "repo": "myon-bioinformatics/browser-test-kit",
+      "repo": "myon-bioinformatics/BrowserTestKit",
       "head": "4dcc5aa6b1e376dae9b6150a4782b9c19848a6c1",
       "packages": [
         {"import": "PIL", "role": "prod", "files": 1, "uses": 29, "names": 11, "classification": "not_feasible", "why": "scripts/image_diff.py requires Pillow >=13. Used operations are open, convert, crop, ImageChops.difference, ImageChops.lighter, point, histogram, getbbox, and getextrema. python -S exits 2 with 'Pillow >=13 is required'."},
@@ -610,7 +610,7 @@
         ]
       },
       {
-        "repository": "myon-bioinformatics/browser-test-kit",
+        "repository": "myon-bioinformatics/BrowserTestKit",
         "commit": "5799b491982e43c6ccc56b50c633715d500bed28",
         "visibility": "public",
         "private": false,
@@ -635,32 +635,32 @@
           {
             "path": "pyproject.toml",
             "blob_sha": "11ccae24067a5cc38196b2309f0bedad52ae8b4a",
-            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/pyproject.toml"
+            "url": "https://github.com/myon-bioinformatics/BrowserTestKit/blob/5799b491982e43c6ccc56b50c633715d500bed28/pyproject.toml"
           },
           {
             "path": "package.json",
             "blob_sha": "865216ae1a839dee2ffb35e77faca470fd76c55f",
-            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/package.json"
+            "url": "https://github.com/myon-bioinformatics/BrowserTestKit/blob/5799b491982e43c6ccc56b50c633715d500bed28/package.json"
           },
           {
             "path": "scripts/btk.py",
             "blob_sha": "04d7921ad4546650a197b0020a81b1c6789fcb92",
-            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/btk.py"
+            "url": "https://github.com/myon-bioinformatics/BrowserTestKit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/btk.py"
           },
           {
             "path": "scripts/image_diff.py",
             "blob_sha": "719a0a4bd963911695b76775b5119361f180218a",
-            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/image_diff.py"
+            "url": "https://github.com/myon-bioinformatics/BrowserTestKit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/image_diff.py"
           },
           {
             "path": "scripts/mirror_facts.mjs",
             "blob_sha": "0e36380181db823fbf85d5336df777548851d437",
-            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/mirror_facts.mjs"
+            "url": "https://github.com/myon-bioinformatics/BrowserTestKit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/mirror_facts.mjs"
           },
           {
             "path": "docs/mirror-tests.md",
             "blob_sha": "d9c29382642bad55457d0d47f2c3ac370dee542a",
-            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/docs/mirror-tests.md"
+            "url": "https://github.com/myon-bioinformatics/BrowserTestKit/blob/5799b491982e43c6ccc56b50c633715d500bed28/docs/mirror-tests.md"
           }
         ]
       },

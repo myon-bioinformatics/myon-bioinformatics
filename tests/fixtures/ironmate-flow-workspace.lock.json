@@ -461,7 +461,7 @@
       "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
     },
     {
-      "repository": "myon-bioinformatics/web-ui",
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
       "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
       "commit": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
       "source": "tool/flow_diagram.py",
@@ -470,7 +470,7 @@
       "sha256": "ddc8203917829c4de6f6c21404cf4d42d83af78f7bd90ff2bfe81d3fe1cd5be6"
     },
     {
-      "repository": "myon-bioinformatics/web-ui",
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
       "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
       "commit": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
       "source": "LICENSE",
@@ -479,7 +479,7 @@
       "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
     },
     {
-      "repository": "myon-bioinformatics/web-ui",
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
       "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
       "commit": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
       "source": "examples/pr-flow.json",
@@ -488,7 +488,7 @@
       "sha256": "6664001dacd324f347fd7dde67203b15b1e5fdafb130a127a05c71566eacf5ad"
     },
     {
-      "repository": "myon-bioinformatics/web-ui",
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
       "source": "tool/flow_diagram.py",
       "destination": "vendor/web_ui/tool/flow_diagram.py",
       "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
@@ -497,7 +497,7 @@
       "sha256": "ddc8203917829c4de6f6c21404cf4d42d83af78f7bd90ff2bfe81d3fe1cd5be6"
     },
     {
-      "repository": "myon-bioinformatics/web-ui",
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
       "source": "tool/flow_patch.py",
       "destination": "vendor/web_ui/tool/flow_patch.py",
       "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
@@ -506,7 +506,7 @@
       "sha256": "6136c2c050eb18509b1a45e1c92a10a3092141ea6d266a1ab69ddca1879817ee"
     },
     {
-      "repository": "myon-bioinformatics/web-ui",
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
       "source": "js/flow.cjs",
       "destination": "vendor/web_ui/js/flow.cjs",
       "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
@@ -515,7 +515,7 @@
       "sha256": "0d3259c293811221fb6366fb6df849e64a9e146202fc28a732b0e60f7828fb7f"
     },
     {
-      "repository": "myon-bioinformatics/web-ui",
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
       "source": "js/flow-patch.cjs",
       "destination": "vendor/web_ui/js/flow-patch.cjs",
       "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",

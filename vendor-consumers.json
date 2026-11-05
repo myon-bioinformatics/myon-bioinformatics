@@ -412,7 +412,7 @@
       ]
     },
     {
-      "repository": "myon-bioinformatics/browser-test-kit",
+      "repository": "myon-bioinformatics/BrowserTestKit",
       "state": "locked",
       "lock": "vendor.lock.json",
       "entries": [
@@ -503,13 +503,13 @@
           "license": "python/vendor/myon-bioinformatics-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/check_evidence.py",
           "destination": "python/vendor/check_evidence.py",
           "license": "python/vendor/browser-test-kit-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/jsonl_digest.py",
           "destination": "python/vendor/jsonl_digest.py"
         },
@@ -520,17 +520,17 @@
           "license": "python/vendor/cli_args-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/check_png.py",
           "destination": "python/vendor/check_png.py"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/image_diff.py",
           "destination": "python/vendor/image_diff.py"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/interaction.mjs",
           "destination": "e2e/utils/interaction.mjs"
         },
@@ -541,7 +541,7 @@
           "license": "python/vendor/gh_identity-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/browser_execution.mjs",
           "destination": "e2e/utils/browser_execution.mjs"
         },
@@ -632,13 +632,13 @@
           "license": "vendor/myon-bioinformatics-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/check_evidence.py",
           "destination": "vendor/check_evidence.py",
           "license": "vendor/browser-test-kit-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/jsonl_digest.py",
           "destination": "vendor/jsonl_digest.py"
         },
@@ -649,7 +649,7 @@
           "license": "vendor/cli_args-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/check_png.py",
           "destination": "vendor/check_png.py"
         },
