@@ -346,6 +346,10 @@ all are present or when `apt-get`/`dpkg-query` are absent (reported as
 `apt_unavailable`). It does not choose packages, resolve closures or pin hashes,
 so the Debian 13/amd64 caveats above still apply. No CI step or child rollout is added.
 
+`--strict` is for a step that must install something: a missing `apt-get`/`dpkg-query`
+or a list with no packages exits 2 (status `failed`) instead of `apt_unavailable` or
+satisfied, so a later command does not fail for an unrelated-looking reason.
+
 `--receipt FILE` writes the same JSON report to a new file (installed versions
 before and after, list SHA-256, OS id/version, seconds). `--log FILE` keeps
 apt's own output in a new file and prints only its summary line, plus the last
