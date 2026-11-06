@@ -1,0 +1,66 @@
+name: nano_apt actions probe (temporary)
+
+# Throwaway evidence run: does a detached nano_apt --background survive between steps on a
+# GitHub-hosted runner, and does overlapping it with other work save time? Not meant to merge.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/nano-apt-actions-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  serial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Start clock
+        run: |
+          echo "T0=$(date +%s.%N)" >> "$GITHUB_ENV"
+          . /etc/os-release && echo "$PRETTY_NAME image=${ImageVersion:-?} user=$(id -un)"
+          printf 'fonts-noto-cjk\n' > "$RUNNER_TEMP/fonts.txt"
+          printf 'python3-uno\nlibreoffice-impress\n' > "$RUNNER_TEMP/uno.txt"
+      - name: Install (serial)
+        run: |
+          python3 -S tools/nano_apt.py --list "$RUNNER_TEMP/fonts.txt" --list "$RUNNER_TEMP/uno.txt" \
+            --install --receipt "$RUNNER_TEMP/receipt.json" --log "$RUNNER_TEMP/apt.log" > /dev/null
+          python3 -S -c "import json,sys; r=json.load(open(sys.argv[1])); print('install', r['status'], r['seconds'], 's')" "$RUNNER_TEMP/receipt.json"
+      - name: Other work (simulated, 30 s)
+        run: sleep 30
+      - name: Total
+        run: python3 -S -c "import os,time; print('SERIAL TOTAL %.1f s' % (time.time()-float(os.environ['T0'])))"
+
+  overlap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Start clock and background download
+        run: |
+          echo "T0=$(date +%s.%N)" >> "$GITHUB_ENV"
+          . /etc/os-release && echo "$PRETTY_NAME image=${ImageVersion:-?} user=$(id -un)"
+          printf 'fonts-noto-cjk\n' > "$RUNNER_TEMP/fonts.txt"
+          printf 'python3-uno\nlibreoffice-impress\n' > "$RUNNER_TEMP/uno.txt"
+          python3 -S tools/nano_apt.py --list "$RUNNER_TEMP/fonts.txt" --list "$RUNNER_TEMP/uno.txt" \
+            --background --state "$RUNNER_TEMP/apt.state"
+      - name: Other work (simulated, 30 s) and is the download still alive?
+        run: |
+          sleep 5
+          echo "pid file: $(cat "$RUNNER_TEMP/apt.state.pid")"
+          ps -o pid,ppid,sid,etimes,stat,cmd -p "$(cat "$RUNNER_TEMP/apt.state.pid")" || echo "process not found"
+          sleep 25
+          python3 -S -c "import json,sys; print('state after other work:', json.load(open(sys.argv[1])).get('status'))" "$RUNNER_TEMP/apt.state"
+      - name: Join and install
+        run: |
+          python3 -S tools/nano_apt.py --list "$RUNNER_TEMP/fonts.txt" --list "$RUNNER_TEMP/uno.txt" \
+            --install --state "$RUNNER_TEMP/apt.state" --receipt "$RUNNER_TEMP/receipt.json" > /dev/null
+          python3 -S -c "import json,sys; r=json.load(open(sys.argv[1])); print('install', r['status'], r['seconds'], 's', r['joined'])" "$RUNNER_TEMP/receipt.json"
+          python3 -S -c "import json,sys; d=json.load(open(sys.argv[1])); print('background child', d['status'], d.get('seconds'), 's')" "$RUNNER_TEMP/apt.state"
+      - name: Total
+        run: python3 -S -c "import os,time; print('OVERLAP TOTAL %.1f s' % (time.time()-float(os.environ['T0'])))"
