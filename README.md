@@ -286,7 +286,7 @@ Python toolkit for converting documents and images: a Markdown-to-PPTX pipeline,
 ## Shared GitHub operations
 
 `gh_ops.py` is the canonical stdlib-only GitHub operation CLI migrated from
-browser-test-kit, with its unit/parity tests owned here. See [the contract](docs/gh-ops.md).
+BrowserTestKit, with its unit/parity tests owned here. See [the contract](docs/gh-ops.md).
 Consumers enroll the source/LICENSE via `vendor_sync` and keep only integration
 checks, rather than maintain generic operation implementations or duplicate tests.
 
