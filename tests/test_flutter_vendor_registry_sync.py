@@ -136,8 +136,8 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
     if baseline == "current":
         registry = json.loads((ROOT / "vendor-consumers.json").read_text())
         heads = json.loads((ROOT / "child-heads.json").read_text())
-        workflow_fixture = "tests/fixtures/flutter_non_dart_ci_python_235.yml"
-        expected_sha = "b25a76629eee10f72dbf2dd8a492ba3591807d49"
+        workflow_fixture = "tests/fixtures/flutter_non_dart_ci_python_241.yml"
+        expected_sha = "2797b004499b14c9d530857566e80c0a1dadfd8e"
     else:
         registry = load("vendor-consumers.json")
         heads = load("child-heads.json")
