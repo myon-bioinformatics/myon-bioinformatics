@@ -308,31 +308,22 @@ snapshot and digest until that coordinated update lands. No dual-digest
 allowlist, optional child workflow rollout, new vendor enrollment or relaxed
 failure gate is introduced.
 
-### Temporary repository-rename bridge (2026-11)
+### Repository-rename bridge retirement (2026-11)
 
-The migration from `web-ui` to `PySaiyanWeBoo` (GitHub repository ID
-`1382466695`) and `browser-test-kit` to `BrowserTestKit` (ID `1384313653`)
-needs a short overlap: old parent topology can meet new child locks, and new
-parent topology can meet recorded old child locks.
+The temporary #216 bridge allowed only the ID-verified migrations from `web-ui`
+to `PySaiyanWeBoo` and `browser-test-kit` to `BrowserTestKit`. Parent #215
+completed the recorded-head and registry rollout. Its full adopted-file audit
+verified 17 repositories and 176 files with no failures.
 
-`vendor_consumers.compare` still tries the exact contract first. Only a complete
-match after substituting these two reviewed source identities can use the
-fallback. Before accepting that match, both old and new names must independently
-resolve to the expected numeric ID, canonical name, public visibility and
-non-archived repository. Lookup failure or reuse of an old name fails closed.
-Public HTML identity reads allow only those same ID-checked redirects, so source
-provenance checks can still inspect old recorded locks. No lock is rewritten by
-the comparison. Source/destination/bundle topology, first-parent merged source
-pins, Git blob identities, SHA-256, and placed child bytes remain mandatory.
+All 17 recorded child locks and their current default-branch locks were checked
+before retirement: none uses either old repository identity. The registry,
+catalog and recorded-head keys use the new names. Historical documentation,
+import/destination paths and pinned CDN URLs are not repository aliases and do
+not justify retaining the bridge.
 
-Rollout order: merge the bridge after review; validate and merge the child lock
-rename PRs; update the parent's recorded child heads and rename registry in
-#215; validate the complete adopted-file audit. Do not point adopted child heads
-at unmerged PR commits merely to make this migration pass. No child PR or parent
-PR is merged automatically.
-
-Remove `_REPOSITORY_RENAMES`, its guarded comparison fallback and the public-page
-redirect exception after all registered source identities and recorded child
-locks use the new names. Re-run the full parent/child audit on those recorded
-revisions before removing the bridge. Historical locks are not an excuse to
-leave an unrestricted alias mechanism behind.
+Topology comparison again requires exact registered repository names (existing
+case-insensitivity is unchanged). Public HTML identity reads reject renamed
+redirects even if the numeric ID matches. Source/destination/bundle topology,
+first-parent merged source pins, Git blob identities, SHA-256, and placed child
+bytes remain mandatory. Old immutable parent tool pins are unchanged; future
+consumer adoptions must use the current canonical repository names.
