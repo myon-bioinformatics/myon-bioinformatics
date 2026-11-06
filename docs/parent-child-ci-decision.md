@@ -307,3 +307,32 @@ Parent main intentionally retains its prior approved
 snapshot and digest until that coordinated update lands. No dual-digest
 allowlist, optional child workflow rollout, new vendor enrollment or relaxed
 failure gate is introduced.
+
+### Temporary repository-rename bridge (2026-11)
+
+The migration from `web-ui` to `PySaiyanWeBoo` (GitHub repository ID
+`1382466695`) and `browser-test-kit` to `BrowserTestKit` (ID `1384313653`)
+needs a short overlap: old parent topology can meet new child locks, and new
+parent topology can meet recorded old child locks.
+
+`vendor_consumers.compare` still tries the exact contract first. Only a complete
+match after substituting these two reviewed source identities can use the
+fallback. Before accepting that match, both old and new names must independently
+resolve to the expected numeric ID, canonical name, public visibility and
+non-archived repository. Lookup failure or reuse of an old name fails closed.
+Public HTML identity reads allow only those same ID-checked redirects, so source
+provenance checks can still inspect old recorded locks. No lock is rewritten by
+the comparison. Source/destination/bundle topology, first-parent merged source
+pins, Git blob identities, SHA-256, and placed child bytes remain mandatory.
+
+Rollout order: merge the bridge after review; validate and merge the child lock
+rename PRs; update the parent's recorded child heads and rename registry in
+#215; validate the complete adopted-file audit. Do not point adopted child heads
+at unmerged PR commits merely to make this migration pass. No child PR or parent
+PR is merged automatically.
+
+Remove `_REPOSITORY_RENAMES`, its guarded comparison fallback and the public-page
+redirect exception after all registered source identities and recorded child
+locks use the new names. Re-run the full parent/child audit on those recorded
+revisions before removing the bridge. Historical locks are not an excuse to
+leave an unrestricted alias mechanism behind.
