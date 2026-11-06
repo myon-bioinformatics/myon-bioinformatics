@@ -446,6 +446,37 @@ def _public_repo_is_archived_from_html(html):
             or '"isArchived":true' in html)
 
 
+# Temporary identity bridge for the two reviewed repository renames. Remove after
+# every registered child lock and parent recorded head has adopted the new names.
+_REPOSITORY_RENAMES = {
+    "myon-bioinformatics/web-ui": ("myon-bioinformatics/PySaiyanWeBoo", 1382466695),
+    "myon-bioinformatics/browser-test-kit": ("myon-bioinformatics/BrowserTestKit", 1384313653),
+}
+
+
+def _verify_rename_record(record, canonical, repository_id):
+    if (not isinstance(record, dict)
+            or type(record.get("id")) is not int or record["id"] != repository_id
+            or str(record.get("full_name", "")).casefold() != canonical.casefold()
+            or record.get("private") is not False
+            or record.get("visibility") != "public"
+            or record.get("archived") is not False):
+        raise ValueError("repository rename identity mismatch")
+
+
+def verify_repository_rename(old, *, token=None, repo_fetch=None):
+    """Verify both names still identify the one approved public repository.
+
+    No cache survives a comparison: recreating the old name must fail closed.
+    This authorizes name equivalence only, never a source or commit change.
+    """
+    canonical, repository_id = _REPOSITORY_RENAMES[old]
+    for name in (old, canonical):
+        record = fetch_repository_record(name, token or _api_token(), repo_fetch=repo_fetch)
+        _verify_rename_record(record, canonical, repository_id)
+    return canonical
+
+
 def public_repository_page_record(repository):
     """Read repository identity from the public github.com HTML page (no REST API).
 
@@ -461,15 +492,19 @@ def public_repository_page_record(repository):
     is_public = public_match is not None and public_match.group(1) == "true"
     nwo_match = _REPOSITORY_NWO_META.search(html)
     full_name = nwo_match.group(1) if nwo_match else repository
-    if full_name.casefold() != repository.casefold():
-        raise ValueError("repository name mismatch on public page")
-    return {
+    record = {
         "id": int(id_match.group(1)),
         "full_name": full_name,
         "private": not is_public,
         "visibility": "public" if is_public else "private",
         "archived": _public_repo_is_archived_from_html(html),
     }
+    if full_name.casefold() != repository.casefold():
+        rename = _REPOSITORY_RENAMES.get(repository.casefold())
+        if rename is None:
+            raise ValueError("repository name mismatch on public page")
+        _verify_rename_record(record, *rename)
+    return record
 
 
 def _public_git_snapshot(repository, ref, sources, *, remote=None):
