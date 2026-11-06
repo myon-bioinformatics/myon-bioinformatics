@@ -29,6 +29,9 @@ REFRESHED_FIXTURES.update(json.loads(
 # fixtures and their historical-adoption tests below remain unchanged.
 ROLLOUT_FIXTURES = json.loads(
     (ROOT / "tests/fixtures/reviewed_child_locks_20261106.json").read_text())
+# Later reviewed repairs supersede only these two merged child snapshots.
+ROLLOUT_FIXTURES.update(json.loads(
+    (ROOT / "tests/fixtures/reviewed_pin_repairs_20261106.json").read_text()))
 
 # Registry entries enrolled after the 2026-10-29 observation. The parent registry
 # must land before the child lock (the child CI reads the live registry), so these
