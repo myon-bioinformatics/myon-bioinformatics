@@ -25,7 +25,7 @@
           "commit": "267af7fd2d4968c3ea75e2df4e93ff7fb4414005",
           "destination": "vendor/web_ui.py",
           "ref": "267af7fd2d4968c3ea75e2df4e93ff7fb4414005",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "f7464ad834989777cb4b2861949c3386f154299d5f740eb0d34cd621c80c225a",
           "source": "web_ui.py"
         },
@@ -34,7 +34,7 @@
           "commit": "573b4ca07a916c4a44695dbd5739da36b902d8f2",
           "destination": "vendor/web-ui-LICENSE",
           "ref": "573b4ca07a916c4a44695dbd5739da36b902d8f2",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59",
           "source": "LICENSE"
         },
@@ -96,7 +96,7 @@
           "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
           "destination": "vendor/check_evidence.py",
           "ref": "0f73f07530040461914af53cc469b893d4b4cbdd",
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "sha256": "60dc86b7f9053a7add2ca6fe9b8054265cd488160275d65a0e1c5850f4afcf22",
           "source": "scripts/check_evidence.py"
         },
@@ -105,7 +105,7 @@
           "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
           "destination": "vendor/jsonl_digest.py",
           "ref": "0f73f07530040461914af53cc469b893d4b4cbdd",
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "sha256": "b02c4880336c3fce5427b818bfe19175c13f0acb8bf1204c6208ac85bb20f730",
           "source": "scripts/jsonl_digest.py"
         },
@@ -141,7 +141,7 @@
           "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
           "destination": "vendor/browser-test-kit-LICENSE",
           "ref": "0f73f07530040461914af53cc469b893d4b4cbdd",
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59",
           "source": "LICENSE"
         },
@@ -159,7 +159,7 @@
           "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
           "destination": "vendor/check_png.py",
           "ref": "0f73f07530040461914af53cc469b893d4b4cbdd",
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "sha256": "12d5c7c0189b53540649ea26d57aeca827588b9118050d10b100b185845a2ad6",
           "source": "scripts/check_png.py"
         },
@@ -662,7 +662,7 @@
           "commit": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
           "destination": "vendor/web_ui_flow.py",
           "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "ddc8203917829c4de6f6c21404cf4d42d83af78f7bd90ff2bfe81d3fe1cd5be6",
           "source": "tool/flow_diagram.py"
         },
@@ -671,7 +671,7 @@
           "commit": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
           "destination": "vendor/web-ui-LICENSE",
           "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59",
           "source": "LICENSE"
         },
@@ -680,7 +680,7 @@
           "commit": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
           "destination": "examples/flow.json",
           "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "6664001dacd324f347fd7dde67203b15b1e5fdafb130a127a05c71566eacf5ad",
           "source": "examples/pr-flow.json"
         },
@@ -689,7 +689,7 @@
           "commit": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
           "destination": "vendor/web_ui/tool/flow_diagram.py",
           "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "ddc8203917829c4de6f6c21404cf4d42d83af78f7bd90ff2bfe81d3fe1cd5be6",
           "source": "tool/flow_diagram.py"
         },
@@ -698,7 +698,7 @@
           "commit": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
           "destination": "vendor/web_ui/tool/flow_patch.py",
           "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "6136c2c050eb18509b1a45e1c92a10a3092141ea6d266a1ab69ddca1879817ee",
           "source": "tool/flow_patch.py"
         },
@@ -707,7 +707,7 @@
           "commit": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
           "destination": "vendor/web_ui/js/flow.cjs",
           "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "0d3259c293811221fb6366fb6df849e64a9e146202fc28a732b0e60f7828fb7f",
           "source": "js/flow.cjs"
         },
@@ -716,7 +716,7 @@
           "commit": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
           "destination": "vendor/web_ui/js/flow-patch.cjs",
           "ref": "95dcfc6f3fa764249566bf2f9df90dcead7c64db",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "e4d0bdf3851f4f479f4f2caae1958d10b62d080e4c11bd26f96c3a01597fc4ab",
           "source": "js/flow-patch.cjs"
         },
@@ -796,7 +796,7 @@
     },
     "sha": "3a427d5674c4da6d1a3be2e030d0cdc0ac7b16a3"
   },
-  "myon-bioinformatics/browser-test-kit": {
+  "myon-bioinformatics/BrowserTestKit": {
     "lock": {
       "files": [
         {
@@ -955,7 +955,7 @@
           "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
           "destination": "python/vendor/check_evidence.py",
           "ref": "0f73f07530040461914af53cc469b893d4b4cbdd",
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "sha256": "60dc86b7f9053a7add2ca6fe9b8054265cd488160275d65a0e1c5850f4afcf22",
           "source": "scripts/check_evidence.py"
         },
@@ -964,7 +964,7 @@
           "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
           "destination": "python/vendor/jsonl_digest.py",
           "ref": "0f73f07530040461914af53cc469b893d4b4cbdd",
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "sha256": "b02c4880336c3fce5427b818bfe19175c13f0acb8bf1204c6208ac85bb20f730",
           "source": "scripts/jsonl_digest.py"
         },
@@ -1000,7 +1000,7 @@
           "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
           "destination": "python/vendor/browser-test-kit-LICENSE",
           "ref": "0f73f07530040461914af53cc469b893d4b4cbdd",
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59",
           "source": "LICENSE"
         },
@@ -1018,7 +1018,7 @@
           "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
           "destination": "python/vendor/check_png.py",
           "ref": "0f73f07530040461914af53cc469b893d4b4cbdd",
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "sha256": "12d5c7c0189b53540649ea26d57aeca827588b9118050d10b100b185845a2ad6",
           "source": "scripts/check_png.py"
         },
@@ -1045,7 +1045,7 @@
           "commit": "84a4bfb804a01d027f38f718c3d67698a2932691",
           "destination": "python/vendor/image_diff.py",
           "ref": "84a4bfb804a01d027f38f718c3d67698a2932691",
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "sha256": "2e4046f71869027ac5c1b43807ff202dc8fa2c7e9f92194374f1d1f6a34d97d9",
           "source": "scripts/image_diff.py"
         },
@@ -1072,7 +1072,7 @@
           "commit": "84a4bfb804a01d027f38f718c3d67698a2932691",
           "destination": "e2e/utils/interaction.mjs",
           "ref": "84a4bfb804a01d027f38f718c3d67698a2932691",
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "sha256": "460033adec6e78990a43aeeef051da06692771bf4c2be9c7280bbb18a562e7ea",
           "source": "scripts/interaction.mjs"
         },
@@ -1081,7 +1081,7 @@
           "commit": "8d8512fefea38993e5b3695c0706075cf05071ad",
           "destination": "e2e/utils/browser_execution.mjs",
           "ref": "8d8512fefea38993e5b3695c0706075cf05071ad",
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "sha256": "3634f607a254fecf5b25a467571fe5ffce8b65e7054566242c7b6391e1602cc3",
           "source": "scripts/browser_execution.mjs"
         }
@@ -1328,7 +1328,7 @@
           "commit": "349b1f57c7fcbb4697197ed6dfb96c51d33e970b",
           "destination": "tools/vendor/web-ui/LICENSE",
           "ref": "349b1f57c7fcbb4697197ed6dfb96c51d33e970b",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59",
           "source": "LICENSE"
         },
@@ -1337,7 +1337,7 @@
           "commit": "f6d0b4e666f8a4c29f82dd339b3fdcc459351d95",
           "destination": "tools/vendor/web-ui/css/base.css",
           "ref": "f6d0b4e666f8a4c29f82dd339b3fdcc459351d95",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "c43830acb13f5b34b6140163289d9cc7445bfbd3bba94b01ec4e89ac2c1f6b79",
           "source": "css/base.css"
         },
@@ -1346,7 +1346,7 @@
           "commit": "349b1f57c7fcbb4697197ed6dfb96c51d33e970b",
           "destination": "tools/vendor/web-ui/css/components.css",
           "ref": "349b1f57c7fcbb4697197ed6dfb96c51d33e970b",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "13e326986246e6cccf075e1dc44fd5de9fa6b2b6deace7914fb8a2f0febdfb4e",
           "source": "css/components.css"
         },
@@ -1355,7 +1355,7 @@
           "commit": "f6d0b4e666f8a4c29f82dd339b3fdcc459351d95",
           "destination": "tools/vendor/web-ui/css/themes/modern.css",
           "ref": "f6d0b4e666f8a4c29f82dd339b3fdcc459351d95",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "3fd44c840b4648cd248b58dfd96e1b9da8fe71ea071ede2fcef51c11378b33b9",
           "source": "css/themes/modern.css"
         },
@@ -1364,7 +1364,7 @@
           "commit": "f6d0b4e666f8a4c29f82dd339b3fdcc459351d95",
           "destination": "tools/vendor/web-ui/css/tokens.css",
           "ref": "f6d0b4e666f8a4c29f82dd339b3fdcc459351d95",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "d175dc092eb3fdfc3c7ddd6cee57ea0aa57aa3886c73b7b0babac23bd61f1f78",
           "source": "css/tokens.css"
         },
@@ -1373,7 +1373,7 @@
           "commit": "f6d0b4e666f8a4c29f82dd339b3fdcc459351d95",
           "destination": "tools/vendor/web-ui/js/navigation.js",
           "ref": "f6d0b4e666f8a4c29f82dd339b3fdcc459351d95",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "b748512a224685c732db837ebe0738c647c5a8c512f238d75fbc954c1c0a5f35",
           "source": "js/navigation.js"
         },
@@ -1382,7 +1382,7 @@
           "commit": "349b1f57c7fcbb4697197ed6dfb96c51d33e970b",
           "destination": "tools/vendor/web-ui/js/ui.js",
           "ref": "349b1f57c7fcbb4697197ed6dfb96c51d33e970b",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "770f8d0ab97dc7805b8876e842d49ab2f2c9384f247e77ad5a90cb07cb34684c",
           "source": "js/ui.js"
         },
@@ -1391,7 +1391,7 @@
           "commit": "f6d0b4e666f8a4c29f82dd339b3fdcc459351d95",
           "destination": "tools/vendor/web-ui/web_ui.py",
           "ref": "f6d0b4e666f8a4c29f82dd339b3fdcc459351d95",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "f7464ad834989777cb4b2861949c3386f154299d5f740eb0d34cd621c80c225a",
           "source": "web_ui.py"
         },
@@ -1400,7 +1400,7 @@
           "commit": "349b1f57c7fcbb4697197ed6dfb96c51d33e970b",
           "destination": "tools/vendor/web-ui/js/controls.js",
           "ref": "349b1f57c7fcbb4697197ed6dfb96c51d33e970b",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "e545885ed2f0e43937d2eb3a44bdb874e8c4f42e895a36a51498a0db20956e9d",
           "source": "js/controls.js"
         },
@@ -1409,7 +1409,7 @@
           "commit": "0be6e80c2fca2ddbce46cdfbbb27432c1dcdbbeb",
           "destination": "tools/vendor/web-ui/js/collection.js",
           "ref": "0be6e80c2fca2ddbce46cdfbbb27432c1dcdbbeb",
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "sha256": "71ac00368ac709eed436a8a1a8882463356b49ae8d19d0c339ba5f522028ce9a",
           "source": "js/collection.js"
         },
@@ -1533,7 +1533,7 @@
     },
     "sha": "5f4c57bfe8e43271ff16f01d3c1061d0b5991724"
   },
-  "myon-bioinformatics/web-ui": {
+  "myon-bioinformatics/PySaiyanWeBoo": {
     "lock": {
       "files": [
         {

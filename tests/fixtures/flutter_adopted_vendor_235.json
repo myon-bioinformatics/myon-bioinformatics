@@ -40,7 +40,7 @@
         "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
       },
       {
-        "repository": "myon-bioinformatics/browser-test-kit",
+        "repository": "myon-bioinformatics/BrowserTestKit",
         "ref": "0f73f07530040461914af53cc469b893d4b4cbdd",
         "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
         "source": "scripts/check_evidence.py",
@@ -49,7 +49,7 @@
         "sha256": "60dc86b7f9053a7add2ca6fe9b8054265cd488160275d65a0e1c5850f4afcf22"
       },
       {
-        "repository": "myon-bioinformatics/browser-test-kit",
+        "repository": "myon-bioinformatics/BrowserTestKit",
         "ref": "0f73f07530040461914af53cc469b893d4b4cbdd",
         "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
         "source": "scripts/jsonl_digest.py",
@@ -85,7 +85,7 @@
         "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
       },
       {
-        "repository": "myon-bioinformatics/browser-test-kit",
+        "repository": "myon-bioinformatics/BrowserTestKit",
         "ref": "0f73f07530040461914af53cc469b893d4b4cbdd",
         "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
         "source": "LICENSE",
@@ -103,7 +103,7 @@
         "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
       },
       {
-        "repository": "myon-bioinformatics/browser-test-kit",
+        "repository": "myon-bioinformatics/BrowserTestKit",
         "ref": "0f73f07530040461914af53cc469b893d4b4cbdd",
         "commit": "0f73f07530040461914af53cc469b893d4b4cbdd",
         "source": "scripts/check_png.py",
@@ -130,7 +130,7 @@
         "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
       },
       {
-        "repository": "myon-bioinformatics/browser-test-kit",
+        "repository": "myon-bioinformatics/BrowserTestKit",
         "ref": "84a4bfb804a01d027f38f718c3d67698a2932691",
         "commit": "84a4bfb804a01d027f38f718c3d67698a2932691",
         "source": "scripts/image_diff.py",
@@ -157,7 +157,7 @@
         "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
       },
       {
-        "repository": "myon-bioinformatics/browser-test-kit",
+        "repository": "myon-bioinformatics/BrowserTestKit",
         "ref": "84a4bfb804a01d027f38f718c3d67698a2932691",
         "commit": "84a4bfb804a01d027f38f718c3d67698a2932691",
         "source": "scripts/interaction.mjs",
@@ -166,7 +166,7 @@
         "sha256": "460033adec6e78990a43aeeef051da06692771bf4c2be9c7280bbb18a562e7ea"
       },
       {
-        "repository": "myon-bioinformatics/browser-test-kit",
+        "repository": "myon-bioinformatics/BrowserTestKit",
         "ref": "8d8512fefea38993e5b3695c0706075cf05071ad",
         "commit": "8d8512fefea38993e5b3695c0706075cf05071ad",
         "source": "scripts/browser_execution.mjs",

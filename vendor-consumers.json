@@ -368,33 +368,33 @@
           "license": "vendor/cli_args-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "tool/flow_diagram.py",
           "destination": "vendor/web_ui_flow.py",
           "license": "vendor/web-ui-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "examples/pr-flow.json",
           "destination": "examples/flow.json"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "tool/flow_diagram.py",
           "destination": "vendor/web_ui/tool/flow_diagram.py"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "tool/flow_patch.py",
           "destination": "vendor/web_ui/tool/flow_patch.py"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "js/flow.cjs",
           "destination": "vendor/web_ui/js/flow.cjs"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "js/flow-patch.cjs",
           "destination": "vendor/web_ui/js/flow-patch.cjs"
         },
@@ -412,7 +412,7 @@
       ]
     },
     {
-      "repository": "myon-bioinformatics/browser-test-kit",
+      "repository": "myon-bioinformatics/BrowserTestKit",
       "state": "locked",
       "lock": "vendor.lock.json",
       "entries": [
@@ -452,7 +452,7 @@
       ]
     },
     {
-      "repository": "myon-bioinformatics/web-ui",
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
       "state": "locked",
       "lock": "vendor.lock.json",
       "entries": [
@@ -503,13 +503,13 @@
           "license": "python/vendor/myon-bioinformatics-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/check_evidence.py",
           "destination": "python/vendor/check_evidence.py",
           "license": "python/vendor/browser-test-kit-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/jsonl_digest.py",
           "destination": "python/vendor/jsonl_digest.py"
         },
@@ -520,17 +520,17 @@
           "license": "python/vendor/cli_args-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/check_png.py",
           "destination": "python/vendor/check_png.py"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/image_diff.py",
           "destination": "python/vendor/image_diff.py"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/interaction.mjs",
           "destination": "e2e/utils/interaction.mjs"
         },
@@ -541,7 +541,7 @@
           "license": "python/vendor/gh_identity-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/browser_execution.mjs",
           "destination": "e2e/utils/browser_execution.mjs"
         },
@@ -558,7 +558,7 @@
       ],
       "locked_ci": {
         "workflow": ".github/workflows/non-dart.yml",
-        "sha256": "4e2dc00621ee1fc9b37a84f55b65f87e00230b40e8745f0014111d85b8499959"
+        "sha256": "c57e651123c245b2295adfb900613c324324135557aa609e7f2adf600c5393bc"
       }
     },
     {
@@ -591,7 +591,7 @@
           "license": "vendor/markdown-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "web_ui.py",
           "destination": "vendor/web_ui.py",
           "license": "vendor/web-ui-LICENSE"
@@ -632,13 +632,13 @@
           "license": "vendor/myon-bioinformatics-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/check_evidence.py",
           "destination": "vendor/check_evidence.py",
           "license": "vendor/browser-test-kit-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/jsonl_digest.py",
           "destination": "vendor/jsonl_digest.py"
         },
@@ -649,7 +649,7 @@
           "license": "vendor/cli_args-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/browser-test-kit",
+          "repository": "myon-bioinformatics/BrowserTestKit",
           "source": "scripts/check_png.py",
           "destination": "vendor/check_png.py"
         },
@@ -729,43 +729,43 @@
           "license": "tools/vendor/lab/LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "css/base.css",
           "destination": "tools/vendor/web-ui/css/base.css",
           "license": "tools/vendor/web-ui/LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "css/components.css",
           "destination": "tools/vendor/web-ui/css/components.css"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "css/themes/modern.css",
           "destination": "tools/vendor/web-ui/css/themes/modern.css"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "css/tokens.css",
           "destination": "tools/vendor/web-ui/css/tokens.css"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "js/navigation.js",
           "destination": "tools/vendor/web-ui/js/navigation.js"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "js/ui.js",
           "destination": "tools/vendor/web-ui/js/ui.js"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "web_ui.py",
           "destination": "tools/vendor/web-ui/web_ui.py"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "js/controls.js",
           "destination": "tools/vendor/web-ui/js/controls.js"
         },
@@ -780,12 +780,12 @@
           "destination": "tools/vendor/ironmate/pillow_min.py"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "js/collection.js",
           "destination": "tools/vendor/web-ui/js/collection.js"
         },
         {
-          "repository": "myon-bioinformatics/web-ui",
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
           "source": "web_ui.py",
           "destination": "tools/vendor/web-ui-generator/web_ui.py"
         }

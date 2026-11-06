@@ -213,7 +213,7 @@
       "status": "catalogued"
     },
     {
-      "repository": "myon-bioinformatics/web-ui",
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
       "archived": false,
       "sources": [],
       "status": "no_standalone_root_tool"

@@ -232,7 +232,7 @@
       ]
     },
     {
-      "repo": "myon-bioinformatics/browser-test-kit",
+      "repo": "myon-bioinformatics/BrowserTestKit",
       "head": "4dcc5aa6b1e376dae9b6150a4782b9c19848a6c1",
       "packages": [
         {"import": "PIL", "role": "prod", "files": 1, "uses": 29, "names": 11, "classification": "not_feasible", "why": "scripts/image_diff.py requires Pillow >=13. Used operations are open, convert, crop, ImageChops.difference, ImageChops.lighter, point, histogram, getbbox, and getextrema. python -S exits 2 with 'Pillow >=13 is required'."},
@@ -262,7 +262,7 @@
       ]
     },
     {
-      "repo": "myon-bioinformatics/web-ui",
+      "repo": "myon-bioinformatics/PySaiyanWeBoo",
       "head": "5e8b867a50c0d8cdaac522b20682a9b4f7b2bce8",
       "packages": [
         {"import": "playwright", "role": "prod", "files": 1, "uses": 29, "names": 2, "classification": "not_feasible", "why": "tool/layout_presets.py and the integration tests drive a browser. sync_api.expect and sync_playwright."},
@@ -297,7 +297,7 @@
         {"import": "serve", "ecosystem": "npm", "role": "dev", "classification": "not_feasible", "why": "serve 14.2.6 has 11 runtime dependencies."},
         {"import": "@browserbasehq/stagehand", "ecosystem": "npm", "role": "dev", "classification": "not_feasible", "why": "tests/stagehand-v4-node.mjs. Depends on zod and the Browserbase SDK."},
         {"import": "pytest", "role": "test", "classification": "test_harness", "why": "tests/requirements.txt also pins stagehand."},
-        {"import": "web-ui repository-diagnostics.js", "ecosystem": "cdn", "role": "prod", "classification": "already_cdn", "why": "tools/mcp-toolcall-lab/repository-diagnostics.html loads CSS and JS from cdn.jsdelivr.net/gh/myon-bioinformatics/web-ui at a pinned commit. First-party, already a CDN script."}
+        {"import": "web-ui repository-diagnostics.js", "ecosystem": "cdn", "role": "prod", "classification": "already_cdn", "why": "tools/mcp-toolcall-lab/repository-diagnostics.html loads CSS and JS from cdn.jsdelivr.net/gh/myon-bioinformatics/PySaiyanWeBoo at a pinned commit. First-party, already a CDN script."}
       ]
     },
     {
@@ -392,7 +392,7 @@
     },
     {
       "repo": "myon-bioinformatics/myon-bioinformatics.github.io",
-      "url": "https://cdn.jsdelivr.net/gh/myon-bioinformatics/web-ui@adb23d7ba6ea94672b76457573f6655a081ee054/js/repository-diagnostics.js",
+      "url": "https://cdn.jsdelivr.net/gh/myon-bioinformatics/PySaiyanWeBoo@adb23d7ba6ea94672b76457573f6655a081ee054/js/repository-diagnostics.js",
       "note": "First-party file pinned on jsDelivr, with matching CSS links."
     },
     {
@@ -610,7 +610,7 @@
         ]
       },
       {
-        "repository": "myon-bioinformatics/browser-test-kit",
+        "repository": "myon-bioinformatics/BrowserTestKit",
         "commit": "5799b491982e43c6ccc56b50c633715d500bed28",
         "visibility": "public",
         "private": false,
@@ -635,32 +635,32 @@
           {
             "path": "pyproject.toml",
             "blob_sha": "11ccae24067a5cc38196b2309f0bedad52ae8b4a",
-            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/pyproject.toml"
+            "url": "https://github.com/myon-bioinformatics/BrowserTestKit/blob/5799b491982e43c6ccc56b50c633715d500bed28/pyproject.toml"
           },
           {
             "path": "package.json",
             "blob_sha": "865216ae1a839dee2ffb35e77faca470fd76c55f",
-            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/package.json"
+            "url": "https://github.com/myon-bioinformatics/BrowserTestKit/blob/5799b491982e43c6ccc56b50c633715d500bed28/package.json"
           },
           {
             "path": "scripts/btk.py",
             "blob_sha": "04d7921ad4546650a197b0020a81b1c6789fcb92",
-            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/btk.py"
+            "url": "https://github.com/myon-bioinformatics/BrowserTestKit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/btk.py"
           },
           {
             "path": "scripts/image_diff.py",
             "blob_sha": "719a0a4bd963911695b76775b5119361f180218a",
-            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/image_diff.py"
+            "url": "https://github.com/myon-bioinformatics/BrowserTestKit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/image_diff.py"
           },
           {
             "path": "scripts/mirror_facts.mjs",
             "blob_sha": "0e36380181db823fbf85d5336df777548851d437",
-            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/mirror_facts.mjs"
+            "url": "https://github.com/myon-bioinformatics/BrowserTestKit/blob/5799b491982e43c6ccc56b50c633715d500bed28/scripts/mirror_facts.mjs"
           },
           {
             "path": "docs/mirror-tests.md",
             "blob_sha": "d9c29382642bad55457d0d47f2c3ac370dee542a",
-            "url": "https://github.com/myon-bioinformatics/browser-test-kit/blob/5799b491982e43c6ccc56b50c633715d500bed28/docs/mirror-tests.md"
+            "url": "https://github.com/myon-bioinformatics/BrowserTestKit/blob/5799b491982e43c6ccc56b50c633715d500bed28/docs/mirror-tests.md"
           }
         ]
       },
@@ -1684,7 +1684,7 @@
         ]
       },
       {
-        "repository": "myon-bioinformatics/web-ui",
+        "repository": "myon-bioinformatics/PySaiyanWeBoo",
         "commit": "fe83ddd2913d4cff6bc506886247189e314e0d71",
         "visibility": "public",
         "private": false,
@@ -1704,52 +1704,52 @@
           {
             "path": "pyproject.toml",
             "blob_sha": "8c8263b0ee9e62f51bdb38cf15e5e5706c12fe32",
-            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/pyproject.toml"
+            "url": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/pyproject.toml"
           },
           {
             "path": "package.json",
             "blob_sha": "11f3f218bd35a273beafe5e803114f00a5c50198",
-            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/package.json"
+            "url": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/package.json"
           },
           {
             "path": "web_ui.py",
             "blob_sha": "371641fe31064f4cc433e70b6cf4df6aec54587f",
-            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/web_ui.py"
+            "url": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/web_ui.py"
           },
           {
             "path": "README.md",
             "blob_sha": "e8084daab7ef05a6a6bca444e37e92b659ad66ab",
-            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/README.md"
+            "url": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/README.md"
           },
           {
             "path": "tests/requirements-gradio.txt",
             "blob_sha": "6739d16fca59983fa7f1aff5ee18bacce66a316c",
-            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/tests/requirements-gradio.txt"
+            "url": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/tests/requirements-gradio.txt"
           },
           {
             "path": "web_ui.cjs",
             "blob_sha": "effb2f8d05124106587e44aeba4ec09c1995ee45",
-            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/web_ui.cjs"
+            "url": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/web_ui.cjs"
           },
           {
             "path": "js/flow.cjs",
             "blob_sha": "240c2192f2808d463f01dba9a8969181045e8b9f",
-            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/js/flow.cjs"
+            "url": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/js/flow.cjs"
           },
           {
             "path": "tool/web_ui_serve_dom_lab.py",
             "blob_sha": "e55d0332357cc6be1e7291cf2302bc3f34028ba5",
-            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/tool/web_ui_serve_dom_lab.py"
+            "url": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/tool/web_ui_serve_dom_lab.py"
           },
           {
             "path": "docs/lightweight-js.md",
             "blob_sha": "5255e4577701ac93fd2c0d2f308ad8ad86422f84",
-            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/docs/lightweight-js.md"
+            "url": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/docs/lightweight-js.md"
           },
           {
             "path": "docs/local-dom-lab.md",
             "blob_sha": "1114ff61ef03740c22c5a4ec6eee822636773570",
-            "url": "https://github.com/myon-bioinformatics/web-ui/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/docs/local-dom-lab.md"
+            "url": "https://github.com/myon-bioinformatics/PySaiyanWeBoo/blob/fe83ddd2913d4cff6bc506886247189e314e0d71/docs/local-dom-lab.md"
           }
         ],
         "known_gaps": [

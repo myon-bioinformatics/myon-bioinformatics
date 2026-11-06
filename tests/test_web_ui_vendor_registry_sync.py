@@ -19,6 +19,8 @@ def load(path):
         return historical["registry"]
     if requested == "child-heads.json":
         return historical["heads"]
+    if requested == "vendor-catalog.json":
+        return historical["catalog"]
     return json.loads((ROOT / path).read_text())
 
 

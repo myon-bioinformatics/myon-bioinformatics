@@ -25,6 +25,14 @@ REFRESHED_FIXTURES = {
 REFRESHED_FIXTURES.update(json.loads(
     (ROOT / "tests/fixtures/reviewed_child_locks_20261103.json").read_text()))
 
+# Reviewed, merged main snapshots for the repository-rename rollout. Historical
+# fixtures and their historical-adoption tests below remain unchanged.
+ROLLOUT_FIXTURES = json.loads(
+    (ROOT / "tests/fixtures/reviewed_child_locks_20261106.json").read_text())
+# Later reviewed repairs supersede only these two merged child snapshots.
+ROLLOUT_FIXTURES.update(json.loads(
+    (ROOT / "tests/fixtures/reviewed_pin_repairs_20261106.json").read_text()))
+
 # Registry entries enrolled after the 2026-10-29 observation. The parent registry
 # must land before the child lock (the child CI reads the live registry), so these
 # are excluded from the frozen-baseline comparison until the baseline is re-observed.
@@ -60,11 +68,15 @@ def test_post_baseline_enrollments_are_registered():
 def test_observed_lock_topology_and_immutable_revision(name):
     registry = baseline_registry(json.loads((ROOT / "vendor-consumers.json").read_text()))
     heads = vendor_sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
-    fixture = REFRESHED_FIXTURES.get(name, FIXTURES[name])
+    fixture = ROLLOUT_FIXTURES.get(name, REFRESHED_FIXTURES.get(name, FIXTURES[name]))
     lock = vendor_sync.validate(fixture["lock"])
     observed = json.loads((ROOT / "tests/fixtures/parent_observation_20261102.json").read_text())
     expected_sha = fixture["sha"]
-    if name in observed:
+    if name in ROLLOUT_FIXTURES:
+        digest = hashlib.sha256(json.dumps(lock, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        assert digest == fixture["lock_sha256"]
+        assert heads["heads"][name]["repository_id"] == fixture["repository_id"]
+    elif name in observed:
         digest = hashlib.sha256(json.dumps(lock, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         assert digest == observed[name]["lock_sha256"]
         expected_sha = observed[name]["sha"]
@@ -83,7 +95,7 @@ def test_observed_lock_topology_and_immutable_revision(name):
 def test_flutter_full_workflow_digest_remains_explicit():
     registry = json.loads((ROOT / "vendor-consumers.json").read_text())
     row = vendor_consumers.get_consumer(registry, "myon-bioinformatics/flutter_navigation_basic")
-    workflow = (ROOT / "tests/fixtures/flutter_non_dart_ci_python_235.yml").read_bytes()
+    workflow = (ROOT / "tests/fixtures/flutter_non_dart_ci_python_241.yml").read_bytes()
     assert hashlib.sha256(workflow).hexdigest() == row["locked_ci"]["sha256"]
     assert row["locked_ci"]["workflow"] == ".github/workflows/non-dart.yml"
     assert b"python-vendor-locked:" in workflow
@@ -123,4 +135,18 @@ def test_flutter_python_ci_adoption_preserves_the_adopted_vendor_lock():
     assert old["sha"] == "075e08530e6c02b9f0b2194922f244ff047ab23f"
     assert current["lock"] == old["lock"]
     heads = json.loads((ROOT / "child-heads.json").read_text())
-    assert heads["heads"][name]["pull_number"] == 235
+    assert heads["heads"][name]["pull_number"] == ROLLOUT_FIXTURES[name]["pull_number"] == 241
+
+
+def test_rename_rollout_is_exact_without_identity_fallback():
+    registry = json.loads((ROOT / "vendor-consumers.json").read_text())
+    heads = vendor_sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
+    assert set(ROLLOUT_FIXTURES) == {
+        "myon-bioinformatics/" + name for name in (
+            "Ironmate", "Aoi", "flutter_navigation_basic", "Err-o-RoadRunner",
+            "myon-bioinformatics.github.io", "PySaiyanWeBoo", "BrowserTestKit")
+    }
+    for name, fixture in ROLLOUT_FIXTURES.items():
+        assert fixture["sha"] == heads["heads"][name]["sha"]
+        assert vendor_consumers._compare_exact(registry, fixture["lock"], name)["matches"]
+        assert all(row["ref"] == row["commit"] for row in fixture["lock"]["files"])
