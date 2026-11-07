@@ -422,7 +422,10 @@ The same pattern is already in child PRs without this tool: BrowserTestKit #159 
 called by Playwright's `install-deps`, so the directory is set in an apt.conf.d line) and
 Ironmate #212 (`scripts/configure_ci_apt.py --archives/--finish`). There, 56 s of a 76 s
 WebKit/Firefox library step and 13 s of a 22 s LibreOffice step were the download.
-Moving them to this tool needs its merged commit and a vendor registration first.
+Moving them to this tool needs its merged commit and a vendor registration first
+(source/destination/license, commit/blob/SHA-256 in the child lock); do not pin an unmerged head.
+Node dependency-only CI preparation (`tools/nano_node.py --dependencies-only`) and its
+profiles are in [nano-ci-dependencies.md](nano-ci-dependencies.md).
 
 Host Python/Node processes already support many source-only features without
 Docker. That does not replace Docker isolation or the real products used by
