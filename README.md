@@ -365,3 +365,12 @@ without importing another checkout; see [preflight usage and limits](docs/prefli
 See [standard-library discovery commands](docs/unittest-discovery.md) for
 validated `python -S -m unittest discover` recipes, filename/name filtering,
 and the boundary with the full pytest suite.
+
+
+## Weekly repository audit dashboard
+
+[Open the parent repository audit dashboard](https://myon-bioinformatics.github.io/myon-bioinformatics/).
+
+Hosted from this repository's `site/`, independently of the portfolio. The link becomes available after this change is merged and Pages deploys. If Pages is not enabled, select GitHub Actions as its build source in this repository's Pages settings.
+
+Read-only public GitHub observations; no merge or repository write controls. Use the weekly view to refresh the open list, then refresh individual records for current head and CI. The initial snapshot is dated 2026-11-08; abbreviated source descriptions are not a complete audit. API limits and unavailable review-thread data are shown explicitly. Records and weekly snapshots are browser-local; export JSON before moving devices or clearing browser data. Existing Sites records can be transferred using JSON export/import. This deployment does not schedule audits.
