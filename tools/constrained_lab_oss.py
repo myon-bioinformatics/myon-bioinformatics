@@ -83,7 +83,7 @@ def run(project, source, digest, dependencies=()):
     finally:
         sys.path.pop(0)
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("project", choices=("nagoyaction", "ironmate"))
     parser.add_argument("source")
@@ -92,7 +92,7 @@ def main():
                         help="separate deterministic result from measurements")
     parser.add_argument("--dependency", action="append", default=[],
                         help="PATH:SHA256 (repeatable)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         deps = [item.rsplit(":", 1) for item in args.dependency]
         if any(len(pair) != 2 for pair in deps):

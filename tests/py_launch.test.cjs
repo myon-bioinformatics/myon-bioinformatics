@@ -8,6 +8,9 @@ const { describe, it } = require("node:test");
 const {
   main,
   run,
+  call,
+  callRaw,
+  callRequest,
   resolvePython,
   buildCandidateSpecs,
   mapLaunchError,
@@ -296,6 +299,68 @@ describe("py_launch.run (library mode)", () => {
     } finally {
       rmTempDir(dir);
     }
+  });
+});
+
+describe("py_launch.call (function / class by name, no __main__)", () => {
+  const CALLEE = path.join(FIXTURES, "callee.py");
+  const opts = { python: PYTHON, noSite: true };
+
+  it("calls a function with positional args and never runs the __main__ guard", () => {
+    assert.equal(call(CALLEE, "add", [2, 3], opts), 5);
+    const out = call(CALLEE, "greet", ["ann"], opts);
+    assert.deepEqual(out, { name: "ann", module: "callee", main: false });
+  });
+
+  it("passes kwargs and defaults; empty request calls with no args", () => {
+    assert.equal(call(CALLEE, "add", { args: [2], kwargs: { b: 10 } }, opts), 12);
+    assert.equal(call(CALLEE, "add", { args: [4] }, opts), 5);
+    assert.equal(call(CALLEE, "Counter.version", undefined, opts), "1.0");
+  });
+
+  it("constructs a class (fields returned) and calls an instance method via init", () => {
+    assert.deepEqual(call(CALLEE, "Point", [1, 2], opts), { x: 1, y: 2, label: "p" });
+    assert.equal(call(CALLEE, "Counter.add", { init: [100], args: [5], kwargs: { times: 2 } }, opts), 110);
+  });
+
+  it("serializes dataclass, set, tuple, Path and UTF-8 text", () => {
+    assert.deepEqual(call(CALLEE, "mixed", [], opts), {
+      set: [1],
+      tuple: [1, 2],
+      path: "a/b",
+      point: { x: 1, y: 2, label: "p" },
+      text: "日本語",
+    });
+  });
+
+  it("keeps print output out of the JSON result (it goes to stderr)", () => {
+    const raw = callRaw(CALLEE, "greet", ["bo"], opts);
+    assert.equal(JSON.parse(raw.stdout.toString("utf8")).name, "bo");
+    assert.match(raw.stderr.toString("utf8"), /hello bo/);
+    assert.doesNotMatch(raw.stdout.toString("utf8"), /hello bo/);
+  });
+
+  it("works under isolated (-I): the shim puts the script directory on sys.path itself", () => {
+    assert.equal(call(CALLEE, "add", [1, 1], { ...opts, isolated: true }), 2);
+  });
+
+  it("surfaces a Python exception as a failed run with the traceback", () => {
+    assert.throws(() => call(CALLEE, "boom", [], opts), (err) => {
+      assert.equal(err.status, 1);
+      assert.match(err.stderr.toString("utf8"), /ValueError: boom!/);
+      return true;
+    });
+    assert.throws(() => call(CALLEE, "no_such_function", [], opts), /has no attribute 'no_such_function'/);
+  });
+
+  it("rejects bad targets and requests before spawning", () => {
+    assert.throws(() => call(CALLEE, "1bad", [], opts), /call target must be a dotted name/);
+    assert.throws(() => call(CALLEE, "a..b", [], opts), /call target must be a dotted name/);
+    assert.throws(() => call(CALLEE, "add", { argz: [] }, opts), /unknown call request key "argz"/);
+    assert.throws(() => call(CALLEE, "add", "x", opts), /must be an array or/);
+    assert.throws(() => call(CALLEE, "add", [], { ...opts, input: "x" }), /does not take input/);
+    assert.deepEqual(callRequest(undefined), {});
+    assert.deepEqual(callRequest([1]), { args: [1] });
   });
 });
 
@@ -879,7 +944,7 @@ it("CLI: --site drops -S; default keeps -S; options work in any order before SCR
   assert.strictEqual(after.stdout.trim(), "1 False --site");
   const unknown = run(["--sites", script]);
   assert.strictEqual(unknown.status, 2);
-  assert.match(unknown.stderr, /usage: node py_launch\.cjs \[--env-var NAME\] \[--site\] \[--\] SCRIPT\.py/);
+  assert.match(unknown.stderr, /usage: node py_launch\.cjs \[--env-var NAME\] \[--site\] \[--call TARGET\] \[--\] SCRIPT\.py/);
   const missing = run(["--site", "--env-var"]);
   assert.strictEqual(missing.status, 2);
   assert.match(missing.stderr, /--env-var needs a variable name/);
@@ -913,7 +978,7 @@ it("CLI: lone -- ends options; repeated options: last wins; --site puts site-pac
   assert.strictEqual(dashed.stdout.trim(), "dash");
   const noDashScript = run(["--site", "--"]);
   assert.strictEqual(noDashScript.status, 2);
-  assert.match(noDashScript.stderr, /usage: node py_launch\.cjs \[--env-var NAME\] \[--site\] \[--\] SCRIPT\.py/);
+  assert.match(noDashScript.stderr, /usage: node py_launch\.cjs \[--env-var NAME\] \[--site\] \[--call TARGET\] \[--\] SCRIPT\.py/);
   const env = { ...process.env, GOOD_PY: PYTHON, BAD_PY: p.join(dir, "no-such-python") };
   const lastGood = run(["--env-var", "BAD_PY", "--env-var=GOOD_PY", script], env);
   assert.strictEqual(lastGood.status, 0, lastGood.stderr);
@@ -929,4 +994,36 @@ it("CLI: lone -- ends options; repeated options: last wins; --site puts site-pac
   const without = run([paths]);
   assert.strictEqual(without.status, 0, without.stderr);
   assert.strictEqual(without.stdout.trim(), "0");
+});
+
+it("CLI: --call TARGET imports SCRIPT.py and calls the name; ARGS are JSON-or-string; __main__ is skipped", () => {
+  const { spawnSync } = require("node:child_process");
+  const p = require("node:path");
+  const launcher = p.join(__dirname, "..", "py_launch.cjs");
+  const callee = p.join(__dirname, "fixtures", "py_launch", "callee.py");
+  const run = (argv) => spawnSync(process.execPath, [launcher, ...argv], { encoding: "utf8" });
+  const add = run(["--call", "add", callee, "2", "3"]);
+  assert.strictEqual(add.status, 0, add.stderr);
+  assert.strictEqual(add.stdout, "5\n");
+  const greet = run(["--call=greet", "--", callee, "ann"]);
+  assert.strictEqual(greet.status, 0, greet.stderr);
+  assert.deepStrictEqual(JSON.parse(greet.stdout), { name: "ann", module: "callee", main: false });
+  assert.match(greet.stderr, /hello ann/);
+  const point = run(["--call", "Point", callee, "1", "2", "label text"]);
+  assert.deepStrictEqual(JSON.parse(point.stdout), { x: 1, y: 2, label: "label text" });
+  const json = run(["--call", "add", callee, "[1]", '{"k": 1}']);
+  assert.strictEqual(json.status, 1);
+  assert.match(json.stderr, /TypeError/);
+  const boom = run(["--call", "boom", callee]);
+  assert.strictEqual(boom.status, 1);
+  assert.match(boom.stderr, /ValueError: boom!/);
+  const guard = run([callee]);
+  assert.strictEqual(guard.status, 9);
+  assert.match(guard.stdout, /GUARD RAN/);
+  const bad = run(["--call", "1bad", callee]);
+  assert.strictEqual(bad.status, 2);
+  assert.match(bad.stderr, /--call needs a function, class, or Klass\.method name/);
+  const missing = run(["--call"]);
+  assert.strictEqual(missing.status, 2);
+  assert.match(missing.stderr, /--call needs/);
 });

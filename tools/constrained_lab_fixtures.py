@@ -62,11 +62,11 @@ def run(manifest, root):
             "passed": sum(item["pass"] for item in results),
             "total": len(results)}
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("manifest")
     p.add_argument("--root", default=".")
-    args = p.parse_args()
+    args = p.parse_args(argv)
     try:
         manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
         report = run(manifest, args.root)

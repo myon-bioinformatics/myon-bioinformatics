@@ -334,7 +334,7 @@ def prepare(source: Path, output_dir: Path, npm: str = "npm", *,
         raise
 
 
-def main() -> None:
+def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
@@ -342,7 +342,7 @@ def main() -> None:
     parser.add_argument("--feature", choices=("ironmate-pptx", BTK_FEATURE, *BTK_NODE26_PROFILES, MARKDOWN_FEATURE), default="ironmate-pptx")
     parser.add_argument("--dependencies-only", action="store_true",
                         help="verify/stage only package.json and package-lock.json; never copy historical source/tests")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         result = prepare(args.source, args.output_dir, args.npm, feature=args.feature,
                          dependencies_only=args.dependencies_only)

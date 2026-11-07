@@ -339,7 +339,7 @@ def campaign(cases, rounds=10, seed=7, workers=2, timeout=10, keep_going=False,
             "cases_planned": len(cases), "cases_completed": len(flattened),
             "resources": _summarize_resources(flattened, tracker), "reports": result}
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("cases")
     p.add_argument("--rounds", type=int, default=10)
@@ -349,7 +349,7 @@ def main():
     p.add_argument("--max-output-bytes", type=int, default=DEFAULT_OUTPUT_LIMIT,
                    help="retained byte cap for EACH of stdout and stderr (default 1 MiB)")
     p.add_argument("--keep-going", action="store_true")
-    a = p.parse_args()
+    a = p.parse_args(argv)
     try:
         cases = json.loads(Path(a.cases).read_text(encoding="utf-8"))
         if not isinstance(cases, list):

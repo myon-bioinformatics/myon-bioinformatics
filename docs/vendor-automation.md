@@ -174,6 +174,35 @@ for tools that need site-packages (for example Playwright). Options go before
 ends the options, so the next argument is the script even if it starts with `-`.
 If an option is repeated, the last one wins (`--site` twice is the same as once).
 
+#### Calling a function or class by name (`call`, `--call`)
+
+`call(scriptPath, target, args, opts)` imports `SCRIPT.py` from its path (its
+`__name__` is the file stem, so the `if __name__ == "__main__":` block never
+runs), resolves `target` as a dotted name, calls it, and returns the JSON-decoded
+result. `args` is a positional array or `{ args, kwargs, init }`; `init` holds
+constructor arguments when `target` is `Klass.method`. A bare class target
+constructs the object and returns its fields. Return values are serialized as
+JSON: dataclasses and plain objects become their fields, `set` / `tuple` become
+lists, anything else (for example `Path`) becomes `str`. During the call `print`
+goes to stderr so stdout stays one JSON document; `sys.argv` is `[SCRIPT.py]`, so
+an argparse-style `main()` sees no stray arguments. The script directory is put
+first on `sys.path` even under `isolated`, so sibling imports work. A Python
+exception is a failed run (exit 1, traceback in `err.stderr`); `callRaw` returns
+the `spawnSync` result instead of parsing it. Options are the same as `run()`
+except `input`, which the request already uses.
+
+```js
+const { call } = require("./vendor/py_launch.cjs");
+const info = call(__dirname + "/yourself.py", "collect", { kwargs: { include_host: true } });
+const n = call(__dirname + "/tool.py", "Counter.add", { init: [100], args: [5] });
+```
+
+```sh
+node vendor/py_launch.cjs --call collect yourself.py            # {"schema_version": 1, ...}
+node vendor/py_launch.cjs --call add tool.py 2 3                # each ARG is JSON if it parses, else a string
+node vendor/py_launch.cjs --call main tool.py '["--format","json"]'
+```
+
 ### Python launcher for vendored Node scripts (`node_launch.py`)
 
 Parent-owned `node_launch.py` is a single stdlib module (Python 3.9+) that spawns

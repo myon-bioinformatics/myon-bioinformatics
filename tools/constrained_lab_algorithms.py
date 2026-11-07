@@ -57,13 +57,13 @@ def benchmark(seed=7, width=1024, trials=5):
             "trials": trials, "equivalent": measurements[0]["digest"] == measurements[1]["digest"],
             "measurements": measurements}
 
-def main():
+def main(argv=None):
     import argparse
     p = argparse.ArgumentParser()
     p.add_argument("--seed", type=int, default=7)
     p.add_argument("--width", type=int, default=1024)
     p.add_argument("--trials", type=int, default=5)
-    args = p.parse_args()
+    args = p.parse_args(argv)
     try:
         result = benchmark(args.seed, args.width, args.trials)
     except ValueError as exc:

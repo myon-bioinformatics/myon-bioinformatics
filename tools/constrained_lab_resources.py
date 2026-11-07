@@ -77,7 +77,7 @@ def probe(argv, *, root="/sys/fs/cgroup", timeout=10, verify=False,
             "memory_max": after["memory_max"],
             "measurement_scope": "entire-cgroup-not-per-process"}
 
-def main():
+def main(argv=None):
     import argparse
     p = argparse.ArgumentParser()
     p.add_argument("--cgroup", default="/sys/fs/cgroup")
@@ -86,7 +86,7 @@ def main():
     p.add_argument("--max-memory-bytes", type=int, default=134217728)
     p.add_argument("--max-cpu-fraction", type=float, default=1.0)
     p.add_argument("command", nargs="+")
-    a = p.parse_args()
+    a = p.parse_args(argv)
     try:
         result = probe(a.command, root=a.cgroup, timeout=a.timeout,
                        verify=a.verify_budget, max_memory_bytes=a.max_memory_bytes,

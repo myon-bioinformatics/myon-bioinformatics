@@ -33,7 +33,7 @@ def run_pair(root, nagoya, ironmate, *, rounds=1, seed=7, workers=2):
     report["staged_real_sources"] = True
     return report
 
-def main():
+def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--root", required=True)
     p.add_argument("--nagoyaction", required=True)
@@ -41,7 +41,7 @@ def main():
     p.add_argument("--rounds", type=int, default=1)
     p.add_argument("--seed", type=int, default=7)
     p.add_argument("--workers", type=int, default=2)
-    a = p.parse_args()
+    a = p.parse_args(argv)
     try:
         result = run_pair(a.root, a.nagoyaction, a.ironmate,
                           rounds=a.rounds, seed=a.seed, workers=a.workers)
