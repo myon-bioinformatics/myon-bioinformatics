@@ -36,7 +36,10 @@ jobs:
           version: "latest"
           python-version: "${{ matrix.python }}"
           activate-environment: true
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - run: python -m py_compile gh_workflow.py
       - run: uv run pytest -q tests/test_gh_workflow.py --junitxml=reports/workflow-wrapper.xml
       - name: Preserve JUnit report

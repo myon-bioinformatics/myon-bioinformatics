@@ -36,7 +36,10 @@ jobs:
         with:
           version: "latest"
           python-version: "3.9"
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Run node_launch unit tests (Python 3.9)
         run: uv run --python 3.9 --no-project --with pytest==8.4.2 pytest -q tests/test_node_launch.py tests/test_node_launch_cli_args_parity.py
 
@@ -57,6 +60,9 @@ jobs:
         with:
           version: "latest"
           python-version: "${{ matrix.python }}"
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Run node_launch unit tests
         run: uv run pytest -q tests/test_node_launch.py tests/test_node_launch_cli_args_parity.py
