@@ -37,28 +37,8 @@ on stdout for exit 2. Without it, errors stay on stderr and stdout stays empty.
 """
 from __future__ import annotations
 
-import argparse
-import contextlib
-import importlib.util
-import base64
-import difflib
-from datetime import datetime, timezone
-import fnmatch
-import json
-import os
-import re
-import signal
-import shutil
-import subprocess
-import sys
-import tempfile
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Callable, Optional
+import argparse, base64, contextlib, difflib, fnmatch, importlib.util, json, os, re, shutil, signal, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request
+from dataclasses import dataclass, field; from datetime import datetime, timezone; from pathlib import Path; from typing import Any, Callable, Optional
 
 def _load_adjacent_gh_identity():
     base = Path(__file__).resolve().parent

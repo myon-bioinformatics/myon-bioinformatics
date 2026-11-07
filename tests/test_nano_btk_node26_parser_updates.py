@@ -1,13 +1,6 @@
 """Additive Node26 parser profiles: exact inputs and fail-closed projections."""
-import copy
-import importlib.util
-import json
-from pathlib import Path
-import subprocess
-import sys
-import tempfile
-import unittest
-from unittest.mock import patch
+import copy, importlib.util, json, subprocess, sys, tempfile, unittest
+from pathlib import Path; from unittest.mock import patch
 
 ROOT = Path(__file__).parents[1]
 SPEC = importlib.util.spec_from_file_location('nano_parser_updates', ROOT / 'tools/nano_node.py')

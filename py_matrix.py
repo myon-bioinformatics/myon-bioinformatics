@@ -22,12 +22,7 @@ Exit codes: 0 = every version passed; 1 = a version failed or timed out;
 """
 from __future__ import annotations
 
-import argparse
-import json
-import os
-import shutil
-import subprocess
-import sys
+import argparse, json, os, shutil, subprocess, sys
 from typing import Callable
 
 DEFAULT_VERSION = "3.13"

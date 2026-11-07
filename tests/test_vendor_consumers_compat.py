@@ -8,11 +8,8 @@ The dedicated workflow checks out both historical parent and Ironmate at
 immutable commit SHAs. Ordinary Python test jobs skip these tests because
 their shallow checkouts do not contain those external snapshots.
 """
-import json
-import os
+import json, os, subprocess, sys
 from pathlib import Path
-import subprocess
-import sys
 
 import pytest
 

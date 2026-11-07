@@ -1,6 +1,5 @@
 """Catalog pin for py_launch.cjs after parent PR #171 merge."""
-import hashlib
-import json
+import hashlib, json
 from pathlib import Path
 
 import pytest

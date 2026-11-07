@@ -1,7 +1,5 @@
 """Fatal dpkg observation must never trigger installation."""
-import json
-import subprocess
-import unittest
+import json, subprocess, unittest
 import test_nano_apt as base
 
 

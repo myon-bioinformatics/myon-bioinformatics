@@ -1,7 +1,5 @@
 """Retired aliases fail closed; current source provenance checks stay strict."""
-import copy
-import hashlib
-import json
+import copy, hashlib, json
 from pathlib import Path
 
 import pytest

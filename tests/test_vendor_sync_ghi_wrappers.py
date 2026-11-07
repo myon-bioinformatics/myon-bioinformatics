@@ -1,8 +1,6 @@
 """vendor_sync identity wrappers delegate to the vendored gh_identity."""
-import subprocess
-import sys
-from pathlib import Path
-from urllib.error import HTTPError
+import subprocess, sys
+from pathlib import Path; from urllib.error import HTTPError
 
 import pytest
 

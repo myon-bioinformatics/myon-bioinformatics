@@ -6,14 +6,8 @@ projects the existing lock; the result must retain exactly the reviewed records.
 """
 from __future__ import annotations
 
-import argparse
-import hashlib
-import json
-import os
+import argparse, hashlib, json, os, shutil, subprocess, tempfile
 from pathlib import Path
-import shutil
-import subprocess
-import tempfile
 
 REPOSITORY = "myon-bioinformatics/Ironmate"
 COMMIT = "af846ee7b1fd440b8379e2a682dfc7d40365b30e"

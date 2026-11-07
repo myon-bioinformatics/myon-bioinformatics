@@ -3,9 +3,7 @@
 These fixtures freeze claims for offline regression, not proof of upstream
 provenance. Parent CI separately reads the immutable source and child blobs.
 """
-import copy
-import hashlib
-import json
+import copy, hashlib, json
 from pathlib import Path
 
 import pytest

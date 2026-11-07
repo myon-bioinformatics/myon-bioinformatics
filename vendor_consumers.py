@@ -1,12 +1,8 @@
 """Validate the organization-wide vendor consumer topology (stdlib only)."""
 from __future__ import annotations
 
-import argparse
-import copy
-import json
+import argparse, copy, json, re, sys
 from pathlib import Path
-import re
-import sys
 
 import vendor_sync
 

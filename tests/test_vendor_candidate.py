@@ -1,9 +1,5 @@
-import copy
-import hashlib
-import json
+import copy, hashlib, json, subprocess, sys
 from pathlib import Path
-import subprocess
-import sys
 
 import pytest
 import vendor_candidate as candidate

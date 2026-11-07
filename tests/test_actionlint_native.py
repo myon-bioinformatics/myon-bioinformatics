@@ -1,7 +1,6 @@
 """Contract for Docker-free, checksum-pinned reusable actionlint."""
+import re, subprocess
 from pathlib import Path
-import re
-import subprocess
 
 import yaml
 

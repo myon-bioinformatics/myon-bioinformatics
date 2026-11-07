@@ -1,6 +1,5 @@
 """Keep the Aoi and Flutter source/LICENSE topology together across integration."""
-import copy
-import json
+import copy, json
 from pathlib import Path
 
 import pytest

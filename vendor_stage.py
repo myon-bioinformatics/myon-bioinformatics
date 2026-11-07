@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """Canonical, offline vendor evidence staging for CI artifacts (stdlib only)."""
-import argparse
-import hashlib
-import json
+import argparse, hashlib, json, shutil, sys
 from pathlib import Path
-import shutil
-import sys
 import vendor_sync
 
 __version__ = "0.2.0"

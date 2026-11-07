@@ -1,8 +1,7 @@
 """parent_pin_check positive and negative cases (offline + stubbed API)."""
 from __future__ import annotations
 
-import json
-import textwrap
+import json, textwrap
 from pathlib import Path
 
 import pytest

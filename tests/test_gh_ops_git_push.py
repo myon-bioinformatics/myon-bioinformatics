@@ -1,6 +1,5 @@
 """Exercise standalone push against local bare repositories (no GitHub writes)."""
-import json
-import subprocess
+import json, subprocess
 
 import pytest
 from test_gh_ops import gh_ops

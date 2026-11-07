@@ -7,14 +7,8 @@ Observation errors take precedence over --ci-check failures. --json uses the sam
 Both output formats include the UTC observation timestamp. Exception text is omitted
 unless ``--explain`` is set; that flag adds detail (token values removed) and hint.
 """
-import argparse
-import datetime
-import json
-import os
-import urllib.error
-from urllib.parse import quote
-import importlib.util
-from pathlib import Path
+import argparse, datetime, importlib.util, json, os, urllib.error
+from pathlib import Path; from urllib.parse import quote
 
 
 def _load_ghi():

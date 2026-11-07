@@ -1,7 +1,6 @@
 """Offline checks for descriptive screening data; never install or fetch sources."""
-import json
+import json, unittest
 from pathlib import Path, PurePosixPath
-import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]

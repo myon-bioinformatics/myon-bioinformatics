@@ -2,9 +2,8 @@
 
 Never execute the installer entry point or download/install real software.
 """
+import os, subprocess
 from pathlib import Path
-import os
-import subprocess
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/claude_env_setup.sh"
 

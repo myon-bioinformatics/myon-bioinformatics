@@ -19,20 +19,8 @@ are printed, not stored. ``vendor.lock.json`` stays the enrolled digest record.
 """
 from __future__ import annotations
 
-import argparse
-import hashlib
-import json
-import os
-import re
-import shutil
-import subprocess
-import sys
-import tempfile
-from pathlib import Path
-from typing import NamedTuple
-from urllib.error import HTTPError, URLError
-from urllib.parse import quote
-from urllib.request import Request, urlopen
+import argparse, hashlib, json, os, re, shutil, subprocess, sys, tempfile
+from pathlib import Path; from typing import NamedTuple; from urllib.error import HTTPError, URLError; from urllib.parse import quote; from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "vendor-catalog.json"

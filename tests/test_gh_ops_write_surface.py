@@ -1,6 +1,5 @@
 """Parent GitHub write files stay on an explicit reviewed list."""
-import re
-import subprocess
+import re, subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

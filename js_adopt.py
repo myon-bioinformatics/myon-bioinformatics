@@ -25,17 +25,8 @@ Stdlib only; runs under `python -S`. Exit codes: 0 OK; 1 mismatch or license not
 """
 from __future__ import annotations
 
-import argparse
-import base64
-import hashlib
-import json
-import re
-import shlex
-import subprocess
-import sys
-from pathlib import Path, PurePosixPath
-from urllib.parse import quote
-from urllib.request import Request, urlopen
+import argparse, base64, hashlib, json, re, shlex, subprocess, sys
+from pathlib import Path, PurePosixPath; from urllib.parse import quote; from urllib.request import Request, urlopen
 
 SCHEMA = "js-adopt/1"
 LOCK = "js.lock.json"

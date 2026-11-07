@@ -1,15 +1,8 @@
 """Read-only recommended baselines; consumer locks remain independent."""
 from __future__ import annotations
 
-import argparse
-import copy
-import datetime
-import json
-import keyword
+import argparse, copy, datetime, json, keyword, re, sys, warnings
 from pathlib import Path
-import re
-import sys
-import warnings
 
 import vendor_sync
 

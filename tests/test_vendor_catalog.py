@@ -1,11 +1,5 @@
-import copy
-import datetime
-import hashlib
-import json
+import copy, datetime, hashlib, json, subprocess, sys, warnings
 from pathlib import Path
-import subprocess
-import sys
-import warnings
 
 import pytest
 import vendor_catalog as catalog

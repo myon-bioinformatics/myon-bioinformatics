@@ -1,9 +1,5 @@
 """js_adopt: pinned raw GitHub files, sha256/SRI lock, license gate, script tags (offline)."""
-import base64
-import hashlib
-import json
-import subprocess
-import sys
+import base64, hashlib, json, subprocess, sys
 from pathlib import Path
 
 import pytest

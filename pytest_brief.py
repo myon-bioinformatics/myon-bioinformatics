@@ -25,13 +25,7 @@ Exit code: pytest's own (0 passed, 1 failed, ...); 3 = installing a requirement 
 """
 from __future__ import annotations
 
-import argparse
-import json
-import os
-import re
-import subprocess
-import sys
-import tempfile
+import argparse, json, os, re, subprocess, sys, tempfile
 from pathlib import Path
 
 KEEP = re.compile(r"^(FAILED|ERROR) |^TOTAL\s|Required test coverage|^=+ .*\b(passed|failed|error|errors|skipped|deselected|no tests ran)\b.* =+$|^\d+ (passed|failed)")

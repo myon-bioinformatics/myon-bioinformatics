@@ -1,26 +1,8 @@
 """Reproducible GitHub file placement and update candidates (stdlib only)."""
 from __future__ import annotations
 
-import argparse
-import base64
-import copy
-from contextvars import ContextVar
-from functools import wraps
-import hashlib
-import json
-import os
-from pathlib import Path, PurePosixPath
-import re
-import shutil
-import socket
-import stat
-import subprocess
-import sys
-import tempfile
-import time
-from urllib.error import HTTPError, URLError
-from urllib.parse import quote
-from urllib.request import Request, urlopen
+import argparse, base64, copy, hashlib, json, os, re, shutil, socket, stat, subprocess, sys, tempfile, time
+from contextvars import ContextVar; from functools import wraps; from pathlib import Path, PurePosixPath; from urllib.error import HTTPError, URLError; from urllib.parse import quote; from urllib.request import Request, urlopen
 
 __version__ = "0.3.0"
 __all__ = [

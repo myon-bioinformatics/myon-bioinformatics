@@ -1,8 +1,5 @@
-import json
-import os
-import subprocess
-from pathlib import Path
-from urllib.error import HTTPError
+import json, os, subprocess
+from pathlib import Path; from urllib.error import HTTPError
 
 import pytest
 

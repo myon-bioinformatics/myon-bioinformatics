@@ -1,9 +1,6 @@
 """Real lock/byte staging regression: no mocked evidence derivation."""
-import hashlib
-import json
+import hashlib, json, subprocess, sys
 from pathlib import Path
-import subprocess
-import sys
 
 import pytest
 import vendor_stage

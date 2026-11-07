@@ -37,18 +37,7 @@ instead of the text lines. The default text format is unchanged.
 """
 from __future__ import annotations
 
-import argparse
-import hashlib
-import json
-import os
-import re
-import shutil
-import subprocess
-import sys
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
+import argparse, hashlib, json, os, re, shutil, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
 
 
 def fetch(url: str, timeout: float = 20.0) -> tuple[int | None, bytes, str]:

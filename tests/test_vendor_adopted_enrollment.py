@@ -1,6 +1,5 @@
 """Advisory skips cannot revoke parent-registered adopted copies."""
-import copy
-import json
+import copy, json
 from pathlib import Path
 
 import pytest

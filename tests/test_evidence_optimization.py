@@ -1,9 +1,6 @@
 """Real evidence guards must reject invalid inputs when Python removes assertions."""
-import ast
+import ast, subprocess, sys, unittest
 from pathlib import Path
-import subprocess
-import sys
-import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE = ROOT / 'docs/evidence/nano-features'

@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import os
-import re
-import subprocess
-import sys
+import os, re, subprocess, sys
 from pathlib import Path
 
 import gh_ops

@@ -19,17 +19,8 @@ were fetched, and installs from the downloaded files. apt itself still runs one 
 """
 from __future__ import annotations
 
-import argparse
-from contextlib import ExitStack
-import hashlib
-import json
-import os
-from pathlib import Path
-import re
-import shutil
-import subprocess
-import sys
-import time
+import argparse, hashlib, json, os, re, shutil, subprocess, sys, time
+from contextlib import ExitStack; from pathlib import Path
 
 SCHEMA = "nano-apt/1"
 MAX_BYTES = 64 * 1024

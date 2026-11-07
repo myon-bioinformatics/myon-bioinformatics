@@ -5,10 +5,7 @@ test_subtree_stale_split.py at d43ceb5) so the two implementations cannot drift.
 """
 from __future__ import annotations
 
-import json
-import os
-import subprocess
-import sys
+import json, os, subprocess, sys
 from pathlib import Path
 
 import pytest

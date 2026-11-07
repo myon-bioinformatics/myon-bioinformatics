@@ -1,10 +1,5 @@
 """pr-retarget in gh_ops: transport stub plus real git for empty commit messages."""
-import importlib.util
-import json
-import os
-import subprocess
-import sys
-import urllib.parse
+import importlib.util, json, os, subprocess, sys, urllib.parse
 from pathlib import Path
 
 import pytest

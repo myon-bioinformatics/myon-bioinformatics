@@ -1,8 +1,5 @@
 """Catalog dispatch pilot: one JSON, no extra package projects."""
-import importlib.util
-import json
-import subprocess
-import sys
+import importlib.util, json, subprocess, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

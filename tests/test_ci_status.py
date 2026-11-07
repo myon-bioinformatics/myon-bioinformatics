@@ -1,12 +1,6 @@
-import io
-import json
-import unittest
-from contextlib import redirect_stderr, redirect_stdout
-from datetime import datetime, timezone
-from unittest.mock import patch
+import hashlib, io, json, unittest
+from contextlib import redirect_stderr, redirect_stdout; from datetime import datetime, timezone; from pathlib import Path; from unittest.mock import patch
 import ci_status as ci
-from pathlib import Path
-import hashlib
 
 class StatusTests(unittest.TestCase):
     def test_vendor_lock_provenance(self):

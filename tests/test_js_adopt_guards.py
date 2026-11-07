@@ -1,12 +1,5 @@
 """Execute the generated examples against bounded, hostile loopback responses."""
-import hashlib
-import http.server
-import json
-import shutil
-import subprocess
-import sys
-import threading
-import time
+import hashlib, http.server, json, shutil, subprocess, sys, threading, time
 from contextlib import contextmanager
 
 import pytest

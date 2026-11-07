@@ -1,7 +1,6 @@
 """Bounded retries for transient public GitHub fetch failures in vendor_sync."""
 import subprocess
-from io import BytesIO
-from urllib.error import HTTPError, URLError
+from io import BytesIO; from urllib.error import HTTPError, URLError
 
 import pytest
 

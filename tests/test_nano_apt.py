@@ -1,18 +1,6 @@
 """Offline tests for tools/nano_apt.py: fake apt/dpkg; one real read-only dpkg-query check."""
-import contextlib
-import importlib.util
-import io
-import hashlib
-import json
-import os
-from pathlib import Path
-import shutil
-import subprocess
-import sys
-import tempfile
-import threading
-import unittest
-from unittest.mock import patch
+import contextlib, hashlib, importlib.util, io, json, os, shutil, subprocess, sys, tempfile, threading, unittest
+from pathlib import Path; from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location("nano_apt", Path(__file__).parents[1] / "tools/nano_apt.py")
 nano = importlib.util.module_from_spec(SPEC)

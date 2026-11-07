@@ -1,9 +1,5 @@
 """Parent evidence must remain independent of a child's editable claims."""
-import copy
-import hashlib
-import json
-import os
-import subprocess
+import copy, hashlib, json, os, subprocess
 
 import pytest
 

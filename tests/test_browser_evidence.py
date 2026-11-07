@@ -1,10 +1,6 @@
 """Independent Playwright/Stagehand evidence contract regression."""
-import json
-import struct
-import zlib
+import json, struct, tempfile, unittest, zlib
 from pathlib import Path
-import tempfile
-import unittest
 
 from browser_evidence import record, main
 

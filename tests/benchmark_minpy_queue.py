@@ -5,19 +5,8 @@ The old collector is executed locally. Timings are observations, not CI limits.
 """
 from __future__ import annotations
 
-import argparse
-import ast
-from contextlib import ExitStack
-import gc
-import json
-from pathlib import Path
-import statistics
-import subprocess
-import sys
-import tempfile
-import time
-import tracemalloc
-from unittest.mock import patch
+import argparse, ast, gc, json, statistics, subprocess, sys, tempfile, time, tracemalloc
+from contextlib import ExitStack; from pathlib import Path; from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools import minpy

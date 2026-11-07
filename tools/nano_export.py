@@ -7,18 +7,8 @@ uv is a trusted local tool.
 """
 from __future__ import annotations
 
-import argparse
-import hashlib
-import json
-import math
-import os
+import argparse, hashlib, json, math, os, re, shutil, subprocess, sys, tempfile, tomllib
 from pathlib import Path
-import re
-import shutil
-import subprocess
-import sys
-import tempfile
-import tomllib
 
 INVENTORY = Path(__file__).resolve().parents[1] / "docs/stdlib-shrink-queue.json"
 REPOSITORY = "myon-bioinformatics/Aoi"
