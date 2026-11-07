@@ -36,6 +36,29 @@ jobs:
 
 For `reusable-pages-static.yml`, always pass the actual built/static output directory; do not expose the repository root. Callers must not combine these reusable workflows with `pull_request_target` plus checkout/execution of untrusted fork code.
 
+## Workflow file and display names across repositories
+
+Children name a workflow by its role, not by its tooling, so the same job
+is found under the same file name and `name:` in every repository
+(unified fleet-wide on 2026-11-07):
+
+| Role | File | `name:` |
+| --- | --- | --- |
+| Main test lane (the one `changes` / `failure-identity` hang off) | `ci.yml` | `CI` |
+| Workflow syntax validation (standalone) | `actionlint.yml` | `Validate GitHub Actions` |
+| Stdlib-only runtime matrix (`python -S`) | `runtime-compatibility.yml` | `Stdlib runtime compatibility` |
+| GitHub Pages build and deploy | `pages.yml` | `Pages` |
+| `@claude` mention handler | `claude.yml` | `Claude` |
+| Published-platform matrix | `platform-matrix.yml` | `Platform matrix` |
+| Shared Python launcher tests | `py-launch-tests.yml` | `py_launch tests` |
+| Open WebUI Docker smoke | `openwebui-docker-smoke.yml` | `OpenWebUI Docker smoke` |
+
+Rules of thumb: file names are lowercase with hyphens (no underscores);
+`name:` is a short title-case label; `workflow_run` triggers reference the
+`name:` value, so rename both together. Repository-specific lanes keep their
+own descriptive names. The parent itself is a hub with several test lanes
+(`python-tests.yml`, `node-launch-tests.yml`, ...) and has no single `ci.yml`.
+
 Canonical public data is maintained separately in `myon-bioinformatics/myon-bioinformatics.github.io`:
 
 - `profile.json`
