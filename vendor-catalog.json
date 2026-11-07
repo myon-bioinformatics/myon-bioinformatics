@@ -284,6 +284,10 @@
         "myon-bioinformatics/myon-bioinformatics.github.io": {
           "enrollment": "enrolled",
           "reason": "locked_vendor_copy"
+        },
+        "myon-bioinformatics/mcp-toolcall-lab": {
+          "enrollment": "enrolled",
+          "reason": "locked_vendor_copy"
         }
       }
     },
