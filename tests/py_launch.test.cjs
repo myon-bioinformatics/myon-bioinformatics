@@ -327,7 +327,7 @@ describe("py_launch.call (function / class by name, no __main__)", () => {
     assert.deepEqual(call(CALLEE, "mixed", [], opts), {
       set: [1],
       tuple: [1, 2],
-      path: "a/b",
+      path: path.join("a", "b"),
       point: { x: 1, y: 2, label: "p" },
       text: "日本語",
     });
