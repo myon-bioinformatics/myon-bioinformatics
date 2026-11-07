@@ -216,43 +216,12 @@ def _compare_exact(registry, lock, repository):
 
 
 def compare(registry, lock, repository):
-    """Compare exact topology, allowing only ID-verified temporary rename pairs.
-
-    Pins, digests and placed files are not rewritten. All structural validation
-    and bundle comparisons run before identity equivalence can be considered.
-    """
-    # Aliases must not bypass validate()'s no-self-vendoring contract.
+    """Compare registered source names exactly, without repository aliases."""
     consumer = get_consumer(registry, repository)
-    def canonical(name):
-        return vendor_sync._REPOSITORY_RENAMES.get(name.casefold(), (name,))[0].casefold()
     for entry in consumer["entries"] + vendor_sync.validate(lock)["files"]:
-        if canonical(entry["repository"]) == canonical(repository):
+        if entry["repository"].casefold() == repository.casefold():
             raise ValueError("consumer must not vendor its own canonical artifact")
-    result = _compare_exact(registry, lock, repository)
-    if result["matches"]:
-        return result
-    registry_copy, lock_copy = copy.deepcopy(registry), copy.deepcopy(lock)
-    consumer = get_consumer(registry_copy, repository)
-    entries = consumer["entries"] + lock_copy["files"]
-    used = set()
-    for entry in entries:
-        old = entry["repository"].casefold()
-        rename = vendor_sync._REPOSITORY_RENAMES.get(old)
-        if rename is not None:
-            used.add(old)
-            entry["repository"] = rename[0]
-    if not used:
-        return result
-    # get_consumer returns a validated copy, so replace just that consumer.
-    registry_copy["consumers"] = [consumer if c["repository"].casefold() == repository.casefold()
-                                  else c for c in registry_copy["consumers"]]
-    candidate = _compare_exact(registry_copy, lock_copy, repository)
-    if not candidate["matches"]:
-        return result
-    for old in sorted(used):
-        vendor_sync.verify_repository_rename(old)
-    candidate["verified_repository_renames"] = sorted(used)
-    return candidate
+    return _compare_exact(registry, lock, repository)
 
 
 def main(argv=None):

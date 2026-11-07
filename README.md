@@ -199,13 +199,13 @@ Single-file, standard-library client for the NVD CVE API 2.0: fetches known vuln
 
 `security` `cve` `cli`
 
-### [browser-test-kit](https://github.com/myon-bioinformatics/browser-test-kit)
+### [BrowserTestKit](https://github.com/myon-bioinformatics/BrowserTestKit)
 
 Cross-browser testing reference kit: Playwright Node and Python lanes on Chromium, Firefox and WebKit (desktop and mobile), screenshot evidence and OS/browser matrices on GitHub Actions, plus standard-library engineering utilities.
 
 `playwright` `cross-browser` `testing`
 
-### [web-ui](https://github.com/myon-bioinformatics/web-ui)
+### [PySaiyanWeBoo](https://github.com/myon-bioinformatics/PySaiyanWeBoo)
 
 Shared, build-free CSS themes, UI components and small JavaScript utilities for the static pages of these projects, including layout presets that switch without reloading.
 
@@ -286,7 +286,7 @@ Python toolkit for converting documents and images: a Markdown-to-PPTX pipeline,
 ## Shared GitHub operations
 
 `gh_ops.py` is the canonical stdlib-only GitHub operation CLI migrated from
-browser-test-kit, with its unit/parity tests owned here. See [the contract](docs/gh-ops.md).
+BrowserTestKit, with its unit/parity tests owned here. See [the contract](docs/gh-ops.md).
 Consumers enroll the source/LICENSE via `vendor_sync` and keep only integration
 checks, rather than maintain generic operation implementations or duplicate tests.
 
