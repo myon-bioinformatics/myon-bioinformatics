@@ -489,6 +489,99 @@ class NanoAptTests(unittest.TestCase):
         self.assertEqual(self.call(["--list", empty], Fake({}))[0], 0)
         self.assertEqual(self.call(["--list", listing, "--install"], Fake({}), which={})[1]["status"], "apt_unavailable")
 
+    def archive_fake(self, archives, new_debs):
+        """Fake apt that 'downloads' new_debs into the --archives directory on install."""
+        outer = self
+
+        class Downloads(Fake):
+            def __call__(self, argv, **kwargs):
+                if "install" in argv:
+                    for name in new_debs:
+                        (archives / name).write_bytes(b"deb")
+                return super().__call__(argv, **kwargs)
+        return Downloads({})
+
+    def test_archives_keeps_downloads_in_dir_and_reports_a_changed_set(self):
+        archives = self.root / "apt-archives"
+        out = self.root / "github-output"
+        out.write_text("earlier=1\n")
+        fake = self.archive_fake(archives, ["git_1_amd64.deb"])
+        code, result = self.call(["--list", self.lst("a.txt", "git\n"), "--install", "--archives", str(archives),
+                                  "--github-output", str(out)], fake)
+        self.assertEqual((code, result["status"]), (0, "installed"))
+        option = ["-o", "Dir::Cache::Archives=%s/" % archives.resolve()]
+        self.assertEqual(result["executed"], [
+            apt("update"), apt(*option, "install", "-y", "--no-install-recommends", "git")])
+        autoclean = [argv for argv, _ in fake.calls if "autoclean" in argv]
+        self.assertEqual(autoclean, [["/fake/apt-get"] + option + ["autoclean", "-qq"]])
+        self.assertEqual(result["archives"], {"dir": str(archives.resolve()), "restored": 0, "debs": 1,
+                                              "changed": True, "autoclean": 0})
+        self.assertEqual(sorted(p.name for p in archives.iterdir()), ["git_1_amd64.deb"])  # no partial/ or lock
+        self.assertFalse((self.root / "apt-archives.restored").exists())  # a later run compares afresh
+        self.assertEqual(out.read_text(), "earlier=1\narchives_changed=true\n")
+
+    def test_download_then_install_compares_with_what_was_there_before_the_download(self):
+        archives = self.root / "apt-archives"
+        listing = self.lst("a.txt", "git\n")
+        fake = self.archive_fake(archives, ["git_1_amd64.deb"])
+        code, result = self.call(["--list", listing, "--download-only", "--archives", str(archives)], fake)
+        self.assertEqual((code, result["archives"]["changed"]), (0, True))
+        self.assertEqual((self.root / "apt-archives.restored").read_text(), "")  # kept for the join
+        code, result = self.call(["--list", listing, "--install", "--archives", str(archives)], fake)
+        self.assertEqual((code, result["archives"]["restored"], result["archives"]["changed"]), (0, 0, True))
+        self.assertFalse((self.root / "apt-archives.restored").exists())
+
+    def test_archives_restored_unchanged_is_not_a_change(self):
+        archives = self.root / "apt-archives"
+        archives.mkdir()
+        (archives / "git_1_amd64.deb").write_bytes(b"deb")
+        (archives / "lock").write_text("")
+        out = self.root / "github-output"
+        code, result = self.call(["--list", self.lst("a.txt", "git\n"), "--install", "--archives", str(archives),
+                                  "--github-output", str(out)], self.archive_fake(archives, ["git_1_amd64.deb"]))
+        self.assertEqual(code, 0)
+        self.assertEqual((result["archives"]["restored"], result["archives"]["changed"]), (1, False))
+        self.assertEqual(out.read_text(), "archives_changed=false\n")
+        self.assertFalse((archives / "lock").exists())
+
+    def test_archives_with_nothing_missing_runs_no_apt_and_is_unchanged(self):
+        out = self.root / "github-output"
+        fake = Fake({"git": "1"})
+        code, result = self.call(["--list", self.lst("a.txt", "git\n"), "--install",
+                                  "--archives", str(self.root / "apt-archives"), "--github-output", str(out)], fake)
+        self.assertEqual((code, result["status"], result["archives"]["changed"]), (0, "satisfied", False))
+        self.assertEqual([argv[0] for argv, _ in fake.calls], ["/fake/dpkg-query"])
+        self.assertEqual(out.read_text(), "archives_changed=false\n")
+
+    def test_archives_as_non_root_cleans_apt_work_files_through_sudo(self):
+        archives = self.root / "apt-archives"
+        fake = self.archive_fake(archives, ["git_1_amd64.deb"])
+        with patch.object(nano.shutil, "which", lambda name, path=None: dict(FAKE_BIN, rm="/fake/rm").get(name)):
+            code, result = self.call(["--list", self.lst("a.txt", "git\n"), "--install", "--archives", str(archives)],
+                                     fake, euid=1000, which=dict(FAKE_BIN, rm="/fake/rm"))
+        self.assertEqual(code, 0)
+        removal = [argv for argv, _ in fake.calls if "/fake/rm" in argv]
+        self.assertEqual(removal, [["/fake/sudo", "-n", "/fake/rm", "-rf", "--",
+                                    str(archives.resolve() / "partial"), str(archives.resolve() / "lock")]])
+        self.assertIn(["/fake/sudo", "-n", "/fake/apt-get", "-o", "Dir::Cache::Archives=%s/" % archives.resolve(),
+                       "autoclean", "-qq"], [argv for argv, _ in fake.calls])
+
+    def test_archives_and_github_output_usage_errors(self):
+        listing = self.lst("a.txt", "git\n")
+        for args in (["--archives", "d"], ["--github-output", "f"], ["--install", "--github-output", "f"],
+                     ["--background", "--state", "s", "--github-output", "f"]):
+            with self.subTest(args=args), self.assertRaises(SystemExit):
+                self.call(["--list", listing] + args, Fake({}))
+
+    def test_background_passes_archives_to_the_download(self):
+        state = str(self.root / "apt.state")
+        with patch.object(nano.subprocess, "Popen") as popen, contextlib.redirect_stdout(io.StringIO()):
+            popen.return_value.pid = 4242
+            self.assertEqual(nano.main(["--list", self.lst("a.txt", "git\n"), "--background", "--state", state,
+                                        "--archives", "cache"]), 0)
+        argv = popen.call_args[0][0]
+        self.assertEqual(argv[-4:], ["--state", state, "--archives", "cache"])
+
     def test_without_apt_nothing_runs(self):
         fake = Fake({})
         code, result = self.call(["--list", self.lst("a.txt", "git\n"), "--install"], fake, which={})

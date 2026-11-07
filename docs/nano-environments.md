@@ -398,6 +398,32 @@ first serial run spent 98.6 s in apt (a slow fetch on that runner) and is not co
 as a gain. The apt time of the three runs differs more than the overlap saves, so read
 the gain as a few seconds per job, not a rate.
 
+The download itself can be cached between runs. `--archives DIR` passes
+`-o Dir::Cache::Archives=DIR/` to the install/download call (still no `/etc/apt` write),
+then autocleans, removes apt's `partial/` and `lock`, and reports `archives.changed`:
+whether the `.deb` set differs from what was there before (`DIR.restored` records it;
+a `--download-only`/`--background` run keeps that record for the joining `--install`).
+`--github-output FILE` appends `archives_changed=true|false`, the one output that is
+appended to rather than created. apt still checks each cached file against the signed
+indexes, so a stale or wrong file is downloaded again. A CI job restores DIR, runs
+nano_apt, and saves DIR only from main and only when it changed:
+
+```yaml
+- uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+  with: {path: "${{ runner.temp }}/apt-archives", key: "apt-JOB-${{ github.run_id }}", restore-keys: apt-JOB-}
+- id: apt
+  run: python3 -S tools/nano_apt.py --list apt-ci.txt --install --strict --archives "$RUNNER_TEMP/apt-archives" --github-output "$GITHUB_OUTPUT"
+- if: steps.apt.outputs.archives_changed == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+  uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+  with: {path: "${{ runner.temp }}/apt-archives", key: "apt-JOB-${{ github.run_id }}"}
+```
+
+The same pattern is already in child PRs without this tool: BrowserTestKit #159 (apt
+called by Playwright's `install-deps`, so the directory is set in an apt.conf.d line) and
+Ironmate #212 (`scripts/configure_ci_apt.py --archives/--finish`). There, 56 s of a 76 s
+WebKit/Firefox library step and 13 s of a 22 s LibreOffice step were the download.
+Moving them to this tool needs its merged commit and a vendor registration first.
+
 Host Python/Node processes already support many source-only features without
 Docker. That does not replace Docker isolation or the real products used by
 integration tests. Portfolio's refreshed `6a7efcd1` [import Dockerfile](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/6a7efcd1d3ec6775aa181fdd1b81f133e5537da9/Dockerfile.html-import) says Node22

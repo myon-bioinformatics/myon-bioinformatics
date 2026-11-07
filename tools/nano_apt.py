@@ -19,6 +19,14 @@ were fetched, and installs from the downloaded files. apt itself still runs one 
 
 ``--strict`` is for CI steps that must install something: a missing apt-get/dpkg-query or a
 list with no packages exits 2 instead of being reported as ``apt_unavailable`` / satisfied.
+
+``--archives DIR`` keeps the downloaded .deb files in DIR (``-o Dir::Cache::Archives``), so a
+CI cache can restore them; apt still checks every file against the signed indexes. After apt,
+obsolete files are autocleaned and ``partial/`` and ``lock`` removed, so DIR holds only .deb
+files the caller can upload. The report's ``archives.changed`` says whether that set differs
+from what was there before (recorded in ``DIR.restored``, which a ``--download-only`` or
+``--background`` run keeps for the joining ``--install`` and an ``--install`` run removes);
+``--github-output FILE`` also appends ``archives_changed=true|false`` to FILE.
 """
 from __future__ import annotations
 
@@ -136,10 +144,54 @@ def summarize(path):
             "tail": lines[-10:]}
 
 
-def install(todo, apt_get, prefix, result, log_path, download_only=False, skip_update=False):
+def deb_names(archives):
+    return sorted(path.name for path in Path(archives).glob("*.deb"))
+
+
+def archive_options(archives):
+    return ["-o", "Dir::Cache::Archives=%s/" % archives] if archives else []
+
+
+def record_path(archives):
+    return Path(str(archives) + ".restored")
+
+
+def open_archives(archives):
+    """Create DIR/partial; record which .deb files were restored unless a download run already did."""
+    archives = Path(archives).resolve()
+    (archives / "partial").mkdir(parents=True, exist_ok=True)
+    record = record_path(archives)
+    if not record.exists():
+        record.write_text("".join(name + "\n" for name in deb_names(archives)), encoding="utf-8")
+    return archives, record.read_text(encoding="utf-8").splitlines()
+
+
+def close_archives(archives, restored, apt_get, prefix, ran, keep_record=False):
+    """After apt: drop obsolete downloads and apt's work files; report whether the set changed."""
+    autoclean = None
+    if ran:
+        step = prefix + [apt_get] + archive_options(archives) + ["autoclean", "-qq"]
+        autoclean = subprocess.run(step, env=ENV, stdout=sys.stderr).returncode
+    work = [str(archives / "partial"), str(archives / "lock")]
+    if prefix:  # apt ran as root: partial/ is now _apt's (mode 0700), so remove it the same way
+        subprocess.run(prefix + [shutil.which("rm", path=PATH) or "rm", "-rf", "--"] + work, env=ENV)
+    else:
+        shutil.rmtree(work[0], ignore_errors=True)
+        Path(work[1]).unlink(missing_ok=True)
+    if os.geteuid() == 0 and "SUDO_UID" in os.environ:  # run as `sudo nano_apt`: hand it back
+        for path in [archives, *archives.iterdir()]:
+            os.chown(path, int(os.environ["SUDO_UID"]), int(os.environ.get("SUDO_GID", "-1")))
+    if not keep_record:  # the joining --install of a download run still needs it
+        record_path(archives).unlink(missing_ok=True)
+    now = deb_names(archives)
+    return {"dir": str(archives), "restored": len(restored), "debs": len(now),
+            "changed": now != restored, "autoclean": autoclean}
+
+
+def install(todo, apt_get, prefix, result, log_path, download_only=False, skip_update=False, options=()):
     """update + install (or only download); True when every step exits 0. Records the log summary."""
     steps = [] if skip_update else [prefix + [apt_get] + ACQUIRE + ["update"]]
-    steps.append(prefix + [apt_get] + ACQUIRE + ["install", "-y", "--no-install-recommends"]
+    steps.append(prefix + [apt_get] + ACQUIRE + list(options) + ["install", "-y", "--no-install-recommends"]
                  + (["--download-only"] if download_only else []) + todo)
     ok, log = True, (open(log_path, "x", encoding="utf-8") if log_path else None)
     try:
@@ -210,6 +262,8 @@ def start_background(args):
     for path in args.list:
         argv += ["--list", path]
     argv += ["--download-only", "--state", args.state]
+    if args.archives:
+        argv += ["--archives", args.archives]
     created, proc = [], None
     try:
         with ExitStack() as stack:
@@ -268,9 +322,18 @@ def main(argv=None):
                         help="exit 2 when apt-get/dpkg-query is missing or no package is listed")
     parser.add_argument("--receipt", metavar="FILE", help="write the JSON report to this new file")
     parser.add_argument("--log", metavar="FILE", help="keep apt output in this new file (with --install)")
+    parser.add_argument("--archives", metavar="DIR",
+                        help="keep downloaded .deb files in DIR for a CI cache (with --install/--download-only/--background)")
+    parser.add_argument("--github-output", metavar="FILE",
+                        help="append archives_changed=true|false to FILE ($GITHUB_OUTPUT; needs --archives)")
     args = parser.parse_args(argv)
-    if args.background and (args.install or args.download_only or args.strict or args.receipt or args.log or not args.state):
-        parser.error("--background takes --list and --state only")
+    if args.background and (args.install or args.download_only or args.strict or args.receipt or args.log
+                            or args.github_output or not args.state):
+        parser.error("--background takes --list, --state and --archives only")
+    if args.archives and not (args.install or args.download_only or args.background):
+        parser.error("--archives needs --install, --download-only or --background")
+    if args.github_output and not args.archives:
+        parser.error("--github-output needs --archives")
     if args.download_only and args.install:
         parser.error("--download-only and --install are mutually exclusive")
     started = time.monotonic()
@@ -321,6 +384,9 @@ def main(argv=None):
                     print("nano_apt: root or sudo is required", file=sys.stderr)
                     code = 2
                 else:
+                    archives = restored = None
+                    if args.archives:
+                        archives, restored = open_archives(args.archives)
                     skip = False
                     if args.install and args.state:
                         final, waited = join(args.state)
@@ -328,7 +394,12 @@ def main(argv=None):
                                     and final.get("to_install") == todo and final.get("list_sha256") == digests)
                         result["joined"] = {"state": final.get("status") if final else "none",
                                             "waited": round(waited, 3), "skipped_update": skip}
-                    if not install(todo, apt_get, prefix, result, args.log, args.download_only, skip):
+                    ok = install(todo, apt_get, prefix, result, args.log, args.download_only, skip,
+                                 archive_options(archives))
+                    if archives:
+                        result["archives"] = close_archives(archives, restored, apt_get, prefix, ran=ok,
+                                                            keep_record=args.download_only)
+                    if not ok:
                         result["status"], code = "failed", 3
                     elif args.download_only:
                         result["status"], code = "downloaded", 0
@@ -341,6 +412,15 @@ def main(argv=None):
             result.update(status="failed", error=str(exc))
             result.setdefault("packages", {})
             result.setdefault("before", {})
+            code = 2
+    if args.archives and "archives" not in result:  # nothing to download: the set is unchanged
+        result["archives"] = {"dir": str(Path(args.archives).resolve()), "changed": False}
+    if args.github_output:
+        try:
+            with open(args.github_output, "a", encoding="utf-8") as stream:  # GitHub's protocol: append
+                stream.write("archives_changed=%s\n" % str(result["archives"]["changed"]).lower())
+        except OSError as exc:
+            print(json.dumps({"schema": SCHEMA, "error": "github-output: " + str(exc)}), file=sys.stderr)
             code = 2
     result["seconds"] = round(time.monotonic() - started, 3)
     if args.download_only and args.state:
