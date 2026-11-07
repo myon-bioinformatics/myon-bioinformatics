@@ -346,6 +346,10 @@ all are present or when `apt-get`/`dpkg-query` are absent (reported as
 `apt_unavailable`). It does not choose packages, resolve closures or pin hashes,
 so the Debian 13/amd64 caveats above still apply. No CI step or child rollout is added.
 
+`--strict` is for a step that must install something: a missing `apt-get`/`dpkg-query`
+or a list with no packages exits 2 (status `failed`) instead of `apt_unavailable` or
+satisfied, so a later command does not fail for an unrelated-looking reason.
+
 `--receipt FILE` writes the same JSON report to a new file (installed versions
 before and after, list SHA-256, OS id/version, seconds). `--log FILE` keeps
 apt's own output in a new file and prints only its summary line, plus the last
@@ -383,8 +387,16 @@ overlapped, because the 6.6 s update + download hid behind the other work.
 With only 1 s of other work the overlapped run was slower in both repeats
 (9.7 s against 7.1 s, 9.9 s against 9.2 s): the split costs a second apt
 dependency pass, roughly 1 s. The gain is bounded by the shorter of the
-download and the other work; use it when the other work is longer. Not run on
-GitHub Actions, so a process surviving between steps there is unverified.
+download and the other work; use it when the other work is longer.
+
+On a GitHub-hosted `ubuntu-latest` runner (Ubuntu 26.04.1, image 20261101.186.1, non-root
+through `sudo`), 54 packages from Ironmate's font and UNO lists with 30 s of simulated
+other work, three runs: the detached process was still alive in the next step (own
+session, parent 1) and the join skipped `update` every time. Totals were 47.6 s and
+49.0 s serial against 42.0 s and 44.6 s overlapped, with the 7-8 s download hidden. A
+first serial run spent 98.6 s in apt (a slow fetch on that runner) and is not counted
+as a gain. The apt time of the three runs differs more than the overlap saves, so read
+the gain as a few seconds per job, not a rate.
 
 Host Python/Node processes already support many source-only features without
 Docker. That does not replace Docker isolation or the real products used by

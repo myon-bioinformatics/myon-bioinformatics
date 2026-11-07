@@ -394,7 +394,7 @@ class NanoAptTests(unittest.TestCase):
         listing, state = self.lst("a.txt", "git\n"), str(self.root / "dl.state")
         for extra in (["--background"], ["--background", "--state", state, "--install"],
                       ["--background", "--state", state, "--receipt", str(self.root / "r.json")],
-                      ["--download-only", "--install"]):
+                      ["--background", "--state", state, "--strict"], ["--download-only", "--install"]):
             with self.subTest(extra=extra), self.assertRaises(SystemExit) as caught:
                 self.call(["--list", listing] + extra, Fake({}))
             self.assertEqual(caught.exception.code, 2)
@@ -468,6 +468,26 @@ class NanoAptTests(unittest.TestCase):
         self.assertEqual((code, result["executed"]), (0, [apt("install", "-y", "--no-install-recommends", "git")]))
         self.assertGreaterEqual(result["joined"]["waited"], 0.2)
         self.assertTrue(result["joined"]["skipped_update"])
+
+    def test_strict_refuses_a_missing_apt_toolchain_and_empty_lists(self):
+        listing, empty = self.lst("a.txt", "git\n"), self.lst("empty.txt", "# nothing yet\n\n")
+        fake = Fake({})
+        code, result = self.call(["--list", listing, "--install", "--strict"], fake, which={})
+        self.assertEqual((code, result["status"], fake.calls), (2, "failed", []))
+        self.assertIn("--strict", result["error"])
+        fake = Fake({})
+        code, result = self.call(["--list", empty, "--install", "--strict"], fake)
+        self.assertEqual((code, result, fake.calls), (2, None, []))
+        self.assertIn("no packages listed", self.err.getvalue())
+
+    def test_strict_changes_nothing_when_apt_works_and_lax_mode_keeps_its_exit_codes(self):
+        listing, empty = self.lst("a.txt", "git\n"), self.lst("empty.txt", "# nothing yet\n")
+        code, result = self.call(["--list", listing, "--install", "--strict"], Fake({"git": "1:2.0"}))
+        self.assertEqual((code, result["status"]), (0, "satisfied"))
+        code, result = self.call(["--list", listing, "--install", "--strict"], Fake({}))
+        self.assertEqual((code, result["status"]), (0, "installed"))
+        self.assertEqual(self.call(["--list", empty], Fake({}))[0], 0)
+        self.assertEqual(self.call(["--list", listing, "--install"], Fake({}), which={})[1]["status"], "apt_unavailable")
 
     def test_without_apt_nothing_runs(self):
         fake = Fake({})

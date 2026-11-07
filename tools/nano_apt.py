@@ -16,6 +16,9 @@ apt runs with bounded retries/timeouts given by ``-o``, so /etc/apt is never wri
 process and returns at once, so slower setup (uv sync, npm ci) can overlap the download.
 A later ``--install --state FILE`` waits for it, skips ``update`` when the same packages
 were fetched, and installs from the downloaded files. apt itself still runs one at a time.
+
+``--strict`` is for CI steps that must install something: a missing apt-get/dpkg-query or a
+list with no packages exits 2 instead of being reported as ``apt_unavailable`` / satisfied.
 """
 from __future__ import annotations
 
@@ -261,16 +264,20 @@ def main(argv=None):
                         help="run --download-only detached and return at once (needs --state)")
     parser.add_argument("--state", metavar="FILE",
                         help="state of a background download: --background creates it, --install waits on it")
+    parser.add_argument("--strict", action="store_true",
+                        help="exit 2 when apt-get/dpkg-query is missing or no package is listed")
     parser.add_argument("--receipt", metavar="FILE", help="write the JSON report to this new file")
     parser.add_argument("--log", metavar="FILE", help="keep apt output in this new file (with --install)")
     args = parser.parse_args(argv)
-    if args.background and (args.install or args.download_only or args.receipt or args.log or not args.state):
+    if args.background and (args.install or args.download_only or args.strict or args.receipt or args.log or not args.state):
         parser.error("--background takes --list and --state only")
     if args.download_only and args.install:
         parser.error("--download-only and --install are mutually exclusive")
     started = time.monotonic()
     try:
         packages = merge(args.list)
+        if args.strict and not packages:
+            raise ValueError("no packages listed (--strict)")
         outputs = [args.receipt, args.log]
         if args.background:
             outputs += [args.state, args.state + ".log", args.state + ".pid"]
@@ -295,6 +302,10 @@ def main(argv=None):
     if not apt_get or not dpkg_query:
         result.update(status="apt_unavailable", packages={}, before={})
         code = 0
+        if args.strict:
+            result.update(status="failed", error="apt-get and dpkg-query are required (--strict)")
+            print("nano_apt: apt-get and dpkg-query are required (--strict)", file=sys.stderr)
+            code = 2
     else:
         try:
             rows = judge(packages, observe(packages, dpkg_query))
