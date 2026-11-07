@@ -53,6 +53,22 @@ is found under the same file name and `name:` in every repository
 | Shared Python launcher tests | `py-launch-tests.yml` | `py_launch tests` |
 | Open WebUI Docker smoke | `openwebui-docker-smoke.yml` | `OpenWebUI Docker smoke` |
 
+Job ids inside the main lane follow the same rule (unified 2026-11-08):
+
+| Role | Job id | `name:` |
+| --- | --- | --- |
+| Path filter (reusable-change-detection) | `changes` | (default) |
+| Resolve the dependency SHAs for later jobs (latest main) | `resolve-vendor` | (default) |
+| Run the checked-in vendor baseline (`vendor.lock.json`) | `vendor-locked` | `Vendor locked baseline` |
+| Verify the vendor lock only | `vendor-lock` | `Vendor lock` |
+| Main test matrix | `test` | `pytest (...)` / `unittest (...)` |
+| JUnit collector (reusable-junit-identity) | `failure-identity` | (default) |
+| Dispatch the vendor refresh | `vendor-dispatch` | `Vendor dispatch` |
+
+Markdown files under `docs/` are lowercase kebab-case (`docs/vendor-automation.md`);
+`README.md`, `AGENTS.md`, `CLAUDE.md` and other repository-level files keep
+their conventional upper-case names.
+
 Rules of thumb: file names are lowercase with hyphens (no underscores);
 `name:` is a short title-case label; `workflow_run` triggers reference the
 `name:` value, so rename both together. Repository-specific lanes keep their
