@@ -196,6 +196,12 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "node_launch.py",
           "destination": "vendor/node_launch.py"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "web_ui.py",
+          "destination": "vendor/web_ui.py",
+          "license": "vendor/web-ui-LICENSE"
         }
       ]
     },

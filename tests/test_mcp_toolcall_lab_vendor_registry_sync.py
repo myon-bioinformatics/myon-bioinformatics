@@ -1,4 +1,4 @@
-"""Parent topology follows mcp-toolcall-lab PR #159 vendor.lock.json snapshot."""
+"""Parent topology follows mcp-toolcall-lab PR #159 vendor.lock.json snapshot, plus the web_ui.py enrollment."""
 import copy
 import json
 from pathlib import Path
@@ -14,8 +14,17 @@ def load(path):
     return json.loads((ROOT / path).read_text())
 
 
+def reviewed_pr159_registry():
+    """The registry as PR #159 adopted it: later enrollments (web_ui.py) wait for their own lock."""
+    registry = copy.deepcopy(load("vendor-consumers.json"))
+    for row in registry["consumers"]:
+        if row["repository"] == CONSUMER:
+            row["entries"] = [e for e in row["entries"] if e["destination"] != "vendor/web_ui.py"]
+    return registry
+
+
 def test_mcp_toolcall_lab_registry_matches_reviewed_pr159_lock():
-    registry = load("vendor-consumers.json")
+    registry = reviewed_pr159_registry()
     lock = load("tests/fixtures/mcp-toolcall-lab-pr159.lock.json")
     assert len(lock["files"]) == 9
     assert vendor_consumers.compare(registry, lock, CONSUMER)["matches"]
@@ -35,5 +44,9 @@ def test_node_launch_is_registered_for_mcp_toolcall_lab_not_auto_proposed():
     assert len(node_launch) == 1
     assert node_launch[0]["action"] == "registered"
     assert node_launch[0]["destination"] == "vendor/node_launch.py"
-    assert result["counts"]["registered"] == 5
-    assert result["counts"]["skipped"] == 35
+    web_ui = [x for x in result["rows"] if x["source"] == "web_ui.py"]
+    assert len(web_ui) == 1
+    assert web_ui[0]["action"] == "registered"
+    assert web_ui[0]["destination"] == "vendor/web_ui.py"
+    assert result["counts"]["registered"] == 6
+    assert result["counts"]["skipped"] == 34
