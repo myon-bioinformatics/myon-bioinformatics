@@ -791,21 +791,38 @@ def recreate(manifest, root, *, get=_get):
     moved over the checkout copies one file at a time, so a failed download or digest leaves the
     checked-in files in place for CI evidence. Placement is atomic per file, not a transaction across
     the batch. This is the "unlink every destination, materialize, check" CI step as one call.
+    Baseline checks reject edits observed after download and before each placement, but do not
+    provide locking: a write between verification and os.replace can still race. Use an isolated
+    checkout. A placement/final-check failure does not roll back earlier replacements; preserve
+    concurrent edits, inspect the checkout, and rerun only after restoring the intended lock state.
     """
     root = Path(root).resolve()
     manifest_path = _target(root, manifest)
     relative = manifest_path.relative_to(root).as_posix()
     synchronize(relative, root, "check", get=get)
-    lock = validate(json.loads(manifest_path.read_text(encoding="utf-8")))
+    manifest_bytes = manifest_path.read_bytes()
+    lock = validate(json.loads(manifest_bytes))
+
+    def unchanged_manifest():
+        if _target(root, manifest).read_bytes() != manifest_bytes:
+            raise ValueError("manifest changed during recreate; use an isolated checkout")
+
     with tempfile.TemporaryDirectory(prefix=".vendor-recreate-", dir=root) as directory:
         staging = Path(directory)
         staged = _target(staging, relative)
         staged.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(manifest_path, staged)
+        staged.write_bytes(manifest_bytes)
         synchronize(relative, staging, "materialize", get=get)
         synchronize(relative, staging, "check", get=get)
+        # Downloads can be slow. Refuse observed edits before replacing anything.
+        unchanged_manifest()
+        synchronize(relative, root, "check", get=get)
         for item in lock["files"]:
-            os.replace(_target(staging, item["destination"]), _target(root, item["destination"]))
+            unchanged_manifest()
+            target = _target(root, item["destination"])
+            _verify(item, target.read_bytes())
+            os.replace(_target(staging, item["destination"]), target)
+    unchanged_manifest()
     synchronize(relative, root, "check", get=get)
     return {"schema": SCHEMA, "mode": "recreate", "changed_paths": [],
             "recreated": [item["destination"] for item in lock["files"]]}

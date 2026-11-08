@@ -51,6 +51,14 @@ the inline "unlink every destination, then materialize" step it replaces. Placem
 file, not a transaction across the batch. It prints `{"schema", "mode": "recreate", "changed_paths",
 "recreated"}`; `changed_paths` stays empty because the recreated bytes are the locked bytes.
 
+Recreation must run in an isolated checkout. It rechecks the original manifest and checkout
+bytes after downloads and each destination immediately before replacement, rejecting edits it
+observes. This is not locking or compare-and-swap: writes racing the final verification and
+replacement are unsupported. A failure during placement may leave earlier files replaced, and a
+failure of the final check does not roll them back. Staging is removed in either case. Inspect the
+checkout and preserve any concurrent edits; after resolving the cause and verifying the intended
+lock state, rerun `recreate`. Do not delete the checkout copies as a recovery step.
+
 ## Central consumer topology
 
 `vendor-consumers.json` is the parent-owned machine-readable registry of
