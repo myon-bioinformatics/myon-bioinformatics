@@ -320,6 +320,9 @@ class ConventionTests(unittest.TestCase):
         self.assertEqual(facts["jobs"], ["changes", "resolve-aoi", "vendor-dispatch", "failure-identity"])
         self.assertEqual(facts["job_names"], {"vendor-dispatch": "vendor lock dispatch"})
         self.assertEqual(ci.workflow_facts(PAGES_TEXT)["workflow_run"], ["Tests"])
+        self.assertEqual(facts["events"], ["pull_request"])
+        self.assertEqual(ci.workflow_facts("name: X\non: [push, workflow_dispatch]\njobs:\n  a:\n")["events"], ["push", "workflow_dispatch"])
+        self.assertEqual(ci.workflow_facts("name: X\non:\n  workflow_dispatch:\n    inputs:\n      x:\n        type: string\njobs:\n  a:\n")["events"], ["workflow_dispatch"])
         self.assertEqual(ci.workflow_facts(LABEL_TEXT)["workflow_run"], ["Tests", "Shared Python launcher"])
 
     def test_check_conventions_reports_every_rule_once(self):
@@ -336,6 +339,8 @@ class ConventionTests(unittest.TestCase):
         self.assertEqual(by_rule["doc-file"], [("docs/ANCHOR_MATCHER.md", "1 file(s)", "lowercase kebab-case .md")])
         self.assertEqual(by_rule["github-file"], [(".github/PULL_REQUEST_TEMPLATE.md", ".github/PULL_REQUEST_TEMPLATE.md", ".github/pull_request_template.md")])
         self.assertNotIn("job-id", by_rule, "job ids are checked in ci.yml only")
+        manual = ci.check_conventions("Demo", [], {"nano-bun-fanout.yml": "name: Nano bun fan-out\non:\n  workflow_dispatch:\n    inputs:\n      n:\n        type: number\njobs:\n  run:\n    runs-on: ubuntu-latest\n"})
+        self.assertEqual([(f["rule"], f["found"]) for f in manual], [("dispatch-only", "workflow_dispatch のみ")])
         renamed = ci.check_conventions("Demo", [".github/workflows/ci.yml"], {"ci.yml": CI_TEXT.replace("name: Tests", "name: CI")})
         self.assertEqual([(f["rule"], f["found"], f["expected"]) for f in renamed],
                          [("job-id", "resolve-aoi", "resolve-vendor"), ("job-name", "vendor lock dispatch", "Vendor dispatch")])

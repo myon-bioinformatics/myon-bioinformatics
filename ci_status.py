@@ -279,7 +279,16 @@ def workflow_facts(text):
             listed = re.search(r"workflows:\s*\n((?:\s+-\s*.+\n)+)", body)
             if listed:
                 triggers = [re.sub(r"^\s*-\s*", "", x).strip().strip("'\"") for x in listed.group(1).splitlines()]
-    return {"name": name.group(1).strip().strip("'\"") if name else None, "jobs": jobs, "job_names": job_names, "workflow_run": triggers}
+    on_block = re.search(r"^(?:on|\"on\"|'on'|true):[ \t]*(.*)\n((?:  \S.*\n|[ \t]*\n|\s{3,}.*\n)*)", text, re.M)
+    events = []
+    if on_block:
+        inline = on_block.group(1).strip()
+        if inline:
+            events = [x.strip() for x in inline.strip("[]").split(",") if x.strip()]
+        else:
+            events = re.findall(r"^  ([A-Za-z_]+):", on_block.group(2), re.M)
+    return {"name": name.group(1).strip().strip("'\"") if name else None, "jobs": jobs, "job_names": job_names,
+            "workflow_run": triggers, "events": events}
 
 
 def check_conventions(repo, paths, workflows):
@@ -294,6 +303,8 @@ def check_conventions(repo, paths, workflows):
         names[facts["name"]] = file
         if not _WORKFLOW_FILE.fullmatch(file):
             add("workflow-file", f".github/workflows/{file}", file, "lowercase, hyphens, .yml")
+        if facts["events"] == ["workflow_dispatch"]:
+            add("dispatch-only", f".github/workflows/{file}", "workflow_dispatch のみ", "削除候補（手動専用）か、トリガーを足す")
         canonical = rules["workflow_names"].get(file)
         if canonical and facts["name"] != canonical:
             add("workflow-name", f".github/workflows/{file}", facts["name"], canonical)
