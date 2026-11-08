@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Read-only GitHub CI status index. Python stdlib only.
 
+The ``--audit`` mode takes the same observations across every open PR and Issue of the
+organization (via the vendored gh_identity) and writes ``data.json`` plus a read-only
+``index.html`` built from the vendored web_ui.py helpers: the parent audit dashboard.
+
 Exit codes: 0 = observation succeeded (with --ci-check, all states are COMPLETE or
 NO CHECKS); 1 = --ci-check observed a non-passing state; 2 = observation or usage error.
 Observation errors take precedence over --ci-check failures. --json uses the same codes.
@@ -12,6 +16,8 @@ import datetime
 import json
 import os
 import urllib.error
+import urllib.request
+from html import escape
 from urllib.parse import quote
 import importlib.util
 from pathlib import Path
@@ -34,7 +40,8 @@ except RuntimeError:
 
 OWNER = "myon-bioinformatics"
 __version__ = "0.2.0"
-__all__ = ["repository", "observe", "render", "main"]
+__all__ = ["repository", "observe", "summarize_checks", "render", "audit", "audit_repository", "link_dependencies",
+           "load_records", "diff_snapshots", "render_audit_html", "write_audit_site", "main"]
 
 def get(path):
     """Compatibility shim backed by GHI transport; no independent HTTP client."""
@@ -68,6 +75,13 @@ def observe(name, pr=None):
     if not observation["complete"]:
         raise RuntimeError("check pagination incomplete")
     checks = observation["checks"]
+    rows, state, pending = summarize_checks(checks)
+    return {"repository": name, "target": target, "head_sha": sha, "state": state,
+            "completed": len(rows) - pending, "total": len(rows), "checks": rows}
+
+
+def summarize_checks(checks):
+    """Reduce check runs to (rows, state, pending); shared by the single-target view and the audit."""
     rows = [{"id": x["id"], "name": x["name"], "status": x["status"],
              "conclusion": x.get("conclusion"), "url": x.get("url")}
             for x in checks]
@@ -76,8 +90,216 @@ def observe(name, pr=None):
     cancelled = sum(x["conclusion"] in ("cancelled", "stale") for x in rows)
     incomplete = sum(x["status"] == "completed" and x["conclusion"] in (None, "skipped", "neutral") for x in rows)
     state = "FAILED" if failed else "RUNNING" if pending else "INCOMPLETE" if cancelled or incomplete else "NO CHECKS" if not rows else "COMPLETE"
-    return {"repository": name, "target": target, "head_sha": sha, "state": state,
-            "completed": len(rows) - pending, "total": len(rows), "checks": rows}
+    return rows, state, pending
+
+
+# ---------------------------------------------------------------- audit snapshot (producer)
+
+STATE_LABEL = {"FAILED": "失敗", "RUNNING": "実行中", "INCOMPLETE": "不完全", "NO CHECKS": "チェックなし",
+               "COMPLETE": "成功", "UNKNOWN": "不明", "-": "-"}
+RECORD_STATES = (("", "未着手"), ("doing", "対応中"), ("waiting", "待ち"), ("done", "完了"))
+# Check runs that are not this organization's CI (GitHub-side reviewers that fail where the feature is unavailable).
+IGNORED_CHECKS = ("copilot-pull-request-reviewer",)
+
+
+def organization_repositories(owner=OWNER):
+    """Non-archived repository names of the owner (public API, one listing)."""
+    if ghi is None:
+        raise RuntimeError("GHI unavailable")
+    return sorted(x["full_name"].split("/", 1)[1] for x in ghi.repositories(owner)["repositories"]
+                  if x.get("full_name") and not x.get("archived"))
+
+
+def _record_id(repository, kind, number):
+    return f"{repository.split('/', 1)[1]}#{number}" if kind == "pr" else f"{repository.split('/', 1)[1]}#i{number}"
+
+
+def audit_repository(name, ignored_checks=IGNORED_CHECKS):
+    """Open PRs (head/base/mergeable/CI state) and Issues of one repository as audit records."""
+    if ghi is None:
+        raise RuntimeError("GHI unavailable")
+    full = repository(name)
+    records = []
+    pulls = ghi.pull_requests(full)
+    for pr in pulls["pull_requests"]:
+        detail = get(f"/repos/{full}/pulls/{pr['number']}")
+        observation = ghi.checks_for_sha(full, pr["head_sha"])
+        if observation["complete"]:
+            rows, state, _pending = summarize_checks([x for x in observation["checks"] if x["name"] not in ignored_checks])
+        else:
+            rows, state = [], "UNKNOWN"
+        records.append({"id": _record_id(full, "pr", pr["number"]), "repository": full.split("/", 1)[1], "number": pr["number"],
+                        "kind": "pr", "title": pr["title"], "url": pr["url"], "draft": pr["draft"],
+                        "head_sha": pr["head_sha"], "head_ref": pr["head_ref"], "base_ref": pr["base_ref"],
+                        "mergeable": detail.get("mergeable"), "mergeable_state": detail.get("mergeable_state"),
+                        "updated_at": pr["updated_at"], "ci": state,
+                        "checks": [{"name": x["name"], "conclusion": x["conclusion"], "status": x["status"]} for x in rows]})
+    for issue in ghi.issues(full)["issues"]:
+        records.append({"id": _record_id(full, "issue", issue["number"]), "repository": full.split("/", 1)[1], "number": issue["number"],
+                        "kind": "issue", "title": issue["title"], "url": issue["url"], "labels": issue["labels"],
+                        "updated_at": issue["updated_at"], "ci": "-", "checks": []})
+    truncated = pulls["truncated"]
+    return records, truncated
+
+
+def link_dependencies(records):
+    """Stacked PRs: a PR whose base is another open PR's head branch depends on it; mergeable False is a conflict."""
+    by_repo_head = {}
+    for r in records:
+        if r["kind"] == "pr":
+            by_repo_head.setdefault(r["repository"], {})[r["head_ref"]] = r["id"]
+    for r in records:
+        if r["kind"] != "pr":
+            continue
+        parent = by_repo_head.get(r["repository"], {}).get(r["base_ref"])
+        r["depends_on"] = [parent] if parent and parent != r["id"] else []
+        r["conflict"] = r.get("mergeable") is False
+    return records
+
+
+def load_records(path):
+    """User-maintained state/notes per record id from a JSON Lines file (one object per line)."""
+    out = {}
+    if path is None or not Path(path).is_file():
+        return out
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        row = json.loads(line)
+        out[row["id"]] = {k: row[k] for k in ("state", "notes", "next", "blocker") if k in row}
+    return out
+
+
+def diff_snapshots(current, previous):
+    """Records that are new, gone, or whose head/CI changed since the previous snapshot."""
+    if not previous:
+        return {"new": [], "gone": [], "changed": []}
+    before = {r["id"]: r for r in previous.get("records", [])}
+    after = {r["id"]: r for r in current}
+    changed = [rid for rid in after if rid in before and (after[rid].get("head_sha") != before[rid].get("head_sha")
+                                                             or after[rid].get("ci") != before[rid].get("ci"))]
+    return {"new": sorted(set(after) - set(before)), "gone": sorted(set(before) - set(after)), "changed": sorted(changed)}
+
+
+def audit(repos=None, *, records_path=None, previous=None, ignored_checks=IGNORED_CHECKS):
+    """Cross-repository audit snapshot: every open PR and Issue with CI, dependencies, conflicts and user records."""
+    names = list(repos) if repos else organization_repositories()
+    records, errors, truncated = [], [], []
+    for name in names:
+        try:
+            rows, partial = audit_repository(name, ignored_checks)
+            records.extend(rows)
+            if partial:
+                truncated.append(name)
+        except (ValueError, KeyError, RuntimeError, OSError) as exc:
+            errors.append({"repository": name, "error": type(exc).__name__, "detail": _detail(exc)})
+    link_dependencies(records)
+    notes = load_records(records_path)
+    for r in records:
+        r.update({"state": "", "notes": "", **notes.get(r["id"], {})})
+    records.sort(key=lambda r: (r["repository"].lower(), r["kind"], -r["number"]))
+    prs = [r for r in records if r["kind"] == "pr"]
+    summary = {"repositories": len(names), "pull_requests": len(prs), "issues": len(records) - len(prs),
+               "ci_failed": sum(r["ci"] == "FAILED" for r in prs), "conflicts": sum(r.get("conflict") for r in prs),
+               "stacked": sum(bool(r.get("depends_on")) for r in prs), "done": sum(r["state"] == "done" for r in records)}
+    return {"schema": "parent-audit/1", "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+            "owner": OWNER, "repositories": names, "ignored_checks": list(ignored_checks), "records": records, "summary": summary,
+            "errors": errors, "truncated": truncated, "changes": diff_snapshots(records, previous)}
+
+
+def load_previous(source):
+    """Previous data.json from a path or an HTTPS URL (the deployed page); missing is not an error."""
+    if not source:
+        return None
+    if source.startswith("https://"):
+        try:
+            with urllib.request.urlopen(source, timeout=30) as response:  # noqa: S310 - explicit https only
+                return json.loads(response.read(2_000_000).decode("utf-8"))
+        except (OSError, ValueError):
+            return None
+    path = Path(source)
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
+# ---------------------------------------------------------------- audit page (consumer, read-only)
+
+def _load_web_ui():
+    source = Path(__file__).resolve().parent / "vendor" / "web_ui.py"
+    if not source.is_file():
+        raise RuntimeError("vendored web_ui.py is not present")
+    spec = importlib.util.spec_from_file_location("ci_status_web_ui", source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _link(ui, text, url):
+    return f'<a href="{escape(url, quote=True)}" target="_blank" rel="noopener noreferrer">{escape(text)}</a>'
+
+
+def _record_row(ui, r, index):
+    ci = ui.badge(STATE_LABEL.get(r["ci"], r["ci"]))
+    flags = []
+    if r.get("conflict"):
+        flags.append(ui.badge("競合"))
+    for dep in r.get("depends_on", []):
+        flags.append(ui.badge("先行 " + dep))
+    if r.get("draft"):
+        flags.append(ui.badge("draft"))
+    branch = f'{r.get("head_ref", "")} → {r.get("base_ref", "")}' if r["kind"] == "pr" else ", ".join(r.get("labels", []))
+    return (_link(ui, f'{r["repository"]} #{r["number"]}', r["url"]), escape(r["title"]), escape(branch), ci, " ".join(flags),
+            ui.draft_select(RECORD_STATES, key=r["id"] + ":state", id=f"state-{index}", label="状態", selected=r["state"] if r["state"] in dict(RECORD_STATES) else ""),
+            ui.draft_textarea(key=r["id"] + ":notes", id=f"notes-{index}", label="メモ", value=r["notes"], rows=2))
+
+
+def render_audit_html(snapshot, *, asset_base=".", title="Repository audit — myon-bioinformatics"):
+    """Read-only dashboard from a snapshot: queue / compare / weekly / done views built with web_ui helpers."""
+    ui = _load_web_ui()
+    records = snapshot["records"]
+    summary = snapshot["summary"]
+    columns = ("記録", "件名", "ブランチ / ラベル", "CI", "状態フラグ", "状態", "メモ")
+    rows = {rid: _record_row(ui, r, i) for i, (rid, r) in enumerate((r["id"], r) for r in records)}
+    def table(name, selected, caption):
+        chosen = [r for r in records if selected(r)]
+        return ui.data_table(columns, [rows[r["id"]] for r in chosen], id=f"table-{name}", caption=f"{caption}（{len(chosen)}件）",
+                             trusted_cells=True, row_ids=tuple(r["id"] for r in chosen))
+    changes = snapshot.get("changes", {})
+    changed = set(changes.get("new", [])) | set(changes.get("changed", []))
+    views = (("queue", "◫ 作業キュー"), ("compare", "⇄ 依存・競合"), ("weekly", "▦ 週次差分"), ("done", "✓ 完了"))
+    tiles = ui.stat_tiles((("リポジトリ", summary["repositories"]), ("オープンPR", summary["pull_requests"]), ("Issue", summary["issues"]),
+                           ("CI失敗", summary["ci_failed"], "最新 head の check-runs"), ("競合", summary["conflicts"], "mergeable=false"),
+                           ("積み上げPR", summary["stacked"], "base が他 PR の head"), ("完了記録", summary["done"])))
+    notice = "読み取り専用の公開 API 観測（gh_identity 経由、親の ci_status.py --audit が生成）。状態・メモはこのブラウザの下書きで、JSON 書き出しを site/records.jsonl に取り込むと次回の生成に反映されます。"
+    errors = "".join(f"<li>{escape(e['repository'])}: {escape(e['error'])}</li>" for e in snapshot.get("errors", []))
+    head = (f'<header class="ui-panel"><h1>{escape(title)}</h1><p class="ui-muted">生成 {escape(snapshot["generated_at"])} · '
+            f'{escape(snapshot["owner"])}</p>{ui.view_tabs(views, default_view="queue")}</header>'
+            f'<p class="ui-muted">{escape(notice)}</p>{tiles}'
+            + (f'<details class="ui-panel"><summary>取得できなかったリポジトリ</summary><ul>{errors}</ul></details>' if errors else ""))
+    bar = (f'<div class="ui-records-bar">{ui.filter_input("table-queue", id="filter-queue", label="絞り込み", count_id="count-queue")}'
+           f'<span id="count-queue" class="ui-muted"></span>{ui.records_io(filename="records.json")}</div>')
+    queue = f'<section data-ui-view="queue">{bar}{table("queue", lambda r: r["state"] != "done", "未完了の PR / Issue")}</section>'
+    compare = (f'<section data-ui-view="compare" hidden><p class="ui-muted">base が他のオープン PR の head と一致するものを依存候補、GitHub の mergeable=false を競合として表示します。</p>'
+               f'{table("compare", lambda r: r["kind"] == "pr" and (r.get("depends_on") or r.get("conflict")), "依存・競合のある PR")}</section>')
+    weekly = (f'<section data-ui-view="weekly" hidden><p class="ui-muted">前回の公開スナップショットと比べて新規・head/CI 変化のあった記録。消えた記録: '
+              f'{escape(", ".join(changes.get("gone", [])) or "なし")}</p>{table("weekly", lambda r: r["id"] in changed, "変化した記録")}</section>')
+    done = f'<section data-ui-view="done" hidden>{table("done", lambda r: r["state"] == "done", "完了記録")}</section>'
+    body = ui.records_board(head + queue + compare + weekly + done, id="audit")
+    return ui.render_document(trusted_html=f'<main class="ui-page">{body}</main>', title=title, css=ui.bundled_css(),
+                              scripts=ui.shared_scripts(asset_base, names=("navigation.js", "records.js")))
+
+
+def write_audit_site(snapshot, directory):
+    """Write data.json, index.html and the browser modules under directory; returns the written paths."""
+    out = Path(directory)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "data.json").write_text(json.dumps(snapshot, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    (out / "index.html").write_text(render_audit_html(snapshot), encoding="utf-8")
+    ui = _load_web_ui()
+    (out / "js").mkdir(exist_ok=True)
+    for name in ("navigation.js", "records.js"):
+        (out / "js" / name).write_text(ui.js_source(name), encoding="utf-8", newline="\n")
+    return ["data.json", "index.html", "js/navigation.js", "js/records.js"]
 
 def _detail(exc):
     """Exception text for callers, with token values removed."""
@@ -106,7 +328,26 @@ def main(argv=None):
     p.add_argument("--ci-check", action="store_true", help="Exit with 1 if any observed repository state is not COMPLETE or NO CHECKS")
     p.add_argument("--repos", default="Ironmate,flutter_navigation_basic,markdown,ascii_artist",
                    help="Comma-separated repositories for the all-repositories view")
+    p.add_argument("--audit", action="store_true",
+                   help="Snapshot every open PR/Issue of the organization (or --repos when --all-repos is not given) into data.json and a read-only index.html")
+    p.add_argument("--all-repos", action="store_true", help="With --audit: enumerate the owner's non-archived repositories instead of --repos")
+    p.add_argument("--records", metavar="JSONL", help="With --audit: user state/notes per record id (JSON Lines)")
+    p.add_argument("--previous", metavar="PATH_OR_URL", help="With --audit: previous data.json for the weekly diff")
+    p.add_argument("--out", metavar="DIR", help="With --audit: write data.json, index.html and js/ here")
+    p.add_argument("--ignore-checks", default=",".join(IGNORED_CHECKS), metavar="NAMES",
+                   help="With --audit: comma-separated check-run names that do not count as CI")
     a = p.parse_args(argv)
+    if a.audit:
+        names = None if a.all_repos else [x.strip() for x in a.repos.split(",") if x.strip()]
+        ignored = tuple(x.strip() for x in a.ignore_checks.split(",") if x.strip())
+        snapshot = audit(names, records_path=a.records, previous=load_previous(a.previous), ignored_checks=ignored)
+        if a.out:
+            written = write_audit_site(snapshot, a.out)
+            print(json.dumps({"schema": snapshot["schema"], "generated_at": snapshot["generated_at"], "summary": snapshot["summary"],
+                              "written": written, "errors": snapshot["errors"]}, ensure_ascii=False))
+        else:
+            print(json.dumps(snapshot, ensure_ascii=False, indent=2))
+        return 2 if snapshot["errors"] else 0
     if a.pr is not None and (a.pr < 1 or not a.repository):
         p.error("--pr requires a repository and positive PR number")
     names = [a.repository] if a.repository else [x.strip() for x in a.repos.split(",") if x.strip()]

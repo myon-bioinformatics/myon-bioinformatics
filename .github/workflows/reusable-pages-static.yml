@@ -7,6 +7,11 @@ on:
         description: "Explicit directory to upload to GitHub Pages"
         required: true
         type: string
+      build:
+        description: "Optional shell command that produces artifact_path (runs after checkout; the runner's python3 and GITHUB_TOKEN as GH_TOKEN are available)"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -19,14 +24,20 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    # A push to the caller's default branch, or a scheduled / manual run on it (the build step regenerates the site).
+    if: github.ref_name == github.event.repository.default_branch && (github.event_name == 'push' || inputs.build != '')
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: inputs.build != ''
+        name: Build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ${{ inputs.build }}
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

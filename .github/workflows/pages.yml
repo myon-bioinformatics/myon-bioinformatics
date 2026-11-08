@@ -1,0 +1,31 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ci_status.py
+      - vendor/web_ui.py
+      - vendor/gh_identity.py
+      - site/**
+      - .github/workflows/pages.yml
+      - .github/workflows/reusable-pages-static.yml
+  schedule:
+    - cron: "17 21 * * *" # 06:17 JST, after the portfolio's repos API refresh
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/reusable-pages-static.yml
+    with:
+      artifact_path: site/dist
+      build: >-
+        python3 ci_status.py --audit --all-repos
+        --records site/records.jsonl
+        --previous https://myon-bioinformatics.github.io/myon-bioinformatics/data.json
+        --out site/dist

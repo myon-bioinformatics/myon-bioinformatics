@@ -371,6 +371,25 @@ and the boundary with the full pytest suite.
 
 [Open the parent repository audit dashboard](https://myon-bioinformatics.github.io/myon-bioinformatics/).
 
-Hosted from this repository's `site/`, independently of the portfolio. The link becomes available after this change is merged and Pages deploys. If Pages is not enabled, select GitHub Actions as its build source in this repository's Pages settings.
+Generated, not hand-written: `.github/workflows/pages.yml` (push to `main`, daily 06:17 JST, or manual) runs
 
-Read-only public GitHub observations; no merge or repository write controls. Use the weekly view to refresh the open list, then refresh individual records for current head and CI. The initial snapshot is dated 2026-11-08; abbreviated source descriptions are not a complete audit. API limits and unavailable review-thread data are shown explicitly. Records and weekly snapshots are browser-local; export JSON before moving devices or clearing browser data. Existing Sites records can be transferred using JSON export/import. This deployment does not schedule audits.
+```bash
+python3 ci_status.py --audit --all-repos --records site/records.jsonl \
+  --previous https://myon-bioinformatics.github.io/myon-bioinformatics/data.json --out site/dist
+```
+
+through the shared `reusable-pages-static.yml` (`build` input) and deploys `site/dist`. The producer
+observes every open PR and Issue of the organization through the vendored `gh_identity.py` (head,
+base, `mergeable`, check runs of the latest head, stacked-PR dependencies where a base is another open
+PR's head), and the page is rendered from that `data.json` with the vendored `web_ui.py` helpers
+(`stat_tiles`, `data_table`, `view_tabs`, drafts via `records.js`). The browser never calls GitHub.
+
+- Views: 作業キュー / 依存・競合 / 週次差分（前回の公開 `data.json` との差） / 完了
+- 状態・メモ are browser-local drafts (`records.js`, localStorage); 「↓ JSON」 exports them. To make them
+  part of the next build, append one JSON object per record id to `site/records.jsonl`
+  (`{"id": "Repo#123", "state": "done", "notes": "..."}`; `state` is one of `doing`, `waiting`, `done` or empty).
+- `copilot-pull-request-reviewer` check runs are not counted as CI (`--ignore-checks` to change).
+- Local preview: run the command above with `--repos cli_args` and open `site/dist/index.html`.
+
+![Audit dashboard: queue, filter, compare view and a draft that survives reload](docs/audit-dashboard.gif)
+- If Pages is not enabled, select GitHub Actions as its build source in this repository's Pages settings.

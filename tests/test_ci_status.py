@@ -193,3 +193,84 @@ class StatusTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+PULLS = {"pull_requests": [
+    {"number": 5, "title": "stack top", "state": "open", "draft": False, "head_sha": "a" * 40, "head_ref": "feat/top",
+     "base_sha": "b" * 40, "base_ref": "feat/base", "updated_at": "2026-11-08T00:00:00Z", "url": "https://github.com/myon-bioinformatics/Demo/pull/5"},
+    {"number": 4, "title": "base <b>", "state": "open", "draft": True, "head_sha": "c" * 40, "head_ref": "feat/base",
+     "base_sha": "d" * 40, "base_ref": "main", "updated_at": "2026-11-08T00:00:00Z", "url": "https://github.com/myon-bioinformatics/Demo/pull/4"}],
+    "truncated": False}
+ISSUES = {"issues": [{"number": 9, "title": "an issue", "url": "https://github.com/myon-bioinformatics/Demo/issues/9",
+                      "labels": ["bug"], "updated_at": "2026-11-07T00:00:00Z"}]}
+CHECKS = {"complete": True, "checks": [{"id": 1, "name": "CI", "status": "completed", "conclusion": "success", "url": None},
+                                       {"id": 2, "name": "copilot-pull-request-reviewer", "status": "completed", "conclusion": "failure", "url": None}]}
+
+
+class AuditTests(unittest.TestCase):
+    def snapshot(self, **kwargs):
+        def fake_get(path):
+            return {"mergeable": "/pulls/5" not in path, "mergeable_state": "clean"}
+        with patch.object(ci.ghi, "pull_requests", return_value=PULLS), patch.object(ci.ghi, "issues", return_value=ISSUES), \
+                patch.object(ci, "get", side_effect=fake_get), patch.object(ci.ghi, "checks_for_sha", return_value=CHECKS):
+            return ci.audit(["Demo"], **kwargs)
+
+    def test_audit_links_stacked_prs_conflicts_and_ignores_reviewer_checks(self):
+        snap = self.snapshot()
+        by_id = {r["id"]: r for r in snap["records"]}
+        self.assertEqual(sorted(by_id), ["Demo#4", "Demo#5", "Demo#i9"])
+        self.assertEqual(by_id["Demo#5"]["depends_on"], ["Demo#4"])
+        self.assertTrue(by_id["Demo#5"]["conflict"])
+        self.assertEqual(by_id["Demo#4"]["depends_on"], [])
+        self.assertEqual(by_id["Demo#5"]["ci"], "COMPLETE", "the reviewer check run does not count as CI")
+        self.assertEqual(by_id["Demo#i9"]["ci"], "-")
+        self.assertEqual(snap["summary"], {"repositories": 1, "pull_requests": 2, "issues": 1, "ci_failed": 0,
+                                           "conflicts": 1, "stacked": 1, "done": 0})
+        self.assertEqual(snap["ignored_checks"], ["copilot-pull-request-reviewer"])
+
+    def test_records_file_and_previous_snapshot(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            records = Path(directory) / "records.jsonl"
+            records.write_text(json.dumps({"id": "Demo#4", "state": "done", "notes": "merged first"}) + "\n", encoding="utf-8")
+            previous = {"records": [{"id": "Demo#4", "head_sha": "c" * 40, "ci": "FAILED"}, {"id": "Demo#1", "head_sha": "x", "ci": "COMPLETE"}]}
+            snap = self.snapshot(records_path=records, previous=previous)
+            by_id = {r["id"]: r for r in snap["records"]}
+            self.assertEqual((by_id["Demo#4"]["state"], by_id["Demo#4"]["notes"]), ("done", "merged first"))
+            self.assertEqual(snap["summary"]["done"], 1)
+            self.assertEqual(snap["changes"], {"new": ["Demo#5", "Demo#i9"], "gone": ["Demo#1"], "changed": ["Demo#4"]})
+            written = ci.write_audit_site(snap, Path(directory) / "dist")
+            self.assertEqual(written, ["data.json", "index.html", "js/navigation.js", "js/records.js"])
+            html = (Path(directory) / "dist" / "index.html").read_text(encoding="utf-8")
+            self.assertIn("&lt;b&gt;", html)
+            self.assertNotIn("base <b>", html)
+            for view in ("queue", "compare", "weekly", "done"):
+                self.assertIn(f'data-ui-view="{view}"', html)
+            self.assertIn('data-ui-draft="Demo#5:notes"', html)
+            self.assertIn('data-ui-records', html)
+            self.assertIn("Meiryo", html)
+            self.assertIn('src="./js/records.js"', html)
+            self.assertNotIn("api.github.com", html, "the page never fetches: the producer did")
+            data = json.loads((Path(directory) / "dist" / "data.json").read_text(encoding="utf-8"))
+            self.assertEqual(data["schema"], "parent-audit/1")
+
+    def test_audit_reports_repository_errors_without_stopping(self):
+        with patch.object(ci.ghi, "pull_requests", side_effect=RuntimeError("boom")):
+            snap = ci.audit(["Demo"])
+        self.assertEqual(snap["records"], [])
+        self.assertEqual(snap["errors"][0]["repository"], "Demo")
+        self.assertEqual(snap["errors"][0]["error"], "RuntimeError")
+
+    def test_cli_audit_writes_site(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(ci, "audit", return_value={"schema": "parent-audit/1", "generated_at": "t", "owner": ci.OWNER, "repositories": [],
+                                                         "ignored_checks": [], "records": [], "summary": {"repositories": 0, "pull_requests": 0, "issues": 0, "ci_failed": 0, "conflicts": 0, "stacked": 0, "done": 0},
+                                                         "errors": [], "truncated": [], "changes": {"new": [], "gone": [], "changed": []}}) as fake:
+                out = io.StringIO()
+                with redirect_stdout(out):
+                    code = ci.main(["--audit", "--repos", "Demo", "--out", directory, "--ignore-checks", "x,y"])
+            self.assertEqual(code, 0)
+            self.assertEqual(fake.call_args.kwargs["ignored_checks"], ("x", "y"))
+            self.assertTrue((Path(directory) / "index.html").is_file())
+            self.assertEqual(json.loads(out.getvalue())["written"][0], "data.json")
