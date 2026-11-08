@@ -386,8 +386,17 @@ PR's head), and the page is rendered from that `data.json` with the vendored `we
 
 - Views: 作業キュー / 依存・競合 / 週次差分（前回の公開 `data.json` との差） / 完了
 - 状態・メモ are browser-local drafts (`records.js`, localStorage); 「↓ JSON」 exports them. To make them
-  part of the next build, append one JSON object per record id to `site/records.jsonl`
-  (`{"id": "Repo#123", "state": "done", "notes": "..."}`; `state` is one of `doing`, `waiting`, `done` or empty).
+  part of the next build, import the export into `site/records.jsonl`
+  (`{"id": "Repo#123", "state": "done", "notes": "..."}`; `state` is one of `doing`, `waiting`, `done` or empty):
+
+  ```bash
+  python -S gh_ops.py records-import records.json                      # plan against the local file
+  python -S gh_ops.py records-import records.json --write              # merge locally
+  python -S gh_ops.py records-import records.json --repo myon-bioinformatics/myon-bioinformatics \
+    --branch audit/records --pr --write                                # one commit on a branch + PR, no clone
+  ```
+
+  An empty draft value removes that field; unrelated fields and the line order are kept.
 - `copilot-pull-request-reviewer` check runs are not counted as CI (`--ignore-checks` to change).
 - Local preview: run the command above with `--repos cli_args` and open `site/dist/index.html`.
 
