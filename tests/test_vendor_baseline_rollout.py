@@ -39,6 +39,8 @@ ROLLOUT_FIXTURES.update(json.loads(
 POST_BASELINE_ENROLLMENTS = {
     "myon-bioinformatics/Ironmate": {"vendor/fetch_module.py", "vendor/Aoi-LICENSE"},
     "myon-bioinformatics/myon-bioinformatics.github.io": {"tools/vendor/web-ui-generator/web_ui.py"},
+    # The parent audit dashboard (ci_status.py --audit --html) renders through the vendored web_ui.py.
+    "myon-bioinformatics/myon-bioinformatics": {"vendor/web_ui.py", "vendor/web_ui-LICENSE"},
 }
 
 

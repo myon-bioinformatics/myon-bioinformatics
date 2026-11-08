@@ -1,0 +1,70 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ci_status.py
+      - tools/build_audit_pages.py
+      - vendor/web_ui.py
+      - vendor/gh_identity.py
+      - site/**
+      - docs/audit-pages.md
+      - .github/workflows/pages.yml
+      - .github/workflows/reusable-pages-static.yml
+  pull_request:
+    paths:
+      - ci_status.py
+      - tools/build_audit_pages.py
+      - site/**
+      - tests/test_audit_pages.py
+      - tests/test_audit_model.cjs
+      - .github/workflows/pages.yml
+      - .github/workflows/reusable-pages-static.yml
+  schedule:
+    - cron: "17 21 * * *" # 06:17 JST; daily observations, first successful build per ISO week retained
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+      - name: Test audit producer and publication failure boundaries
+        run: |
+          python3 -S -m unittest discover -s tests -p test_ci_status.py
+          python3 -S -m unittest discover -s tests -p test_audit_pages.py
+          node --check site/ui/app.js
+          node --test tests/test_audit_model.cjs
+  live-smoke:
+    needs: validate
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build from live public observations without publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 -S tools/build_audit_pages.py
+          --repos cli_args,xprobe --previous '' --previous-history ''
+          --out /tmp/audit-live-smoke
+  deploy:
+    needs: validate
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/reusable-pages-static.yml
+    with:
+      artifact_path: site/dist
+      build: python3 -S tools/build_audit_pages.py

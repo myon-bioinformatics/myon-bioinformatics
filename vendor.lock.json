@@ -18,6 +18,24 @@
       "destination": "vendor/gh_identity-LICENSE",
       "blob_sha": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
       "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
+    },
+    {
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
+      "ref": "5bae849353ea4c3fb5578e205c7a7c0314131fed",
+      "commit": "5bae849353ea4c3fb5578e205c7a7c0314131fed",
+      "source": "web_ui.py",
+      "destination": "vendor/web_ui.py",
+      "blob_sha": "2b3bd0854baab5cc88c3aa00806d3df6d94a511f",
+      "sha256": "9fcdc013cd572c38e9c8fa5e65c75279dacb9a3d0e6bb583290d8bebb87e353c"
+    },
+    {
+      "repository": "myon-bioinformatics/PySaiyanWeBoo",
+      "ref": "5bae849353ea4c3fb5578e205c7a7c0314131fed",
+      "commit": "5bae849353ea4c3fb5578e205c7a7c0314131fed",
+      "source": "LICENSE",
+      "destination": "vendor/web_ui-LICENSE",
+      "blob_sha": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
+      "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
     }
   ]
 }

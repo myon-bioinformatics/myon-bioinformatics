@@ -29,6 +29,8 @@ is a thin adapter over them::
     python -S gh_ops.py subtree-push --prefix pythdragoras --remote https://github.com/OWNER/CHILD --branch sync/x
     python -S gh_ops.py subtree-push --prefix pythdragoras --remote https://github.com/OWNER/CHILD --branch sync/x --write
     python -S gh_ops.py url compare OWNER/REPO main feature   # no network; prints web + api URLs
+    python -S gh_ops.py records-import records.json                         # merge a dashboard export locally (plan)
+    python -S gh_ops.py records-import records.json --repo OWNER/REPO --branch audit/records --pr --write
 
 Exit codes: 0 = OK, 1 = a checked condition was not met, 2 = input or
 communication error. Flags are matched in full (no abbreviations).
@@ -2681,6 +2683,152 @@ _SEARCH_ENDPOINTS = {
 }
 
 
+# ---------------------------------------------------------------- audit records (site/records.jsonl)
+
+RECORD_FIELDS = ("state", "notes", "next", "blocker")
+RECORD_STATES = ("", "doing", "waiting", "done")
+_RECORD_ID = re.compile(r"[A-Za-z0-9_.-]+#i?[0-9]+\Z")
+
+
+def records_from_jsonl(text: str) -> list[dict]:
+    """Parse ``site/records.jsonl`` (one object per line, ``id`` required); blank lines are skipped."""
+    rows = []
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError as exc:
+            raise GhOpsError(f"records line {number}: {exc}") from None
+        if not isinstance(row, dict) or not _RECORD_ID.fullmatch(str(row.get("id", ""))):
+            raise GhOpsError(f"records line {number}: an object with a Repo#number id is required")
+        rows.append(row)
+    return rows
+
+
+def records_to_jsonl(rows: list[dict]) -> str:
+    return "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows)
+
+
+def drafts_from_export(data: Any) -> dict:
+    """``{"Repo#1:state": "done", ...}`` from the dashboard's JSON export (``records.js``) or a bare mapping."""
+    drafts = data.get("drafts") if isinstance(data, dict) and isinstance(data.get("drafts"), dict) else data
+    if not isinstance(drafts, dict):
+        raise GhOpsError("export must be a JSON object with drafts")
+    out: dict = {}
+    for key, value in drafts.items():
+        record_id, _, field = str(key).rpartition(":")
+        if not _RECORD_ID.fullmatch(record_id) or field not in RECORD_FIELDS:
+            raise GhOpsError(f"unknown draft key {key!r} (expected Repo#number:{'|'.join(RECORD_FIELDS)})")
+        if not isinstance(value, str):
+            raise GhOpsError(f"draft {key!r} must be a string")
+        if field == "state" and value not in RECORD_STATES:
+            raise GhOpsError(f"draft {key!r}: state must be one of {', '.join(repr(x) for x in RECORD_STATES)}")
+        out.setdefault(record_id, {})[field] = value
+    return out
+
+
+def merge_records(text: str, drafts: dict) -> dict:
+    """Upsert draft fields into the JSON Lines text, keeping existing order and unrelated fields.
+
+    An empty draft value removes that field (a record with no fields left is dropped).
+    Returns ``{"text", "added", "updated", "removed", "unchanged"}``; ``text`` is the merged file.
+    """
+    rows = records_from_jsonl(text)
+    by_id = {row["id"]: row for row in rows}
+    added, updated, removed, unchanged = [], [], [], []
+    for record_id in sorted(drafts):
+        before = dict(by_id.get(record_id) or {})
+        row = by_id.setdefault(record_id, {"id": record_id})
+        for field, value in drafts[record_id].items():
+            if value == "":
+                row.pop(field, None)
+            else:
+                row[field] = value
+        if len(row) == 1:
+            if before:
+                removed.append(record_id)
+            by_id.pop(record_id)
+        elif not before:
+            added.append(record_id)
+        elif row != before:
+            updated.append(record_id)
+        else:
+            unchanged.append(record_id)
+    merged = [by_id[row["id"]] for row in rows if row["id"] in by_id]
+    merged += [by_id[record_id] for record_id in added]
+    return {"text": records_to_jsonl(merged), "added": added, "updated": updated, "removed": removed, "unchanged": unchanged}
+
+
+def records_import(export_path: str, *, records_path: str = "site/records.jsonl", repo: str | None = None,
+                   branch: str | None = None, open_pr: bool = False, write: bool = False,
+                   client: Client | None = None) -> dict:
+    """Merge a dashboard export into the records file, locally or as one commit on a branch (plus a PR).
+
+    Without ``repo`` the local file is merged (written only with ``write``). With ``repo`` and
+    ``branch`` the current file is read from the branch when it exists, otherwise from the default
+    branch, and the merged file is committed through ``commit_files``; a missing branch is created
+    from the default branch tip, and ``open_pr`` opens a PR for the branch unless one is attached.
+    """
+    export = json.loads(Path(export_path).read_text(encoding="utf-8"))
+    drafts = drafts_from_export(export)
+    out: dict = {"ok": False, "dry_run": not write, "records_path": records_path, "drafts": sum(len(v) for v in drafts.values())}
+    if not drafts:
+        return {**out, "reason": "the export holds no drafts"}
+    if repo is None:
+        local = Path(records_path)
+        current = local.read_text(encoding="utf-8") if local.is_file() else ""
+        merged = merge_records(current, drafts)
+        changed = bool(merged["added"] or merged["updated"] or merged["removed"])
+        if write and changed:
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_text(merged["text"], encoding="utf-8")
+        return {**out, "ok": True, **{k: merged[k] for k in ("added", "updated", "removed", "unchanged")},
+                "written": bool(write and changed)}
+    if not branch:
+        raise GhOpsError("--branch is required with --repo")
+    client, repo = _client(client), _repo(repo)
+    branch = _validate_branch_name(branch, field="branch")
+    default_branch = client.get(f"/repos/{repo}")["default_branch"]
+    tip = _git_ref_tip_sha_optional(client, repo, branch)
+    source_ref = branch if tip else default_branch
+    current = ""
+    try:
+        blob = client.get(f"/repos/{repo}/contents/{urllib.parse.quote(records_path)}", params={"ref": source_ref})
+        current = base64.b64decode(blob.get("content") or "").decode("utf-8")
+    except GhOpsError as exc:
+        if "404" not in str(exc):
+            raise
+    merged = merge_records(current, drafts)
+    out.update({"repository": repo, "branch": branch, "source_ref": source_ref,
+                **{k: merged[k] for k in ("added", "updated", "removed", "unchanged")}})
+    if not (merged["added"] or merged["updated"] or merged["removed"]):
+        return {**out, "ok": True, "reason": "records already up to date"}
+    if not write:
+        return {**out, "ok": True, "plan": {"create_branch": tip is None, "open_pr": open_pr}}
+    if tip is None:
+        base_tip = _git_ref_tip_sha(client, repo, default_branch)
+        client.request("POST", f"/repos/{repo}/git/refs", {"ref": f"refs/heads/{branch}", "sha": base_tip}, expect=(201,))
+        out["created_branch"] = True
+    summary = ", ".join(f"{k} {len(merged[k])}" for k in ("added", "updated", "removed") if merged[k])
+    commit = commit_files(repo, branch, {records_path: merged["text"].encode("utf-8")},
+                          f"audit: import dashboard records ({summary})", write=True, client=client)
+    out["commit"] = commit
+    if not commit["ok"]:
+        return {**out, "reason": commit.get("reason") or "commit failed"}
+    if open_pr:
+        attached = pr_for_branch(repo, branch, state="open", client=client)["pulls"]
+        if attached:
+            out["pr"] = attached[0]["number"]
+        else:
+            created = client.request("POST", f"/repos/{repo}/pulls",
+                                     {"head": branch, "base": default_branch, "title": "audit: import dashboard records",
+                                      "body": f"`gh_ops.py records-import` merged a dashboard export into `{records_path}` ({summary})."},
+                                     expect=(201,)).data
+            out["pr"] = created.get("number")
+    return {**out, "ok": True}
+
+
 def url_pr(repo: str, number: int, *, tab: str | None = None) -> dict:
     """Web URL for a PR, or one of its ``checks``/``files``/``commits`` tabs.
 
@@ -2874,6 +3022,15 @@ def _render(command: str, result: dict) -> str:
                 if result.get("state") == "pushed" else
                 f"dry run subtree-push: would run {' '.join(result['command'])}")
         return head + f"\nsplit={result['split_method']}{compare}\n{result['provenance']['trailer']}"
+    if command == "records-import":
+        head = (f"{'OK' if result['ok'] else 'NG'} records-import {result['records_path']}"
+                + (f" -> {result['repository']}@{result['branch']}" if result.get("repository") else "")
+                + f" ({'dry run' if result.get('dry_run') else 'applied'})"
+                + (f": {result['reason']}" if result.get("reason") else ""))
+        rows = [f"  {name:9} {', '.join(result[name])}" for name in ("added", "updated", "removed", "unchanged") if result.get(name)]
+        if result.get("pr"):
+            rows.append(f"  pr        #{result['pr']}")
+        return "\n".join([head, *rows])
     if command == "commit-files":
         head = (f"{'OK' if result['ok'] else 'NG'} commit-files {result['repository']}@{result['branch']} "
                 f"({'dry run' if result.get('dry_run') else 'applied'}) head {(result.get('head') or '?')[:7]}"
@@ -3147,6 +3304,15 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
                    help="permit writing directly to the repository's default branch")
     p.add_argument("--write", action="store_true")
 
+    p = _command_parser(sub, "records-import", help="merge a dashboard JSON export into site/records.jsonl, locally or as "
+                                                "one commit on a branch (+PR); planned unless --write")
+    p.add_argument("export", help="JSON written by the dashboard's export button (web-ui-drafts/1) or a {id:field: value} object")
+    p.add_argument("--records", default="site/records.jsonl", metavar="PATH", help="records file (default site/records.jsonl)")
+    p.add_argument("--repo", metavar="OWNER/REPO", help="commit to this repository instead of the local file")
+    p.add_argument("--branch", help="branch to commit to (created from the default branch when missing)")
+    p.add_argument("--pr", action="store_true", help="open a PR for the branch unless one is attached")
+    p.add_argument("--write", action="store_true")
+
     p = _command_parser(sub, "url", help="build a github.com / api.github.com URL for something; no network access")
     url_sub = p.add_subparsers(dest="url_kind", required=True)
 
@@ -3255,6 +3421,9 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
                            allow_unmerged_commits=args.allow_unmerged_commits,
                            allow_compare_failure=args.allow_compare_failure,
                            expect_head_sha=args.expect_head_sha, client=client)
+    if command == "records-import":
+        return records_import(args.export, records_path=args.records, repo=args.repo, branch=args.branch,
+                              open_pr=args.pr, write=args.write, client=client)
     if command == "commit-files":
         files = {}
         for spec in args.file:

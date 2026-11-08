@@ -365,3 +365,54 @@ without importing another checkout; see [preflight usage and limits](docs/prefli
 See [standard-library discovery commands](docs/unittest-discovery.md) for
 validated `python -S -m unittest discover` recipes, filename/name filtering,
 and the boundary with the full pytest suite.
+
+
+## Weekly repository audit dashboard
+
+[Open the parent repository audit dashboard](https://myon-bioinformatics.github.io/myon-bioinformatics/).
+
+Generated, not hand-written: `.github/workflows/pages.yml` (push to `main`, daily 06:17 JST, or manual) runs
+
+```bash
+python3 -S tools/build_audit_pages.py
+```
+
+through the shared `reusable-pages-static.yml` (`build` input) and deploys `site/dist`. The producer
+observes every open PR and Issue of the organization through the vendored `gh_identity.py` (head,
+base, `mergeable`, check runs of the latest head, stacked-PR dependencies where a base is another open
+PR's head), and the page is rendered from that `data.json` with the vendored `web_ui.py` helpers
+(`stat_tiles`, `data_table`, `view_tabs`, drafts via `records.js`). The browser never calls GitHub.
+
+- Views: 作業キュー / 依存・競合 / 週次差分（前回の公開 `data.json` との差） / 完了
+- 状態・メモ are browser-local drafts (`records.js`, localStorage); 「↓ JSON」 exports them. To make them
+  part of the next build, import the export into `site/records.jsonl`
+  (`{"id": "Repo#123", "state": "done", "notes": "..."}`; `state` is one of `doing`, `waiting`, `done` or empty):
+
+  ```bash
+  python -S gh_ops.py records-import records.json                      # plan against the local file
+  python -S gh_ops.py records-import records.json --write              # merge locally
+  python -S gh_ops.py records-import records.json --repo myon-bioinformatics/myon-bioinformatics \
+    --branch audit/records --pr --write                                # one commit on a branch + PR, no clone
+  ```
+
+  An empty draft value removes that field; unrelated fields and the line order are kept.
+- `copilot-pull-request-reviewer` check runs are not counted as CI (`--ignore-checks` to change).
+- ⚖ 規約ずれ lists naming drift against the fleet conventions (`CONVENTIONS` in `ci_status.py`, the table
+  recorded in `templates/README.md`: `ci.yml` = `CI`, `pages.yml` = `Pages`, job ids `resolve-vendor` /
+  `vendor-locked` / `failure-identity`, kebab-case `docs/*.md`). The terminal form, exit 1 while anything drifts:
+
+  ```bash
+  python3 ci_status.py --conventions --all-repos
+  python3 ci_status.py --conventions --repos Aoi,markdown --json
+  ```
+
+  Fix a repository with one PR and merge it before PRs that edit the same files, so git's rename
+  detection carries their changes over.
+- Local preview: run the command above with `--repos cli_args` and open `site/dist/index.html`.
+
+The Pages build also includes the Sites workbench (filter, priority, comparison, completion records,
+commonization progress), strict complete-data validation, and 13 ISO-week snapshots in JST.
+See [Pages operation, tests and recovery](docs/audit-pages.md).
+
+![Audit dashboard: queue, filter, compare view and a draft that survives reload](docs/audit-dashboard.gif)
+- If Pages is not enabled, select GitHub Actions as its build source in this repository's Pages settings.
