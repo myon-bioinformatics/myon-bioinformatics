@@ -50,7 +50,12 @@
     }
     return result;
   }
-  const model={normalize,mergeRecord,importBundle};
+  function completedRecords(current, archive, drafts) {
+    const ids=new Set(current.map(r=>r.id));
+    return Object.values(archive).filter(r=>!ids.has(r.id) && mergeRecord(r,drafts).state==='完了')
+      .map(r=>({...r,archived:true}));
+  }
+  const model={normalize,mergeRecord,importBundle,completedRecords};
   if (typeof module !== 'undefined') module.exports=model;
   else root.AuditModel=model;
 })(typeof window === 'undefined'?{}:window);

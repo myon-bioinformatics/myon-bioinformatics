@@ -30,3 +30,11 @@ test('malformed URLs, duplicate rows and invalid records are rejected atomically
  assert.throws(()=>m.importBundle({records:{'__proto__#bad':{notes:'x'}}}));
  assert.deepEqual(m.importBundle({records:{[url]:{notes:'safe',head:'forged'}}}),{[url]:{notes:'safe'}});
 });
+test('completion evidence survives disappearing from open list without becoming current CI',()=>{
+ const item=m.normalize({records:[observation]})[0];
+ const archive={[url]:item},drafts={[url]:{state:'完了',notes:'accepted'}};
+ assert.deepEqual(m.completedRecords([item],archive,drafts),[]);
+ const result=m.completedRecords([],archive,drafts);
+ assert.equal(result.length,1);assert.equal(result[0].archived,true);assert.equal(result[0].head,item.head);
+ assert.deepEqual(m.completedRecords([],archive,{[url]:{state:'対応中'}}),[]);
+});
