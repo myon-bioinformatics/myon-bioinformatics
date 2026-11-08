@@ -832,3 +832,68 @@ def test_evidence_cli_offline(tmp_path, capsys):
         pytest.fail("network used")
     assert sync.main(["evidence", "--root", str(tmp_path), "--runtime-evidence", "vendor-promotion.json"], get=no_network) == 0
     assert json.loads(capsys.readouterr().out)["runtime"] == ["vendor-promotion.json"]
+
+
+def _staging_left(root):
+    return sorted(p.name for p in root.iterdir() if p.name.startswith(".vendor-recreate-"))
+
+
+def test_recreate_downloads_even_valid_copies_and_replaces_them(tmp_path):
+    """recreate(): the checkout copy is valid, yet the bytes still come from GitHub (empty staging), then replace it."""
+    path, value = lock(tmp_path)
+    placed = tmp_path / "vendor/adapter.py"
+    placed.parent.mkdir()
+    placed.write_bytes(b"old\n")
+    before = placed.stat().st_ino
+    urls = []
+
+    def get(url):
+        urls.append(url)
+        return b"old\n"
+
+    result = sync.recreate(path.name, tmp_path, get=get)
+    assert result == {"schema": sync.SCHEMA, "mode": "recreate", "changed_paths": [], "recreated": ["vendor/adapter.py"]}
+    assert urls == [f"https://raw.githubusercontent.com/myon-bioinformatics/xprobe/{OLD}/scripts/adapter.py"]
+    assert placed.read_bytes() == b"old\n" and placed.stat().st_ino != before    # a new file took its place
+    assert json.loads(path.read_text(encoding="utf-8")) == value and _staging_left(tmp_path) == []
+
+
+@pytest.mark.parametrize("served", [b"tampered\n", None])
+def test_recreate_failure_keeps_the_checked_in_files(tmp_path, served):
+    """A digest mismatch or a failed download stops before any move: the checkout keeps its verified copy, no staging is left."""
+    path, _ = lock(tmp_path, [entry(), entry(b"two\n", source="scripts/two.py", destination="vendor/two.py")])
+    (tmp_path / "vendor").mkdir()
+    (tmp_path / "vendor/adapter.py").write_bytes(b"old\n")
+    (tmp_path / "vendor/two.py").write_bytes(b"two\n")
+
+    def get(url):
+        if served is None:
+            raise sync.HTTPError(url, 404, "Not Found", {}, None)
+        return served if url.endswith("/two.py") else b"old\n"
+
+    with pytest.raises((ValueError, sync.HTTPError)):
+        sync.recreate(path.name, tmp_path, get=get)
+    assert (tmp_path / "vendor/adapter.py").read_bytes() == b"old\n" and (tmp_path / "vendor/two.py").read_bytes() == b"two\n"
+    assert _staging_left(tmp_path) == []
+
+
+def test_recreate_refuses_an_edited_checkout_before_the_network(tmp_path):
+    path, _ = lock(tmp_path)
+    (tmp_path / "vendor").mkdir()
+    (tmp_path / "vendor/adapter.py").write_bytes(b"edited\n")
+    with pytest.raises(ValueError, match="digest mismatch"):
+        sync.recreate(path.name, tmp_path, get=lambda url: pytest.fail("network used for an edited checkout"))
+    assert (tmp_path / "vendor/adapter.py").read_bytes() == b"edited\n"
+
+
+def test_recreate_with_a_manifest_in_a_subdirectory_and_from_the_cli(tmp_path, capsys):
+    """flutter_navigation_basic keeps python/vendor.lock.json; destinations stay relative to the root."""
+    (tmp_path / "python").mkdir()
+    path, _ = lock(tmp_path / "python")
+    (tmp_path / "vendor").mkdir()
+    (tmp_path / "vendor/adapter.py").write_bytes(b"old\n")
+    assert sync.main(["recreate", "--root", str(tmp_path), "--manifest", "python/vendor.lock.json"], get=lambda url: b"old\n") == 0
+    assert json.loads(capsys.readouterr().out)["recreated"] == ["vendor/adapter.py"]
+    assert (tmp_path / "vendor/adapter.py").read_bytes() == b"old\n" and _staging_left(tmp_path) == []
+    assert sync.main(["recreate", "--root", str(tmp_path), "--manifest", "python/vendor.lock.json"], get=lambda url: b"bad\n") == 2
+    assert "digest mismatch" in capsys.readouterr().err

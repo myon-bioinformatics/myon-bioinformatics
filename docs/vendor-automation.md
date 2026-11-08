@@ -40,6 +40,17 @@ bundle from the entry at the locked commit and compares it. See `docs/minpy.md`.
 This minimal schema example is not a complete consumer manifest: add the upstream
 LICENSE with its independently verified hashes before adoption.
 
+## Recreating the locked files in CI
+
+`python -S vendor_sync.py recreate --manifest vendor.lock.json` (or `recreate(manifest, root)` from
+Python) is the CI step that proves every checked-in copy can be fetched again from GitHub. It checks
+the checkout copies, materializes the lock into an empty staging directory under the root (nothing in
+the checkout can satisfy it), checks the staged bytes, moves them over the checkout copies one file at
+a time, and checks again. A failed download or digest leaves the checked-in files in place, unlike
+the inline "unlink every destination, then materialize" step it replaces. Placement is atomic per
+file, not a transaction across the batch. It prints `{"schema", "mode": "recreate", "changed_paths",
+"recreated"}`; `changed_paths` stays empty because the recreated bytes are the locked bytes.
+
 ## Central consumer topology
 
 `vendor-consumers.json` is the parent-owned machine-readable registry of

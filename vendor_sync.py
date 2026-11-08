@@ -30,6 +30,7 @@ __all__ = [
     "validate_minpy_bundle",
     "evidence",
     "synchronize",
+    "recreate",
     "promote",
     "commit_merged_into_default",
     "collect_lock_pins",
@@ -780,6 +781,34 @@ def synchronize(manifest, root, mode, *, get=_get):
     if mode == "enroll":
         synchronize(manifest.relative_to(root).as_posix(), root, "check", get=get)
     return {"schema": SCHEMA, "mode": mode, "changed_paths": changed}
+
+
+def recreate(manifest, root, *, get=_get):
+    """Fetch every locked file again from GitHub and put those bytes over the checkout copies.
+
+    The checked-in copies are verified first. The fresh snapshot is materialized and checked in an
+    empty staging directory under ``root`` (nothing in the checkout can satisfy it), and only then
+    moved over the checkout copies one file at a time, so a failed download or digest leaves the
+    checked-in files in place for CI evidence. Placement is atomic per file, not a transaction across
+    the batch. This is the "unlink every destination, materialize, check" CI step as one call.
+    """
+    root = Path(root).resolve()
+    manifest_path = _target(root, manifest)
+    relative = manifest_path.relative_to(root).as_posix()
+    synchronize(relative, root, "check", get=get)
+    lock = validate(json.loads(manifest_path.read_text(encoding="utf-8")))
+    with tempfile.TemporaryDirectory(prefix=".vendor-recreate-", dir=root) as directory:
+        staging = Path(directory)
+        staged = _target(staging, relative)
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(manifest_path, staged)
+        synchronize(relative, staging, "materialize", get=get)
+        synchronize(relative, staging, "check", get=get)
+        for item in lock["files"]:
+            os.replace(_target(staging, item["destination"]), _target(root, item["destination"]))
+    synchronize(relative, root, "check", get=get)
+    return {"schema": SCHEMA, "mode": "recreate", "changed_paths": [],
+            "recreated": [item["destination"] for item in lock["files"]]}
 
 
 def _git_subprocess_env():
@@ -2834,6 +2863,7 @@ def main(argv=None, *, get=_get):
         choices=(
             "check",
             "materialize",
+            "recreate",
             "update",
             "promote",
             "enroll",
@@ -2997,6 +3027,8 @@ def main(argv=None, *, get=_get):
             result = promote(args.manifest, args.root, get=get)
         elif args.mode == "evidence":
             result = evidence(args.manifest, args.root, runtime=args.runtime_evidence)
+        elif args.mode == "recreate":
+            result = recreate(args.manifest, args.root, get=get)
         else:
             result = synchronize(args.manifest, args.root, args.mode, get=get)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, HTTPError) as error:
