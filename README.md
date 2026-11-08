@@ -398,6 +398,17 @@ PR's head), and the page is rendered from that `data.json` with the vendored `we
 
   An empty draft value removes that field; unrelated fields and the line order are kept.
 - `copilot-pull-request-reviewer` check runs are not counted as CI (`--ignore-checks` to change).
+- ⚖ 規約ずれ lists naming drift against the fleet conventions (`CONVENTIONS` in `ci_status.py`, the table
+  recorded in `templates/README.md`: `ci.yml` = `CI`, `pages.yml` = `Pages`, job ids `resolve-vendor` /
+  `vendor-locked` / `failure-identity`, kebab-case `docs/*.md`). The terminal form, exit 1 while anything drifts:
+
+  ```bash
+  python3 ci_status.py --conventions --all-repos
+  python3 ci_status.py --conventions --repos Aoi,markdown --json
+  ```
+
+  Fix a repository with one PR and merge it before PRs that edit the same files, so git's rename
+  detection carries their changes over.
 - Local preview: run the command above with `--repos cli_args` and open `site/dist/index.html`.
 
 ![Audit dashboard: queue, filter, compare view and a draft that survives reload](docs/audit-dashboard.gif)

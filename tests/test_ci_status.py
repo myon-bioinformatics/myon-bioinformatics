@@ -212,7 +212,8 @@ class AuditTests(unittest.TestCase):
         def fake_get(path):
             return {"mergeable": "/pulls/5" not in path, "mergeable_state": "clean"}
         with patch.object(ci.ghi, "pull_requests", return_value=PULLS), patch.object(ci.ghi, "issues", return_value=ISSUES), \
-                patch.object(ci, "get", side_effect=fake_get), patch.object(ci.ghi, "checks_for_sha", return_value=CHECKS):
+                patch.object(ci, "get", side_effect=fake_get), patch.object(ci.ghi, "checks_for_sha", return_value=CHECKS), \
+                patch.object(ci, "conventions_repository", return_value=([], False)):
             return ci.audit(["Demo"], **kwargs)
 
     def test_audit_links_stacked_prs_conflicts_and_ignores_reviewer_checks(self):
@@ -225,7 +226,7 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(by_id["Demo#5"]["ci"], "COMPLETE", "the reviewer check run does not count as CI")
         self.assertEqual(by_id["Demo#i9"]["ci"], "-")
         self.assertEqual(snap["summary"], {"repositories": 1, "pull_requests": 2, "issues": 1, "ci_failed": 0,
-                                           "conflicts": 1, "stacked": 1, "done": 0})
+                                           "conflicts": 1, "stacked": 1, "done": 0, "conventions": 0})
         self.assertEqual(snap["ignored_checks"], ["copilot-pull-request-reviewer"])
 
     def test_records_file_and_previous_snapshot(self):
@@ -274,3 +275,104 @@ class AuditTests(unittest.TestCase):
             self.assertEqual(fake.call_args.kwargs["ignored_checks"], ("x", "y"))
             self.assertTrue((Path(directory) / "index.html").is_file())
             self.assertEqual(json.loads(out.getvalue())["written"][0], "data.json")
+
+
+CI_TEXT = """name: Tests
+on:
+  pull_request:
+jobs:
+  changes:
+    uses: ./.github/workflows/reusable-change-detection.yml
+  resolve-aoi:
+    runs-on: ubuntu-latest
+  vendor-dispatch:
+    name: vendor lock dispatch
+    runs-on: ubuntu-latest
+  failure-identity:
+    needs: [resolve-aoi]
+    uses: ./.github/workflows/reusable-junit-identity.yml
+"""
+PAGES_TEXT = """name: Studio Pages
+on:
+  workflow_run:
+    workflows: ["Tests"]
+jobs:
+  deploy:
+    steps:
+      - uses: actions/deploy-pages@abc
+"""
+LABEL_TEXT = """name: CI failure label
+on:
+  workflow_run:
+    workflows:
+      - 'Tests'
+      - 'Shared Python launcher'
+jobs:
+  label:
+    runs-on: ubuntu-latest
+"""
+
+
+class ConventionTests(unittest.TestCase):
+    def test_workflow_facts_without_yaml(self):
+        facts = ci.workflow_facts(CI_TEXT)
+        self.assertEqual(facts["name"], "Tests")
+        self.assertEqual(facts["jobs"], ["changes", "resolve-aoi", "vendor-dispatch", "failure-identity"])
+        self.assertEqual(facts["job_names"], {"vendor-dispatch": "vendor lock dispatch"})
+        self.assertEqual(ci.workflow_facts(PAGES_TEXT)["workflow_run"], ["Tests"])
+        self.assertEqual(ci.workflow_facts(LABEL_TEXT)["workflow_run"], ["Tests", "Shared Python launcher"])
+
+    def test_check_conventions_reports_every_rule_once(self):
+        paths = [".github/workflows/tests.yml", ".github/workflows/Studio_Pages.yml", ".github/workflows/label.yml",
+                 ".github/PULL_REQUEST_TEMPLATE.md", "docs/ANCHOR_MATCHER.md", "docs/good-name.md", "docs/README.md", "README.md"]
+        found = ci.check_conventions("Demo", paths, {"tests.yml": CI_TEXT, "Studio_Pages.yml": PAGES_TEXT, "label.yml": LABEL_TEXT})
+        by_rule = {}
+        for f in found:
+            by_rule.setdefault(f["rule"], []).append((f["path"], f["found"], f["expected"]))
+        self.assertEqual(by_rule["workflow-role"], [(".github/workflows/Studio_Pages.yml", "Studio_Pages.yml", "pages.yml"),
+                                                    (".github/workflows/tests.yml", "tests.yml", "ci.yml")])
+        self.assertEqual(by_rule["workflow-file"], [(".github/workflows/Studio_Pages.yml", "Studio_Pages.yml", "lowercase, hyphens, .yml")])
+        self.assertEqual(by_rule["workflow-run"], [(".github/workflows/label.yml", "Shared Python launcher", "an existing workflow name")])
+        self.assertEqual(by_rule["doc-file"], [("docs/ANCHOR_MATCHER.md", "1 file(s)", "lowercase kebab-case .md")])
+        self.assertEqual(by_rule["github-file"], [(".github/PULL_REQUEST_TEMPLATE.md", ".github/PULL_REQUEST_TEMPLATE.md", ".github/pull_request_template.md")])
+        self.assertNotIn("job-id", by_rule, "job ids are checked in ci.yml only")
+        renamed = ci.check_conventions("Demo", [".github/workflows/ci.yml"], {"ci.yml": CI_TEXT.replace("name: Tests", "name: CI")})
+        self.assertEqual([(f["rule"], f["found"], f["expected"]) for f in renamed],
+                         [("job-id", "resolve-aoi", "resolve-vendor"), ("job-name", "vendor lock dispatch", "Vendor dispatch")])
+
+    def test_exemptions_hub_locked_lane_and_generated_docs(self):
+        hub = ci.check_conventions("myon-bioinformatics", [".github/workflows/python-tests.yml"], {"python-tests.yml": CI_TEXT.replace("name: Tests", "name: Python tests")})
+        self.assertEqual(hub, [])
+        locked = ci.check_conventions("flutter_navigation_basic", [], {"non-dart.yml": CI_TEXT.replace("name: Tests", "name: Non-Dart checks")})
+        self.assertEqual(locked, [])
+        generated = ci.check_conventions("Aoi", ["docs/cycles/C001_REPLAY.md"], {})
+        self.assertEqual(generated, [])
+        self.assertTrue(ci.check_conventions("Other", ["docs/cycles/C001_REPLAY.md"], {}))
+        self.assertEqual(ci.check_conventions("Other", ["tests/fixtures/mini_readme.md"], {}), [], "only docs/ is held to the rule")
+
+    def test_conventions_report_and_cli(self):
+        with patch.object(ci, "conventions_repository", return_value=([{"repository": "Demo", "rule": "job-id", "path": "p", "found": "deps", "expected": "resolve-vendor"}], False)):
+            report = ci.conventions(["Demo"])
+            out = io.StringIO()
+            with redirect_stdout(out):
+                code = ci.main(["--conventions", "--repos", "Demo"])
+        self.assertEqual(report["findings"][0]["expected"], "resolve-vendor")
+        self.assertEqual(code, 1)
+        self.assertIn("1 finding(s) across 1 repositories", out.getvalue())
+        self.assertIn("deps -> resolve-vendor", out.getvalue())
+        with patch.object(ci, "conventions_repository", return_value=([], False)):
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(ci.main(["--conventions", "--repos", "Demo"]), 0)
+
+    def test_audit_snapshot_carries_conventions_into_the_page(self):
+        def fake_get(path):
+            return {"mergeable": True, "mergeable_state": "clean"}
+        finding = [{"repository": "Demo", "rule": "job-id", "path": ".github/workflows/ci.yml#deps", "found": "deps", "expected": "resolve-vendor"}]
+        with patch.object(ci.ghi, "pull_requests", return_value=PULLS), patch.object(ci.ghi, "issues", return_value=ISSUES), \
+                patch.object(ci, "get", side_effect=fake_get), patch.object(ci.ghi, "checks_for_sha", return_value=CHECKS), \
+                patch.object(ci, "conventions_repository", return_value=(finding, False)):
+            snap = ci.audit(["Demo"])
+        self.assertEqual(snap["summary"]["conventions"], 1)
+        html = ci.render_audit_html(snap)
+        self.assertIn('data-ui-view="rules"', html)
+        self.assertIn("resolve-vendor", html)

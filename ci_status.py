@@ -12,9 +12,11 @@ Both output formats include the UTC observation timestamp. Exception text is omi
 unless ``--explain`` is set; that flag adds detail (token values removed) and hint.
 """
 import argparse
+import base64
 import datetime
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from html import escape
@@ -41,6 +43,7 @@ except RuntimeError:
 OWNER = "myon-bioinformatics"
 __version__ = "0.2.0"
 __all__ = ["repository", "observe", "summarize_checks", "render", "audit", "audit_repository", "link_dependencies",
+           "workflow_facts", "check_conventions", "conventions", "render_conventions",
            "load_records", "diff_snapshots", "render_audit_html", "write_audit_site", "main"]
 
 def get(path):
@@ -182,16 +185,19 @@ def diff_snapshots(current, previous):
     return {"new": sorted(set(after) - set(before)), "gone": sorted(set(before) - set(after)), "changed": sorted(changed)}
 
 
-def audit(repos=None, *, records_path=None, previous=None, ignored_checks=IGNORED_CHECKS):
-    """Cross-repository audit snapshot: every open PR and Issue with CI, dependencies, conflicts and user records."""
+def audit(repos=None, *, records_path=None, previous=None, ignored_checks=IGNORED_CHECKS, with_conventions=True):
+    """Cross-repository audit snapshot: every open PR and Issue with CI, dependencies, conflicts, user records and naming drift."""
     names = list(repos) if repos else organization_repositories()
-    records, errors, truncated = [], [], []
+    records, errors, truncated, findings = [], [], [], []
     for name in names:
         try:
             rows, partial = audit_repository(name, ignored_checks)
             records.extend(rows)
             if partial:
                 truncated.append(name)
+            if with_conventions:
+                found, _truncated_tree = conventions_repository(name)
+                findings.extend(found)
         except (ValueError, KeyError, RuntimeError, OSError) as exc:
             errors.append({"repository": name, "error": type(exc).__name__, "detail": _detail(exc)})
     link_dependencies(records)
@@ -202,9 +208,11 @@ def audit(repos=None, *, records_path=None, previous=None, ignored_checks=IGNORE
     prs = [r for r in records if r["kind"] == "pr"]
     summary = {"repositories": len(names), "pull_requests": len(prs), "issues": len(records) - len(prs),
                "ci_failed": sum(r["ci"] == "FAILED" for r in prs), "conflicts": sum(r.get("conflict") for r in prs),
-               "stacked": sum(bool(r.get("depends_on")) for r in prs), "done": sum(r["state"] == "done" for r in records)}
+               "stacked": sum(bool(r.get("depends_on")) for r in prs), "done": sum(r["state"] == "done" for r in records),
+               "conventions": len(findings)}
     return {"schema": "parent-audit/1", "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
             "owner": OWNER, "repositories": names, "ignored_checks": list(ignored_checks), "records": records, "summary": summary,
+            "conventions": findings,
             "errors": errors, "truncated": truncated, "changes": diff_snapshots(records, previous)}
 
 
@@ -220,6 +228,142 @@ def load_previous(source):
             return None
     path = Path(source)
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+
+
+# ---------------------------------------------------------------- naming conventions (fleet-wide drift check)
+
+# Mirrors the table in templates/README.md ("Workflow file and display names across repositories").
+CONVENTIONS = {
+    "workflow_names": {"ci.yml": "CI", "actionlint.yml": "Validate GitHub Actions", "runtime-compatibility.yml": "Stdlib runtime compatibility",
+                       "pages.yml": "Pages", "claude.yml": "Claude", "platform-matrix.yml": "Platform matrix",
+                       "py-launch-tests.yml": "py_launch tests", "openwebui-docker-smoke.yml": "OpenWebUI Docker smoke"},
+    # A workflow whose display name says it plays one of these roles belongs in the canonical file.
+    "role_by_name": {"ci": "ci.yml", "tests": "ci.yml", "test": "ci.yml", "claude": "claude.yml", "pages": "pages.yml"},
+    "job_ids": {"test-locked": "vendor-locked", "junit-identity": "failure-identity", "resolve-aoi": "resolve-vendor",
+                "deps": "resolve-vendor", "aoi": "resolve-vendor", "pytest": "test", "unittest": "test"},
+    "job_names": {"vendor-locked": "Vendor locked baseline", "vendor-lock": "Vendor lock", "vendor-dispatch": "Vendor dispatch"},
+    "github_files": {".github/PULL_REQUEST_TEMPLATE.md": ".github/pull_request_template.md"},
+    # Generated document trees that keep their own naming (cycle logs, pattern catalogues).
+    "docs_exempt": {"Aoi": ("docs/",), "flutter_navigation_basic": ("docs/",)},
+    # The hub keeps several test lanes instead of one ci.yml; a child's second lane that the parent locks by digest stays.
+    "ci_exempt": ("myon-bioinformatics",),
+    "ci_exempt_files": {"flutter_navigation_basic": ("non-dart.yml",)},
+}
+_WORKFLOW_FILE = re.compile(r"[a-z0-9][a-z0-9-]*\.yml\Z")
+_DOC_FILE = re.compile(r"[a-z0-9][a-z0-9.-]*\.md\Z")
+
+
+def workflow_facts(text):
+    """name:, job ids (2-space keys under jobs:) and workflow_run names from one workflow file, without YAML."""
+    name = re.search(r"^name:\s*(.+?)\s*$", text, re.M)
+    jobs = []
+    in_jobs = False
+    for line in text.splitlines():
+        if re.match(r"^jobs:\s*$", line):
+            in_jobs = True
+            continue
+        if in_jobs and re.match(r"^\S", line):
+            in_jobs = False
+        m = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line) if in_jobs else None
+        if m:
+            jobs.append(m.group(1))
+    job_names = dict(re.findall(r"^  ([A-Za-z0-9_-]+):\s*\n(?:    .*\n)*?    name:\s*(.+?)\s*$", text, re.M))
+    triggers = []
+    run = re.search(r"^\s+workflow_run:\s*\n((?:\s{4,}.*\n)+)", text, re.M)
+    if run:
+        body = run.group(1)
+        inline = re.search(r"workflows:\s*\[([^\]]*)\]", body)
+        if inline:
+            triggers = [x.strip().strip("'\"") for x in inline.group(1).split(",") if x.strip()]
+        else:
+            listed = re.search(r"workflows:\s*\n((?:\s+-\s*.+\n)+)", body)
+            if listed:
+                triggers = [re.sub(r"^\s*-\s*", "", x).strip().strip("'\"") for x in listed.group(1).splitlines()]
+    return {"name": name.group(1).strip().strip("'\"") if name else None, "jobs": jobs, "job_names": job_names, "workflow_run": triggers}
+
+
+def check_conventions(repo, paths, workflows):
+    """Findings for one repository: paths = tracked file paths, workflows = {file name: text}."""
+    rules = CONVENTIONS
+    found = []
+    def add(rule, path, current, expected):
+        found.append({"repository": repo, "rule": rule, "path": path, "found": current, "expected": expected})
+    names = {}
+    for file, text in sorted(workflows.items()):
+        facts = workflow_facts(text)
+        names[facts["name"]] = file
+        if not _WORKFLOW_FILE.fullmatch(file):
+            add("workflow-file", f".github/workflows/{file}", file, "lowercase, hyphens, .yml")
+        canonical = rules["workflow_names"].get(file)
+        if canonical and facts["name"] != canonical:
+            add("workflow-name", f".github/workflows/{file}", facts["name"], canonical)
+        role = rules["role_by_name"].get((facts["name"] or "").lower())
+        if not role and "actions/deploy-pages@" in text:
+            role = "pages.yml"
+        if not role and "ci.yml" not in workflows and file not in rules["workflow_names"] \
+                and "reusable-junit-identity.yml" in text and "pull_request" in text:
+            role = "ci.yml"  # no main lane yet: a junit-reporting PR lane is the candidate
+        exempt_ci = role == "ci.yml" and (repo in rules["ci_exempt"] or file in rules["ci_exempt_files"].get(repo, ()))
+        if role and file != role and not file.startswith("reusable-") and not exempt_ci:
+            add("workflow-role", f".github/workflows/{file}", file, role)
+        if file == "ci.yml":
+            for job in facts["jobs"]:
+                if job in rules["job_ids"]:
+                    add("job-id", f".github/workflows/{file}#{job}", job, rules["job_ids"][job])
+                wanted = rules["job_names"].get(job)
+                if wanted and facts["job_names"].get(job) not in (None, wanted):
+                    add("job-name", f".github/workflows/{file}#{job}", facts["job_names"].get(job), wanted)
+    for file, text in sorted(workflows.items()):
+        for target in workflow_facts(text)["workflow_run"]:
+            if target not in names:
+                add("workflow-run", f".github/workflows/{file}", target, "an existing workflow name")
+    exempt = rules["docs_exempt"].get(repo, ())
+    odd = [p for p in paths if p.startswith("docs/") and p.endswith(".md") and not p.startswith(exempt)
+           and p.rsplit("/", 1)[1] != "README.md" and not _DOC_FILE.fullmatch(p.rsplit("/", 1)[1])]
+    if odd:
+        add("doc-file", ", ".join(odd[:5]) + (f" … (+{len(odd) - 5})" if len(odd) > 5 else ""), f"{len(odd)} file(s)", "lowercase kebab-case .md")
+    for path, expected in rules["github_files"].items():
+        if path in paths:
+            add("github-file", path, path, expected)
+    return found
+
+
+def conventions_repository(name):
+    """Fetch the tree and workflow texts of one repository and check them (public API)."""
+    full = repository(name)
+    branch = get(f"/repos/{full}")["default_branch"]
+    tree = get(f"/repos/{full}/git/trees/{branch}?recursive=1")
+    paths = [x["path"] for x in tree.get("tree", []) if x.get("type") == "blob"]
+    workflows = {}
+    for path in paths:
+        if path.startswith(".github/workflows/") and path.count("/") == 2 and path.endswith((".yml", ".yaml")):
+            blob = get(f"/repos/{full}/contents/{path}?ref={branch}")
+            workflows[path.rsplit("/", 1)[1]] = base64.b64decode(blob.get("content") or "").decode("utf-8", "replace")
+    return check_conventions(name, paths, workflows), tree.get("truncated", False)
+
+
+def conventions(repos=None):
+    """Fleet-wide drift report: {"repositories", "findings", "errors"}; empty findings means everything matches."""
+    names = list(repos) if repos else organization_repositories()
+    findings, errors = [], []
+    for name in names:
+        try:
+            rows, truncated = conventions_repository(name)
+            findings.extend(rows)
+            if truncated:
+                errors.append({"repository": name, "error": "TruncatedTree", "detail": "tree listing truncated; findings may be incomplete"})
+        except (ValueError, KeyError, RuntimeError, OSError) as exc:
+            errors.append({"repository": name, "error": type(exc).__name__, "detail": _detail(exc)})
+    return {"repositories": names, "findings": findings, "errors": errors}
+
+
+def render_conventions(report):
+    lines = [f"{len(report['findings'])} finding(s) across {len(report['repositories'])} repositories"]
+    for f in report["findings"]:
+        lines.append(f"  {f['repository']:28} {f['rule']:14} {f['path']}: {f['found']!s} -> {f['expected']}")
+    for e in report["errors"]:
+        lines.append(f"  ! {e['repository']}: {e['error']} {e['detail']}")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------- audit page (consumer, read-only)
@@ -266,10 +410,11 @@ def render_audit_html(snapshot, *, asset_base=".", title="Repository audit — m
                              trusted_cells=True, row_ids=tuple(r["id"] for r in chosen))
     changes = snapshot.get("changes", {})
     changed = set(changes.get("new", [])) | set(changes.get("changed", []))
-    views = (("queue", "◫ 作業キュー"), ("compare", "⇄ 依存・競合"), ("weekly", "▦ 週次差分"), ("done", "✓ 完了"))
+    views = (("queue", "◫ 作業キュー"), ("compare", "⇄ 依存・競合"), ("weekly", "▦ 週次差分"), ("rules", "⚖ 規約ずれ"), ("done", "✓ 完了"))
     tiles = ui.stat_tiles((("リポジトリ", summary["repositories"]), ("オープンPR", summary["pull_requests"]), ("Issue", summary["issues"]),
                            ("CI失敗", summary["ci_failed"], "最新 head の check-runs"), ("競合", summary["conflicts"], "mergeable=false"),
-                           ("積み上げPR", summary["stacked"], "base が他 PR の head"), ("完了記録", summary["done"])))
+                           ("積み上げPR", summary["stacked"], "base が他 PR の head"), ("規約ずれ", summary.get("conventions", 0), "名前の規約との差"),
+                           ("完了記録", summary["done"])))
     notice = "読み取り専用の公開 API 観測（gh_identity 経由、親の ci_status.py --audit が生成）。状態・メモはこのブラウザの下書きで、JSON 書き出しを site/records.jsonl に取り込むと次回の生成に反映されます。"
     errors = "".join(f"<li>{escape(e['repository'])}: {escape(e['error'])}</li>" for e in snapshot.get("errors", []))
     head = (f'<header class="ui-panel"><h1>{escape(title)}</h1><p class="ui-muted">生成 {escape(snapshot["generated_at"])} · '
@@ -283,8 +428,13 @@ def render_audit_html(snapshot, *, asset_base=".", title="Repository audit — m
                f'{table("compare", lambda r: r["kind"] == "pr" and (r.get("depends_on") or r.get("conflict")), "依存・競合のある PR")}</section>')
     weekly = (f'<section data-ui-view="weekly" hidden><p class="ui-muted">前回の公開スナップショットと比べて新規・head/CI 変化のあった記録。消えた記録: '
               f'{escape(", ".join(changes.get("gone", [])) or "なし")}</p>{table("weekly", lambda r: r["id"] in changed, "変化した記録")}</section>')
+    findings = snapshot.get("conventions", [])
+    rules = (f'<section data-ui-view="rules" hidden><p class="ui-muted">templates/README.md の命名規約（ci.yml=CI、pages.yml=Pages、resolve-vendor / vendor-locked / failure-identity、docs/ はケバブケース）との差。'
+             f'直すときは該当リポジトリに 1 PR（リネームだけなら他 PR より先にマージ）。</p>'
+             + ui.data_table(("リポジトリ", "規約", "対象", "現状", "期待"), [(f["repository"], f["rule"], f["path"], str(f["found"]), f["expected"]) for f in findings],
+                             id="table-rules", caption=f"規約ずれ（{len(findings)}件）") + "</section>")
     done = f'<section data-ui-view="done" hidden>{table("done", lambda r: r["state"] == "done", "完了記録")}</section>'
-    body = ui.records_board(head + queue + compare + weekly + done, id="audit")
+    body = ui.records_board(head + queue + compare + weekly + rules + done, id="audit")
     return ui.render_document(trusted_html=f'<main class="ui-page">{body}</main>', title=title, css=ui.bundled_css(),
                               scripts=ui.shared_scripts(asset_base, names=("navigation.js", "records.js")))
 
@@ -336,7 +486,14 @@ def main(argv=None):
     p.add_argument("--out", metavar="DIR", help="With --audit: write data.json, index.html and js/ here")
     p.add_argument("--ignore-checks", default=",".join(IGNORED_CHECKS), metavar="NAMES",
                    help="With --audit: comma-separated check-run names that do not count as CI")
+    p.add_argument("--conventions", action="store_true",
+                   help="Report naming drift (workflow files / names, ci.yml job ids, docs/*.md) against templates/README.md; exit 1 when any")
     a = p.parse_args(argv)
+    if a.conventions and not a.audit:
+        names = None if a.all_repos else [x.strip() for x in a.repos.split(",") if x.strip()]
+        report = conventions(names)
+        print(json.dumps(report, ensure_ascii=False, indent=2) if a.json else render_conventions(report))
+        return 2 if report["errors"] else 1 if report["findings"] else 0
     if a.audit:
         names = None if a.all_repos else [x.strip() for x in a.repos.split(",") if x.strip()]
         ignored = tuple(x.strip() for x in a.ignore_checks.split(",") if x.strip())
