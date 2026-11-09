@@ -9,7 +9,7 @@
         aria-labelledby="descId"
       >
         <title id="titleId">myon&#39;s GitHub Stats, Rank: A</title>
-        <desc id="descId">Total Stars Earned: 50, Total Commits  (last year) : 7784, Total PRs: 2405, Total Issues: 157, Contributed to (last year): 0</desc>
+        <desc id="descId">Total Stars Earned: 50, Total Commits  (last year) : 7815, Total PRs: 2410, Total Issues: 157, Contributed to (last year): 0</desc>
         <style>
           .header {
             font: 600 18px 'Segoe UI', Ubuntu, Sans-Serif;
@@ -73,7 +73,7 @@
         stroke-dashoffset: 251.32741228718345;
       }
       to {
-        stroke-dashoffset: 42.9568090394234;
+        stroke-dashoffset: 42.95376954197788;
       }
     }
   
