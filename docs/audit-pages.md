@@ -103,3 +103,23 @@ head・CI・レビュー件数・base・競合状態・タイトル・ラベル�
 前週基準がなければ比較不能と表示する。
 最新main採用手順とpyproject共通化には、確認日・採用SHA・PRリンク・
 残作業を記録する根拠欄を用意する。進捗は証拠を確認して入力する。
+
+## Sitesの統合判断画面の反映
+
+`site/ui/integration.js` と配布用 `site/ui/integration_plan.py` を共通UIとして使用する。
+CI失敗・未解決レビュー・mergeable=falseは手入力の優先度より先にP1表示する。
+同じリポジトリのPR変更パスを比較し、重複ファイルと共通workflowを列挙する。
+重複パスは実際の内容競合を意味しない。変更パスは全ページ取得し、PR詳細の件数と
+照合する。取得途中のhead・base SHA/ref変更やページ欠落は公開を止める。
+最新headのCIはcheck-runsとcommit statusesを全ページ集計し、required checksの指定との
+照合は未実施と明記する。base/head SHA、mergeable_state、取得日時を比較画面に表示する。
+
+状態には保留・ブロッカー・統合済みを追加。再検証記録はhead/base両方が取得済みの
+場合にのみ保存し、観測SHAが変われば「再検証必要」とする。証跡は手入力の確認記録であり、
+GitHubへの書込み・CI起動・マージを意味しない。既存のfleetレポートと自動更新は維持する。
+
+手入力した依存を計画へ反映するには「計算用JSONを書出し」とPythonスクリプトを取得し、
+`python integration_plan.py integration-input.json --out integration-result.json` を実行して
+結果をJSON読込する。Python 3.11+・標準ライブラリのみ。明示的な依存タスクも引き継ぐ。
+closed未統合PRを明示依存した場合は欠損影響として扱い、merged PRは統合済みとして扱う。
+GitHub観測と個人の判断記録を分離し、SitesからのJSON記録も同じ形式で読み込める。

@@ -144,13 +144,29 @@ def audit_repository(name, ignored_checks=IGNORED_CHECKS, *, strict=False):
             review = ghi.review_threads(full, pr["number"], max_items=1000, max_pages=20)
             if not review["complete"]:
                 raise RuntimeError("review pagination incomplete")
+            files = ghi.pages(f"repos/{full}/pulls/{pr['number']}/files")
+            if any(not isinstance(x.get("filename"), str) for x in files):
+                raise RuntimeError("invalid changed-file observation")
+            if len(files) != detail.get("changed_files", len(files)):
+                raise RuntimeError("changed-file pagination incomplete")
             final = get(f"/repos/{full}/pulls/{pr['number']}")
             if final["head"]["sha"] != pr["head_sha"] or final.get("state") != "open":
                 raise RuntimeError("pull request head/state changed during observation; retry required")
+            if any(final["base"].get(k) != detail["base"].get(k) for k in ("sha", "ref")):
+                raise RuntimeError("pull request base changed during observation; retry required")
+            at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
             extra = {"review": sum(not x["is_resolved"] for x in review["threads"]),
                      "review_complete": True, "threads": review["threads"],
-                     "labels": [x["name"] for x in detail.get("labels", [])],
-                     "checked": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
+                     "labels": [x["name"] for x in final.get("labels", [])],
+                     "checked": at, "metadata_checked": at, "review_checked": at,
+                     "base_sha": final["base"].get("sha"), "github_state": "open", "merged": False,
+                     "changed_files": sorted({x["filename"] for x in files}),
+                     "files_head": pr["head_sha"], "files_checked": at,
+                     "workflow_checked": at, "ci_head": pr["head_sha"],
+                     "ci_scope": "全ページのcheck-runsとcommit statuses。required checks指定との照合は未実施",
+                     "mergeable_state_checked": at}
+            detail = final
+            pr = {**pr, "title": final.get("title", pr["title"]), "draft": final.get("draft", pr["draft"])}
         records.append({"id": _record_id(full, "pr", pr["number"]), "repository": full.split("/", 1)[1], "number": pr["number"],
                         "kind": "pr", "title": pr["title"], "url": pr["url"], "draft": pr["draft"],
                         "head_sha": pr["head_sha"], "head_ref": pr["head_ref"], "base_ref": pr["base_ref"],
@@ -204,6 +220,12 @@ def dependency_plan(records):
     except graphlib.CycleError as exc:
         cycle = list(exc.args[1])
     order, blocked = [], set(missing)
+    unsafe_missing = set(missing)
+    while True:
+        prior = set(unsafe_missing)
+        unsafe_missing.update(k for k, ds in graph.items() if ds & unsafe_missing)
+        if prior == unsafe_missing:
+            break
     while sorter.is_active():
         ready = sorted(sorter.get_ready())
         for k in ready:
@@ -217,7 +239,9 @@ def dependency_plan(records):
     waiting = {k: sorted(d for d in ds if d in nodes and not nodes[d].get("merged"))
                for k, ds in graph.items() if ds}
     waiting = {k: ds for k, ds in waiting.items() if ds}
-    return {"order": order, "cycle": cycle, "missing": missing,
+    return {"engine": "graphlib.TopologicalSorter", "edges": {k: sorted(v) for k, v in graph.items()},
+            "actionable_order": order, "unsafe_missing": sorted(unsafe_missing),
+            "order": order, "cycle": cycle, "missing": missing,
             "blocked": sorted(blocked), "waiting": waiting,
             "ready": [k for k in order if k not in waiting and not nodes[k].get("merged")]}
 
@@ -349,7 +373,7 @@ def audit(repos=None, *, records_path=None, previous=None, ignored_checks=IGNORE
                "conventions": len(findings)}
     return {"schema": "parent-audit/1", "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
             "owner": OWNER, "repositories": names, "ignored_checks": list(ignored_checks), "records": records, "summary": summary,
-            "conventions": findings, "dependency_plan": plan, "vendor_pins": pins,
+            "conventions": findings, "dependency_plan": plan, "dependency_tasks": tasks, "vendor_pins": pins,
             "errors": errors, "truncated": truncated, "changes": diff_snapshots(records, previous)}
 
 
