@@ -89,9 +89,12 @@ and can execute collection hooks). Use pytest’s `-k` for name selection.
 Unittest discovery imports modules and executes collected tests. Neither is
 a side-effect-free source search.
 
-## Separate implementation scope
+## In-process selection follow-up
 
-These PRs document existing CLI entry points only. They do not implement
-in-process selection or reuse through `unittest.TestLoader`, `discover()`,
-`loadTestsFromName()` or `testNamePatterns`. That implementation remains a
-separate, unaddressed scope; no runtime reduction is claimed by this audit.
+The original CLI audit remains unchanged. A repository-local follow-up now
+validates standard `TestLoader` selection on `RuntimePlanTests`, with a matching
+trial on cli_args's audited stdlib compatibility tests. See
+[testloader-selection-experiment.md](testloader-selection-experiment.md) for the
+executable recipe, error/zero guards, parity evidence and measurements.
+No common runner, source cache, additional CI job or fleet rollout is added;
+no runtime improvement has been established.

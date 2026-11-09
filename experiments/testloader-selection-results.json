@@ -1,0 +1,1010 @@
+{
+  "python": "3.12.3",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.39",
+  "revision": "600cfc588d25d60efb12b5460e0667bb4c27a11a",
+  "samples": {
+    "all": {
+      "discover": {
+        "raw": [
+          {
+            "load_ms": 1.67733,
+            "total_ms": 57.925754
+          },
+          {
+            "load_ms": 2.767156,
+            "total_ms": 71.772482
+          },
+          {
+            "load_ms": 1.034414,
+            "total_ms": 132.868607
+          },
+          {
+            "load_ms": 0.914697,
+            "total_ms": 79.512509
+          },
+          {
+            "load_ms": 2.143406,
+            "total_ms": 93.476584
+          },
+          {
+            "load_ms": 7.96612,
+            "total_ms": 980.410158
+          },
+          {
+            "load_ms": 1.674469,
+            "total_ms": 1765.397036
+          },
+          {
+            "load_ms": 1.742171,
+            "total_ms": 85.194159
+          },
+          {
+            "load_ms": 3.213383,
+            "total_ms": 178.202812
+          },
+          {
+            "load_ms": 1.188387,
+            "total_ms": 70.64153
+          },
+          {
+            "load_ms": 1.383758,
+            "total_ms": 84.41553
+          },
+          {
+            "load_ms": 0.873197,
+            "total_ms": 62.854603
+          },
+          {
+            "load_ms": 1.004818,
+            "total_ms": 62.558827
+          },
+          {
+            "load_ms": 1.318122,
+            "total_ms": 53.226403
+          },
+          {
+            "load_ms": 0.867047,
+            "total_ms": 66.256234
+          },
+          {
+            "load_ms": 1.287278,
+            "total_ms": 64.047469
+          },
+          {
+            "load_ms": 2.197418,
+            "total_ms": 71.036557
+          },
+          {
+            "load_ms": 0.983228,
+            "total_ms": 92.452927
+          },
+          {
+            "load_ms": 1.760034,
+            "total_ms": 109.397487
+          },
+          {
+            "load_ms": 1.462109,
+            "total_ms": 59.257067
+          },
+          {
+            "load_ms": 0.880625,
+            "total_ms": 307.687514
+          }
+        ],
+        "median_load_ms": 1.383758,
+        "median_total_ms": 79.512509
+      },
+      "names": {
+        "raw": [
+          {
+            "load_ms": 0.187197,
+            "total_ms": 61.968347
+          },
+          {
+            "load_ms": 0.193726,
+            "total_ms": 59.434267
+          },
+          {
+            "load_ms": 0.158652,
+            "total_ms": 61.448286
+          },
+          {
+            "load_ms": 0.154761,
+            "total_ms": 66.828545
+          },
+          {
+            "load_ms": 0.166096,
+            "total_ms": 2707.773121
+          },
+          {
+            "load_ms": 29.271257,
+            "total_ms": 1505.81177
+          },
+          {
+            "load_ms": 0.158374,
+            "total_ms": 2133.555697
+          },
+          {
+            "load_ms": 0.432547,
+            "total_ms": 338.081547
+          },
+          {
+            "load_ms": 0.415561,
+            "total_ms": 93.84657
+          },
+          {
+            "load_ms": 0.289361,
+            "total_ms": 75.174156
+          },
+          {
+            "load_ms": 0.368521,
+            "total_ms": 72.902197
+          },
+          {
+            "load_ms": 0.323361,
+            "total_ms": 76.779079
+          },
+          {
+            "load_ms": 0.159057,
+            "total_ms": 66.980118
+          },
+          {
+            "load_ms": 0.157372,
+            "total_ms": 55.630953
+          },
+          {
+            "load_ms": 0.28324,
+            "total_ms": 60.387997
+          },
+          {
+            "load_ms": 0.157455,
+            "total_ms": 66.109376
+          },
+          {
+            "load_ms": 0.156913,
+            "total_ms": 73.690034
+          },
+          {
+            "load_ms": 0.230835,
+            "total_ms": 66.844231
+          },
+          {
+            "load_ms": 0.620194,
+            "total_ms": 89.075761
+          },
+          {
+            "load_ms": 0.316362,
+            "total_ms": 63.45976
+          },
+          {
+            "load_ms": 0.326763,
+            "total_ms": 80.866724
+          }
+        ],
+        "median_load_ms": 0.230835,
+        "median_total_ms": 72.902197
+      }
+    },
+    "single": {
+      "discover": {
+        "raw": [
+          {
+            "load_ms": 3.875867,
+            "total_ms": 8.62255
+          },
+          {
+            "load_ms": 25.365485,
+            "total_ms": 42.721094
+          },
+          {
+            "load_ms": 6.613731,
+            "total_ms": 32.103155
+          },
+          {
+            "load_ms": 12.220582,
+            "total_ms": 34.1268
+          },
+          {
+            "load_ms": 26.904916,
+            "total_ms": 51.525254
+          },
+          {
+            "load_ms": 29.009443,
+            "total_ms": 32.840371
+          },
+          {
+            "load_ms": 11.340387,
+            "total_ms": 38.010839
+          },
+          {
+            "load_ms": 5.666214,
+            "total_ms": 17.065362
+          },
+          {
+            "load_ms": 13.420783,
+            "total_ms": 50.797483
+          },
+          {
+            "load_ms": 3.051607,
+            "total_ms": 8.083965
+          },
+          {
+            "load_ms": 43.858495,
+            "total_ms": 64.277206
+          },
+          {
+            "load_ms": 1.135804,
+            "total_ms": 2.652536
+          },
+          {
+            "load_ms": 1.825136,
+            "total_ms": 3.171301
+          },
+          {
+            "load_ms": 1.158635,
+            "total_ms": 2.605969
+          },
+          {
+            "load_ms": 1.082607,
+            "total_ms": 2.525095
+          },
+          {
+            "load_ms": 1.281701,
+            "total_ms": 2.248945
+          },
+          {
+            "load_ms": 0.803914,
+            "total_ms": 1.855115
+          },
+          {
+            "load_ms": 0.737959,
+            "total_ms": 1.661837
+          },
+          {
+            "load_ms": 1.012916,
+            "total_ms": 2.037202
+          },
+          {
+            "load_ms": 0.834057,
+            "total_ms": 1.753872
+          },
+          {
+            "load_ms": 0.948472,
+            "total_ms": 2.081814
+          }
+        ],
+        "median_load_ms": 3.051607,
+        "median_total_ms": 8.083965
+      },
+      "names": {
+        "raw": [
+          {
+            "load_ms": 8.898944,
+            "total_ms": 24.901245
+          },
+          {
+            "load_ms": 2.298445,
+            "total_ms": 21.569192
+          },
+          {
+            "load_ms": 14.065281,
+            "total_ms": 33.764563
+          },
+          {
+            "load_ms": 0.573135,
+            "total_ms": 20.736903
+          },
+          {
+            "load_ms": 0.537269,
+            "total_ms": 9.548428
+          },
+          {
+            "load_ms": 1.914678,
+            "total_ms": 21.794215
+          },
+          {
+            "load_ms": 8.992299,
+            "total_ms": 26.63657
+          },
+          {
+            "load_ms": 2.010187,
+            "total_ms": 5.72434
+          },
+          {
+            "load_ms": 44.056151,
+            "total_ms": 105.427305
+          },
+          {
+            "load_ms": 8.331559,
+            "total_ms": 417.667453
+          },
+          {
+            "load_ms": 0.517642,
+            "total_ms": 54.391991
+          },
+          {
+            "load_ms": 19.313257,
+            "total_ms": 27.307197
+          },
+          {
+            "load_ms": 0.331799,
+            "total_ms": 2.180223
+          },
+          {
+            "load_ms": 0.906087,
+            "total_ms": 2.111911
+          },
+          {
+            "load_ms": 0.334062,
+            "total_ms": 1.661632
+          },
+          {
+            "load_ms": 0.288184,
+            "total_ms": 1.739968
+          },
+          {
+            "load_ms": 0.33009,
+            "total_ms": 1.577397
+          },
+          {
+            "load_ms": 0.260584,
+            "total_ms": 2.171668
+          },
+          {
+            "load_ms": 0.372054,
+            "total_ms": 1.495442
+          },
+          {
+            "load_ms": 0.228566,
+            "total_ms": 1.261433
+          },
+          {
+            "load_ms": 0.289763,
+            "total_ms": 3.420534
+          }
+        ],
+        "median_load_ms": 0.573135,
+        "median_total_ms": 9.548428
+      }
+    },
+    "multiple": {
+      "discover": {
+        "raw": [
+          {
+            "load_ms": 107.242905,
+            "total_ms": 645.0916
+          },
+          {
+            "load_ms": 1.473622,
+            "total_ms": 3.700936
+          },
+          {
+            "load_ms": 0.882728,
+            "total_ms": 5.225501
+          },
+          {
+            "load_ms": 1.010799,
+            "total_ms": 6.234291
+          },
+          {
+            "load_ms": 1.141276,
+            "total_ms": 3.237483
+          },
+          {
+            "load_ms": 1.259915,
+            "total_ms": 11.879307
+          },
+          {
+            "load_ms": 2.855824,
+            "total_ms": 7.187009
+          },
+          {
+            "load_ms": 3.962698,
+            "total_ms": 17.148329
+          },
+          {
+            "load_ms": 6.627162,
+            "total_ms": 34.291455
+          },
+          {
+            "load_ms": 6.362519,
+            "total_ms": 23.205665
+          },
+          {
+            "load_ms": 1.468964,
+            "total_ms": 5.473096
+          },
+          {
+            "load_ms": 9.161964,
+            "total_ms": 1583.343707
+          },
+          {
+            "load_ms": 171.053595,
+            "total_ms": 336.406036
+          },
+          {
+            "load_ms": 31.893778,
+            "total_ms": 36.908083
+          },
+          {
+            "load_ms": 12.812146,
+            "total_ms": 29.388762
+          },
+          {
+            "load_ms": 45.711229,
+            "total_ms": 230.021813
+          },
+          {
+            "load_ms": 782.394635,
+            "total_ms": 1902.908636
+          },
+          {
+            "load_ms": 17.937721,
+            "total_ms": 23.033224
+          },
+          {
+            "load_ms": 3.850259,
+            "total_ms": 12.06581
+          },
+          {
+            "load_ms": 18.498971,
+            "total_ms": 24.529347
+          },
+          {
+            "load_ms": 2.036161,
+            "total_ms": 6.409651
+          }
+        ],
+        "median_load_ms": 6.362519,
+        "median_total_ms": 23.033224
+      },
+      "names": {
+        "raw": [
+          {
+            "load_ms": 1.675582,
+            "total_ms": 14.311078
+          },
+          {
+            "load_ms": 1.21071,
+            "total_ms": 3.516833
+          },
+          {
+            "load_ms": 0.907166,
+            "total_ms": 8.548929
+          },
+          {
+            "load_ms": 1.147277,
+            "total_ms": 12.809869
+          },
+          {
+            "load_ms": 1.444485,
+            "total_ms": 4.672229
+          },
+          {
+            "load_ms": 2.535967,
+            "total_ms": 11.075947
+          },
+          {
+            "load_ms": 0.611375,
+            "total_ms": 3.528902
+          },
+          {
+            "load_ms": 0.753812,
+            "total_ms": 7.953359
+          },
+          {
+            "load_ms": 0.592385,
+            "total_ms": 14.981969
+          },
+          {
+            "load_ms": 2.040605,
+            "total_ms": 5.777559
+          },
+          {
+            "load_ms": 0.539465,
+            "total_ms": 164.003935
+          },
+          {
+            "load_ms": 192.294692,
+            "total_ms": 243.05359
+          },
+          {
+            "load_ms": 36.47952,
+            "total_ms": 4803.615609
+          },
+          {
+            "load_ms": 7.914121,
+            "total_ms": 27.800603
+          },
+          {
+            "load_ms": 270.326999,
+            "total_ms": 327.11088
+          },
+          {
+            "load_ms": 98.694882,
+            "total_ms": 138.224674
+          },
+          {
+            "load_ms": 498.760051,
+            "total_ms": 541.120326
+          },
+          {
+            "load_ms": 8.204351,
+            "total_ms": 65.531277
+          },
+          {
+            "load_ms": 2.324653,
+            "total_ms": 10.768682
+          },
+          {
+            "load_ms": 2.35812,
+            "total_ms": 108.577198
+          },
+          {
+            "load_ms": 1.47058,
+            "total_ms": 5.589272
+          }
+        ],
+        "median_load_ms": 2.040605,
+        "median_total_ms": 14.311078
+      }
+    },
+    "zero": {
+      "discover": {
+        "raw": [
+          {
+            "load_ms": 1.096046,
+            "total_ms": 1.117399
+          },
+          {
+            "load_ms": 26.833701,
+            "total_ms": 26.860398
+          },
+          {
+            "load_ms": 0.855759,
+            "total_ms": 0.868548
+          },
+          {
+            "load_ms": 5.834377,
+            "total_ms": 5.857967
+          },
+          {
+            "load_ms": 2.964988,
+            "total_ms": 2.984374
+          },
+          {
+            "load_ms": 1.440774,
+            "total_ms": 1.456572
+          },
+          {
+            "load_ms": 10.184808,
+            "total_ms": 10.214959
+          },
+          {
+            "load_ms": 2.832664,
+            "total_ms": 2.851855
+          },
+          {
+            "load_ms": 4.893782,
+            "total_ms": 4.91035
+          },
+          {
+            "load_ms": 2.646555,
+            "total_ms": 2.666547
+          },
+          {
+            "load_ms": 1.392583,
+            "total_ms": 2.041486
+          },
+          {
+            "load_ms": 0.796359,
+            "total_ms": 0.807502
+          },
+          {
+            "load_ms": 6.990638,
+            "total_ms": 7.025088
+          },
+          {
+            "load_ms": 5.147918,
+            "total_ms": 5.164438
+          },
+          {
+            "load_ms": 14.544312,
+            "total_ms": 14.572725
+          },
+          {
+            "load_ms": 1.803311,
+            "total_ms": 1.821914
+          },
+          {
+            "load_ms": 0.7271,
+            "total_ms": 0.738122
+          },
+          {
+            "load_ms": 2.55635,
+            "total_ms": 2.571974
+          },
+          {
+            "load_ms": 0.670441,
+            "total_ms": 0.679847
+          },
+          {
+            "load_ms": 2.071043,
+            "total_ms": 2.085075
+          },
+          {
+            "load_ms": 0.679662,
+            "total_ms": 0.689916
+          }
+        ],
+        "median_load_ms": 2.55635,
+        "median_total_ms": 2.571974
+      },
+      "names": {
+        "raw": [
+          {
+            "load_ms": 0.003376,
+            "total_ms": 0.006072
+          },
+          {
+            "load_ms": 0.000954,
+            "total_ms": 0.002807
+          },
+          {
+            "load_ms": 0.003038,
+            "total_ms": 0.005676
+          },
+          {
+            "load_ms": 0.001013,
+            "total_ms": 0.003001
+          },
+          {
+            "load_ms": 0.003337,
+            "total_ms": 0.006053
+          },
+          {
+            "load_ms": 0.001143,
+            "total_ms": 0.003197
+          },
+          {
+            "load_ms": 0.011821,
+            "total_ms": 0.023596
+          },
+          {
+            "load_ms": 0.001459,
+            "total_ms": 0.003779
+          },
+          {
+            "load_ms": 0.002948,
+            "total_ms": 0.005581
+          },
+          {
+            "load_ms": 0.001089,
+            "total_ms": 0.003059
+          },
+          {
+            "load_ms": 0.00468,
+            "total_ms": 0.010494
+          },
+          {
+            "load_ms": 0.001612,
+            "total_ms": 0.004338
+          },
+          {
+            "load_ms": 0.004887,
+            "total_ms": 0.007587
+          },
+          {
+            "load_ms": 0.001096,
+            "total_ms": 0.003025
+          },
+          {
+            "load_ms": 0.004071,
+            "total_ms": 0.006929
+          },
+          {
+            "load_ms": 0.001072,
+            "total_ms": 0.003197
+          },
+          {
+            "load_ms": 0.002246,
+            "total_ms": 0.004655
+          },
+          {
+            "load_ms": 0.000978,
+            "total_ms": 0.002713
+          },
+          {
+            "load_ms": 0.001974,
+            "total_ms": 0.004424
+          },
+          {
+            "load_ms": 0.001143,
+            "total_ms": 0.003004
+          },
+          {
+            "load_ms": 0.002113,
+            "total_ms": 0.004424
+          }
+        ],
+        "median_load_ms": 0.001974,
+        "median_total_ms": 0.004424
+      }
+    }
+  },
+  "cli": {
+    "all": {
+      "exit": 0,
+      "stdout": "",
+      "stderr": "test_caller_provided_is_not_host_attestation (test_runtime_plan.RuntimePlanTests.test_caller_provided_is_not_host_attestation) ... ok\ntest_catalog_sources_refer_to_existing_advisory_entries (test_runtime_plan.RuntimePlanTests.test_catalog_sources_refer_to_existing_advisory_entries) ... ok\ntest_check_kind_and_inconsistent_fact_types (test_runtime_plan.RuntimePlanTests.test_check_kind_and_inconsistent_fact_types) ... ok\ntest_cli_exit_contract_with_only_explicit_fixture_inputs (test_runtime_plan.RuntimePlanTests.test_cli_exit_contract_with_only_explicit_fixture_inputs) ... ok\ntest_duplicate_sources_and_collection_bounds (test_runtime_plan.RuntimePlanTests.test_duplicate_sources_and_collection_bounds) ... ok\ntest_empty_runtime_and_duplicate_checks (test_runtime_plan.RuntimePlanTests.test_empty_runtime_and_duplicate_checks) ... ok\ntest_examples_match_only_declared_requirements (test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements) ... ok\ntest_invalid_fact_types_and_code_are_rejected (test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected) ... ok\ntest_invalid_manifest_shapes (test_runtime_plan.RuntimePlanTests.test_invalid_manifest_shapes) ... ok\ntest_invalid_profile_selection_is_not_a_path (test_runtime_plan.RuntimePlanTests.test_invalid_profile_selection_is_not_a_path) ... ok\ntest_json_duplicate_nonfinite_nesting_and_size_rejected (test_runtime_plan.RuntimePlanTests.test_json_duplicate_nonfinite_nesting_and_size_rejected) ... ok\ntest_missing_and_null_differ (test_runtime_plan.RuntimePlanTests.test_missing_and_null_differ) ... ok\ntest_missing_symbols_cannot_use_native_profile (test_runtime_plan.RuntimePlanTests.test_missing_symbols_cannot_use_native_profile) ... ok\ntest_module_has_no_execution_or_discovery_dependencies (test_runtime_plan.RuntimePlanTests.test_module_has_no_execution_or_discovery_dependencies) ... ok\ntest_nesting_limit_ignores_quoted_brackets_and_escapes (test_runtime_plan.RuntimePlanTests.test_nesting_limit_ignores_quoted_brackets_and_escapes) ... ok\ntest_no_evidence_claims_can_be_injected (test_runtime_plan.RuntimePlanTests.test_no_evidence_claims_can_be_injected) ... ok\ntest_no_facts_are_unknown_not_success (test_runtime_plan.RuntimePlanTests.test_no_facts_are_unknown_not_success) ... ok\ntest_non_regular_input_rejected (test_runtime_plan.RuntimePlanTests.test_non_regular_input_rejected) ... ok\ntest_optional_and_dev_are_separate_from_runtime (test_runtime_plan.RuntimePlanTests.test_optional_and_dev_are_separate_from_runtime) ... ok\ntest_paths_and_moving_source_refs_are_rejected (test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected) ... ok\ntest_plan_is_deterministic_and_does_not_read_or_mutate (test_runtime_plan.RuntimePlanTests.test_plan_is_deterministic_and_does_not_read_or_mutate) ... ok\ntest_symbols_and_presence_expected_values_are_strict (test_runtime_plan.RuntimePlanTests.test_symbols_and_presence_expected_values_are_strict) ... ok\ntest_symlink_input_is_not_followed (test_runtime_plan.RuntimePlanTests.test_symlink_input_is_not_followed) ... ok\ntest_unknown_and_incomplete_environment_shape (test_runtime_plan.RuntimePlanTests.test_unknown_and_incomplete_environment_shape) ... ok\ntest_unknown_fields_and_missing_fields_fail_closed (test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed) ... ok\ntest_version_comparison_is_numeric (test_runtime_plan.RuntimePlanTests.test_version_comparison_is_numeric) ... ok\ntest_wrong_platform_and_abi_are_unsupported (test_runtime_plan.RuntimePlanTests.test_wrong_platform_and_abi_are_unsupported) ... ok\n\n----------------------------------------------------------------------\nRan 27 tests in 0.106s\n\nOK\n",
+      "pytest": {
+        "ids": [
+          "test_runtime_plan.RuntimePlanTests.test_caller_provided_is_not_host_attestation",
+          "test_runtime_plan.RuntimePlanTests.test_catalog_sources_refer_to_existing_advisory_entries",
+          "test_runtime_plan.RuntimePlanTests.test_check_kind_and_inconsistent_fact_types",
+          "test_runtime_plan.RuntimePlanTests.test_cli_exit_contract_with_only_explicit_fixture_inputs",
+          "test_runtime_plan.RuntimePlanTests.test_duplicate_sources_and_collection_bounds",
+          "test_runtime_plan.RuntimePlanTests.test_empty_runtime_and_duplicate_checks",
+          "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_manifest_shapes",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_profile_selection_is_not_a_path",
+          "test_runtime_plan.RuntimePlanTests.test_json_duplicate_nonfinite_nesting_and_size_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_missing_and_null_differ",
+          "test_runtime_plan.RuntimePlanTests.test_missing_symbols_cannot_use_native_profile",
+          "test_runtime_plan.RuntimePlanTests.test_module_has_no_execution_or_discovery_dependencies",
+          "test_runtime_plan.RuntimePlanTests.test_nesting_limit_ignores_quoted_brackets_and_escapes",
+          "test_runtime_plan.RuntimePlanTests.test_no_evidence_claims_can_be_injected",
+          "test_runtime_plan.RuntimePlanTests.test_no_facts_are_unknown_not_success",
+          "test_runtime_plan.RuntimePlanTests.test_non_regular_input_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_optional_and_dev_are_separate_from_runtime",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_plan_is_deterministic_and_does_not_read_or_mutate",
+          "test_runtime_plan.RuntimePlanTests.test_symbols_and_presence_expected_values_are_strict",
+          "test_runtime_plan.RuntimePlanTests.test_symlink_input_is_not_followed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_and_incomplete_environment_shape",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_version_comparison_is_numeric",
+          "test_runtime_plan.RuntimePlanTests.test_wrong_platform_and_abi_are_unsupported"
+        ],
+        "passed": [
+          "test_runtime_plan.RuntimePlanTests.test_caller_provided_is_not_host_attestation",
+          "test_runtime_plan.RuntimePlanTests.test_catalog_sources_refer_to_existing_advisory_entries",
+          "test_runtime_plan.RuntimePlanTests.test_check_kind_and_inconsistent_fact_types",
+          "test_runtime_plan.RuntimePlanTests.test_cli_exit_contract_with_only_explicit_fixture_inputs",
+          "test_runtime_plan.RuntimePlanTests.test_duplicate_sources_and_collection_bounds",
+          "test_runtime_plan.RuntimePlanTests.test_empty_runtime_and_duplicate_checks",
+          "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements",
+          "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements",
+          "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_manifest_shapes",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_manifest_shapes",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_manifest_shapes",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_manifest_shapes",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_manifest_shapes",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_manifest_shapes",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_manifest_shapes",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_profile_selection_is_not_a_path",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_profile_selection_is_not_a_path",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_profile_selection_is_not_a_path",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_profile_selection_is_not_a_path",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_profile_selection_is_not_a_path",
+          "test_runtime_plan.RuntimePlanTests.test_invalid_profile_selection_is_not_a_path",
+          "test_runtime_plan.RuntimePlanTests.test_json_duplicate_nonfinite_nesting_and_size_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_json_duplicate_nonfinite_nesting_and_size_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_json_duplicate_nonfinite_nesting_and_size_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_json_duplicate_nonfinite_nesting_and_size_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_json_duplicate_nonfinite_nesting_and_size_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_json_duplicate_nonfinite_nesting_and_size_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_json_duplicate_nonfinite_nesting_and_size_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_missing_and_null_differ",
+          "test_runtime_plan.RuntimePlanTests.test_missing_symbols_cannot_use_native_profile",
+          "test_runtime_plan.RuntimePlanTests.test_module_has_no_execution_or_discovery_dependencies",
+          "test_runtime_plan.RuntimePlanTests.test_nesting_limit_ignores_quoted_brackets_and_escapes",
+          "test_runtime_plan.RuntimePlanTests.test_no_evidence_claims_can_be_injected",
+          "test_runtime_plan.RuntimePlanTests.test_no_facts_are_unknown_not_success",
+          "test_runtime_plan.RuntimePlanTests.test_non_regular_input_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_optional_and_dev_are_separate_from_runtime",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+          "test_runtime_plan.RuntimePlanTests.test_plan_is_deterministic_and_does_not_read_or_mutate",
+          "test_runtime_plan.RuntimePlanTests.test_symbols_and_presence_expected_values_are_strict",
+          "test_runtime_plan.RuntimePlanTests.test_symlink_input_is_not_followed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_and_incomplete_environment_shape",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+          "test_runtime_plan.RuntimePlanTests.test_version_comparison_is_numeric",
+          "test_runtime_plan.RuntimePlanTests.test_wrong_platform_and_abi_are_unsupported",
+          "test_runtime_plan.RuntimePlanTests.test_wrong_platform_and_abi_are_unsupported",
+          "test_runtime_plan.RuntimePlanTests.test_wrong_platform_and_abi_are_unsupported",
+          "test_runtime_plan.RuntimePlanTests.test_wrong_platform_and_abi_are_unsupported",
+          "test_runtime_plan.RuntimePlanTests.test_wrong_platform_and_abi_are_unsupported",
+          "test_runtime_plan.RuntimePlanTests.test_wrong_platform_and_abi_are_unsupported",
+          "test_runtime_plan.RuntimePlanTests.test_wrong_platform_and_abi_are_unsupported",
+          "test_runtime_plan.RuntimePlanTests.test_wrong_platform_and_abi_are_unsupported",
+          "test_runtime_plan.RuntimePlanTests.test_wrong_platform_and_abi_are_unsupported"
+        ],
+        "failed": []
+      }
+    },
+    "single": {
+      "exit": 0,
+      "stdout": "",
+      "stderr": "test_examples_match_only_declared_requirements (test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements) ... ok\n\n----------------------------------------------------------------------\nRan 1 test in 0.002s\n\nOK\n",
+      "pytest": {
+        "ids": [
+          "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements"
+        ],
+        "passed": [
+          "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements",
+          "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements",
+          "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements"
+        ],
+        "failed": []
+      }
+    },
+    "multiple": {
+      "exit": 0,
+      "stdout": "",
+      "stderr": "test_examples_match_only_declared_requirements (test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements) ... ok\ntest_version_comparison_is_numeric (test_runtime_plan.RuntimePlanTests.test_version_comparison_is_numeric) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.003s\n\nOK\n",
+      "pytest": {
+        "ids": [
+          "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements",
+          "test_runtime_plan.RuntimePlanTests.test_version_comparison_is_numeric"
+        ],
+        "passed": [
+          "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements",
+          "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements",
+          "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements",
+          "test_runtime_plan.RuntimePlanTests.test_version_comparison_is_numeric"
+        ],
+        "failed": []
+      }
+    },
+    "zero": {
+      "exit": 5,
+      "stdout": "",
+      "stderr": "\n----------------------------------------------------------------------\nRan 0 tests in 0.000s\n\nNO TESTS RAN\n",
+      "pytest": {
+        "ids": [],
+        "passed": [],
+        "failed": []
+      }
+    }
+  },
+  "selection_ids": {
+    "all": [
+      "test_runtime_plan.RuntimePlanTests.test_caller_provided_is_not_host_attestation",
+      "test_runtime_plan.RuntimePlanTests.test_catalog_sources_refer_to_existing_advisory_entries",
+      "test_runtime_plan.RuntimePlanTests.test_check_kind_and_inconsistent_fact_types",
+      "test_runtime_plan.RuntimePlanTests.test_cli_exit_contract_with_only_explicit_fixture_inputs",
+      "test_runtime_plan.RuntimePlanTests.test_duplicate_sources_and_collection_bounds",
+      "test_runtime_plan.RuntimePlanTests.test_empty_runtime_and_duplicate_checks",
+      "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements",
+      "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+      "test_runtime_plan.RuntimePlanTests.test_invalid_manifest_shapes",
+      "test_runtime_plan.RuntimePlanTests.test_invalid_profile_selection_is_not_a_path",
+      "test_runtime_plan.RuntimePlanTests.test_json_duplicate_nonfinite_nesting_and_size_rejected",
+      "test_runtime_plan.RuntimePlanTests.test_missing_and_null_differ",
+      "test_runtime_plan.RuntimePlanTests.test_missing_symbols_cannot_use_native_profile",
+      "test_runtime_plan.RuntimePlanTests.test_module_has_no_execution_or_discovery_dependencies",
+      "test_runtime_plan.RuntimePlanTests.test_nesting_limit_ignores_quoted_brackets_and_escapes",
+      "test_runtime_plan.RuntimePlanTests.test_no_evidence_claims_can_be_injected",
+      "test_runtime_plan.RuntimePlanTests.test_no_facts_are_unknown_not_success",
+      "test_runtime_plan.RuntimePlanTests.test_non_regular_input_rejected",
+      "test_runtime_plan.RuntimePlanTests.test_optional_and_dev_are_separate_from_runtime",
+      "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+      "test_runtime_plan.RuntimePlanTests.test_plan_is_deterministic_and_does_not_read_or_mutate",
+      "test_runtime_plan.RuntimePlanTests.test_symbols_and_presence_expected_values_are_strict",
+      "test_runtime_plan.RuntimePlanTests.test_symlink_input_is_not_followed",
+      "test_runtime_plan.RuntimePlanTests.test_unknown_and_incomplete_environment_shape",
+      "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+      "test_runtime_plan.RuntimePlanTests.test_version_comparison_is_numeric",
+      "test_runtime_plan.RuntimePlanTests.test_wrong_platform_and_abi_are_unsupported"
+    ],
+    "single": [
+      "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements"
+    ],
+    "multiple": [
+      "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements",
+      "test_runtime_plan.RuntimePlanTests.test_version_comparison_is_numeric"
+    ],
+    "zero": []
+  },
+  "invalid": {
+    "loader_errors": 1,
+    "run_errors": 1,
+    "unittest": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "E\n======================================================================\nERROR: test_no_such_method (unittest.loader._FailedTest.test_no_such_method)\n----------------------------------------------------------------------\nAttributeError: type object 'RuntimePlanTests' has no attribute 'test_no_such_method'\n\n----------------------------------------------------------------------\nRan 1 test in 0.183s\n\nFAILED (errors=1)\n"
+    },
+    "pytest": {
+      "exit": 4,
+      "stdout": "\nno tests ran in 11.80s\n",
+      "stderr": "ERROR: not found: /workspace/scratch/4cfa90064cb1/parent/tests/test_runtime_plan.py::RuntimePlanTests::test_no_such_method\n(no match in any of [<UnitTestCase RuntimePlanTests>])\n\n"
+    }
+  },
+  "ids": [
+    "test_runtime_plan.RuntimePlanTests.test_caller_provided_is_not_host_attestation",
+    "test_runtime_plan.RuntimePlanTests.test_catalog_sources_refer_to_existing_advisory_entries",
+    "test_runtime_plan.RuntimePlanTests.test_check_kind_and_inconsistent_fact_types",
+    "test_runtime_plan.RuntimePlanTests.test_cli_exit_contract_with_only_explicit_fixture_inputs",
+    "test_runtime_plan.RuntimePlanTests.test_duplicate_sources_and_collection_bounds",
+    "test_runtime_plan.RuntimePlanTests.test_empty_runtime_and_duplicate_checks",
+    "test_runtime_plan.RuntimePlanTests.test_examples_match_only_declared_requirements",
+    "test_runtime_plan.RuntimePlanTests.test_invalid_fact_types_and_code_are_rejected",
+    "test_runtime_plan.RuntimePlanTests.test_invalid_manifest_shapes",
+    "test_runtime_plan.RuntimePlanTests.test_invalid_profile_selection_is_not_a_path",
+    "test_runtime_plan.RuntimePlanTests.test_json_duplicate_nonfinite_nesting_and_size_rejected",
+    "test_runtime_plan.RuntimePlanTests.test_missing_and_null_differ",
+    "test_runtime_plan.RuntimePlanTests.test_missing_symbols_cannot_use_native_profile",
+    "test_runtime_plan.RuntimePlanTests.test_module_has_no_execution_or_discovery_dependencies",
+    "test_runtime_plan.RuntimePlanTests.test_nesting_limit_ignores_quoted_brackets_and_escapes",
+    "test_runtime_plan.RuntimePlanTests.test_no_evidence_claims_can_be_injected",
+    "test_runtime_plan.RuntimePlanTests.test_no_facts_are_unknown_not_success",
+    "test_runtime_plan.RuntimePlanTests.test_non_regular_input_rejected",
+    "test_runtime_plan.RuntimePlanTests.test_optional_and_dev_are_separate_from_runtime",
+    "test_runtime_plan.RuntimePlanTests.test_paths_and_moving_source_refs_are_rejected",
+    "test_runtime_plan.RuntimePlanTests.test_plan_is_deterministic_and_does_not_read_or_mutate",
+    "test_runtime_plan.RuntimePlanTests.test_symbols_and_presence_expected_values_are_strict",
+    "test_runtime_plan.RuntimePlanTests.test_symlink_input_is_not_followed",
+    "test_runtime_plan.RuntimePlanTests.test_unknown_and_incomplete_environment_shape",
+    "test_runtime_plan.RuntimePlanTests.test_unknown_fields_and_missing_fields_fail_closed",
+    "test_runtime_plan.RuntimePlanTests.test_version_comparison_is_numeric",
+    "test_runtime_plan.RuntimePlanTests.test_wrong_platform_and_abi_are_unsupported"
+  ]
+}
