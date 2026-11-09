@@ -377,6 +377,101 @@ def audit(repos=None, *, records_path=None, previous=None, ignored_checks=IGNORE
             "errors": errors, "truncated": truncated, "changes": diff_snapshots(records, previous)}
 
 
+def integration_status(name, open_prs):
+    """Default-branch checks and a bounded merged history, independent of open PRs.
+
+    The history is observational; chronological order never creates dependency edges.
+    A moving default branch invalidates this observation instead of certifying old checks.
+    """
+    full = repository(name)
+    info = get(f"/repos/{full}")
+    if info.get("private") is not False or info.get("visibility") != "public" or info.get("archived"):
+        raise ValueError("unavailable public repository")
+    branch = info["default_branch"]
+    ref = f"/repos/{full}/git/ref/heads/{quote(branch, safe='')}"
+    sha = get(ref)["object"]["sha"]
+    checks = ghi.checks_for_sha(full, sha)
+    if not checks["complete"]:
+        raise RuntimeError("incomplete default branch checks")
+    statuses = ghi.pages(f"repos/{full}/commits/{sha}/statuses")
+    latest = {}
+    for status in statuses:
+        latest.setdefault(status["context"], status)
+    combined = [x for x in checks["checks"] if x["name"] not in IGNORED_CHECKS]
+    combined += [{"id": x["id"], "name": x["context"],
+                  "status": "in_progress" if x["state"] == "pending" else "completed",
+                  "conclusion": {"success": "success", "failure": "failure", "error": "failure"}.get(x["state"]),
+                  "url": x.get("target_url")} for x in latest.values()]
+    rows, state, _ = summarize_checks(combined)
+    recent = get(f"/repos/{full}/pulls?state=closed&sort=updated&direction=desc&per_page=30")
+    merged = [{"number": p["number"], "title": p["title"], "url": p["html_url"],
+               "merged_at": p["merged_at"], "merge_commit_sha": p.get("merge_commit_sha")}
+              for p in recent if p.get("merged_at") and p["base"]["ref"] == branch]
+    merged.sort(key=lambda p: (p["merged_at"], p["number"]))
+    if get(ref)["object"]["sha"] != sha:
+        raise RuntimeError("default branch moved during observation")
+    return {"repository": name, "branch": branch, "head_sha": sha, "open_prs": open_prs,
+            "ci": state, "checks": rows, "merged": merged,
+            "history_scope": "recently updated closed PRs: at most 30; default branch only",
+            "checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+            "next": "CI失敗を修正" if state == "FAILED" else "既定ブランチCI待ち" if state == "RUNNING"
+                    else "固定SHA・vendor参照の更新要否を確認（未評価）" if state == "COMPLETE"
+                    else "既定ブランチの検証状況を確認"}
+
+
+def explain_integrations(rows, pins, parent_heads, evidence=None):
+    """Deterministic explanations from observed refs, never compatibility inference.
+
+    parent_heads is read at the observed parent default-branch SHA, not the build
+    checkout (which may be a PR). Evidence is a producer report, not CI proof.
+    """
+    evidence = evidence or {}
+    parent = next((r for r in rows if r["repository"] == OWNER), None)
+    for row in rows:
+        name, sha = row["repository"], row.get("head_sha")
+        refs = [{"kind": "vendor", "consumer": p.get("repository"), "sha": p.get("commit"),
+                 "revision": p.get("lock_revision")}
+                for p in pins if p.get("source_repository") == repository(name)]
+        full = repository(name)
+        if full in parent_heads:
+            refs.append({"kind": "parent-baseline", "consumer": OWNER,
+                         "sha": parent_heads[full].get("sha"),
+                         "revision": parent.get("head_sha") if parent else None})
+        for ref in refs:
+            ref["state"] = "unknown" if not sha or not ref["sha"] else "match" if ref["sha"] == sha else "different"
+        row["references"] = refs
+        row["explanations"] = []
+        if any(r["state"] == "different" for r in refs):
+            row["reference_state"] = "different"
+            row["explanations"].append("参照先が現在の先端と相違。更新候補あり（互換性は未評価）")
+        elif refs and all(r["state"] == "match" for r in refs):
+            row["reference_state"] = "match"
+            row["explanations"].append("観測できた固定SHAは現在の先端と一致")
+        else:
+            row["reference_state"] = "unknown"
+            row["explanations"].append("参照の登録なし、または観測不足。更新不要とは判定しない")
+        if row["reference_state"] == "match":
+            row["explanations"].append("親CI: " + STATE_LABEL.get((parent or {}).get("ci"), "未取得")
+                                       + "。親子の互換性は未評価")
+        if row.get("ci") == "COMPLETE":
+            row["next"] = ("参照差分を確認して更新・再検証" if row["reference_state"] == "different"
+                           else "親側CIの完了待ち" if row["reference_state"] == "match" and (parent or {}).get("ci") == "RUNNING"
+                           else "親側CIの失敗を確認" if row["reference_state"] == "match" and (parent or {}).get("ci") == "FAILED"
+                           else "観測した子・親CIは成功。互換性・完了条件を確認" if row["reference_state"] == "match" and (parent or {}).get("ci") == "COMPLETE"
+                           else "参照と親側の検証状況を確認")
+        reports = evidence.get(name, [])
+        row["evidence"] = []
+        for report in reports:
+            if not isinstance(report, dict) or not re.fullmatch(r"[0-9a-f]{40}", str(report.get("sha", ""))):
+                raise ValueError("integration evidence requires a full SHA")
+            if not isinstance(report.get("facts", []), list) or not all(isinstance(x, str) for x in report.get("facts", [])):
+                raise ValueError("integration evidence facts must be strings")
+            row["evidence"].append({"sha": report["sha"], "current": bool(sha and report["sha"] == sha),
+                                    "command": str(report.get("command", "")), "result": str(report.get("result", "")),
+                                    "facts": report.get("facts", []), "source": str(report.get("source", ""))})
+    return rows
+
+
 def load_previous(source):
     """Previous data.json from a path or an HTTPS URL (the deployed page); missing is not an error."""
     if not source:

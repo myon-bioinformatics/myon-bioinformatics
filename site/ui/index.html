@@ -37,6 +37,7 @@
   <section id="stats" class="stats"></section>
   <div class="tabs"><button id="listTab" class="active">監査一覧</button><button id="compare">選択項目を比較 <span id="count">0</span></button><span id="scope">全リポジトリ</span></div>
   <section id="filters"><input id="search" placeholder="⌕ リポジトリ、番号、課題を検索" aria-label="検索"><select id="repo" aria-label="リポジトリ"><option value="">全リポジトリ</option></select><select id="ci" aria-label="CI"><option value="">すべてのCI</option><option>失敗</option><option>成功</option><option>実行中</option><option>不明</option><option>不完全</option><option>チェックなし</option><option>対象外</option></select><select id="state" aria-label="作業状態"><option value="">すべての状態</option><option>未着手</option><option>調査中</option><option>対応中</option><option>保留</option><option>ブロッカー</option><option>統合済み</option><option>ブロック</option><option>完了</option></select><select id="axis" aria-label="監査軸"><option value="">すべての監査軸</option></select><select id="sort" aria-label="並び順"><option value="priority">優先度順</option><option value="repo">リポジトリ順</option></select></section>
+  <section id="integration-summary" aria-label="統合後の確認"></section>
   <section id="content" tabindex="-1" aria-label="監査結果"></section>
   <footer>
     <nav class="horizontal-row ui-shell-scroll" data-scroll-label="フッターナビゲーション" aria-label="フッターナビゲーション">

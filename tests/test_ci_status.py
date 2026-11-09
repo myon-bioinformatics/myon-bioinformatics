@@ -483,3 +483,52 @@ class DependencyTests(unittest.TestCase):
         self.assertNotIn('<img>', html)
         self.assertIn('互換性未評価', html)
         self.assertIn('依存順序', ci.render_dependency_report({}))
+
+class IntegrationStatusTests(unittest.TestCase):
+    def test_zero_open_prs_keeps_main_checks_and_only_merged_history(self):
+        from unittest.mock import patch
+        import ci_status as ci
+        sha = 'a' * 40
+        def get(path):
+            if path.endswith('/Demo'):
+                return {'private': False, 'visibility': 'public', 'default_branch': 'main'}
+            if '/git/ref/' in path:
+                return {'object': {'sha': sha}}
+            return [{'number': 2, 'title': 'merged', 'html_url': 'https://github.com/o/r/pull/2',
+                     'merged_at': '2026-11-09T00:00:00Z', 'merge_commit_sha': sha, 'base': {'ref': 'main'}},
+                    {'number': 3, 'merged_at': None}]
+        with patch.object(ci, 'get', side_effect=get), patch.object(ci.ghi, 'pages', return_value=[]), patch.object(ci.ghi, 'checks_for_sha', return_value={'complete': True, 'checks': []}):
+            row = ci.integration_status('Demo', 0)
+        self.assertEqual(row['open_prs'], 0)
+        self.assertEqual(row['ci'], 'NO CHECKS')
+        self.assertEqual([p['number'] for p in row['merged']], [2])
+        self.assertNotIn('depends_on', row)
+
+    def test_moving_main_requires_retry(self):
+        from unittest.mock import patch
+        import ci_status as ci
+        values = [{'private': False, 'visibility': 'public', 'default_branch': 'main'},
+                  {'object': {'sha': 'a'*40}}, [], {'object': {'sha': 'b'*40}}]
+        with patch.object(ci, 'get', side_effect=values), patch.object(ci.ghi, 'pages', return_value=[]), patch.object(ci.ghi, 'checks_for_sha', return_value={'complete': True, 'checks': []}):
+            with self.assertRaises(RuntimeError):
+                ci.integration_status('Demo', 0)
+
+class IntegrationExplanationTests(unittest.TestCase):
+    def test_matching_pins_wait_for_exact_parent_observation(self):
+        import ci_status as ci
+        rows = [{'repository': 'Demo', 'head_sha': 'a'*40, 'ci': 'COMPLETE'},
+                {'repository': ci.OWNER, 'head_sha': 'b'*40, 'ci': 'RUNNING'}]
+        ci.explain_integrations(rows, [], {ci.repository('Demo'): {'sha': 'a'*40}})
+        self.assertEqual(rows[0]['next'], '親側CIの完了待ち')
+        self.assertEqual(rows[0]['references'][0]['revision'], 'b'*40)
+
+    def test_missing_and_different_refs_and_stale_evidence(self):
+        import ci_status as ci
+        row = {'repository': 'Demo', 'head_sha': 'a'*40, 'ci': 'COMPLETE'}
+        ci.explain_integrations([row], [], {})
+        self.assertEqual(row['reference_state'], 'unknown')
+        ci.explain_integrations([row], [], {ci.repository('Demo'): {'sha': 'b'*40}},
+                               {'Demo': [{'sha': 'b'*40, 'result': '10 passed', 'facts': ['condition retained']}]})
+        self.assertEqual(row['reference_state'], 'different')
+        self.assertFalse(row['evidence'][0]['current'])
+        self.assertIn('更新', row['next'])

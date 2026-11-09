@@ -62,6 +62,28 @@ class PublicationTests(unittest.TestCase):
             with self.assertRaises(ValueError):build.build(out,previous=str(before))
             self.assertEqual((out/'index.html').read_text(),'old')
 
+    def test_integration_summary_preserves_accessible_scroll_dashboard(self):
+        from html.parser import HTMLParser
+        class Elements(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.rows = []
+            def handle_starttag(self, tag, attrs):
+                self.rows.append((tag, dict(attrs)))
+        html = (Path(__file__).resolve().parents[1] / "site/ui/index.html").read_text()
+        parser = Elements()
+        parser.feed(html)
+        ids = [attrs.get("id") for _, attrs in parser.rows if "id" in attrs]
+        self.assertEqual(ids.count("integration-summary"), 1)
+        self.assertLess(ids.index("integration-summary"), ids.index("content"))
+        content = next(attrs for _, attrs in parser.rows if attrs.get("id") == "content")
+        self.assertEqual(content["tabindex"], "-1")
+        labels = {attrs.get("data-scroll-label") for _, attrs in parser.rows}
+        self.assertTrue({"上部ナビゲーション", "監査の操作", "フッターナビゲーション"} <= labels)
+        self.assertIn('class="skip-link" href="#content"', html)
+        self.assertIn('href="pswb-shell.css"', html)
+        self.assertIn('src="scroll-controls.js"', html)
+
     def test_success_builds_relocatable_ui_report_data_and_history(self):
         with tempfile.TemporaryDirectory() as tmp:
             out=Path(tmp)/'dist'

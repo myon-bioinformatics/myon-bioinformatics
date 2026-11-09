@@ -130,6 +130,30 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
     snapshot = ci.audit(names, records_path=source_root / 'site/records.jsonl', previous=before, strict=True,
                         dependency_path=source_root / 'site/dependencies.json')
     ensure_complete(snapshot)
+    snapshot['integrations'] = []
+    for name in names:
+        count = sum(r['kind'] == 'pr' and r['repository'] == name for r in snapshot['records'])
+        try:
+            snapshot['integrations'].append(ci.integration_status(name, count))
+        except (ValueError, KeyError, RuntimeError, OSError) as exc:
+            snapshot['integrations'].append({'repository': name, 'open_prs': count, 'ci': 'UNKNOWN',
+                                             'error': type(exc).__name__, 'next': '既定ブランチの観測を再試行'})
+
+    # Bind the registry to the observed parent SHA, never a mutable local/PR copy.
+    parent = next((r for r in snapshot['integrations'] if r['repository'] == ci.OWNER), None)
+    parent_heads = {}
+    if parent and parent.get('head_sha'):
+        try:
+            import base64
+            content = ci.get(f"/repos/{ci.OWNER}/{ci.OWNER}/contents/child-heads.json?ref={parent['head_sha']}")
+            parent_heads = json.loads(base64.b64decode(content['content']))['heads']
+        except (ValueError, KeyError, RuntimeError, OSError):
+            parent_heads = {}
+    evidence_path = source_root / 'site/integration-evidence.json'
+    evidence = json.loads(evidence_path.read_text(encoding='utf-8')) if evidence_path.exists() else {}
+    if not isinstance(evidence, dict):
+        raise ValueError('integration evidence must be an object')
+    ci.explain_integrations(snapshot['integrations'], snapshot.get('vendor_pins', []), parent_heads, evidence)
     snapshot['source'] = f'https://github.com/{ci.OWNER}/{ci.OWNER}'
     fleet_graph = None
     if fleet is not None:
