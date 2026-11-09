@@ -1,8 +1,5 @@
 """Stateful offline API: coordinated commits, PR reuse and source closure ordering."""
-import base64
-import copy
-import json
-import urllib.parse
+import base64, copy, json, urllib.parse
 
 import pytest
 from test_gh_ops import gh_ops

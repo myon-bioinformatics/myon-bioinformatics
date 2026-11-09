@@ -1,15 +1,6 @@
 """pytest_brief: requirement parsing, missing-only install, and the kept summary lines."""
-import importlib.util
-import subprocess
-import sys
-import json
-import os
-import tempfile
-import unittest
-import venv
-import zipfile
-from unittest.mock import patch
-from pathlib import Path
+import importlib.util, json, os, subprocess, sys, tempfile, unittest, venv, zipfile
+from pathlib import Path; from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "pytest_brief.py"

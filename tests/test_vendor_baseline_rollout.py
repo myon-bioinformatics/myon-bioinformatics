@@ -3,9 +3,7 @@
 These fixtures freeze claims for offline regression, not proof of upstream
 provenance. Parent CI separately reads the immutable source and child blobs.
 """
-import copy
-import hashlib
-import json
+import copy, hashlib, json
 from pathlib import Path
 
 import pytest
@@ -33,6 +31,10 @@ ROLLOUT_FIXTURES = json.loads(
 ROLLOUT_FIXTURES.update(json.loads(
     (ROOT / "tests/fixtures/reviewed_pin_repairs_20261106.json").read_text()))
 
+LATEST_FIXTURES = json.loads(
+    (ROOT / 'tests/fixtures/reviewed_mcp_lock_20261109.json').read_text())
+REFRESHED_FIXTURES.update(LATEST_FIXTURES)
+
 # Registry entries enrolled after the 2026-10-29 observation. The parent registry
 # must land before the child lock (the child CI reads the live registry), so these
 # are excluded from the frozen-baseline comparison until the baseline is re-observed.
@@ -41,6 +43,7 @@ POST_BASELINE_ENROLLMENTS = {
     "myon-bioinformatics/myon-bioinformatics.github.io": {"tools/vendor/web-ui-generator/web_ui.py"},
     # The parent audit dashboard (ci_status.py --audit --html) renders through the vendored web_ui.py.
     "myon-bioinformatics/myon-bioinformatics": {"vendor/web_ui.py", "vendor/web_ui-LICENSE"},
+    "myon-bioinformatics/mcp-toolcall-lab": {"vendor/web_ui.py", "vendor/web-ui-LICENSE"},
 }
 
 
@@ -70,11 +73,11 @@ def test_post_baseline_enrollments_are_registered():
 def test_observed_lock_topology_and_immutable_revision(name):
     registry = baseline_registry(json.loads((ROOT / "vendor-consumers.json").read_text()))
     heads = vendor_sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
-    fixture = ROLLOUT_FIXTURES.get(name, REFRESHED_FIXTURES.get(name, FIXTURES[name]))
+    fixture = LATEST_FIXTURES.get(name, ROLLOUT_FIXTURES.get(name, REFRESHED_FIXTURES.get(name, FIXTURES[name])))
     lock = vendor_sync.validate(fixture["lock"])
     observed = json.loads((ROOT / "tests/fixtures/parent_observation_20261102.json").read_text())
     expected_sha = fixture["sha"]
-    if name in ROLLOUT_FIXTURES:
+    if name in ROLLOUT_FIXTURES or name in LATEST_FIXTURES:
         digest = hashlib.sha256(json.dumps(lock, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         assert digest == fixture["lock_sha256"]
         assert heads["heads"][name]["repository_id"] == fixture["repository_id"]

@@ -1,26 +1,8 @@
 """Reproducible GitHub file placement and update candidates (stdlib only)."""
 from __future__ import annotations
 
-import argparse
-import base64
-import copy
-from contextvars import ContextVar
-from functools import wraps
-import hashlib
-import json
-import os
-from pathlib import Path, PurePosixPath
-import re
-import shutil
-import socket
-import stat
-import subprocess
-import sys
-import tempfile
-import time
-from urllib.error import HTTPError, URLError
-from urllib.parse import quote
-from urllib.request import Request, urlopen
+import argparse, base64, copy, hashlib, json, os, re, shutil, socket, stat, subprocess, sys, tempfile, time
+from contextvars import ContextVar; from functools import wraps; from pathlib import Path, PurePosixPath; from urllib.error import HTTPError, URLError; from urllib.parse import quote; from urllib.request import Request, urlopen
 
 __version__ = "0.3.0"
 __all__ = [
@@ -30,6 +12,7 @@ __all__ = [
     "validate_minpy_bundle",
     "evidence",
     "synchronize",
+    "recreate",
     "promote",
     "commit_merged_into_default",
     "collect_lock_pins",
@@ -376,13 +359,59 @@ def _public_http_get(url):
     return _retry_transient_public_fetch(_redact_secrets("HTTP GET " + url), attempt)
 
 
+def _exhausted_public_transport(error):
+    return isinstance(error.__cause__, (_TransientPublicFetchError, URLError,
+                                       TimeoutError, socket.timeout))
+
+
+def _public_api_repository_record(repository):
+    cache = _PARENT_FETCH_CACHE.get()
+    key = ("public-api-metadata", repository.casefold())
+    if cache is not None and key in cache:
+        return json.loads(cache[key])
+    record = json.loads(_public_http_get(
+        "https://api.github.com/repos/" + repository,
+    ).decode("utf-8"))
+    if (not record_is_public_source_pin(record)
+            or record["full_name"].casefold() != repository.casefold()
+            or type(record.get("id")) is not int or record["id"] < 1
+            or type(record.get("archived")) is not bool):
+        raise ValueError("invalid public repository identity")
+    if cache is not None:
+        cache[key] = json.dumps(record)
+    return record
+
+
+def _public_api_ref_sha(repository, ref):
+    _public_api_repository_record(repository)
+    record = json.loads(_public_http_get(
+        "https://api.github.com/repos/{}/commits/{}".format(repository, quote(ref, safe="")),
+    ).decode("utf-8"))
+    if not isinstance(record, dict):
+        raise ValueError("invalid commit response")
+    sha = record.get("sha")
+    _hex(sha, 40)
+    return sha
+
+
 def public_ref_sha(repository, ref="main"):
-    """Resolve a moving branch ref to an immutable commit SHA via the public Atom feed."""
+    """Resolve Atom ref; recover HTML transport outages via verified public API."""
     repository = _normalize_repository(repository)
     if not isinstance(ref, str) or not ref or any(ord(c) < 32 for c in ref):
         raise ValueError("invalid ref")
+    cache = _PARENT_FETCH_CACHE.get()
+    if cache is not None and cache.get("github-html-unavailable"):
+        return _public_api_ref_sha(repository, ref)
     url = "https://github.com/{}/commits/{}.atom".format(repository, quote(ref, safe=""))
-    match = _COMMIT_ATOM_SHA.search(_public_http_get(url).decode("utf-8", "replace"))
+    try:
+        atom = _public_http_get(url).decode("utf-8", "replace")
+    except ValueError as error:
+        if not _exhausted_public_transport(error):
+            raise
+        if cache is not None:
+            cache["github-html-unavailable"] = True
+        return _public_api_ref_sha(repository, ref)
+    match = _COMMIT_ATOM_SHA.search(atom)
     if not match:
         raise ValueError("missing commit in atom feed")
     sha = match.group(1)
@@ -447,13 +476,24 @@ def _public_repo_is_archived_from_html(html):
 
 
 def public_repository_page_record(repository):
-    """Read repository identity from the public github.com HTML page (no REST API).
+    """Read public repository identity, with transport-only API recovery.
 
-    Uses ``octolytics-dimension-repository_id`` (and related meta tags) from the
-    same response used for archived detection. Atom/raw URLs are not used for id.
+    Uses HTML metadata normally; exhausted transient transport failures fall
+    back to repository API metadata with explicit public identity validation.
+    Missing, denied, or malformed HTML never triggers this fallback.
     """
     repository = _normalize_repository(repository)
-    html = _public_http_get("https://github.com/" + repository).decode("utf-8", "replace")
+    cache = _PARENT_FETCH_CACHE.get()
+    if cache is not None and cache.get("github-html-unavailable"):
+        return _public_api_repository_record(repository)
+    try:
+        html = _public_http_get("https://github.com/" + repository).decode("utf-8", "replace")
+    except ValueError as error:
+        if not _exhausted_public_transport(error):
+            raise
+        if cache is not None:
+            cache["github-html-unavailable"] = True
+        return _public_api_repository_record(repository)
     id_match = _REPOSITORY_ID_META.search(html)
     if not id_match:
         raise ValueError("missing repository id in public page metadata")
@@ -780,6 +820,51 @@ def synchronize(manifest, root, mode, *, get=_get):
     if mode == "enroll":
         synchronize(manifest.relative_to(root).as_posix(), root, "check", get=get)
     return {"schema": SCHEMA, "mode": mode, "changed_paths": changed}
+
+
+def recreate(manifest, root, *, get=_get):
+    """Fetch every locked file again from GitHub and put those bytes over the checkout copies.
+
+    The checked-in copies are verified first. The fresh snapshot is materialized and checked in an
+    empty staging directory under ``root`` (nothing in the checkout can satisfy it), and only then
+    moved over the checkout copies one file at a time, so a failed download or digest leaves the
+    checked-in files in place for CI evidence. Placement is atomic per file, not a transaction across
+    the batch. This is the "unlink every destination, materialize, check" CI step as one call.
+    Baseline checks reject edits observed after download and before each placement, but do not
+    provide locking: a write between verification and os.replace can still race. Use an isolated
+    checkout. A placement/final-check failure does not roll back earlier replacements; preserve
+    concurrent edits, inspect the checkout, and rerun only after restoring the intended lock state.
+    """
+    root = Path(root).resolve()
+    manifest_path = _target(root, manifest)
+    relative = manifest_path.relative_to(root).as_posix()
+    synchronize(relative, root, "check", get=get)
+    manifest_bytes = manifest_path.read_bytes()
+    lock = validate(json.loads(manifest_bytes))
+
+    def unchanged_manifest():
+        if _target(root, manifest).read_bytes() != manifest_bytes:
+            raise ValueError("manifest changed during recreate; use an isolated checkout")
+
+    with tempfile.TemporaryDirectory(prefix=".vendor-recreate-", dir=root) as directory:
+        staging = Path(directory)
+        staged = _target(staging, relative)
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        staged.write_bytes(manifest_bytes)
+        synchronize(relative, staging, "materialize", get=get)
+        synchronize(relative, staging, "check", get=get)
+        # Downloads can be slow. Refuse observed edits before replacing anything.
+        unchanged_manifest()
+        synchronize(relative, root, "check", get=get)
+        for item in lock["files"]:
+            unchanged_manifest()
+            target = _target(root, item["destination"])
+            _verify(item, target.read_bytes())
+            os.replace(_target(staging, item["destination"]), target)
+    unchanged_manifest()
+    synchronize(relative, root, "check", get=get)
+    return {"schema": SCHEMA, "mode": "recreate", "changed_paths": [],
+            "recreated": [item["destination"] for item in lock["files"]]}
 
 
 def _git_subprocess_env():
@@ -2834,6 +2919,7 @@ def main(argv=None, *, get=_get):
         choices=(
             "check",
             "materialize",
+            "recreate",
             "update",
             "promote",
             "enroll",
@@ -2997,6 +3083,8 @@ def main(argv=None, *, get=_get):
             result = promote(args.manifest, args.root, get=get)
         elif args.mode == "evidence":
             result = evidence(args.manifest, args.root, runtime=args.runtime_evidence)
+        elif args.mode == "recreate":
+            result = recreate(args.manifest, args.root, get=get)
         else:
             result = synchronize(args.manifest, args.root, args.mode, get=get)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, HTTPError) as error:

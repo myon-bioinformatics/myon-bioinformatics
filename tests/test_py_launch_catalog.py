@@ -1,6 +1,5 @@
 """Catalog pin for py_launch.cjs after parent PR #171 merge."""
-import hashlib
-import json
+import hashlib, json
 from pathlib import Path
 
 import pytest
@@ -15,8 +14,8 @@ PY_LAUNCH_CATALOG_PIN_BLOB_SHA = "006817bc813187fa45abc3e8954fde27a2b73caa"
 PY_LAUNCH_CATALOG_PIN_SHA256 = "a78fe656cde285a83501b9b19d97b9ebde6f9637919b3adb95c50eb254154536"
 # Worktree bytes move with this checkout. The catalog pin above stays the
 # accepted main merge until a reviewed promotion.
-PY_LAUNCH_WORKTREE_BLOB_SHA = "4a35b158b4a4cbd3a5d672ded1337a138a44bbd2"
-PY_LAUNCH_WORKTREE_SHA256 = "f900e2662e7065a087897f4b927815d34a81f0e9ca811c0412151b38a218a501"
+PY_LAUNCH_WORKTREE_BLOB_SHA = "c858a1f71e1d75a1fbbefbd762fd7038287880aa"
+PY_LAUNCH_WORKTREE_SHA256 = "c0e1333d34bcb95aec94cc78b2ee2ad9d01abe4e556c81c99094e2c8faf0feaa"
 PY_LAUNCH_CATALOG_PIN_FIXTURE = ROOT / "tests" / "fixtures" / "py-launch-catalog-pin.lock.json"
 
 

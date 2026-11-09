@@ -1,10 +1,7 @@
 """Unit tests for node_launch.py (requires Node 26+ when probing PATH)."""
 from __future__ import annotations
 
-import os
-import shutil
-import subprocess
-import sys
+import os, shutil, subprocess, sys
 from pathlib import Path
 
 import pytest

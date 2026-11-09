@@ -12,6 +12,7 @@ on:
       - "vendor/**"
       - ".github/workflows/python-tests.yml"
       - ".github/workflows/reusable-actionlint.yml"
+      - ".github/workflows/reusable-stdlib-runtime.yml"
       - ".github/workflows/vendor-parent-child-ci.yml"
       - "templates/vendor-child-ci.workflow.yml"
       - "child-heads.json"
@@ -42,6 +43,7 @@ on:
       - "vendor/**"
       - ".github/workflows/python-tests.yml"
       - ".github/workflows/reusable-actionlint.yml"
+      - ".github/workflows/reusable-stdlib-runtime.yml"
       - ".github/workflows/vendor-parent-child-ci.yml"
       - "templates/vendor-child-ci.workflow.yml"
       - "child-heads.json"
@@ -71,26 +73,11 @@ env:
 
 jobs:
   stdlib-runtime:
-    name: Stdlib runtime (Python ${{ matrix.python }})
     # Keep the legacy stdlib lane separate from the Python 3.11+ pytest jobs.
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python: ["3.9", "3.10"]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version: "latest"
-          python-version: "${{ matrix.python }}"
-          activate-environment: true
-          enable-cache: true
-          # Pull requests restore the cache and never write it; only main saves it.
-          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          prune-cache: true
-      - name: Exercise runtime without third-party packages
-        run: python -S tests/stdlib_runtime_smoke.py
+    uses: ./.github/workflows/reusable-stdlib-runtime.yml
+    with:
+      python-versions: '["3.9","3.10"]'
+      commands: python -S tests/stdlib_runtime_smoke.py
 
   pytest:
     runs-on: ubuntu-latest

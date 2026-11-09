@@ -19,8 +19,9 @@ name collisions between different repositories fail validation.
 The catalog expands coverage to yourself, cli_args, markdown, ascii_artist,
 nvd_nist_known_vulns, web-ui (`web_ui.py`), BlueProbe (`blueprobe.py`), and the
 parent's shared tools. `web_ui.py` uses `skipped(pending_explicit_enrollment)`
-by default; only consumers with an existing locked copy (Aoi and github.io) are
-`enrolled` explicitly. BlueProbe is an Aoi subtree child (see Aoi's
+by default; only consumers with an existing locked copy (Aoi and github.io) or an
+explicit registry entry (mcp-toolcall-lab, which adopts it for the shared
+source panel) are `enrolled` explicitly. BlueProbe is an Aoi subtree child (see Aoi's
 `child-heads.json`); the catalog still lists `blueprobe.py` for organization-wide
 coverage with `skipped(requires_sibling_module)` like QueRyu and PythDRagoras,
 not as a parent `vendor-consumers.json` lock. QueRyu (`queryu.py`) and PythDRagoras (`pythdragoras.py`) use

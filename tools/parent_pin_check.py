@@ -2,18 +2,8 @@
 """Scan a checkout for commit pins to the parent repository (stdlib only)."""
 from __future__ import annotations
 
-import argparse
-import base64
-import fnmatch
-import json
-import os
-import re
-import sys
-from pathlib import Path
-from typing import Any, Sequence
-from urllib.error import HTTPError, URLError
-from urllib.parse import quote
-from urllib.request import Request, urlopen
+import argparse, base64, fnmatch, json, os, re, sys
+from pathlib import Path; from typing import Any, Sequence; from urllib.error import HTTPError, URLError; from urllib.parse import quote; from urllib.request import Request, urlopen
 
 PARENT_REPOSITORY = "myon-bioinformatics/myon-bioinformatics"
 PARENT_PIN_TOOL_PATH = "tools/parent_pin_check.py"

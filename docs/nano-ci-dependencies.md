@@ -57,3 +57,26 @@ parallelism improvement from package counts. No extra benchmark job is added.
 Historical measured bundles retain their original helper/source hashes. The
 [BTK reproduction recipe](evidence/nano-features/2026-11-01-browser-test-kit/REPRODUCE.md)
 pins its historical parent checkout; these CI changes do not relabel that run.
+
+## BTK Node 26 profiles
+
+Additive dependency-only profiles for BTK's document mirrors (feature prefix
+`browser-test-kit-document-mirrors-`). They extend the historical BTK snapshot and its
+Bun recipes; neither is rewritten. Each keeps exactly 30 complete package records and
+requires `--dependencies-only`; only `package.json` and `package-lock.json` are selected.
+
+| Suffix | Exact BTK input commit | Parser versions |
+| --- | --- | --- |
+| `node26` | `8de4a8c145a1361c477c67e87f0e74a1c45faa50` | marked 18.1.1, linkedom 0.18.13 (root engine `>=26`) |
+| `node26-marked` | `d119b57b14bd8032dd220dfda0ee613106131260` | marked 18.1.2, linkedom 0.18.13 |
+| `node26-parsers` | `45a3da49ce522519817dc2a207d849c51e0328d1` | marked 18.1.2, linkedom 0.18.14; cssom 0.5.0 becomes @acemir/cssom 0.9.32, linkedom's optional canvas peer metadata kept without installing canvas |
+
+The second commit merges both dependency PRs into Node 26 main. ExcelJS stays in the full
+lock and its separate smoke lane, not in this browser subset. Consumers select the profile
+deliberately (`BTK_NODE26_FEATURE`, `BTK_NODE26_SOURCE_BLOBS`, `BTK_NODE26_SELECTED`,
+`BTK_NODE26_EXPECTED_PATHS`) after pinning a reviewed parent revision and checking the
+helper SHA-256. Preparation is an offline npm lock-only projection, never an install, and
+its receipt reports no installed count or bytes; consumers install with scripts disabled,
+verify the installed paths and versions, and run their live checkout's tests. This is
+compatibility evidence, not a benchmark.
+

@@ -1,9 +1,5 @@
 """commit-files: one multi-file commit through the Git Data API, planned first (in-memory API)."""
-import base64
-import importlib.util
-import json
-import sys
-import urllib.parse
+import base64, importlib.util, json, sys, urllib.parse
 from pathlib import Path
 
 import pytest

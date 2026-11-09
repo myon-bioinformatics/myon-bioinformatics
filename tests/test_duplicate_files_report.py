@@ -1,10 +1,7 @@
 """Offline end-to-end regressions for the scheduled duplicate-files adapter."""
 
-import json
-import os
+import json, os, subprocess, sys
 from pathlib import Path
-import subprocess
-import sys
 
 import pytest
 import yaml

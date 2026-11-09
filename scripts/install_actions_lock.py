@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 """Install the reviewed official Actions lock generator from one shared manifest."""
-import hashlib
-import json
-import os
-import platform
+import hashlib, json, os, platform, re, subprocess
 from pathlib import Path
-import re
-import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = 'github/gh-actions-lock'

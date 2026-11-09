@@ -1,15 +1,6 @@
 """Real local transports plus deterministic retry/deadline regressions (no Internet)."""
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-import os
-from pathlib import Path
-import shutil
-import socket
-import ssl
-import subprocess
-import sys
-import threading
-import time
+import os, shutil, socket, ssl, subprocess, sys, threading, time
+from functools import partial; from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer; from pathlib import Path
 
 import pytest
 

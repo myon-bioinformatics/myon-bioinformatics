@@ -1,6 +1,4 @@
-import base64
-import json
-import subprocess
+import base64, json, subprocess
 from types import SimpleNamespace
 
 import pytest

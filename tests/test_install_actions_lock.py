@@ -1,9 +1,6 @@
 """No installation occurs until both release identities have been checked."""
-import hashlib
-import json
-from pathlib import Path
-import subprocess
-from unittest.mock import Mock
+import hashlib, json, subprocess
+from pathlib import Path; from unittest.mock import Mock
 
 import pytest
 from scripts.install_actions_lock import install, ROOT

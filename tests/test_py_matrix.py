@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import importlib.util
-import subprocess
+import importlib.util, subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

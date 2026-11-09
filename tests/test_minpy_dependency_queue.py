@@ -1,12 +1,8 @@
 """Compatibility of dependency discovery with shared modules and package parents."""
 from __future__ import annotations
 
-import hashlib
-import json
-import os
+import hashlib, json, os, subprocess, sys
 from pathlib import Path
-import subprocess
-import sys
 
 import pytest
 

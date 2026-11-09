@@ -1,6 +1,5 @@
 """Parent topology follows xprobe PR #33 vendor.lock.json snapshot."""
-import copy
-import json
+import copy, json
 from pathlib import Path
 
 import vendor_consumers

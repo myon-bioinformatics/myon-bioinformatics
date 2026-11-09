@@ -1,11 +1,6 @@
 """Execute the distributed bootstrap, then check the actual child validation path."""
-import copy
-import io
-import json
-import subprocess
-from pathlib import Path
-from types import SimpleNamespace
-from urllib.error import HTTPError
+import copy, io, json, subprocess
+from pathlib import Path; from types import SimpleNamespace; from urllib.error import HTTPError
 
 import pytest
 import yaml

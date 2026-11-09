@@ -1,11 +1,8 @@
 """Real local Git regressions; no network, credentials, or external service."""
 from __future__ import annotations
 
-import importlib.util
-import os
+import importlib.util, os, subprocess, sys
 from pathlib import Path
-import subprocess
-import sys
 
 import pytest
 

@@ -40,6 +40,25 @@ bundle from the entry at the locked commit and compares it. See `docs/minpy.md`.
 This minimal schema example is not a complete consumer manifest: add the upstream
 LICENSE with its independently verified hashes before adoption.
 
+## Recreating the locked files in CI
+
+`python -S vendor_sync.py recreate --manifest vendor.lock.json` (or `recreate(manifest, root)` from
+Python) is the CI step that proves every checked-in copy can be fetched again from GitHub. It checks
+the checkout copies, materializes the lock into an empty staging directory under the root (nothing in
+the checkout can satisfy it), checks the staged bytes, moves them over the checkout copies one file at
+a time, and checks again. A failed download or digest leaves the checked-in files in place, unlike
+the inline "unlink every destination, then materialize" step it replaces. Placement is atomic per
+file, not a transaction across the batch. It prints `{"schema", "mode": "recreate", "changed_paths",
+"recreated"}`; `changed_paths` stays empty because the recreated bytes are the locked bytes.
+
+Recreation must run in an isolated checkout. It rechecks the original manifest and checkout
+bytes after downloads and each destination immediately before replacement, rejecting edits it
+observes. This is not locking or compare-and-swap: writes racing the final verification and
+replacement are unsupported. A failure during placement may leave earlier files replaced, and a
+failure of the final check does not roll them back. Staging is removed in either case. Inspect the
+checkout and preserve any concurrent edits; after resolving the cause and verifying the intended
+lock state, rerun `recreate`. Do not delete the checkout copies as a recovery step.
+
 ## Central consumer topology
 
 `vendor-consumers.json` is the parent-owned machine-readable registry of
@@ -173,6 +192,35 @@ for tools that need site-packages (for example Playwright). Options go before
 `your_tool.py`; everything after it is passed to the script unchanged. A lone `--`
 ends the options, so the next argument is the script even if it starts with `-`.
 If an option is repeated, the last one wins (`--site` twice is the same as once).
+
+#### Calling a function or class by name (`call`, `--call`)
+
+`call(scriptPath, target, args, opts)` imports `SCRIPT.py` from its path (its
+`__name__` is the file stem, so the `if __name__ == "__main__":` block never
+runs), resolves `target` as a dotted name, calls it, and returns the JSON-decoded
+result. `args` is a positional array or `{ args, kwargs, init }`; `init` holds
+constructor arguments when `target` is `Klass.method`. A bare class target
+constructs the object and returns its fields. Return values are serialized as
+JSON: dataclasses and plain objects become their fields, `set` / `tuple` become
+lists, anything else (for example `Path`) becomes `str`. During the call `print`
+goes to stderr so stdout stays one JSON document; `sys.argv` is `[SCRIPT.py]`, so
+an argparse-style `main()` sees no stray arguments. The script directory is put
+first on `sys.path` even under `isolated`, so sibling imports work. A Python
+exception is a failed run (exit 1, traceback in `err.stderr`); `callRaw` returns
+the `spawnSync` result instead of parsing it. Options are the same as `run()`
+except `input`, which the request already uses.
+
+```js
+const { call } = require("./vendor/py_launch.cjs");
+const info = call(__dirname + "/yourself.py", "collect", { kwargs: { include_host: true } });
+const n = call(__dirname + "/tool.py", "Counter.add", { init: [100], args: [5] });
+```
+
+```sh
+node vendor/py_launch.cjs --call collect yourself.py            # {"schema_version": 1, ...}
+node vendor/py_launch.cjs --call add tool.py 2 3                # each ARG is JSON if it parses, else a string
+node vendor/py_launch.cjs --call main tool.py '["--format","json"]'
+```
 
 ### Python launcher for vendored Node scripts (`node_launch.py`)
 
@@ -612,3 +660,20 @@ and copyright notices remain unchanged. Aoi manages subtree children in its own
 child registry; the account parent remains responsible for its direct consumer
 baselines. Whole-subtree synchronization and optional minpy file consumption are
 separate mechanisms.
+
+### 2026-11-09 親PR統合時のmcp-toolcall-lab基準更新
+
+#223のweb_ui登録は、旧基準1184ba449e146cb8f101aaa743449eb71a1afeb9では未採用だった。
+公開・非archived・repository_id=1374450603を確認し、子mainの
+31ff99fbe4c13b3feb570ae3ba1fc7cf972f8a16を明示的に再確認した。
+11件すべてについて、各sourceの記録済みcommitにあるGit blob SHA・SHA-256と、
+この子revisionの配置ファイルのバイト一致を読み取り検証した。
+web_ui.py/対応LICENSEの2件追加に加え、markdown.py/node_launch.pyの採用pin更新を含む。
+子のロックやファイルを置換する処理ではない。親child-headsの1項目のみ更新し、
+独立したfixture reviewed_mcp_lock_20261109.jsonへ観測値を保存する。
+ソースがdefault branchへ統合済みかどうかと配置バイトの独立監査は、既存の親CIで継続する。
+
+オンライン監査でmarkdown.pyの旧pin be468a6がソースmain第一親履歴にないことを検出した。
+子PR #202で同一blobを持つmainのmerge commit 2af2b6646af5663aa1761be08ee7e0c048c3f680へ
+ref/commitのみ修正し、vendorのバイト・blob_sha・SHA-256は維持した。子main統合後の11件の
+ロックを再確認して本基準に採用した。他の採用pinは変更していない。

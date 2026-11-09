@@ -2,10 +2,8 @@
 
 Does not access the network, edit locks, or assert candidate compatibility.
 """
-import argparse
-import json
+import argparse, json, sys
 from pathlib import Path
-import sys
 
 import vendor_catalog
 import vendor_consumers

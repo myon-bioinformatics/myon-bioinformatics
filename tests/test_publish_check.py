@@ -1,11 +1,5 @@
 """publish_check: deploy/http/bytes/text/regex checks and exit-code contracts."""
-import functools
-import http.server
-import importlib.util
-import json
-import subprocess
-import threading
-import urllib.error
+import functools, http.server, importlib.util, json, subprocess, threading, urllib.error
 from pathlib import Path
 
 import pytest

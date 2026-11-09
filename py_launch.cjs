@@ -23,6 +23,17 @@
  * directory from `sys.path`). Sibling imports fail unless the script prepends its
  * directory to `sys.path`; default is off.
  * Both startup flags also apply to the interpreter version probe.
+ *
+ * Call by name (no `if __name__ == "__main__"` involved):
+ *   call(scriptPath, "func", [1, 2])                      → func(1, 2)
+ *   call(scriptPath, "func", { args: [1], kwargs: { k: 2 } })
+ *   call(scriptPath, "Klass", [a, b])                     → Klass(a, b), returned as its fields
+ *   call(scriptPath, "Klass.method", { init: [a], args: [x] }) → Klass(a).method(x)
+ * The module is imported from its file path (so `__name__` is its stem, never `__main__`),
+ * its directory is put first on `sys.path` for sibling imports, the request goes in as JSON
+ * on stdin, and the return value comes back as JSON on stdout (dataclasses/objects → fields,
+ * set/tuple → list, anything else → str). While the target runs, `print` goes to stderr so
+ * stdout stays one JSON document. A Python exception exits 1 with the traceback on stderr.
  */
 const { spawn, spawnSync } = require("node:child_process");
 const { platform } = require("node:os");
@@ -34,6 +45,32 @@ const DEFAULT_PROBE_TIMEOUT_MS = 5_000;
 const HOST_RESPONSE_MARGIN_BYTES = 512;
 const VERSION_PROBE =
   "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}'); sys.exit(0 if sys.version_info >= (3, 9) else 1)";
+// Python side of call(): `python -c CALL_SHIM SCRIPT.py TARGET` with the JSON request on stdin.
+// stdlib only (3.9+). Kept as one string so the vendored .cjs stays a single file.
+const CALL_SHIM = [
+  "import dataclasses, importlib.util, json, os, re, sys",
+  "path, target = sys.argv[1], sys.argv[2]",
+  "sys.argv = [path]",  // argparse-style main() sees no stray argv and reports the script as prog
+  "req = json.loads(sys.stdin.read() or '{}')",
+  "req = {'args': req} if isinstance(req, list) else req",
+  "sys.path.insert(0, os.path.dirname(os.path.abspath(path)))",
+  "name = re.sub(r'\\W', '_', os.path.splitext(os.path.basename(path))[0])",
+  "spec = importlib.util.spec_from_file_location(name, path)",
+  "mod = importlib.util.module_from_spec(spec); sys.modules[name] = mod",
+  "out, sys.stdout = sys.stdout, sys.stderr",
+  "spec.loader.exec_module(mod)",
+  "parts = target.split('.'); obj = mod",
+  "for p in parts[:-1]: obj = getattr(obj, p)",
+  "if isinstance(obj, type) and 'init' in req: obj = obj(*req['init'])",
+  "res = getattr(obj, parts[-1])(*req.get('args', ()), **req.get('kwargs', {}))",
+  "def default(o):",
+  "    if dataclasses.is_dataclass(o) and not isinstance(o, type): return dataclasses.asdict(o)",
+  "    if isinstance(o, (set, frozenset, tuple)): return list(o)",
+  "    return vars(o) if hasattr(o, '__dict__') else str(o)",
+  "out.buffer.write(json.dumps(res, ensure_ascii=False, default=default).encode('utf-8'))",
+  "out.flush()",
+].join("\n");
+const CALL_TARGET = /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/;
 
 /** @typedef {{ cmd: string, prefix: string[], label: string, strict?: boolean }} PythonCandidate */
 
@@ -495,6 +532,49 @@ function run(scriptPath, args, options = {}) {
 }
 
 /**
+ * Build the request object for call(): an array is positional args; an object may hold
+ * `args`, `kwargs`, and `init` (constructor args when target is `Klass.method`).
+ * @param {unknown} args
+ */
+function callRequest(args) {
+  if (args === undefined || args === null) return {};
+  if (Array.isArray(args)) return { args };
+  if (typeof args !== "object") throw new Error("py_launch: call args must be an array or {args, kwargs, init}");
+  for (const key of Object.keys(args)) {
+    if (key !== "args" && key !== "kwargs" && key !== "init") {
+      throw new Error(`py_launch: unknown call request key "${key}" (use args, kwargs, init)`);
+    }
+  }
+  return args;
+}
+
+/**
+ * Run `target` (a function, class, or `Klass.method` dotted path) in SCRIPT.py and return
+ * its JSON-decoded result. Same options as run() except `input` (the request uses stdin).
+ * The underlying spawnSync result is exposed as `callRaw` for stderr passthrough.
+ *
+ * @param {string} scriptPath
+ * @param {string} target
+ * @param {unknown[] | { args?: unknown[], kwargs?: object, init?: unknown[] }} [args]
+ * @param {object} [options]
+ */
+function callRaw(scriptPath, target, args, options = {}) {
+  if (typeof target !== "string" || !CALL_TARGET.test(target)) {
+    throw new Error(`py_launch: call target must be a dotted name such as "func" or "Klass.method" (got ${JSON.stringify(target)})`);
+  }
+  if (options.input !== undefined) {
+    throw new Error("py_launch: call does not take input; the JSON request already uses stdin");
+  }
+  const input = JSON.stringify(callRequest(args));
+  return run("-c", [CALL_SHIM, scriptPath, target], { ...options, input });
+}
+
+function call(scriptPath, target, args, options = {}) {
+  const result = callRaw(scriptPath, target, args, options);
+  return JSON.parse(result.stdout.toString("utf8"));
+}
+
+/**
  * @param {string} scriptPath
  * @param {object} [opts]
  */
@@ -550,6 +630,10 @@ function main(scriptPath, opts = {}) {
 module.exports = {
   main,
   run,
+  call,
+  callRaw,
+  callRequest,
+  CALL_SHIM,
   resolvePython,
   buildCandidateSpecs,
   rejectCmdBatInterpreter,
@@ -569,16 +653,20 @@ module.exports = {
   MIN_NODE,
 };
 
-// CLI: node py_launch.cjs [--env-var NAME] [--site] [--] SCRIPT.py [ARGS...] — 包むだけの .cjs を置かずに Python ツールを動かす。
+// CLI: node py_launch.cjs [--env-var NAME] [--site] [--call TARGET] [--] SCRIPT.py [ARGS...] — 包むだけの .cjs を置かずに Python ツールを動かす。
 // --env-var NAME: 使う Python を環境変数 NAME で選べるようにする（例: BTK_PYTHON、XPROBE_PYTHON）。
 // 既定では Python に -S（site を読まない）を付けて渡す（noSite: true）。
 // --site: -S を外し、site-packages（例: Playwright）を読めるようにする。
+// --call TARGET: SCRIPT.py を実行せず import し、関数・クラス・Klass.method を名前で呼ぶ（__main__ は通らない）。
+//   後ろの ARGS は引数。各 ARG は JSON として読めれば JSON（1, true, [1,2], {"k":1}）、読めなければ文字列。
+//   戻り値を JSON 1 行で stdout に出す。関数内の print は stderr へ出る。例外は traceback を stderr に出して終了コード 1。
 // オプションは SCRIPT.py より前に置く。SCRIPT.py より後ろはすべてスクリプトへそのまま渡す。
 // 単独の -- はオプションの終わり。その次を SCRIPT.py とみなす（- で始まる名前も可）。
 // 同じオプションを繰り返したときは最後の指定が有効（--site は何度書いても同じ）。
 if (require.main === module) {
   const args = process.argv.slice(2);
   let envVar;
+  let target;
   let site = false;
   let bad = null;
   let ended = false;
@@ -600,6 +688,15 @@ if (require.main === module) {
       args.splice(0, 2);
     } else if (opt.startsWith("--env-var=")) {
       envVar = args.shift().slice("--env-var=".length);
+    } else if (opt === "--call") {
+      if (args.length < 2) {
+        bad = "call";
+        break;
+      }
+      target = args[1];
+      args.splice(0, 2);
+    } else if (opt.startsWith("--call=")) {
+      target = args.shift().slice("--call=".length);
     } else {
       bad = "usage";
       break;
@@ -609,9 +706,31 @@ if (require.main === module) {
   if (bad === "envvar" || (envVar !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(envVar))) {
     process.stderr.write("py_launch: --env-var needs a variable name such as MY_TOOL_PYTHON\n");
     process.exitCode = 2;
-  } else if (bad === "usage" || !script || (!ended && script.startsWith("-"))) {
-    process.stderr.write("usage: node py_launch.cjs [--env-var NAME] [--site] [--] SCRIPT.py [ARGS...]\n");
+  } else if (bad === "call" || (target !== undefined && !CALL_TARGET.test(target))) {
+    process.stderr.write("py_launch: --call needs a function, class, or Klass.method name such as main or Report.render\n");
     process.exitCode = 2;
+  } else if (bad === "usage" || !script || (!ended && script.startsWith("-"))) {
+    process.stderr.write("usage: node py_launch.cjs [--env-var NAME] [--site] [--call TARGET] [--] SCRIPT.py [ARGS...]\n");
+    process.exitCode = 2;
+  } else if (target !== undefined) {
+    const parsed = rest.map((arg) => {
+      try {
+        return JSON.parse(arg);
+      } catch {
+        return arg;
+      }
+    });
+    const opts = { noSite: !site, ...(envVar ? { envVar } : {}) };
+    try {
+      const result = callRaw(require("node:path").resolve(script), target, parsed, opts);
+      if (result.stderr && result.stderr.length) process.stderr.write(result.stderr);
+      process.stdout.write(result.stdout);
+      process.stdout.write("\n");
+    } catch (error) {
+      if (error && error.stderr && error.stderr.length) process.stderr.write(error.stderr);
+      else writeLauncherError(error, opts);
+      process.exitCode = Number.isInteger(error && error.status) && error.status > 0 ? error.status : 2;
+    }
   } else {
     main(require("node:path").resolve(script), { argv: rest, noSite: !site, ...(envVar ? { envVar } : {}) });
   }

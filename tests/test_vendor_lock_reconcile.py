@@ -1,9 +1,6 @@
 """Offline, deterministic coverage for read-only consumer lock reconciliation."""
-import copy
-import hashlib
-import json
+import copy, hashlib, json, sys
 from pathlib import Path
-import sys
 
 import pytest
 

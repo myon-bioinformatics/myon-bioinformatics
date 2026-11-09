@@ -6,11 +6,8 @@ there is no fetch, push, PR, merge, lock generation, or scheduled update.
 """
 from __future__ import annotations
 
-import argparse
-import os
+import argparse, os, subprocess, sys
 from pathlib import Path
-import subprocess
-import sys
 
 
 def git(root: Path, *args: str) -> str:

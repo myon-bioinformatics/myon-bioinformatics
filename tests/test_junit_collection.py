@@ -1,10 +1,6 @@
 """Execute the actual reusable-workflow importer against local artifacts."""
-import json
-import os
+import json, os, shutil, subprocess, sys
 from pathlib import Path
-import shutil
-import subprocess
-import sys
 import pytest
 
 WORKFLOW = Path(__file__).parents[1] / '.github/workflows/reusable-junit-identity.yml'
