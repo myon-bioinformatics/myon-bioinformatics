@@ -77,7 +77,7 @@ I design and build practical CLI and browser tools: mostly single-file, standard
 
 - Single-file, standard-library Python tools shared across repositories (gh_identity, xprobe, yourself, cli_args, markdown)
 - Question-driven baseball data analysis (Aoi and its subprojects)
-- Cross-browser and Flutter Web verification with Playwright and CI evidence (browser-test-kit, flutter_navigation_basic)
+- Cross-browser and Flutter Web verification with Playwright and CI evidence (BrowserTestKit, flutter_navigation_basic)
 - LLM / MCP tool-call experiments (mcp-toolcall-lab) and document conversion (Ironmate)
 - DNA / protein sequence search and analysis (search_seq_including_spaces)
 
