@@ -359,13 +359,59 @@ def _public_http_get(url):
     return _retry_transient_public_fetch(_redact_secrets("HTTP GET " + url), attempt)
 
 
+def _exhausted_public_transport(error):
+    return isinstance(error.__cause__, (_TransientPublicFetchError, URLError,
+                                       TimeoutError, socket.timeout))
+
+
+def _public_api_repository_record(repository):
+    cache = _PARENT_FETCH_CACHE.get()
+    key = ("public-api-metadata", repository.casefold())
+    if cache is not None and key in cache:
+        return json.loads(cache[key])
+    record = json.loads(_public_http_get(
+        "https://api.github.com/repos/" + repository,
+    ).decode("utf-8"))
+    if (not record_is_public_source_pin(record)
+            or record["full_name"].casefold() != repository.casefold()
+            or type(record.get("id")) is not int or record["id"] < 1
+            or type(record.get("archived")) is not bool):
+        raise ValueError("invalid public repository identity")
+    if cache is not None:
+        cache[key] = json.dumps(record)
+    return record
+
+
+def _public_api_ref_sha(repository, ref):
+    _public_api_repository_record(repository)
+    record = json.loads(_public_http_get(
+        "https://api.github.com/repos/{}/commits/{}".format(repository, quote(ref, safe="")),
+    ).decode("utf-8"))
+    if not isinstance(record, dict):
+        raise ValueError("invalid commit response")
+    sha = record.get("sha")
+    _hex(sha, 40)
+    return sha
+
+
 def public_ref_sha(repository, ref="main"):
-    """Resolve a moving branch ref to an immutable commit SHA via the public Atom feed."""
+    """Resolve Atom ref; recover HTML transport outages via verified public API."""
     repository = _normalize_repository(repository)
     if not isinstance(ref, str) or not ref or any(ord(c) < 32 for c in ref):
         raise ValueError("invalid ref")
+    cache = _PARENT_FETCH_CACHE.get()
+    if cache is not None and cache.get("github-html-unavailable"):
+        return _public_api_ref_sha(repository, ref)
     url = "https://github.com/{}/commits/{}.atom".format(repository, quote(ref, safe=""))
-    match = _COMMIT_ATOM_SHA.search(_public_http_get(url).decode("utf-8", "replace"))
+    try:
+        atom = _public_http_get(url).decode("utf-8", "replace")
+    except ValueError as error:
+        if not _exhausted_public_transport(error):
+            raise
+        if cache is not None:
+            cache["github-html-unavailable"] = True
+        return _public_api_ref_sha(repository, ref)
+    match = _COMMIT_ATOM_SHA.search(atom)
     if not match:
         raise ValueError("missing commit in atom feed")
     sha = match.group(1)
@@ -430,28 +476,24 @@ def _public_repo_is_archived_from_html(html):
 
 
 def public_repository_page_record(repository):
-    """Read repository identity from the public github.com HTML page (no REST API).
+    """Read public repository identity, with transport-only API recovery.
 
     Uses HTML metadata normally; exhausted transient transport failures fall
     back to repository API metadata with explicit public identity validation.
     Missing, denied, or malformed HTML never triggers this fallback.
     """
     repository = _normalize_repository(repository)
+    cache = _PARENT_FETCH_CACHE.get()
+    if cache is not None and cache.get("github-html-unavailable"):
+        return _public_api_repository_record(repository)
     try:
         html = _public_http_get("https://github.com/" + repository).decode("utf-8", "replace")
     except ValueError as error:
-        if not isinstance(error.__cause__, (_TransientPublicFetchError, URLError,
-                                           TimeoutError, socket.timeout)):
+        if not _exhausted_public_transport(error):
             raise
-        record = json.loads(_public_http_get(
-            "https://api.github.com/repos/" + repository,
-        ).decode("utf-8"))
-        if (not record_is_public_source_pin(record)
-                or record["full_name"].casefold() != repository.casefold()
-                or type(record.get("id")) is not int or record["id"] < 1
-                or type(record.get("archived")) is not bool):
-            raise ValueError("invalid public repository identity") from None
-        return record
+        if cache is not None:
+            cache["github-html-unavailable"] = True
+        return _public_api_repository_record(repository)
     id_match = _REPOSITORY_ID_META.search(html)
     if not id_match:
         raise ValueError("missing repository id in public page metadata")
