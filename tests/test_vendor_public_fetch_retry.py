@@ -173,3 +173,53 @@ def test_retry_loop_required_for_transient_http_recovery(monkeypatch):
     with pytest.raises(sync._TransientPublicFetchError):
         sync._public_http_get("https://api.github.com/repos/owner/repo")
     assert len(calls) == 1
+
+
+def test_repository_metadata_recovers_exhausted_html_transport(monkeypatch):
+    import json
+    calls = []
+    record = dict(id=123, full_name="owner/repo", private=False,
+                  visibility="public", archived=False)
+
+    def fetch(url):
+        calls.append(url)
+        if len(calls) == 1:
+            raise ValueError(sync.PUBLIC_GIT_FETCH_ERROR) from sync._TransientPublicFetchError()
+        return json.dumps(record).encode()
+
+    monkeypatch.setattr(sync, "_public_http_get", fetch)
+    assert sync.public_repository_page_record("owner/repo") == record
+    assert calls == ["https://github.com/owner/repo", "https://api.github.com/repos/owner/repo"]
+
+
+@pytest.mark.parametrize("change", [dict(private=True), dict(visibility="internal"),
+    dict(full_name="owner/other"), dict(id=None), dict(archived=None)])
+def test_repository_metadata_recovery_rejects_unverified_identity(monkeypatch, change):
+    import json
+    record = dict(id=123, full_name="owner/repo", private=False,
+                  visibility="public", archived=False)
+    record.update(change)
+
+    def fetch(url):
+        if url.startswith("https://github.com/"):
+            raise ValueError(sync.PUBLIC_GIT_FETCH_ERROR) from sync._TransientPublicFetchError()
+        return json.dumps(record).encode()
+
+    monkeypatch.setattr(sync, "_public_http_get", fetch)
+    with pytest.raises(ValueError, match="invalid public repository identity"):
+        sync.public_repository_page_record("owner/repo")
+
+
+@pytest.mark.parametrize("error", [sync.PublicGitNotFound("not found"),
+    sync.PublicGitAccessBlocked("blocked"), ValueError("malformed metadata")])
+def test_repository_metadata_does_not_recover_access_or_validation_errors(monkeypatch, error):
+    calls = []
+
+    def fetch(url):
+        calls.append(url)
+        raise error
+
+    monkeypatch.setattr(sync, "_public_http_get", fetch)
+    with pytest.raises(type(error)):
+        sync.public_repository_page_record("owner/repo")
+    assert calls == ["https://github.com/owner/repo"]

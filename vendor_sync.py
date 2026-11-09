@@ -432,11 +432,26 @@ def _public_repo_is_archived_from_html(html):
 def public_repository_page_record(repository):
     """Read repository identity from the public github.com HTML page (no REST API).
 
-    Uses ``octolytics-dimension-repository_id`` (and related meta tags) from the
-    same response used for archived detection. Atom/raw URLs are not used for id.
+    Uses HTML metadata normally; exhausted transient transport failures fall
+    back to repository API metadata with explicit public identity validation.
+    Missing, denied, or malformed HTML never triggers this fallback.
     """
     repository = _normalize_repository(repository)
-    html = _public_http_get("https://github.com/" + repository).decode("utf-8", "replace")
+    try:
+        html = _public_http_get("https://github.com/" + repository).decode("utf-8", "replace")
+    except ValueError as error:
+        if not isinstance(error.__cause__, (_TransientPublicFetchError, URLError,
+                                           TimeoutError, socket.timeout)):
+            raise
+        record = json.loads(_public_http_get(
+            "https://api.github.com/repos/" + repository,
+        ).decode("utf-8"))
+        if (not record_is_public_source_pin(record)
+                or record["full_name"].casefold() != repository.casefold()
+                or type(record.get("id")) is not int or record["id"] < 1
+                or type(record.get("archived")) is not bool):
+            raise ValueError("invalid public repository identity") from None
+        return record
     id_match = _REPOSITORY_ID_META.search(html)
     if not id_match:
         raise ValueError("missing repository id in public page metadata")
