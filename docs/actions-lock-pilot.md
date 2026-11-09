@@ -81,7 +81,7 @@ literal because they participate in static resolution and dependency review.
 The installer additionally hashes the installed `linux-amd64` executable before
 any `gh actions-lock` invocation. A missing binary, digest mismatch, unsupported
 platform, or installation failure stops the job. The digest in the manifest was
-reviewed from the official immutable v0.2.0 release asset (11,456,696 bytes):
-https://github.com/github/gh-actions-lock/releases/tag/v0.2.0 . Git object checks
+reviewed from the official immutable v0.4.1 release asset (9,416,866 bytes):
+https://github.com/github/gh-actions-lock/releases/tag/v0.4.1 . Git object checks
 alone do not authenticate release binary bytes; both gates are required. This
 byte pin is not a claim of a reproducible build or independent source attestation.
