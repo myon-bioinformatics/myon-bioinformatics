@@ -134,12 +134,13 @@ class PublicationTests(unittest.TestCase):
 
 
 class StrictObservationTests(unittest.TestCase):
-    def collect(self, *, head_changed=False, checks_complete=True, reviews_complete=True, issues_truncated=False, statuses=None):
+    def collect(self, *, head_changed=False, checks_complete=True, reviews_complete=True, issues_truncated=False, statuses=None, files=None, file_count=None, base_changed=False):
         pull={'number':1,'title':'test','draft':False,'head_sha':'z'*40,'head_ref':'old','base_ref':'main','updated_at':'t','url':'https://github.com/myon-bioinformatics/Demo/pull/1'}
-        detail={'state':'open','head':{'sha':'a'*40,'ref':'feat'},'base':{'ref':'main'},'mergeable':True}
+        detail={'state':'open','head':{'sha':'a'*40,'ref':'feat'},'base':{'ref':'main','sha':'c'*40},'mergeable':True,'changed_files':len(files or []) if file_count is None else file_count}
         final=copy.deepcopy(detail)
         if head_changed:final['head']['sha']='b'*40
-        with patch.object(ci.ghi,'pull_requests',return_value={'pull_requests':[pull],'truncated':False}),patch.object(ci.ghi,'issues',return_value={'issues':[],'truncated':issues_truncated}),patch.object(ci,'get',side_effect=[detail,final]),patch.object(ci.ghi,'checks_for_sha',return_value={'complete':checks_complete,'checks':[]}) as checks,patch.object(ci.ghi,'pages',return_value=statuses or []),patch.object(ci.ghi,'review_threads',return_value={'complete':reviews_complete,'threads':[{'is_resolved':False}]}):
+        if base_changed:final['base']['sha']='d'*40
+        with patch.object(ci.ghi,'pull_requests',return_value={'pull_requests':[pull],'truncated':False}),patch.object(ci.ghi,'issues',return_value={'issues':[],'truncated':issues_truncated}),patch.object(ci,'get',side_effect=[detail,final]),patch.object(ci.ghi,'checks_for_sha',return_value={'complete':checks_complete,'checks':[]}) as checks,patch.object(ci.ghi,'pages',side_effect=lambda path: (files or []) if path.endswith('/files') else (statuses or [])),patch.object(ci.ghi,'review_threads',return_value={'complete':reviews_complete,'threads':[{'is_resolved':False}]}):
             result=ci.audit_repository('Demo',strict=True)
             self.assertEqual(checks.call_args.args[1],'a'*40,'use detail head, not the outdated listing head')
             return result
@@ -162,12 +163,76 @@ class StrictObservationTests(unittest.TestCase):
         rows,_=self.collect(statuses=[{'id':3,'context':'external','state':'success'},{'id':2,'context':'external','state':'failure'}])
         self.assertEqual(rows[0]['ci'],'COMPLETE')
 
+    def test_changed_files_have_exact_head_and_base_and_missing_page_rejects(self):
+        rows,_=self.collect(files=[{'filename':'.github/workflows/ci.yml'},{'filename':'app.py'}])
+        self.assertEqual(rows[0]['changed_files'],['.github/workflows/ci.yml','app.py'])
+        self.assertEqual(rows[0]['files_head'],rows[0]['head_sha'])
+        self.assertEqual(rows[0]['base_sha'],'c'*40)
+        for args in ({'file_count':2,'files':[{'filename':'app.py'}]}, {'base_changed':True}):
+            with self.subTest(args=args),self.assertRaises(RuntimeError):self.collect(**args)
+
     def test_truncated_workflow_tree_stops_publication(self):
         with patch.object(ci,'audit_repository',return_value=([],False)),patch.object(ci,'conventions_repository',return_value=([],True)):
             snap=ci.audit(['Demo'],strict=True)
         self.assertEqual(snap['truncated'],['Demo'])
         with self.assertRaises(ValueError):build.ensure_complete(snap)
 
+
+import unittest
+import importlib.util
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("audit_integration_plan", Path(__file__).resolve().parents[1] / "site/ui/integration_plan.py")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+calculate = module.calculate
+
+
+def pr(n,base='main',head=None,**extra):
+    return dict(id=f'A#{n}',kind='pr',repository='A',base_ref=base,head_ref=head or f'b{n}',**extra)
+
+
+class PlanTests(unittest.TestCase):
+    def test_stack(self):
+        p=calculate({'records':[pr(2,base='b1'),pr(1)]})
+        self.assertEqual(p['order'],['A#1','A#2'])
+
+    def test_cycle_and_independent_work(self):
+        p=calculate({'records':[pr(1,depends_on=['A#2']),pr(2,depends_on=['A#1']),pr(3)]})
+        self.assertTrue(p['cycle']);self.assertEqual(p['order'],['A#3'])
+        self.assertEqual(p['blocked'],['A#1','A#2'])
+
+    def test_missing_dependency_propagates(self):
+        p=calculate({'records':[pr(1,depends_on=['missing#2']),pr(2,base='b1')]})
+        self.assertEqual(p['unsafe_missing'],['A#1','A#2'])
+
+    def test_merged_dependency_and_draft_alias(self):
+        p=calculate({'records':[pr(1,merged=True),pr(2)],'drafts':{'A#2':{'dependencies':['A#1']}}})
+        self.assertEqual(p['order'],['A#2']);self.assertEqual(p['waiting'],{})
+
+    def test_same_branch_in_other_repository_is_not_dependency(self):
+        r=pr(2,base='b1');r['repository']='B';r['id']='B#2'
+        self.assertEqual(calculate({'records':[pr(1),r]})['waiting'],{})
+
+class ClosedPlanTests(unittest.TestCase):
+    def test_closed_unmerged_is_not_scheduled(self):
+        p=calculate({'records':[pr(1,github_state='closed'),pr(2,depends_on=['A#1']),pr(3)]})
+        self.assertNotIn('A#1',p['order'])
+        self.assertEqual(p['unsafe_missing'],['A#2'])
+        self.assertEqual(p['actionable_order'],['A#3'])
+
+    def test_old_merged_branch_is_not_inferred_as_dependency(self):
+        p=calculate({'records':[pr(1,merged=True),pr(2,base='b1')]})
+        self.assertEqual(p['waiting'],{})
+        self.assertEqual(p['order'],['A#2'])
+
+class TaskPlanTests(unittest.TestCase):
+    def test_explicit_tasks_do_not_infer_dependencies_from_missing_branch_names(self):
+        result=calculate({'records':[pr(1)],'dependency_tasks':[
+            {'id':'pin-update','kind':'pin-update','depends_on':['A#1']},
+            {'id':'independent-task','kind':'task','depends_on':[]}]})
+        self.assertFalse(result['cycle'])
+        self.assertEqual(result['edges']['independent-task'],[])
+        self.assertLess(result['order'].index('A#1'),result['order'].index('pin-update'))
 
 if __name__ == '__main__':
     unittest.main()

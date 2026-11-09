@@ -64,3 +64,23 @@ test('previous week baseline uses JST Monday and ignores current-week/manual sna
  assert.equal(m.weekBaseline(weeks,'2026-11-09T03:00:00Z').week,'2026-W45');
  assert.equal(m.weekBaseline([weeks[1]],'2026-11-09T03:00:00Z'),undefined);
 });
+
+test('actual conflicts cannot be demoted by a manual priority',()=>{
+ assert.equal(m.priority({mergeable:false,ci:'成功',review:0,priority:'3'}),1);
+});
+test('revalidation evidence round-trips while observed hashes stay immutable',()=>{
+ const r=m.normalize({records:[observation]})[0];
+ const draft=m.importBundle({records:{[url]:{revalidated_head:'abc',revalidated_base:'def',revalidated_at:'2026-11-09',revalidation_notes:'check URL',base_sha:'forged'}}});
+ const merged=m.mergeRecord(r,draft);
+ assert.equal(merged.revalidated_head,'abc');assert.notEqual(merged.base_sha,'forged');
+});
+test('overlap only compares known file inventories in the same repository',()=>{
+ const fs=require('node:fs'),vm=require('node:vm');const context=vm.createContext({});
+ vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../site/ui/integration.js'),'utf8'),context);
+ assert.deepEqual(Array.from(context.pairOverlap({repo:'A',changed_files:['a','.github/workflows/ci.yml']},{repo:'A',changed_files:['.github/workflows/ci.yml','b']})),['.github/workflows/ci.yml']);
+ assert.equal(context.pairOverlap({repo:'A',changed_files:[]},{repo:'B',changed_files:[]}),null);
+ assert.equal(context.pairOverlap({repo:'A'},{repo:'A',changed_files:[]}),null);
+ assert.equal(context.revalidation({revalidated_at:'today',head:'a',base_sha:'b',revalidated_head:'a',revalidated_base:'b'}),'同一head/baseの確認記録あり');
+ assert.match(context.revalidation({revalidated_at:'today',head:'a',base_sha:'c',revalidated_head:'a',revalidated_base:'b'}),/再検証必要/);
+ assert.match(context.revalidation({revalidated_at:'today',head:'a'}),/未取得/);
+});

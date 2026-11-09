@@ -3,7 +3,7 @@
   'use strict';
   const states = {'': '未着手', doing: '対応中', waiting: 'ブロック', done: '完了'};
   const ciLabels = {FAILED:'失敗', RUNNING:'実行中', COMPLETE:'成功', INCOMPLETE:'不完全', 'NO CHECKS':'チェックなし', UNKNOWN:'不明', '-':'対象外'};
-  const fields = ['state','priority','next','blocker','notes','completed','dependencies','conflicts','order','noted_at'];
+  const fields = ['state','priority','next','blocker','notes','completed','dependencies','conflicts','order','noted_at','revalidated_head','revalidated_base','revalidated_at','revalidation_notes'];
   function safeURL(value) {
     if (typeof value !== 'string' || !/^https:\/\/github\.com\/myon-bioinformatics\/[A-Za-z0-9_.-]+\/(pull|issues)\/[1-9][0-9]*$/.test(value)) throw Error('対象外のGitHub URL');
     return value;
@@ -24,8 +24,8 @@
         failure:checks.filter(c=>['failure','timed_out','action_required','startup_failure'].includes(c.conclusion))
           .map(c=>c.name+(c.url?' '+c.url:'')).join('; ') || r.failure || '',
         dependencies:r.dependencies || r.depends_on || [], observed_dependencies:r.depends_on || [],
-        conflicts:r.conflicts || (r.mergeable === false ? 'GitHub: mergeable=false（実競合）' : ''),
-        integration_rank:(o.dependency_plan?.order || []).indexOf(r.id) + 1,
+        conflicts:r.conflicts || (r.mergeable === false ? 'GitHub: mergeable=false（統合不可）' : ''),
+        integration_rank:(o.dependency_plan?.order || []).indexOf(canonical?r.id:r.record_id) + 1,
         integration_waiting:o.dependency_plan?.waiting?.[r.id] || [],
         labels:r.labels || [], next:r.next || '最新headの証跡と受入条件を確認',
         notes:r.notes || '', blocker:r.blocker || ''};
@@ -56,17 +56,17 @@
   }
   function completedRecords(current, archive, drafts) {
     const ids=new Set(current.map(r=>r.id));
-    return Object.values(archive).filter(r=>!ids.has(r.id) && mergeRecord(r,drafts).state==='完了')
+    return Object.values(archive).filter(r=>!ids.has(r.id) && ['完了','統合済み'].includes(mergeRecord(r,drafts).state))
       .map(r=>({...r,archived:true}));
   }
   function priority(r) {
-    if (r.ci === '失敗' || r.review > 0) return 1;
+    if (r.ci === '失敗' || r.review > 0 || r.mergeable === false) return 1;
     const labels=(r.labels || []).map(l=>typeof l==='string'?l:l.name);
     return Number(r.priority || (r.mergeable === false || labels.some(l=>/^(bug|type:bug|status:ci-failing)$/i.test(l)) ? 2 : 3));
   }
   function diff(current, previous) {
     const old=new Map(previous.map(r=>[r.id,r])), now=new Map(current.map(r=>[r.id,r]));
-    const tracked=['head','ci','review','base','mergeable','title','labels'];
+    const tracked=['head','head_ref','base_sha','ci','review','base','mergeable','mergeable_state','github_state','title','labels'];
     return {added:current.filter(r=>!old.has(r.id)), gone:previous.filter(r=>!now.has(r.id)),
       changed:current.filter(r=>old.has(r.id) && tracked.some(k=>JSON.stringify(r[k])!==JSON.stringify(old.get(r.id)[k])))};
   }
