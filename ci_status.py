@@ -12,6 +12,7 @@ Both output formats include the UTC observation timestamp. Exception text is omi
 unless ``--explain`` is set; that flag adds detail (token values removed) and hint.
 """
 import argparse
+import graphlib
 import base64
 import datetime
 import json
@@ -44,6 +45,7 @@ OWNER = "myon-bioinformatics"
 __version__ = "0.2.0"
 __all__ = ["repository", "observe", "summarize_checks", "render", "audit", "audit_repository", "link_dependencies",
            "workflow_facts", "check_conventions", "conventions", "render_conventions",
+           "dependency_plan", "observe_vendor_pins", "render_dependency_report",
            "load_records", "diff_snapshots", "render_audit_html", "write_audit_site", "main"]
 
 def get(path):
@@ -175,18 +177,101 @@ def audit_repository(name, ignored_checks=IGNORED_CHECKS, *, strict=False):
 
 
 def link_dependencies(records):
-    """Stacked PRs: a PR whose base is another open PR's head branch depends on it; mergeable False is a conflict."""
-    by_repo_head = {}
+    """Combine explicit cross-repository edges with stacked branch dependencies."""
+    heads = {}
     for r in records:
         if r["kind"] == "pr":
-            by_repo_head.setdefault(r["repository"], {})[r["head_ref"]] = r["id"]
+            heads.setdefault((r["repository"], r.get("head_ref")), []).append(r["id"])
     for r in records:
-        if r["kind"] != "pr":
-            continue
-        parent = by_repo_head.get(r["repository"], {}).get(r["base_ref"])
-        r["depends_on"] = [parent] if parent and parent != r["id"] else []
-        r["conflict"] = r.get("mergeable") is False
+        if r["kind"] == "pr":
+            inferred = heads.get((r["repository"], r.get("base_ref")), [])
+            r["depends_on"] = sorted(set(r.get("depends_on", [])) | {x for x in inferred if x != r["id"]})
+            r["conflict"] = r.get("mergeable") is False
     return records
+
+
+def dependency_plan(records):
+    """Deterministic advisory order; missing/cyclic nodes never become ready.
+
+    Like markdown_tasks_to_mermaid_flowchart, validate unknown nodes before
+    TopologicalSorter: graphlib otherwise silently creates them. No markdown
+    parser or vendored second graph implementation is required.
+    """
+    nodes = {}
+    for r in records:
+        if r["id"] in nodes:
+            raise ValueError("duplicate dependency identity")
+        deps = r.get("depends_on", [])
+        if not isinstance(deps, list) or any(not isinstance(d, str) or not d for d in deps):
+            raise ValueError("depends_on must be a list of non-empty identities")
+        nodes[r["id"]] = r
+    graph = {k: set(v.get("depends_on", [])) for k, v in sorted(nodes.items())}
+    missing = {k: sorted(ds - nodes.keys()) for k, ds in graph.items() if ds - nodes.keys()}
+    sorter = graphlib.TopologicalSorter({k: sorted(ds & nodes.keys()) for k, ds in graph.items()})
+    cycle = []
+    try:
+        sorter.prepare()
+    except graphlib.CycleError as exc:
+        cycle = list(exc.args[1])
+    order, blocked = [], set(missing)
+    while sorter.is_active():
+        ready = sorted(sorter.get_ready())
+        for k in ready:
+            if graph[k] & blocked:
+                blocked.add(k)
+            if k not in blocked:
+                order.append(k)
+        sorter.done(*ready)
+    blocked.update(nodes.keys() - set(order))
+    # Open PRs wait even when CI is green. User work-state "done" is not merge evidence.
+    waiting = {k: sorted(d for d in ds if d in nodes and not nodes[d].get("merged"))
+               for k, ds in graph.items() if ds}
+    waiting = {k: ds for k, ds in waiting.items() if ds}
+    return {"order": order, "cycle": cycle, "missing": missing,
+            "blocked": sorted(blocked), "waiting": waiting,
+            "ready": [k for k in order if k not in waiting and not nodes[k].get("merged")]}
+
+
+def observe_vendor_pins(name):
+    """Observe immutable lock bytes and main tips. Freshness is not compatibility."""
+    full = repository(name)
+    meta = get(f"/repos/{full}")
+    if meta.get("private") is not False or meta.get("visibility") != "public" or meta.get("archived"):
+        raise ValueError("unavailable public repository")
+    revision = get(f"/repos/{full}/git/ref/heads/{quote(meta['default_branch'], safe='')}")["object"]["sha"]
+    try:
+        blob = get(f"/repos/{full}/contents/vendor.lock.json?ref={revision}")
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return []
+        raise
+    lock = json.loads(base64.b64decode(blob["content"], validate=False))
+    if lock.get("schema") != "vendor-lock/1" or not isinstance(lock.get("files"), list):
+        raise ValueError("unsupported vendor lock")
+    tips, rows = {}, []
+    for entry in lock["files"]:
+        source = repository(entry["repository"])
+        # Restrict sources to the same public owner; do not expose unavailable sources.
+        if source not in tips:
+            try:
+                if source.split('/')[0] != OWNER:
+                    raise ValueError("outside public scope")
+                info = get(f"/repos/{source}")
+                if info.get("private") is not False or info.get("visibility") != "public" or info.get("archived"):
+                    raise ValueError("unavailable source")
+                tips[source] = get(f"/repos/{source}/git/ref/heads/main")["object"]["sha"]
+            except (OSError, ValueError, KeyError, RuntimeError):
+                tips[source] = None
+        pin = entry.get("commit")
+        valid = isinstance(pin, str) and re.fullmatch(r"[0-9a-fA-F]{40}", pin) and entry.get("ref") == pin
+        tip = tips[source]
+        rows.append({"repository": name, "lock_revision": revision,
+                     "destination": entry.get("destination", ""),
+                     "source_repository": source if tip else "unavailable",
+                     "commit": pin if tip else None, "main_sha": tip,
+                     "freshness": "unknown" if not valid or not tip else "match" if pin.lower() == tip.lower() else "different",
+                     "compatibility": "not_assessed"})
+    return rows
 
 
 def load_records(path):
@@ -214,7 +299,7 @@ def diff_snapshots(current, previous):
     return {"new": sorted(set(after) - set(before)), "gone": sorted(set(before) - set(after)), "changed": sorted(changed)}
 
 
-def audit(repos=None, *, records_path=None, previous=None, ignored_checks=IGNORED_CHECKS, with_conventions=True, strict=False):
+def audit(repos=None, *, records_path=None, previous=None, ignored_checks=IGNORED_CHECKS, with_conventions=True, strict=False, dependency_path=None):
     """Cross-repository audit snapshot: every open PR and Issue with CI, dependencies, conflicts, user records and naming drift."""
     names = list(repos) if repos else organization_repositories()
     records, errors, truncated, findings = [], [], [], []
@@ -232,6 +317,37 @@ def audit(repos=None, *, records_path=None, previous=None, ignored_checks=IGNORE
         except (ValueError, KeyError, RuntimeError, OSError) as exc:
             errors.append({"repository": name, "error": type(exc).__name__, "detail": _detail(exc)})
     link_dependencies(records)
+    config = json.loads(Path(dependency_path).read_text(encoding="utf-8")) if dependency_path and Path(dependency_path).is_file() else {}
+    if not isinstance(config, dict):
+        raise ValueError("dependency configuration must be an object")
+    edges = config.get("edges", {})
+    if not isinstance(edges, dict) or any(not isinstance(ds, list) or any(not isinstance(d, str) or not d for d in ds) for ds in edges.values()):
+        raise ValueError("dependency edges must contain lists of identities")
+    for r in records:
+        r["depends_on"] = sorted(set(r.get("depends_on", [])) | set(edges.get(r["id"], [])))
+    tasks = config.get("tasks", [])
+    if not isinstance(tasks, list):
+        raise ValueError("dependency tasks must be a list")
+    for task in tasks:
+        if not isinstance(task, dict) or not isinstance(task.get("id"), str) or not task["id"]:
+            raise ValueError("dependency task requires a non-empty identity")
+        if not isinstance(task.get("depends_on", []), list):
+            raise ValueError("task dependencies must be a list")
+        # Configuration represents planned work, never proof that a PR merged.
+        if task.get("merged"):
+            raise ValueError("configured tasks cannot assert merge evidence")
+        task["depends_on"] = task.get("depends_on", []) + edges.get(task["id"], [])
+    # Unknown edge owners are retained as findings, never silently ignored.
+    graph_records = [r for r in records if r["kind"] == "pr"] + tasks
+    plan = dependency_plan(graph_records)
+    plan["unknown_owners"] = sorted(set(edges) - {r["id"] for r in graph_records})
+    pins = []
+    if strict:
+        for name in names:
+            try:
+                pins.extend(observe_vendor_pins(name))
+            except (ValueError, KeyError, RuntimeError, OSError):
+                pins.append({"repository": name, "freshness": "unknown", "compatibility": "not_assessed"})
     notes = load_records(records_path)
     for r in records:
         r.update({"state": "", "notes": "", **notes.get(r["id"], {})})
@@ -243,7 +359,7 @@ def audit(repos=None, *, records_path=None, previous=None, ignored_checks=IGNORE
                "conventions": len(findings)}
     return {"schema": "parent-audit/1", "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
             "owner": OWNER, "repositories": names, "ignored_checks": list(ignored_checks), "records": records, "summary": summary,
-            "conventions": findings,
+            "conventions": findings, "dependency_plan": plan, "vendor_pins": pins,
             "errors": errors, "truncated": truncated, "changes": diff_snapshots(records, previous)}
 
 
@@ -439,6 +555,24 @@ def _record_row(ui, r, index):
             ui.draft_textarea(key=r["id"] + ":notes", id=f"notes-{index}", label="メモ", value=r["notes"], rows=2))
 
 
+def render_dependency_report(snapshot):
+    """Escaped shared report for both Pages entry points."""
+    plan = snapshot.get("dependency_plan", {})
+    labels = {"match": "一致", "different": "不一致（互換性未評価）", "unknown": "確認不能"}
+    rows = "".join("<tr>" + "".join(f"<td>{escape(str(value))}</td>" for value in
+                  (r.get("repository", ""), r.get("destination", ""), r.get("source_repository", ""),
+                   r.get("commit", ""), r.get("main_sha", ""), labels[r["freshness"]])) + "</tr>"
+                   for r in snapshot.get("vendor_pins", []))
+    return ('<section class="card"><h2>依存順序・固定SHA</h2>'
+            '<p>順序は構造上の推奨です。CI・レビュー・競合は別途確認してください。SHA不一致は古さや互換性違反を断定しません。</p>'
+            + ''.join(f'<p>{label}: {escape(json.dumps(plan.get(key, []), ensure_ascii=False))}</p>'
+                      for label, key in (("推奨統合順序", "order"), ("循環（代表経路）", "cycle"),
+                                         ("存在しない参照", "missing"), ("統合待ち", "waiting"),
+                                         ("順序計算不能", "blocked"), ("不明な依存元", "unknown_owners")))
+            + '<table><thead><tr><th>利用側</th><th>配置先</th><th>提供元</th><th>固定SHA</th><th>main SHA</th><th>一致判定</th></tr></thead><tbody>'
+            + rows + '</tbody></table></section>')
+
+
 def render_audit_html(snapshot, *, asset_base=".", title="Repository audit — myon-bioinformatics"):
     """Read-only dashboard from a snapshot: queue / compare / weekly / done views built with web_ui helpers."""
     ui = _load_web_ui()
@@ -467,7 +601,7 @@ def render_audit_html(snapshot, *, asset_base=".", title="Repository audit — m
            f'<span id="count-queue" class="ui-muted"></span>{ui.records_io(filename="records.json")}</div>')
     queue = f'<section data-ui-view="queue">{bar}{table("queue", lambda r: r["state"] != "done", "未完了の PR / Issue")}</section>'
     compare = (f'<section data-ui-view="compare" hidden><p class="ui-muted">base が他のオープン PR の head と一致するものを依存候補、GitHub の mergeable=false を競合として表示します。</p>'
-               f'{table("compare", lambda r: r["kind"] == "pr" and (r.get("depends_on") or r.get("conflict")), "依存・競合のある PR")}</section>')
+               f'{render_dependency_report(snapshot)}{table("compare", lambda r: r["kind"] == "pr" and (r.get("depends_on") or r.get("conflict")), "依存・競合のある PR")}</section>')
     weekly = (f'<section data-ui-view="weekly" hidden><p class="ui-muted">前回の公開スナップショットと比べて新規・head/CI 変化のあった記録。消えた記録: '
               f'{escape(", ".join(changes.get("gone", [])) or "なし")}</p>{table("weekly", lambda r: r["id"] in changed, "変化した記録")}</section>')
     findings = snapshot.get("conventions", [])
