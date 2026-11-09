@@ -512,3 +512,23 @@ class IntegrationStatusTests(unittest.TestCase):
         with patch.object(ci, 'get', side_effect=values), patch.object(ci.ghi, 'pages', return_value=[]), patch.object(ci.ghi, 'checks_for_sha', return_value={'complete': True, 'checks': []}):
             with self.assertRaises(RuntimeError):
                 ci.integration_status('Demo', 0)
+
+class IntegrationExplanationTests(unittest.TestCase):
+    def test_matching_pins_wait_for_exact_parent_observation(self):
+        import ci_status as ci
+        rows = [{'repository': 'Demo', 'head_sha': 'a'*40, 'ci': 'COMPLETE'},
+                {'repository': ci.OWNER, 'head_sha': 'b'*40, 'ci': 'RUNNING'}]
+        ci.explain_integrations(rows, [], {ci.repository('Demo'): {'sha': 'a'*40}})
+        self.assertEqual(rows[0]['next'], '親側CIの完了待ち')
+        self.assertEqual(rows[0]['references'][0]['revision'], 'b'*40)
+
+    def test_missing_and_different_refs_and_stale_evidence(self):
+        import ci_status as ci
+        row = {'repository': 'Demo', 'head_sha': 'a'*40, 'ci': 'COMPLETE'}
+        ci.explain_integrations([row], [], {})
+        self.assertEqual(row['reference_state'], 'unknown')
+        ci.explain_integrations([row], [], {ci.repository('Demo'): {'sha': 'b'*40}},
+                               {'Demo': [{'sha': 'b'*40, 'result': '10 passed', 'facts': ['condition retained']}]})
+        self.assertEqual(row['reference_state'], 'different')
+        self.assertFalse(row['evidence'][0]['current'])
+        self.assertIn('更新', row['next'])

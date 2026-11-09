@@ -136,3 +136,17 @@ CI成功は観測したチェックの成功であり、required checks充足や
 全履歴ではない。時刻・PR番号・マージコミットを保存し、実際のマージ順に並べる。
 その順序を `graphlib` の依存辺に変換しない。ローカルテスト結果も推測しない。
 この情報は既存の毎日のPages生成・週次スナップショットにも含まれる。
+
+### 説明文の自動判定
+
+固定SHAの参照は既存の `vendor_pins` と、観測した親mainのSHAに固定して取得した
+`child-heads.json` から照合する。ビルド用PRブランチの台帳をmainの状態として扱わない。
+一致・相違・観測不足を区別し、子CI成功時は参照更新候補、親CI待ち、親CI失敗などを定型文で表示する。
+一致やCI成功だけで互換性・作業完了とは判定しない。未登録も更新不要とは判定しない。
+
+任意の `site/integration-evidence.json` はリポジトリ名をキー、記録の配列を値とする。
+各記録は完全な40桁 `sha`、`command`、`result`、文字列配列 `facts`、出典 `source` を持つ。
+テスト実行側がこの形式を出力・保存すれば、説明文に機械的に反映される（AI不要）。
+例: `{"Demo":[{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","command":"uv run pytest","result":"10 passed","facts":["往復ゲートはnlのみ"],"source":"CI artifact/test report"}]}`。
+記録は報告値として表示するだけで、観測CIの判定を書き換えない。SHAが違う記録は過去の記録と明示する。
+この変更では子リポジトリからの記録生成・親への自動送信までは実装していない。
