@@ -22,7 +22,7 @@ main, #content, .card, .integration-board { min-width: 0; }
 .row-shell.can-scroll-left::before, .row-shell.can-scroll-right::after { content: ''; pointer-events: none; position: absolute; top: 0; bottom: 0; width: 18px; z-index: 1; }
 .row-shell.can-scroll-left::before { left: 40px; background: linear-gradient(to right, var(--bg), transparent); }
 .row-shell.can-scroll-right::after { right: 40px; background: linear-gradient(to left, var(--bg), transparent); }
-.table-shell .table-wrap { max-height: 64vh; max-height: 64dvh; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.table-shell .table-wrap { max-height: 64vh; max-height: 64dvh; overflow: auto; overscroll-behavior-x: contain; scrollbar-gutter: stable; }
 .table-wrap table { min-width: 780px; }
 .table-wrap thead th { position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 0 var(--line); }
 .table-wrap .compare { table-layout: auto; }
