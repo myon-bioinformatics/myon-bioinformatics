@@ -106,7 +106,11 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         stage = Path(directory) / 'dist'
         ci.write_audit_site(snapshot, stage)
         (stage / 'index.html').rename(stage / 'report.html')
-        (stage / 'dependencies.html').write_text(ci.render_dependency_report(snapshot), encoding='utf-8')
+        (stage / 'dependencies.html').write_text(
+            '<!doctype html><html lang="ja"><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            '<title>依存順序・固定SHA</title><body><a href="index.html">監査画面へ戻る</a>'
+            + ci.render_dependency_report(snapshot) + '</body></html>', encoding='utf-8')
         for asset in (source_root / 'site/ui').iterdir():
             if asset.is_file():
                 shutil.copyfile(asset, stage / asset.name)
