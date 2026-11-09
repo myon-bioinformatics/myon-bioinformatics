@@ -131,8 +131,8 @@ recommendation**. Interpreter security status must be assessed separately.
    packages can affect other consumers; per-source version directories do not
    isolate system libraries. No automatic updater is added here.
 5. Worker count, BLAS internal threads, buffers and model/browser memory must be
-   budgeted together. Existing [constrained-lab](constrained-lab.md) is a trusted
-   process harness, not Docker-equivalent isolation. Neither apt-over-wheel size
+   budgeted together. A trusted process harness is not Docker-equivalent
+   isolation. Neither apt-over-wheel size
    savings nor process-over-container speed/memory gains were measured here.
 
 ## Verification

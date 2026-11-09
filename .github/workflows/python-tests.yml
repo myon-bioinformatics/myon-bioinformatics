@@ -121,11 +121,6 @@ jobs:
             --bundle "$RUNNER_TEMP/app_min.py" \
             --root tests/fixtures/minpy_widget \
             --skip-head-check
-      # The audit remains optional at runtime; this explicit stdlib test step
-      # makes the parser/limits/privacy/unknown contracts visible in CI logs.
-      - name: Verify executable audit contracts with Python -S
-        if: matrix.python == '3.11'
-        run: python -S -m unittest discover -s tests -p 'test_constrained_lab_exec_audit.py' -v
       # Run once per workflow to fail explicitly on stale or missing uv.lock.
       - name: Verify committed uv.lock matches pyproject.toml
         if: matrix.python == '3.11'

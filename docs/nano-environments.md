@@ -354,7 +354,7 @@ apt runs with bounded retries and timeouts given per call by `-o`
 (`Acquire::Retries=1`, `Acquire::http/https::Timeout=15`, `APT::Update::Error-Mode=any`),
 so `/etc/apt` is not written. These are per-file limits, not a total deadline; keep
 the step's own `timeout-minutes`. Strace-based audits, cgroup measurement and
-service start-up stay in `tools/constrained_lab_*.py`, not here.
+service start-up are out of scope here.
 
 To overlap the download with slower setup, start it first and join it later:
 

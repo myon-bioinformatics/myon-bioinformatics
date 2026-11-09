@@ -79,9 +79,6 @@ def test_stdlib_lanes_stay_on_python():
     assert "python -S tests/stdlib_runtime_smoke.py" in stdlib
     assert "uv run" not in stdlib
     assert 'python: ["3.9", "3.10"]' in stdlib
-    constrained = (WORKFLOWS / "constrained-lab.yml").read_text(encoding="utf-8")
-    assert "python -S -m unittest discover" in constrained
-    assert "uv run" not in constrained
     template = (ROOT / "templates" / "vendor-child-ci.workflow.yml").read_text(encoding="utf-8")
     assert "uv run" not in template
     assert "pytest" not in template
