@@ -48,4 +48,4 @@ def test_node_launch_is_registered_for_mcp_toolcall_lab_not_auto_proposed():
     assert web_ui[0]["action"] == "registered"
     assert web_ui[0]["destination"] == "vendor/web_ui.py"
     assert result["counts"]["registered"] == 6
-    assert result["counts"]["skipped"] == 35
+    assert result["counts"]["skipped"] == 34
