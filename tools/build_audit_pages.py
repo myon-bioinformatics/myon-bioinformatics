@@ -174,6 +174,9 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         for asset in (source_root / 'site/ui').iterdir():
             if asset.is_file():
                 shutil.copyfile(asset, stage / asset.name)
+        # Reuse the adopted PSWB shell contract without updating the reviewed vendor pin.
+        # Python remains the source of shared CSS; no npm package or CDN is required.
+        (stage / 'pswb-shell.css').write_text(ci._load_web_ui().css_source('shell.css'), encoding='utf-8')
         (stage / 'history.json').write_text(json.dumps(history, ensure_ascii=False) + '\n', encoding='utf-8')
         if fleet_graph is not None:  # the whole graph as JSON-LD for agents and other tools
             (stage / 'fleet.jsonld').write_text(json.dumps(fleet_graph, ensure_ascii=False) + '\n', encoding='utf-8')
@@ -185,6 +188,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
             for path in sorted((source_root / 'site/ui').iterdir()):
                 if path.is_file():
                     archive.write(path, f'site/ui/{path.name}')
+            archive.write(stage / 'pswb-shell.css', 'site/ui/pswb-shell.css')
             archive.write(source_root / 'tools/build_audit_pages.py', 'tools/build_audit_pages.py')
             archive.write(source_root / 'docs/audit-pages.md', 'docs/audit-pages.md')
         # Publication is a single Pages artifact; all validation has finished before copying it.
