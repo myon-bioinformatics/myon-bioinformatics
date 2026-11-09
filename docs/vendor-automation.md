@@ -665,10 +665,15 @@ separate mechanisms.
 
 #223のweb_ui登録は、旧基準1184ba449e146cb8f101aaa743449eb71a1afeb9では未採用だった。
 公開・非archived・repository_id=1374450603を確認し、子mainの
-3afb43875ad6e4fd1a15a0d632f963f392b14920を明示的に再確認した。
+31ff99fbe4c13b3feb570ae3ba1fc7cf972f8a16を明示的に再確認した。
 11件すべてについて、各sourceの記録済みcommitにあるGit blob SHA・SHA-256と、
 この子revisionの配置ファイルのバイト一致を読み取り検証した。
 web_ui.py/対応LICENSEの2件追加に加え、markdown.py/node_launch.pyの採用pin更新を含む。
 子のロックやファイルを置換する処理ではない。親child-headsの1項目のみ更新し、
 独立したfixture reviewed_mcp_lock_20261109.jsonへ観測値を保存する。
 ソースがdefault branchへ統合済みかどうかと配置バイトの独立監査は、既存の親CIで継続する。
+
+オンライン監査でmarkdown.pyの旧pin be468a6がソースmain第一親履歴にないことを検出した。
+子PR #202で同一blobを持つmainのmerge commit 2af2b6646af5663aa1761be08ee7e0c048c3f680へ
+ref/commitのみ修正し、vendorのバイト・blob_sha・SHA-256は維持した。子main統合後の11件の
+ロックを再確認して本基準に採用した。他の採用pinは変更していない。

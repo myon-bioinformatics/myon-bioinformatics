@@ -1,6 +1,6 @@
 {
   "myon-bioinformatics/mcp-toolcall-lab": {
-    "sha": "3afb43875ad6e4fd1a15a0d632f963f392b14920",
+    "sha": "31ff99fbe4c13b3feb570ae3ba1fc7cf972f8a16",
     "repository_id": 1374450603,
     "lock": {
       "schema": "vendor-lock/1",
@@ -25,8 +25,8 @@
         },
         {
           "repository": "myon-bioinformatics/markdown",
-          "ref": "be468a648747fa18e385bb2828cb8716170b7c57",
-          "commit": "be468a648747fa18e385bb2828cb8716170b7c57",
+          "ref": "2af2b6646af5663aa1761be08ee7e0c048c3f680",
+          "commit": "2af2b6646af5663aa1761be08ee7e0c048c3f680",
           "source": "markdown.py",
           "destination": "vendor/markdown.py",
           "blob_sha": "3fc9edd43008e14e9b22eb07b83cf489816b82b0",
@@ -106,6 +106,6 @@
         }
       ]
     },
-    "lock_sha256": "78106a2de4d06104f6a9f8461ca866ad4e0e77a73460cb169a5772301d14286e"
+    "lock_sha256": "89f63c910e802e575ab78c338f5378fc0280dcaf31ca9693d6c20088b89d52d5"
   }
 }
