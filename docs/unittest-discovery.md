@@ -29,7 +29,11 @@ Unittest does not collect module-level pytest functions or apply pytest
 fixtures, parametrization, markers, conftest hooks or configured pythonpath.
 A broad `test*.py` pattern can import pytest-only modules and fail under `-S`.
 Do not add an extra CI pass over tests already owned by pytest just to expose
-this local command. No custom discovery runner is required.
+this local command. Across repositories, `python -S vendor_fleet_plan.py test`
+uses the same `TestLoader` calls (`loadTestsFromNames`, `testNamePatterns`) in one
+isolated subprocess per test directory and keeps pytest-only files in each
+repository's own `uv run --locked` environment; see the
+[fleet entry point](vendor-automation.md#fleet-entry-point-discover-graph-plan-test-report).
 
 ## Cross-repository audit (2026-11-03)
 

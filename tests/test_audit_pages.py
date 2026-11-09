@@ -77,6 +77,30 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual(json.loads((out/'data.json').read_text())['schema'],'parent-audit/1')
             self.assertEqual(len(json.loads((out/'history.json').read_text())['weeks']),1)
 
+    def test_fleet_section_is_published_with_the_snapshot_and_never_blocks_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / 'dist'
+            seen = []
+            report = {'schema': 'vendor-fleet-report/1', 'status': 'unavailable', 'error': 'OSError'}
+            with patch.object(build, 'public_repositories', return_value=['Demo']), patch.object(ci, 'audit', return_value=snapshot()):
+                build.build(out, fleet=lambda names, before: seen.append((names, before)) or report)
+            self.assertEqual(seen, [(['Demo'], None)])
+            self.assertEqual(json.loads((out / 'data.json').read_text())['fleet'], report)
+            self.assertIn('取得できませんでした', (out / 'report.html').read_text())
+        import vendor_fleet_plan
+        with patch.object(vendor_fleet_plan, 'report', side_effect=OSError('offline')):
+            self.assertEqual(build.fleet_report(['Demo'], None), report)
+        full = {'schema': 'vendor-fleet-report/1', 'generated_at': '2026-11-09T00:00:00+00:00', 'facts': [{'key': 'k'}],
+                'targets': {'repositories': [{'repository': 'app', 'category': 'target', 'repository_id': 1, 'revision': 'a' * 40}]},
+                'graph': {'edges': [{'kind': 'vendor', 'source': 'tool:tool.py', 'target': 'app:vendor/tool.py',
+                                     'lock': 'app:vendor.lock.json', 'pin': 'b' * 40, 'blob': 'c' * 40}], 'kinds': {'vendor': 1}}}
+        section, graph = build.split_fleet(full)
+        self.assertNotIn('edges', section['graph'])
+        self.assertNotIn('facts', section)
+        self.assertEqual(section['graph']['edges_omitted'], 1)
+        self.assertTrue(any(g.get('vd') == ['tool/tool.py'] for g in graph['@graph']))
+        self.assertEqual(build.split_fleet(report), (report, None))
+
     def test_renderer_failure_preserves_destination(self):
         with tempfile.TemporaryDirectory() as tmp:
             out=Path(tmp)/'dist';out.mkdir();(out/'index.html').write_text('old')

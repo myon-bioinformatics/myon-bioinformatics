@@ -677,7 +677,7 @@ def evidence(manifest, root, *, runtime=None):
             "candidate": list(locked), "runtime": runtime_paths}
 
 
-def synchronize(manifest, root, mode, *, get=_get):
+def synchronize(manifest, root, mode, *, get=_get, only=None, to_ref=None):
     """Check offline, place locked bytes, or resolve an upstream update candidate.
 
     All downloads/digests are validated before any write. Files are placed
@@ -687,6 +687,11 @@ def synchronize(manifest, root, mode, *, get=_get):
     isolated checkout; concurrent directory/manifest changes are unsupported.
     No downloaded module is imported. Public Git fallback only writes a temporary
     bare object store; the consumer Git checkout and remote refs are untouched.
+
+    ``only`` (update mode) limits resolution to those destinations; other entries are
+    neither fetched nor rewritten. ``to_ref`` (requires ``only``) is recorded as the
+    selected entries' ``ref`` before resolving. A selected entry whose new bytes equal
+    the recorded ones keeps its whole old record, so a moved commit alone never churns.
     """
     root = Path(root).resolve()
     manifest = _target(root, manifest)
@@ -697,6 +702,17 @@ def synchronize(manifest, root, mode, *, get=_get):
             raise ValueError("file destination collides with manifest")
     if mode not in ("check", "materialize", "update", "enroll"):
         raise ValueError("unknown mode")
+    if (only or to_ref) and mode != "update":
+        raise ValueError("--only/--to-ref apply to update only")
+    if to_ref is not None and not only:
+        raise ValueError("--to-ref needs --only: name the entries to move")
+    if to_ref is not None:
+        _path(to_ref)
+    selected = None if not only else {_path(x).casefold() for x in only}
+    if selected is not None:
+        unknown = selected - {item["destination"].casefold() for item in lock["files"]}
+        if unknown:
+            raise ValueError("--only names no locked destination: " + ", ".join(sorted(unknown)))
     # Enrollment may create missing locked files, but never repairs an existing edit.
     missing = set()
     if mode == "enroll":
@@ -721,10 +737,15 @@ def synchronize(manifest, root, mode, *, get=_get):
             continue
         if mode == "enroll" and item["destination"] not in missing:
             continue
+        if mode == "update" and selected is not None and item["destination"].casefold() not in selected:
+            continue
+        if mode == "update" and to_ref is not None:
+            item["ref"] = to_ref
         if mode == "update":
             key = item["repository"], item["ref"]
             sources = [i["source"] for i in candidate["files"]
-                       if (i["repository"], i["ref"]) == key]
+                       if (i["repository"], i["ref"]) == key
+                       and (selected is None or i["destination"].casefold() in selected)]
             if key not in commits:
                 url = "https://api.github.com/repos/{}/commits?sha={}&per_page=1".format(
                     key[0], quote(key[1], safe="")
@@ -783,13 +804,19 @@ def synchronize(manifest, root, mode, *, get=_get):
         _verify(item, data)
         pending.append((target, data))
     # Unchanged upstream bytes do not churn pins on unrelated upstream commits.
-    if mode == "update":
+    if mode == "update" and selected is None:
         for key in commits:
             old = [i for i in lock["files"] if (i["repository"], i["ref"]) == key]
             new = [i for i in candidate["files"] if (i["repository"], i["ref"]) == key]
             if all(a["blob_sha"] == b["blob_sha"] and a["sha256"] == b["sha256"] for a, b in zip(old, new)):
                 for a, b in zip(old, new):
                     b["commit"] = a["commit"]
+    elif mode == "update":
+        # Entry by entry: a selected entry with unchanged bytes keeps its old ref and commit.
+        for index, (a, b) in enumerate(zip(lock["files"], candidate["files"])):
+            if a["blob_sha"] == b["blob_sha"] and a["sha256"] == b["sha256"]:
+                candidate["files"][index] = copy.deepcopy(a)
+    if mode == "update":
         validate(candidate)
         encoded = (json.dumps(candidate, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
         if candidate != lock:
@@ -1720,13 +1747,26 @@ def fetch_child_head(repository, ref="main", *, remotes=None):
 
 
 def fetch_child_head_record(repository, ref="main", *, remotes=None, token=None, repo_fetch=None,
-                            prior_record=None):
+                            prior_record=None, prior_heads=None):
+    """Head entry for one child; identity is the live repository_id, the name is a label.
+
+    ``prior_heads`` (the whole previous document) lets a repository whose registry name was
+    updated after a GitHub rename keep its record: the entry with the same repository_id under
+    the old name is the prior record, and that old name is kept in ``optional.previous_names``.
+    """
     sha = fetch_child_head(repository, ref, remotes=remotes)
     record = _live_consumer_repository_record(repository, token=token, repo_fetch=repo_fetch)
     if not record_is_public_monitored(record):
         raise ValueError("child is not a public non-archived repository")
     live_id = _coerce_repository_id(record["id"])
     entry = {"sha": sha, "repository_id": live_id}
+    previous_names = None
+    if prior_record is None and prior_heads:
+        for old_name, old in prior_heads.items():
+            if old_name.casefold() != repository.casefold() and _coerce_repository_id(old["repository_id"]) == live_id:
+                prior_record = old
+                previous_names = sorted({*((old.get("optional") or {}).get("previous_names") or []), old_name})
+                break
     if prior_record is not None:
         verify_repository_id_identity(
             expected_repository_id=prior_record["repository_id"],
@@ -1738,6 +1778,8 @@ def fetch_child_head_record(repository, ref="main", *, remotes=None, token=None,
     optional = {}
     if isinstance(record.get("created_at"), str):
         optional["repository_created_at"] = record["created_at"]
+    if previous_names:
+        optional["previous_names"] = previous_names
     if optional:
         entry["optional"] = {**entry.get("optional", {}), **optional}
     pull_number = _lookup_child_main_pull_number(repository, sha, token)
@@ -1757,7 +1799,7 @@ def refresh_child_heads(registry, heads_path, *, ref="main", remotes=None, token
     heads = {
         name: fetch_child_head_record(
             name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch,
-            prior_record=prior_heads.get(name),
+            prior_record=prior_heads.get(name), prior_heads=prior_heads,
         )
         for name in names
     }
@@ -2955,6 +2997,10 @@ def main(argv=None, *, get=_get):
     parser.add_argument("--base-registry",
                         help="PR base vendor-consumers.json; entries this PR only adds to an "
                              "existing locked child are reported as pending enrollment")
+    parser.add_argument("--only", action="append", default=[], metavar="DESTINATION",
+                        help="update: resolve only these locked destinations (repeatable)")
+    parser.add_argument("--to-ref", metavar="REF",
+                        help="update with --only: record REF (branch or full commit) for those entries first")
     parser.add_argument("--consumer-name", dest="consumer_name",
                         help="consumer repository for run-child-ci (default: derive from --root)")
     args = parser.parse_args(argv)
@@ -3086,7 +3132,8 @@ def main(argv=None, *, get=_get):
         elif args.mode == "recreate":
             result = recreate(args.manifest, args.root, get=get)
         else:
-            result = synchronize(args.manifest, args.root, args.mode, get=get)
+            result = synchronize(args.manifest, args.root, args.mode, get=get,
+                                 only=args.only or None, to_ref=args.to_ref)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, HTTPError) as error:
         print("vendor-sync: " + str(error), file=sys.stderr)
         return 2

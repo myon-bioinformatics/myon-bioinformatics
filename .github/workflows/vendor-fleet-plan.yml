@@ -8,7 +8,12 @@ on:
       - "vendor_catalog.py"
       - "vendor_consumers.py"
       - "vendor_fleet_plan.py"
+      - "fleet_records.py"
+      - "vendor_sync.py"
+      - "child-heads.json"
       - "tests/test_vendor_fleet_plan.py"
+      - "tests/test_vendor_fleet_graph.py"
+      - "tests/test_fleet_records.py"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/vendor-fleet-plan.yml"
@@ -20,6 +25,9 @@ on:
       - "vendor_catalog.py"
       - "vendor_consumers.py"
       - "vendor_fleet_plan.py"
+      - "fleet_records.py"
+      - "vendor_sync.py"
+      - "child-heads.json"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/vendor-fleet-plan.yml"
@@ -57,14 +65,22 @@ jobs:
           report = json.loads(Path("reports/vendor-fleet-plan.json").read_text(encoding="utf-8"))
           print("Registration statuses:", report["counts"])
           PY
-      - name: Verify planner regression tests
+      # Offline consistency: the parent's records alone (no clone, no network). pytest coverage of the
+      # planner stays in python-tests.yml; this lane proves the stdlib-only (-S) entry point and graph.
+      - name: Offline fleet graph from the parent records
         run: |
-          uv run pytest -q tests/test_vendor_fleet_plan.py
+          python -S vendor_fleet_plan.py graph --check --format markdown --out reports/vendor-fleet-graph.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Fleet entry point on synthetic local repositories (python -S, no network)
+        run: |
+          python -S -m unittest discover -s tests -p test_vendor_fleet_graph.py -v
+          python -S -m unittest discover -s tests -p test_fleet_records.py -v
       - name: Keep auditable registration report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vendor-fleet-plan
-          path: reports/vendor-fleet-plan.json
+          path: |
+            reports/vendor-fleet-plan.json
+            reports/vendor-fleet-graph.json
           if-no-files-found: error
           retention-days: 14

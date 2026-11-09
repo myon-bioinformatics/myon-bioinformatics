@@ -624,9 +624,9 @@ compares an actual lock), `vendor_catalog.py compare` (which compares
 recommended commit pins) or `vendor_sync.py check` (which verifies bytes).
 `candidate_compatibility: unverified` is always explicit: a registration
 plan never means tested, safe to promote, or fully installed. Only the
-existing registered fleet is covered; discovering new repositories remains
-a separate inventory task. The tool makes no network calls, imports no
-candidate source, and performs no filesystem writes.
+existing registered fleet is covered here; repository discovery is the
+`targets` command below. The registration plan makes no network calls, imports
+no candidate source, and performs no filesystem writes.
 
 Parent CI automatically emits the read-only JSON report as the
 `vendor-fleet-plan` artifact when the catalog/registry/planner changes
@@ -640,6 +640,181 @@ registration request, add a reviewed catalog entry or explicit consumer
 relationship in the parent; this alone does **not** mutate the child's
 lock or place files. An eventual parent-led candidate PR still requires
 source/LICENSE verification and the consumer's CI gates.
+
+### Fleet entry point: discover, graph, plan, test, report
+
+The same file is the one entry point for cross-repository work, the way
+`python -m unittest discover` is for tests. Without a command it prints the
+registration plan above, unchanged. With a command it discovers its targets from
+records that already exist and aggregates one result:
+
+```sh
+python -S vendor_fleet_plan.py targets --checkouts ..          # 🎯 target / 🚫 excluded / ❔ insufficient
+python -S vendor_fleet_plan.py graph   --checkouts .. --check  # 🔗 edges, 🔁 mutual repositories, ⭕ execution cycles
+python -S vendor_fleet_plan.py impact  py_launch.cjs --checkouts ..
+python -S vendor_fleet_plan.py plan    --checkouts ..          # 🌊 dry-run (default)
+python -S vendor_fleet_plan.py plan    --changed py_launch.cjs --checkouts .. --apply
+python -S vendor_fleet_plan.py test    --checkouts .. --repos cli_args,xprobe -p 'test_*.py' -k runtime --jobs 4
+python -S vendor_fleet_plan.py report  --fetch --previous old.json --format markdown --out new.json
+python -S vendor_fleet_plan.py graph   --checkouts .. --format jsonld > fleet.jsonld
+python -S vendor_fleet_plan.py query   deps Ironmate            # 🔎 from the published fleet.jsonld, no checkouts
+python -S vendor_fleet_plan.py query   who web-ui               # name, previous name or repository_id → identity
+python -S vendor_fleet_plan.py query   facts xprobe --severity updated
+python -S vendor_fleet_plan.py query   why 'Aoi:cycles/c001-chunichi/outputs/ledger.jsonl#P1'  # 判断の根拠
+python -S vendor_fleet_plan.py query   reverify PySaiyanWeBoo:web_ui.py   # 影響先・再テスト・再検証
+```
+
+`--checkouts DIR` holds clones named like the repositories (worktree or bare
+`NAME.git`); the parent is read from its working tree, so a local edit of the
+registry or a shared file is what gets planned. `--fetch` clones a missing public
+repository once, anonymously, bare, blob-less and depth 1, and fetches the blobs
+a run needs in one batch per repository. Every tree and blob is read once per run
+(`♻️` line). Without `--fetch` nothing touches the network.
+
+| Need | Already there (reused) | Added here |
+| --- | --- | --- |
+| Targets | `vendor-consumers.json`, `child-heads.json` (parent and Aoi), `vendor-catalog.json`, each lock, `vendor_consumers.compare` | One classification with reasons: legacy/archived/source-only are 🚫, a consumer without a head, a head without topology, registry ≠ lock, a lock outside every hub are ❔ |
+| Graph | Lock rows, `vendor_sync.collect_workflow_pins`, hubs' `subtree_prefix`, `shared-tools.lock.json` | File-level edges (`vendor`, `launcher`, `license`, `workflow-pin`, `heads`, `subtree`, `catalog`, `shared-tools`), `graphlib.TopologicalSorter` order; 🔁 repository-level mutual references are information, ⭕ file-level cycles are errors |
+| Impact and plan | `vendor_sync.py update` (no-churn), `refresh-child-heads`, `pilot/vendor_dispatch.py --record`, `gh_ops.py subtree-push`, `tools/parent_pin_check.py` | Direct/indirect consumers; ordered waves vendor → regenerate → verify → record; identical bytes are ⏭️ even when the source commit moved; `vendor_sync.py update --only DEST --to-ref SHA` updates only the planned entries |
+| Tests | `unittest.TestLoader`, each repository's `uv.lock`, the [2026-11-03 recipes](unittest-discovery.md) | Per repository: offline `vendor_sync.py check` first, then unittest groups (`loadTestsFromNames`, `testNamePatterns`) or one pytest group in `uv run --locked`; disposable detached worktree per job, cleaned environment, graphlib order, parallel `--jobs`; a failed check blocks its tests |
+| Results | `ci_status.py --audit` snapshot, Pages workbench and `report.html` | `vendor-fleet-report/1`: ✅ success / ❌ failure / 🔄 updated / ⏭️ skipped / ⛔ blocked / ❔ unavailable, SHA and time per row, carried rows only while the SHA is unchanged (otherwise 🕰️ stale), diff to the previous report, remaining actions as numbered facts |
+| Knowledge graph | `child-heads.json` `repository_id`, lock rows as provenance | One codebook (classes, relations, domain/range, PROV parents), identity and shape checks, JSON-LD export, compressed facts |
+
+How each piece decides:
+
+- **Locks.** `vendor.lock.json` rows are vendor edges from `repository:source` to
+  `consumer:destination`; a lock under a hub's subtree prefix is relative to that
+  prefix. A `shared-tools.lock.json` row with `consumers` declares who uses an
+  original; a row with only `path`/`source`/`sha256` is the consumer's copy record,
+  matched to the original by path. `html-import-vendor/1` rows are sha256-only.
+  The same dependency recorded in two locks counts once; different pins are a finding.
+- **Pins.** A reusable workflow `uses: …@SHA` depends on that parent workflow file.
+  A pinned whole-repository checkout depends on the parent files the workflow then
+  uses under its `path:`; one that nothing uses is reported, not modelled. The
+  parent checking out its own older commit is a historical fixture, and the parent
+  recording its own head in `child-heads.json` is not a dependency.
+- **Plan rows.** Content is compared by Git blob (sha256 for sha256-only records).
+  A source path removed at main is ❌ (re-point or drop); a source that is excluded
+  is ⏭️ with the reason; an unreadable in-scope source is ❔. An update that needs an
+  intermediate repository (parent → Aoi → NagoyAction) waits for that repository's
+  verify step; a subtree child receives the copy with the hub's subtree push.
+  Only `vendor` and `verify` steps are 🤖 automatic; records, pins, subtree pushes
+  and anything after a merge are 👤 and hold their dependents under `--apply`.
+- **Tests.** Test files are `test*.py` (or `-p`) under a `tests`/`test` directory.
+  A file with a `TestCase` and no pytest import runs in one `unittest-worker`
+  subprocess per directory (`python -I -S`, or `uv run --locked python -I` when it
+  imports a third-party package); everything else runs as one pytest group in
+  `uv run --locked`. `--related TEXT` keeps files that mention TEXT (used by plan
+  verify steps). Zero selected tests is ⏭️, never ✅. Exit 0 needs no ❌/⛔.
+
+Real-data check (2026-11-09, 24 public repositories): local clones and fresh
+anonymous `--fetch` clones gave the same result: 22 🎯, 15 🚫 (archived catalog
+sources, one legacy consumer), 2 ❔ (BrowserTestKit and PySaiyanWeBoo removed
+vendored gh_identity/gh_ops copies that the registry still lists; at `--at heads`
+both are 🎯, so refreshing their heads needs a registry update first), 392
+edges, 0 cycles, 6 code-level mutual pairs, 71 steps in 3 waves; 14 ❌ rows are
+Ironmate/github.io copies of PySaiyanWeBoo flow/JS files removed at main. The
+graph also found the Aoi `shared-tools.lock.json` gaps (QueRyu's `numpy_min.py`,
+Ironmate's `fetch_module.py`) and an unused pinned parent checkout in
+BrowserTestKit `runtime-compatibility.yml`. `test --runner unittest --jobs 8`
+ran 1888 tests in 23 repositories in 2 minutes (49 ✅, 2 groups re-run in their
+`uv.lock` environment because a local module imports polars; NagoyAction ❔: it
+needs packages but has no `uv.lock`, its tests run inside Aoi). pytest groups
+in `uv run --locked` passed for gh_identity (1176), xprobe (673) and yourself
+(264); cli_args, TalkCompress and ascii_artist failed only on network access or a
+module their CI downloads separately (`xprobe`), which the first error line shows.
+
+#### Evidence: tests, generators, receipts, ledgers, PRs
+
+`impact` and `report` also walk the relations the repositories' own records support — `tested_by`, `produced_by`,
+`derived_from`, `observed_in`, `verified_by`, `supports` / `contradicts`, PR `depends_on` — and answer
+変更の影響先 / 判断の根拠 / 再テストが必要な対象 / 再検証が必要な記録 / 再テスト対応が未登録 with the record each answer
+rests on. Plan rows split `content` (match/different), `commit` (same/different) and `compatibility`
+(not_assessed until tests run), so a moved commit is never read as outdated. `query why|reverify` answers the
+same from `fleet.jsonld`. Spec, adapters and real-data examples: [fleet-records.md](fleet-records.md).
+
+#### Ontology and knowledge graph
+
+The graph has one codebook, `CLASSES` and `RELATIONS` in `vendor_fleet_plan.py`,
+that every part reads: planning (`UPDATE_KINDS` are the relations whose phase is
+`vendor`), mutual references (`code` vs `record` group), icons, shape checks and
+the export. Each relation reads "target *relation* source".
+
+| Code | Relation | Domain → range | Group | Plan phase | PROV |
+| --- | --- | --- | --- | --- | --- |
+| `vd` 📥 | vendor | File → File | code | vendor | `prov:wasDerivedFrom` |
+| `ln` 🚀 | launcher | File → File | code | vendor | `prov:wasDerivedFrom` |
+| `lc` ⚖️ | license | File → File | code | vendor | `prov:wasDerivedFrom` |
+| `wp` 📌 | workflow-pin | File / Workflow / Repository → Workflow | code | regenerate | `prov:used` |
+| `st` 🌿 | subtree | Directory → Repository | code | regenerate | `prov:wasDerivedFrom` |
+| `sh` 🧰 | shared-tools | File → Repository | code | — | — |
+| `hd` 🧷 | heads | Repository → Record | record | record | `prov:used` |
+| `ct` 📚 | catalog | File → Record | record | record | `prov:used` |
+| `in` ↳ | implied | File … → Directory / Repository | structure | — | — |
+
+- **Identity.** A repository is identified by the `repository_id` its hubs record
+  (parent and Aoi `child-heads.json`); the name is a label. One id under two names
+  (`same-repository-two-names`) and one name with two ids (`identity conflict`) are
+  findings, so a rename never silently splits a node.
+- **Shapes.** `check_shapes` is a small SHACL-like check of the codebook: domain and
+  range per relation, exactly one origin per copy (`two-sources`), and every
+  repository an edge names is known (`unknown-repository`).
+- **Provenance.** Every edge keeps the record that asserts it (`assertedBy`: the
+  lock, workflow or hub record), its pin and blob, and the time of observation.
+- **Export.** `--format jsonld` (and `fleet.jsonld` next to the Pages `data.json`)
+  is the graph as JSON-LD: the codebook is the `@context`, classes and relations
+  are in the graph with `rdfs:domain`/`rdfs:range`/`rdfs:subPropertyOf`, every
+  node has its class and identity, and every edge is a `Dependency` statement
+  with provenance. On the 2026-11-09 fleet it expands to 4114 RDF triples (checked
+  with pyld). Agents can load it instead of surveying the repositories again.
+  The remaining actions are in it too, as `Fact` nodes (`FLEET-n`, key, severity,
+  detail, repositories).
+- **Query.** `query deps|who|facts` answers from that document alone (the
+  published URL by default, `--graph FILE` for a local one): what one repository
+  depends on grouped by relation (hub records about it included), which
+  repository a name, a previous name or a `repository_id` is, and which remaining
+  actions mention a text. `query(kind, term, graph=…)` is one function, so Node
+  (`node py_launch.cjs vendor_fleet_plan.py query facts xprobe --format json`)
+  and the MCP wrapper in mcp-toolcall-lab's `github_ops_server.py` (`fleet_query`)
+  reach the same code. Exit 1 when nothing matches. Previous names come from `child-heads.json`
+  `optional.previous_names`; `refresh-child-heads` fills it when a registry name
+  changes but the `repository_id` is already recorded under the old name.
+
+#### Compressed facts (ideas reused from TalkCompress)
+
+Many rows say one thing ("xprobe.py 7595fe5→9d9071f" in six repositories). The
+report groups them into facts with the TalkCompress rules, reimplemented in a few
+lines rather than imported (TalkCompress is not a vendor source of the parent):
+
+| TalkCompress | Here |
+| --- | --- |
+| Only a public, fixed codebook; no ad-hoc abbreviations | `RELATIONS`/`CLASSES` and `PATH_CODES` (`⚙️` = `.github/workflows/`) are the only codes; the JSON-LD `@context` publishes them |
+| Shared ledger: send the rules once | A fact keeps the fields its rows share once; rows keep only what differs; derivable fields (row id, repository) are rebuilt |
+| Round trip | `expand_facts(compress_rows(rows)) == rows`, checked in every report (`roundtrip ✅`) |
+| keep-check (`shared/keep_check.py`): identifiers must survive | `kept_identifiers` checks every repository, target path and source in the rendered remaining list after expanding path codes |
+| Count the whole cost, codebook included | `🗜️ 367 rows → 100 facts · 209,656 B → 110,522 B (+ codebook 1,802 B)` |
+
+A fact is one decision: a record relation groups by the record ("child-heads.json
+behind main"), a failure groups by the source repository ("PySaiyanWeBoo: 14
+source paths removed"), an update groups by the source file and its new blob, so
+version skew stays visible (`markdown.py →d87f394: Aoi ←9294cab, Ironmate
+←3fc9edd`). Remaining actions are these facts, numbered `FLEET-n` with the fact
+key as the common identifier; a number stays with its key across reports (via
+`--previous`), new keys take the next number. On real data the list went from 90
+lines to 24. `gh_ops.py fleet-issues fleet.json --repo OWNER/HUB` files them as
+Issues, one per fact, matched by the key ([details](gh-ops.md#fleet-facts-as-issues-fleet-issues)).
+
+CI keeps the two kinds apart. `vendor-fleet-plan.yml` (pull request / push of the
+records or the planner) runs the offline graph of the parent's records with
+`--check` and the synthetic-repository tests under `python -S -m unittest`; the
+planner's pytest coverage stays in `python-tests.yml`. The latest-source audit is
+part of the daily Pages build (`pages.yml`): `tools/build_audit_pages.py` adds the
+report for the public inventory to `data.json`, shown as **🔗 依存・更新** in
+`report.html` and per repository in the workbench. A failed analysis is published
+as unavailable and never blocks the PR audit. Clones are anonymous; no token,
+local path or private name reaches the JSON or the page.
+
+![Fleet view in report.html and the workbench column, real data 2026-11-09](audit-dashboard-fleet.gif)
 
 ## Compact license references
 

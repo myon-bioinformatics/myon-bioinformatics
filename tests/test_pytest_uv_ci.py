@@ -10,7 +10,6 @@ PYTEST_WORKFLOWS = (
     "python-tests.yml",
     "vendor-candidate.yml",
     "vendor-consumers-compat.yml",
-    "vendor-fleet-plan.yml",
     "vendor-lock-reconciliation.yml",
     "vendor-parent-child-ci.yml",
     "workflow-wrapper-tests.yml",

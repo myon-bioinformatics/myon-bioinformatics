@@ -31,6 +31,8 @@ is a thin adapter over them::
     python -S gh_ops.py url compare OWNER/REPO main feature   # no network; prints web + api URLs
     python -S gh_ops.py records-import records.json                         # merge a dashboard export locally (plan)
     python -S gh_ops.py records-import records.json --repo OWNER/REPO --branch audit/records --pr --write
+    python -S gh_ops.py fleet-issues fleet.json --repo OWNER/REPO            # one Issue per remaining fact (plan)
+    python -S gh_ops.py fleet-issues fleet.json --repo OWNER/REPO --close-resolved --write
 
 Exit codes: 0 = OK, 1 = a checked condition was not met, 2 = input or
 communication error. Flags are matched in full (no abbreviations).
@@ -2809,6 +2811,159 @@ def records_import(export_path: str, *, records_path: str = "site/records.jsonl"
     return {**out, "ok": True}
 
 
+# --- fleet facts as Issues (vendor_fleet_plan.py report -> one Issue per remaining fact) ------------
+
+FLEET_MARKER = "<!-- fleet-key: "
+FLEET_NUMBER_RE = re.compile(r"\bFLEET-(\d+)\b")
+FLEET_SEVERITY = {"failure": "❌ 失敗", "blocked": "⛔ ブロック", "unavailable": "❔ 取得不能", "updated": "🔄 更新あり",
+                  "insufficient": "❔ 情報不足"}
+FLEET_LABELS = {"failure": ("bug",), "blocked": ("bug",), "unavailable": ("bug",), "insufficient": ("bug",),
+                "updated": ("enhancement",)}
+
+
+def fleet_issue_key(issue: dict) -> str | None:
+    """The fact key an Issue carries in its body marker, or None for an Issue this tool did not write."""
+    body = issue.get("body") or ""
+    start = body.find(FLEET_MARKER)
+    if start < 0:
+        return None
+    end = body.find(" -->", start)
+    return body[start + len(FLEET_MARKER):end].strip() if end > start else None
+
+
+def _fleet_places(text: str) -> list[str]:
+    """Split 'A (x, y), B (z), C' at the commas outside parentheses."""
+    parts, depth, current = [], 0, []
+    for char in text:
+        depth += (char == "(") - (char == ")")
+        if char == "," and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(char)
+    parts.append("".join(current).strip())
+    return [part for part in parts if part]
+
+
+def fleet_issue_text(item: dict, report: dict) -> tuple[str, str]:
+    """Title with the number and the common identifier, body with the marker and the fact's own words."""
+    detail = str(item.get("detail", ""))
+    reason, _, where = detail.partition(" → ")
+    count = f" ({item['rows']}×)" if item.get("rows", 0) > 1 else ""
+    brief = re.split(r"[;(]", reason, maxsplit=1)[0].strip()  # the title keeps the fact, the body keeps the advice
+    title = f"{item['no']} {item['what']} · {brief}{count}"
+    if len(title) > 160:
+        title = title[:157] + "…"
+    repos = item.get("repositories") or []
+    lines = [f"{FLEET_MARKER}{item['key']} -->", "",
+             f"{FLEET_SEVERITY.get(item['severity'], item['severity'])} · 識別子 `{item['key']}`", "",
+             f"**事実** {reason}" + (f"（{item['rows']} 件）" if item.get("rows", 0) > 1 else "")]
+    places = _fleet_places(re.sub(r"^\d+× ", "", where)) if where else repos
+    if places:
+        lines += ["", "**どこ**", *[f"- {place}" for place in places]]
+    lines += ["", f"**観測** {report.get('generated_at', '')} · 親 `{str(report.get('parent_revision') or '')[:8]}`"
+              + " · 再現 `python -S vendor_fleet_plan.py report --fetch`", "",
+              "同じ識別子の Issue は 1 件に保ち、事実が消えたときに閉じます（`gh_ops.py fleet-issues`）。"]
+    return title, "\n".join(lines)
+
+
+def fleet_issues(report_path: str, repo: str, *, severities: tuple[str, ...] = tuple(FLEET_SEVERITY),
+                 close_resolved: bool = False, write: bool = False, client: Client | None = None) -> dict:
+    """Keep one Issue per remaining fact of a fleet report: create, update, reopen, and close resolved ones.
+
+    Facts are matched by their key (the body marker), never by title or number. An Issue that
+    already exists keeps its FLEET number even when the report numbered the fact differently, so
+    the number a person has quoted stays valid; new facts take numbers no Issue uses. Dry run by
+    default: every action is planned and returned, nothing is sent without ``write``.
+    """
+    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    if report.get("schema") != "vendor-fleet-report/1" or not isinstance(report.get("remaining"), list):
+        raise GhOpsError("not a vendor-fleet-report/1 with a remaining list")
+    client, repo = _client(client), _repo(repo)
+    items = [dict(item) for item in report["remaining"] if item.get("severity") in severities and item.get("key")]
+    existing: dict[str, dict] = {}
+    for issue in _all_items(client, f"/repos/{repo}/issues", params={"state": "all"}):
+        key = None if "pull_request" in issue else fleet_issue_key(issue)
+        if key and (key not in existing or issue["number"] > existing[key]["number"]):
+            existing[key] = issue
+    used = {int(m.group(1)) for issue in existing.values() for m in [FLEET_NUMBER_RE.search(issue.get("title") or "")] if m}
+    for item in items:  # an Issue's number wins; new facts avoid every number an Issue has
+        match = FLEET_NUMBER_RE.search((existing.get(item["key"]) or {}).get("title") or "")
+        if match:
+            item["no"] = f"FLEET-{match.group(1)}"
+    for item in items:
+        if item["key"] not in existing:
+            number = int(FLEET_NUMBER_RE.search(item.get("no") or "").group(1)) if FLEET_NUMBER_RE.search(item.get("no") or "") else 0
+            if not number or number in used:
+                number = max(used, default=0) + 1
+            used.add(number)
+            item["no"] = f"FLEET-{number}"
+    available = {label["name"] for label in _all_items(client, f"/repos/{repo}/labels")}
+    rows, writes = [], 0
+
+    def send(method: str, path: str, body: dict) -> dict:
+        nonlocal writes
+        writes += 1
+        return client.request(method, path, body, expect=(200, 201)).data
+
+    for item in items:
+        title, body = fleet_issue_text(item, report)
+        labels = sorted(label for label in FLEET_LABELS.get(item["severity"], ()) if label in available)
+        if "fleet" in available:
+            labels.append("fleet")
+        row = {"key": item["key"], "no": item["no"], "severity": item["severity"], "title": title, "labels": labels}
+        issue = existing.get(item["key"])
+        if issue is None:
+            row["action"] = "create"
+            if write:
+                created = send("POST", f"/repos/{repo}/issues", {"title": title, "body": body, "labels": labels})
+                row.update(number=created.get("number"), url=created.get("html_url"))
+        else:
+            row["number"] = issue["number"]
+            same = issue.get("title") == title and (issue.get("body") or "") == body
+            closed = issue.get("state") == "closed"
+            row["action"] = "reopen" if closed else "unchanged" if same else "update"
+            if write and row["action"] != "unchanged":
+                patch = {"title": title, "body": body}
+                if closed:
+                    patch["state"] = "open"
+                if labels and set(labels) - {label["name"] for label in issue.get("labels") or []}:
+                    patch["labels"] = sorted(set(labels) | {label["name"] for label in issue.get("labels") or []})
+                send("PATCH", f"/repos/{repo}/issues/{issue['number']}", patch)
+        rows.append(row)
+    if close_resolved:
+        remaining = {item["key"] for item in items}
+        for key, issue in sorted(existing.items(), key=lambda kv: kv[1]["number"]):
+            if key in remaining or issue.get("state") != "open":
+                continue
+            row = {"key": key, "no": (FLEET_NUMBER_RE.search(issue.get("title") or "") or [None, None])[0] or "",
+                   "number": issue["number"], "title": issue.get("title"), "action": "close", "labels": []}
+            if write:
+                send("POST", f"/repos/{repo}/issues/{issue['number']}/comments",
+                     {"body": f"✅ この事実は {report.get('generated_at', '')} のレポートに残っていないため閉じます（`gh_ops.py fleet-issues --close-resolved`）。"})
+                send("PATCH", f"/repos/{repo}/issues/{issue['number']}", {"state": "closed", "state_reason": "completed"})
+            rows.append(row)
+    verified = True
+    if write:
+        after = {}
+        for issue in _all_items(client, f"/repos/{repo}/issues", params={"state": "all"}):
+            key = None if "pull_request" in issue else fleet_issue_key(issue)
+            if key:
+                after[key] = issue
+        for row in rows:
+            issue = after.get(row["key"])
+            expect_open = row["action"] != "close"
+            good = issue is not None and (issue.get("state") == "open") == expect_open and \
+                (row["action"] == "close" or issue.get("title") == row["title"])
+            row["verified"] = good
+            if good and "number" not in row:
+                row["number"] = issue["number"]
+            verified &= good
+    actions = {name: sum(row["action"] == name for row in rows) for name in ("create", "update", "reopen", "unchanged", "close")}
+    return {"ok": verified, "dry_run": not write, "repo": repo, "report_at": report.get("generated_at"),
+            "total": len(rows), "actions": actions, "writes": writes, "rows": rows}
+
+
 def url_pr(repo: str, number: int, *, tab: str | None = None) -> dict:
     """Web URL for a PR, or one of its ``checks``/``files``/``commits`` tabs.
 
@@ -2911,6 +3066,17 @@ def _render(command: str, result: dict) -> str:
                 lines.append(f"  {row.get('failed_stage', 'preflight')}: {row['reason']}")
             if row.get("remaining_sources"):
                 lines.append(f"  remaining sources: {row['remaining_sources']}")
+        return "\n".join(lines)
+    if command == "fleet-issues":
+        mode = "plan" if result["dry_run"] else "write"
+        icon = {"create": "🆕", "update": "✏️", "reopen": "♻️", "unchanged": "⏭️", "close": "✅"}
+        lines = [f"{'OK' if result['ok'] else 'NG'} fleet-issues {mode} {result['repo']}: "
+                 + " · ".join(f"{icon[k]} {v}" for k, v in result["actions"].items() if v) + (f" · writes {result['writes']}" if not result["dry_run"] else "")]
+        for row in result["rows"]:
+            number = f"#{row['number']}" if row.get("number") else "#?"
+            labels = f" [{', '.join(row['labels'])}]" if row.get("labels") else ""
+            check = "" if result["dry_run"] else (" ✔" if row.get("verified") else " ✘")
+            lines.append(f"{icon[row['action']]} {number} {row['title']}{labels}{check}")
         return "\n".join(lines)
     if command == "repo-counts":
         return "\n".join(["repo  open issues  open PRs  commits"] + [
@@ -3293,6 +3459,16 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p.add_argument("--pr", action="store_true", help="open a PR for the branch unless one is attached")
     p.add_argument("--write", action="store_true")
 
+    p = _command_parser(sub, "fleet-issues", help="one Issue per remaining fact of a vendor_fleet_plan report "
+                                               "(matched by fact key; numbers stay with their Issue); planned unless --write")
+    p.add_argument("report", help="JSON written by `vendor_fleet_plan.py report --out` (vendor-fleet-report/1)")
+    p.add_argument("--repo", required=True, metavar="OWNER/REPO", help="repository that tracks the fleet (the hub)")
+    p.add_argument("--severities", default=",".join(FLEET_SEVERITY),
+                   help="comma-separated severities to file (default: " + ",".join(FLEET_SEVERITY) + ")")
+    p.add_argument("--close-resolved", action="store_true",
+                   help="also close open fleet Issues whose fact is no longer in the report (with a comment)")
+    p.add_argument("--write", action="store_true")
+
     p = _command_parser(sub, "url", help="build a github.com / api.github.com URL for something; no network access")
     url_sub = p.add_subparsers(dest="url_kind", required=True)
 
@@ -3404,6 +3580,10 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
     if command == "records-import":
         return records_import(args.export, records_path=args.records, repo=args.repo, branch=args.branch,
                               open_pr=args.pr, write=args.write, client=client)
+    if command == "fleet-issues":
+        severities = tuple(x.strip() for x in args.severities.split(",") if x.strip())
+        return fleet_issues(args.report, args.repo, severities=severities, close_resolved=args.close_resolved,
+                            write=args.write, client=client)
     if command == "commit-files":
         files = {}
         for spec in args.file:

@@ -14,6 +14,10 @@ PRではPython標準unittestとNode 26の組込みテストを実行します。
 
 前回の `data.json` / `history.json` を公開先から読み、404だけを初回公開として許容します。403/429/5xx・壊れたJSON・サイズ超過は失敗します。失敗したビルドはPages artifactのupload/deployへ進まず、前回の公開内容を維持します。再実行はActionsから行えます。
 
+同じビルドで `vendor_fleet_plan.py` の依存・更新レポート（対象検出、依存グラフ、更新計画、行ごとのSHAと確認日時、前回差分、残る対応）を `data.json` の `fleet` に入れ、`report.html` の「🔗 依存・更新」と作業画面の「共通化の進捗」に表示します。取得は匿名の公開cloneだけで、失敗しても監査の公開は止めず「取得不能」と表示し、古い結果を現在の結果として出しません。残る対応は同じ事実を1件にまとめ、`FLEET-n` の番号を同じ事実に付け続けます。全依存（ノード・関係・出典）は同じ場所の `fleet.jsonld`（JSON-LD）にあります。
+
+![依存・更新ビューと作業画面の列（2026-11-09 の実データ、Chromium）](audit-dashboard-fleet.gif)
+
 `index.html` はSitesで作成した操作画面、`report.html` は共通web_uiヘルパーによる生成レポートです。すべて相対参照なのでプロジェクトPagesのサブパスでも動作します。最新head、観測日時、CI失敗のcheck名とURLを表示します。再読込ボタンは公開済みJSONを読むもので、GitHub Actionsの新規実行を起動するものではありません。
 
 ## 週次記録と手入力
@@ -31,6 +35,8 @@ node --test tests/test_audit_model.cjs
 node --check site/ui/app.js
 # GH_TOKENを環境変数に設定した上で実データを検証する場合
 python3 -S tools/build_audit_pages.py --repos cli_args,xprobe --previous '' --previous-history ''
+# 依存・更新だけ（GitHub APIもトークンも不要）
+python3 -S vendor_fleet_plan.py report --fetch --format markdown
 ```
 
 全件の公開は `--repos` を指定せず行います。初回公開後はPages workflowの成功と `data.json` のgenerated_atを確認してください。

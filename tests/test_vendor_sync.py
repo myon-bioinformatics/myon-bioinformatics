@@ -920,3 +920,49 @@ def test_recreate_partial_replace_failure_is_per_file_atomic(tmp_path, monkeypat
     assert second.read_bytes() == b"two\n" and second.stat().st_ino == second_inode
     assert path.read_bytes() == manifest_before and json.loads(path.read_text(encoding="utf-8")) == value
     assert _staging_left(tmp_path) == []
+
+
+def two_entries(tmp_path):
+    entries = [entry(), entry(source="scripts/other.py", destination="vendor/other.py")]
+    for item in entries:
+        item["ref"] = OLD
+    path, value = lock(tmp_path, entries)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    return path, value
+
+
+def test_update_only_moves_the_selected_destination(tmp_path):
+    path, before = two_entries(tmp_path)
+    calls = []
+    result = sync.synchronize(path.name, tmp_path, "update", get=upstream(b"new\n", calls),
+                              only=["vendor/adapter.py"], to_ref=NEW)
+    after = json.loads(path.read_text(encoding="utf-8"))["files"]
+    assert result["changed_paths"] == ["vendor/adapter.py", path.name]
+    assert (after[0]["ref"], after[0]["commit"]) == (NEW, NEW)
+    assert after[0]["blob_sha"] == sync.git_blob(b"new\n")
+    assert after[1] == before["files"][1]  # unrelated entry: no fetch, no rewrite
+    assert (tmp_path / "vendor/other.py").read_bytes() == b"old\n"
+    assert not any("other.py" in url for url in calls)
+    sync.synchronize(path.name, tmp_path, "check")
+
+
+def test_update_only_keeps_the_record_when_bytes_are_unchanged(tmp_path):
+    path, _ = two_entries(tmp_path)
+    before = path.read_bytes()
+    result = sync.synchronize(path.name, tmp_path, "update", get=upstream(b"old\n", []),
+                              only=["vendor/adapter.py"], to_ref=NEW)
+    assert result["changed_paths"] == []
+    assert path.read_bytes() == before
+
+
+def test_update_only_rejects_unknown_destinations_and_misuse(tmp_path):
+    path, _ = two_entries(tmp_path)
+    with pytest.raises(ValueError, match="names no locked destination"):
+        sync.synchronize(path.name, tmp_path, "update", get=lambda url: pytest.fail("network"), only=["vendor/missing.py"])
+    with pytest.raises(ValueError, match="needs --only"):
+        sync.synchronize(path.name, tmp_path, "update", get=lambda url: pytest.fail("network"), to_ref=NEW)
+    with pytest.raises(ValueError, match="update only"):
+        sync.synchronize(path.name, tmp_path, "check", only=["vendor/adapter.py"])
+    out = subprocess.run([sys.executable, "-S", str(Path(sync.__file__)), "update", "--root", str(tmp_path),
+                          "--manifest", path.name, "--to-ref", NEW], capture_output=True, text=True)
+    assert out.returncode == 2 and "needs --only" in out.stderr
