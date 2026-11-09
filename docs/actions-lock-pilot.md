@@ -1,10 +1,10 @@
 # Actions dependency lockfile pilot
 
-The read-only `Actions lockfile pilot` workflow checks that the v0.2.0 release
-tag is the annotated tag object `8030edf41a48291d48ac67090ab27e9949225de2`
+The read-only `Actions lockfile pilot` workflow checks that the v0.4.1 release
+tag is the annotated tag object `a8846ab4e4c1e34a7c40f65f2e78e98066913bf0`
 and that this object points to commit
-`d5dca22a06ff8590d50b41612038996800cfb336`, then installs
-the official release binary using `gh extension install --pin v0.2.0`.
+`04b7a1a4d00b339dd3ff903bb4d78d4066b2bac7`, then installs
+the official release binary using `gh extension install --pin v0.4.1`.
 The binary is release-distributed, not locally built from that source commit.
 The generator runs against an isolated copy
 of `workflow-wrapper-tests.yml`. It then runs online provenance verification and
@@ -33,7 +33,7 @@ The pilot is triggered by relevant pull requests or manually. It is not schedule
 
 References:
 - https://docs.github.com/en/actions/concepts/security/workflow-dependency-lockfiles
-- https://github.com/github/gh-actions-lock/tree/d5dca22a06ff8590d50b41612038996800cfb336
+- https://github.com/github/gh-actions-lock/tree/04b7a1a4d00b339dd3ff903bb4d78d4066b2bac7
 
 ## Adoption and audit integration
 
