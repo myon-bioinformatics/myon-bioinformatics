@@ -405,7 +405,12 @@ class Fleet:
 
     def json(self, repo, rev, path):
         data = self.read(repo, rev, path)
-        return None if data is None else json.loads(data.decode("utf-8"))
+        if data is None:
+            return None
+        try:
+            return json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"{repo}:{path}: invalid JSON: {exc}") from exc
 
     def display(self, value):
         """Local paths shown as <tools>/<parent>/<checkouts> so published reports carry no machine paths."""
@@ -2386,7 +2391,7 @@ def main(argv=None):
             if args.command in ("graph", "impact", "plan"):
                 graph = build_graph(fleet, discovery, records, evidence=not args.no_evidence, snapshot=snapshot)
                 result["graph"] = {k: v for k, v in graph.items() if k != "order"}
-                if args.command == "graph" and args.check and (graph["cycles"] or graph["findings"]):
+                if args.command == "graph" and args.check and graph["cycles"]:
                     code = 1
                 if args.command == "impact":
                     revisions = {r["repository"]: r["revision"] for r in discovery["repositories"]

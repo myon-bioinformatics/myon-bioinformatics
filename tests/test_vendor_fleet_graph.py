@@ -307,6 +307,12 @@ class Reports(FleetFixture):
         self.assertEqual(cli("plan", "--check").returncode, 1)
         self.assertEqual(cli("test", "--repos", "hub").returncode, 1)
         self.assertEqual(cli("plan", "--at", "nope").returncode, 2)
+        # Evidence findings are visible and actionable, but do not redefine the structural graph check.
+        commit(self.checkouts / "app", {"vendor.lock.json": lock(row("ghost", "tool.py", "vendor/tool.py", self.tool_v1,
+                                                                     b"VALUE = 1\n"))})
+        checked = cli("graph", "--check")
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        self.assertIn("unknown-repository", checked.stdout)
 
 
 class Ontology(FleetFixture):
