@@ -893,3 +893,30 @@ def test_recreate_with_a_manifest_in_a_subdirectory_and_from_the_cli(tmp_path, c
     assert (tmp_path / "vendor/adapter.py").read_bytes() == b"old\n" and _staging_left(tmp_path) == []
     assert sync.main(["recreate", "--root", str(tmp_path), "--manifest", "python/vendor.lock.json"], get=lambda url: b"bad\n") == 2
     assert "digest mismatch" in capsys.readouterr().err
+
+
+def test_recreate_partial_replace_failure_is_per_file_atomic(tmp_path, monkeypatch):
+    path, value = lock(tmp_path, [entry(), entry(b"two\\n", source="scripts/two.py", destination="vendor/two.py")])
+    (tmp_path / "vendor").mkdir()
+    first = tmp_path / "vendor/adapter.py"
+    second = tmp_path / "vendor/two.py"
+    first.write_bytes(b"old\\n")
+    second.write_bytes(b"two\\n")
+    manifest_before = path.read_bytes()
+    first_inode, second_inode = first.stat().st_ino, second.stat().st_ino
+    original_replace = sync.os.replace
+
+    def fail_second_destination(source, destination):
+        if Path(destination) == second:
+            raise OSError("injected placement failure")
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(sync.os, "replace", fail_second_destination)
+    with pytest.raises(OSError, match="injected placement failure"):
+        sync.recreate(path.name, tmp_path, get=lambda url: b"old\\n" if url.endswith("adapter.py") else b"two\\n")
+
+    # Replacement is atomic per file, not a transaction across the full manifest.
+    assert first.read_bytes() == b"old\\n" and first.stat().st_ino != first_inode
+    assert second.read_bytes() == b"two\\n" and second.stat().st_ino == second_inode
+    assert path.read_bytes() == manifest_before and json.loads(path.read_text(encoding="utf-8")) == value
+    assert _staging_left(tmp_path) == []
