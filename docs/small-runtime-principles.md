@@ -89,7 +89,7 @@ PR to provision an isolated resource lab.
    remains unknown. Record independent review and applicable current-head CI;
    a skipped or untriggered job is not a pass.
 
-The [PR template](../.github/PULL_REQUEST_TEMPLATE.md) links here rather than
+The [PR template](../.github/pull_request_template.md) links here rather than
 imposing this full checklist on every change. The parent keeps the common
 principle; child and Flutter PRs can link to it and supply task-specific evidence
 without duplicating the infrastructure or changing vendor adoption contracts.
