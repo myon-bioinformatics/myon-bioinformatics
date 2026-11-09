@@ -562,6 +562,15 @@
         "enrollment": "skipped",
         "reason": "explicit_consumer_only"
       }
+    },
+    {
+      "repository": "myon-bioinformatics/myon-bioinformatics",
+      "commit": "f789b06b1beb41360e8df163fbf4c19121da3495",
+      "source": "vendor_fleet_plan.py",
+      "reason": "Reviewed parent fleet evidence and query implementation from #240; shared with the explicitly listed mcp-toolcall-lab consumer.",
+      "consumers": [
+        "myon-bioinformatics/mcp-toolcall-lab"
+      ]
     }
   ]
 }
