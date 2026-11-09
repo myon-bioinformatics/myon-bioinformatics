@@ -6,17 +6,8 @@ the final authority for inputs and workflow validity.
 """
 from __future__ import annotations
 
-import argparse
-import base64
-from datetime import datetime, timezone
-import json
-import math
-import os
-from pathlib import Path
-import re
-import subprocess
-import sys
-from urllib.parse import quote
+import argparse, base64, json, math, os, re, subprocess, sys
+from datetime import datetime, timezone; from pathlib import Path; from urllib.parse import quote
 
 __version__ = "0.1.0"
 __all__ = ["inspect_workflow", "execute_workflow", "WorkflowError"]

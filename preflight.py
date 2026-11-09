@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 """Read-only prerequisites using adopted ghi and optional yourself runtime facts."""
-import argparse
-import json
+import argparse, json, re, sys
 from pathlib import Path
-import re
-import sys
 
 from vendor import gh_identity as ghi
 

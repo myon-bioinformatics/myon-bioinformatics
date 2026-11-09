@@ -1,11 +1,6 @@
 """Fixed BTK graph/failure tests; fake npm, no installs or browser execution."""
-import concurrent.futures
-import importlib.util
-import json
-from pathlib import Path
-import tempfile
-import unittest
-from unittest.mock import patch
+import concurrent.futures, importlib.util, json, tempfile, unittest
+from pathlib import Path; from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location("nano_node_btk", Path(__file__).parents[1] / "tools/nano_node.py")
 nano = importlib.util.module_from_spec(SPEC)

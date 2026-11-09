@@ -1,11 +1,6 @@
 """Offline runtime behavior checks; run with python -S on Python 3.9/3.10."""
-import hashlib
-import json
+import hashlib, json, subprocess, sys, tempfile, unittest
 from pathlib import Path
-import subprocess
-import sys
-import tempfile
-import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))

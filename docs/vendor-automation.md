@@ -40,6 +40,25 @@ bundle from the entry at the locked commit and compares it. See `docs/minpy.md`.
 This minimal schema example is not a complete consumer manifest: add the upstream
 LICENSE with its independently verified hashes before adoption.
 
+## Recreating the locked files in CI
+
+`python -S vendor_sync.py recreate --manifest vendor.lock.json` (or `recreate(manifest, root)` from
+Python) is the CI step that proves every checked-in copy can be fetched again from GitHub. It checks
+the checkout copies, materializes the lock into an empty staging directory under the root (nothing in
+the checkout can satisfy it), checks the staged bytes, moves them over the checkout copies one file at
+a time, and checks again. A failed download or digest leaves the checked-in files in place, unlike
+the inline "unlink every destination, then materialize" step it replaces. Placement is atomic per
+file, not a transaction across the batch. It prints `{"schema", "mode": "recreate", "changed_paths",
+"recreated"}`; `changed_paths` stays empty because the recreated bytes are the locked bytes.
+
+Recreation must run in an isolated checkout. It rechecks the original manifest and checkout
+bytes after downloads and each destination immediately before replacement, rejecting edits it
+observes. This is not locking or compare-and-swap: writes racing the final verification and
+replacement are unsupported. A failure during placement may leave earlier files replaced, and a
+failure of the final check does not roll them back. Staging is removed in either case. Inspect the
+checkout and preserve any concurrent edits; after resolving the cause and verifying the intended
+lock state, rerun `recreate`. Do not delete the checkout copies as a recovery step.
+
 ## Central consumer topology
 
 `vendor-consumers.json` is the parent-owned machine-readable registry of
@@ -641,3 +660,15 @@ and copyright notices remain unchanged. Aoi manages subtree children in its own
 child registry; the account parent remains responsible for its direct consumer
 baselines. Whole-subtree synchronization and optional minpy file consumption are
 separate mechanisms.
+
+### 2026-11-09 親PR統合時のmcp-toolcall-lab基準更新
+
+#223のweb_ui登録は、旧基準1184ba449e146cb8f101aaa743449eb71a1afeb9では未採用だった。
+公開・非archived・repository_id=1374450603を確認し、子mainの
+3afb43875ad6e4fd1a15a0d632f963f392b14920を明示的に再確認した。
+11件すべてについて、各sourceの記録済みcommitにあるGit blob SHA・SHA-256と、
+この子revisionの配置ファイルのバイト一致を読み取り検証した。
+web_ui.py/対応LICENSEの2件追加に加え、markdown.py/node_launch.pyの採用pin更新を含む。
+子のロックやファイルを置換する処理ではない。親child-headsの1項目のみ更新し、
+独立したfixture reviewed_mcp_lock_20261109.jsonへ観測値を保存する。
+ソースがdefault branchへ統合済みかどうかと配置バイトの独立監査は、既存の親CIで継続する。

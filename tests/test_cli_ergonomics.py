@@ -5,13 +5,7 @@ spawn the tools; they do not replace the in-process suites.
 """
 from __future__ import annotations
 
-import functools
-import http.server
-import json
-import shutil
-import subprocess
-import sys
-import threading
+import functools, http.server, json, shutil, subprocess, sys, threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -1,13 +1,8 @@
 """Depth and compatibility contracts for minpy's dependency-cycle diagnostics."""
 from __future__ import annotations
 
-import itertools
-import json
-import os
+import itertools, json, os, random, subprocess, sys
 from pathlib import Path
-import random
-import subprocess
-import sys
 
 import pytest
 

@@ -1,13 +1,6 @@
 """Dependency-only CI contracts: stdlib mocks, never install or execute tests."""
-import copy
-import importlib.util
-import json
-from pathlib import Path
-import subprocess
-import sys
-import tempfile
-import unittest
-from unittest.mock import patch
+import copy, importlib.util, json, subprocess, sys, tempfile, unittest
+from pathlib import Path; from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location("nano_ci_dependencies", Path(__file__).parents[1] / "tools/nano_node.py")
 nano = importlib.util.module_from_spec(SPEC)

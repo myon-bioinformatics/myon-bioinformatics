@@ -1,6 +1,5 @@
 """Parent topology follows cli_args PR #28 vendor.lock.json snapshot."""
-import copy
-import json
+import copy, json
 from pathlib import Path
 
 import vendor_consumers

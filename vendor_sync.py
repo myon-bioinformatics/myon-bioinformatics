@@ -1,26 +1,8 @@
 """Reproducible GitHub file placement and update candidates (stdlib only)."""
 from __future__ import annotations
 
-import argparse
-import base64
-import copy
-from contextvars import ContextVar
-from functools import wraps
-import hashlib
-import json
-import os
-from pathlib import Path, PurePosixPath
-import re
-import shutil
-import socket
-import stat
-import subprocess
-import sys
-import tempfile
-import time
-from urllib.error import HTTPError, URLError
-from urllib.parse import quote
-from urllib.request import Request, urlopen
+import argparse, base64, copy, hashlib, json, os, re, shutil, socket, stat, subprocess, sys, tempfile, time
+from contextvars import ContextVar; from functools import wraps; from pathlib import Path, PurePosixPath; from urllib.error import HTTPError, URLError; from urllib.parse import quote; from urllib.request import Request, urlopen
 
 __version__ = "0.3.0"
 __all__ = [
@@ -30,6 +12,7 @@ __all__ = [
     "validate_minpy_bundle",
     "evidence",
     "synchronize",
+    "recreate",
     "promote",
     "commit_merged_into_default",
     "collect_lock_pins",
@@ -780,6 +763,51 @@ def synchronize(manifest, root, mode, *, get=_get):
     if mode == "enroll":
         synchronize(manifest.relative_to(root).as_posix(), root, "check", get=get)
     return {"schema": SCHEMA, "mode": mode, "changed_paths": changed}
+
+
+def recreate(manifest, root, *, get=_get):
+    """Fetch every locked file again from GitHub and put those bytes over the checkout copies.
+
+    The checked-in copies are verified first. The fresh snapshot is materialized and checked in an
+    empty staging directory under ``root`` (nothing in the checkout can satisfy it), and only then
+    moved over the checkout copies one file at a time, so a failed download or digest leaves the
+    checked-in files in place for CI evidence. Placement is atomic per file, not a transaction across
+    the batch. This is the "unlink every destination, materialize, check" CI step as one call.
+    Baseline checks reject edits observed after download and before each placement, but do not
+    provide locking: a write between verification and os.replace can still race. Use an isolated
+    checkout. A placement/final-check failure does not roll back earlier replacements; preserve
+    concurrent edits, inspect the checkout, and rerun only after restoring the intended lock state.
+    """
+    root = Path(root).resolve()
+    manifest_path = _target(root, manifest)
+    relative = manifest_path.relative_to(root).as_posix()
+    synchronize(relative, root, "check", get=get)
+    manifest_bytes = manifest_path.read_bytes()
+    lock = validate(json.loads(manifest_bytes))
+
+    def unchanged_manifest():
+        if _target(root, manifest).read_bytes() != manifest_bytes:
+            raise ValueError("manifest changed during recreate; use an isolated checkout")
+
+    with tempfile.TemporaryDirectory(prefix=".vendor-recreate-", dir=root) as directory:
+        staging = Path(directory)
+        staged = _target(staging, relative)
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        staged.write_bytes(manifest_bytes)
+        synchronize(relative, staging, "materialize", get=get)
+        synchronize(relative, staging, "check", get=get)
+        # Downloads can be slow. Refuse observed edits before replacing anything.
+        unchanged_manifest()
+        synchronize(relative, root, "check", get=get)
+        for item in lock["files"]:
+            unchanged_manifest()
+            target = _target(root, item["destination"])
+            _verify(item, target.read_bytes())
+            os.replace(_target(staging, item["destination"]), target)
+    unchanged_manifest()
+    synchronize(relative, root, "check", get=get)
+    return {"schema": SCHEMA, "mode": "recreate", "changed_paths": [],
+            "recreated": [item["destination"] for item in lock["files"]]}
 
 
 def _git_subprocess_env():
@@ -2834,6 +2862,7 @@ def main(argv=None, *, get=_get):
         choices=(
             "check",
             "materialize",
+            "recreate",
             "update",
             "promote",
             "enroll",
@@ -2997,6 +3026,8 @@ def main(argv=None, *, get=_get):
             result = promote(args.manifest, args.root, get=get)
         elif args.mode == "evidence":
             result = evidence(args.manifest, args.root, runtime=args.runtime_evidence)
+        elif args.mode == "recreate":
+            result = recreate(args.manifest, args.root, get=get)
         else:
             result = synchronize(args.manifest, args.root, args.mode, get=get)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError, HTTPError) as error:

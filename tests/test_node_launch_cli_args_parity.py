@@ -5,8 +5,7 @@ when resolution, argv shape, or error codes change.
 """
 from __future__ import annotations
 
-import shutil
-import sys
+import shutil, sys
 from pathlib import Path
 
 import pytest

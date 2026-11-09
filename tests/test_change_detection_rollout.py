@@ -1,7 +1,6 @@
 """Execute the actual reusable classifier with controlled Git diff output."""
-import os
+import os, subprocess
 from pathlib import Path
-import subprocess
 
 import pytest
 import yaml

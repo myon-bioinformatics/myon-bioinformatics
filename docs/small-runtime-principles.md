@@ -89,38 +89,14 @@ PR to provision an isolated resource lab.
    remains unknown. Record independent review and applicable current-head CI;
    a skipped or untriggered job is not a pass.
 
-The [PR template](../.github/PULL_REQUEST_TEMPLATE.md) links here rather than
+The [PR template](../.github/pull_request_template.md) links here rather than
 imposing this full checklist on every change. The parent keeps the common
 principle; child and Flutter PRs can link to it and supply task-specific evidence
 without duplicating the infrastructure or changing vendor adoption contracts.
 
-## What the current lab establishes
-
-At the merged [#135](https://github.com/myon-bioinformatics/myon-bioinformatics/pull/135)
-slice (`cc21a0a246fba54db36df7b4f074cb1649dabf0b`), the
-[constrained-lab guide](constrained-lab.md) documents:
-
-- Deterministic seeded trusted-case campaigns, timeout/error handling and
-  sequential/concurrent result-identity comparison with separate timings.
-- Synthetic set/bitset comparisons and tile fixtures. These are algorithm
-  examples, not measurements of an entire downstream repository.
-- Staged-source digest checks and NagoyAction/Ironmate contract-probe entry
-  points. Bundled fixture doubles validate the harness, not real-project speed,
-  complete PNG correctness or every transitive dependency.
-- Opt-in existing-cgroup counters and budget preflight, not quota enforcement,
-  network containment, per-worker RSS or aggregate workload accounting.
-
-There is not yet a completed comparative report proving how far Python/Node-only
-execution covers the four #133 lanes, or a measured best worker count/resource
-allocation. A Node-only comparison is not established by Python harness tests.
-The remaining work and earlier limitations stay tracked in
-[#133](https://github.com/myon-bioinformatics/myon-bioinformatics/issues/133).
-This guide adds the shared method; it does not declare those criteria complete.
-
 ## Boundaries
 
-Use trusted, staged workloads with the lab's documented prerequisites. The
-helpers do not provide hard isolation. Ordinary small-runtime experiments do
+Use trusted, staged workloads. Process-level helpers do not provide hard isolation. Ordinary small-runtime experiments do
 not justify claims of enforced CPU/memory/network limits; those claims require
 separate OS-level configuration and evidence. No security or quota settings are
 changed by adopting this principle.

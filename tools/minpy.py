@@ -7,18 +7,8 @@ other repo-name module. See ``docs/minpy.md``.
 """
 from __future__ import annotations
 
-import argparse
-import ast
-import hashlib
-import json
-import os
-import re
-import subprocess
-import sys
-import sysconfig
-import textwrap
-from collections import deque
-from pathlib import Path, PurePosixPath
+import argparse, ast, hashlib, json, os, re, subprocess, sys, sysconfig, textwrap
+from collections import deque; from pathlib import Path, PurePosixPath
 
 __version__ = "0.1.0"
 __all__ = [

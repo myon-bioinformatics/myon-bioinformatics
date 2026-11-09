@@ -1,8 +1,5 @@
 """Catalog dispatch pilot: one JSON, no extra package projects."""
-import importlib.util
-import json
-import subprocess
-import sys
+import importlib.util, json, subprocess, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -375,3 +372,37 @@ def test_child_lock_offline_skips_without_fetching():
     env = vd.Env((3, 12, 0), False, True, True, 24)
     results = vd.dispatch(lock, env, None, opener, None)
     assert results[0]["action"] == "skip" and "offline" in results[0]["reason"]
+
+
+def test_missing_main_catalog_source_retains_only_verified_pin_with_explicit_opt_in():
+    import copy
+    vd = _driver()
+    old, new = 'a' * 40, 'b' * 40
+    manifest={'schema':'vendor-catalog/1','tools':[_tool('o/r','scripts/tool.mjs',old)]}
+    def opener(url):
+        if '/commits/' in url:return 200,json.dumps({'sha':new}).encode()
+        if url.endswith('/package.json'):return 404,b''
+        if f'/{old}/scripts/tool.mjs' in url:return 200,b'export {}\n'
+        return 404,b''
+    for enabled in (False,True):
+        catalog=copy.deepcopy(manifest)
+        rows=vd.dispatch(catalog,_env(vd),'main',opener,None,preserve_missing_catalog_sources=enabled)
+        assert rows[0]['action']==('pinned' if enabled else 'error')
+        if enabled:
+            assert rows[0]['migration_required'] and rows[0]['commit']==old
+            assert rows[0]['sha256'] and not rows[0]['recorded']
+            assert vd.apply_record(catalog,rows)==[]
+            assert catalog==manifest
+    def failed(url):
+        if f'/{new}/scripts/tool.mjs' in url:return 503,b''
+        return opener(url)
+    rows=vd.dispatch(manifest,_env(vd),'main',failed,None,preserve_missing_catalog_sources=True)
+    assert rows[0]['action']=='error' and '503' in rows[0]['reason']
+    def both_missing(url):
+        if url.endswith('/scripts/tool.mjs'):return 404,b''
+        return opener(url)
+    rows=vd.dispatch(manifest,_env(vd),'main',both_missing,None,preserve_missing_catalog_sources=True)
+    assert rows[0]['action']=='error' and 'recorded pin also failed' in rows[0]['reason']
+    lock={'schema':'vendor-lock/1','files':[dict(manifest['tools'][0],destination='vendor/tool.mjs',ref=old,blob_sha='0'*40,sha256='0'*64)]}
+    rows=vd.dispatch(lock,_env(vd),'main',opener,None,preserve_missing_catalog_sources=True)
+    assert rows[0]['action']=='error'

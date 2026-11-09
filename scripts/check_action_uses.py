@@ -23,15 +23,8 @@ run 等の block scalar 内の文字列は action として扱わない。
 """
 from __future__ import annotations
 
-import argparse
-import json
-import os
-import re
-import sys
-import urllib.error
-import urllib.request
-from pathlib import Path
-from urllib.parse import quote
+import argparse, json, os, re, sys, urllib.error, urllib.request
+from pathlib import Path; from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 HEX40 = re.compile(r"^[0-9a-fA-F]{40}$")

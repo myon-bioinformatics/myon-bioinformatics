@@ -1,6 +1,5 @@
 """Parent topology follows Ironmate #126's locked flow workspace snapshot."""
-import copy
-import json
+import copy, json
 from pathlib import Path
 
 import vendor_consumers

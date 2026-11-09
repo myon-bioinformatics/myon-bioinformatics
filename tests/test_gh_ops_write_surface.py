@@ -1,6 +1,5 @@
 """Parent GitHub write files stay on an explicit reviewed list."""
-import re
-import subprocess
+import re, subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +12,9 @@ ALLOW = (
     ".github/workflows/update-readme-stats.yml",
 )
 SKIP_PREFIXES = ("tests/", "docs/", ".git/")
+# Pattern hits that are not GitHub writes: the vendored web_ui.py carries a browser-side curl builder
+# whose JS sets method="POST" for arbitrary HTTP requests the page displays; it never calls the GitHub API.
+NOT_GITHUB = ("vendor/web_ui.py",)
 SUFFIXES = {".py", ".yml", ".yaml", ".mjs", ".cjs", ".js"}
 WRITE_PATTERNS = (
     re.compile(r'_github_api\(\s*"(?:PUT|POST|PATCH|DELETE)"'),
@@ -33,7 +35,7 @@ def _write_files():
     found = []
     for rel in _tracked_files():
         path = ROOT / rel
-        if path.suffix not in SUFFIXES or rel.startswith(SKIP_PREFIXES) or not path.is_file():
+        if path.suffix not in SUFFIXES or rel.startswith(SKIP_PREFIXES) or rel in NOT_GITHUB or not path.is_file():
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
         if any(pattern.search(text) for pattern in WRITE_PATTERNS):

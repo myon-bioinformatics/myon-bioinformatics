@@ -1,14 +1,6 @@
 """Offline tests: fake uv, synthetic reviewed manifests, no package installation."""
-import hashlib
-import json
-import os
-from pathlib import Path
-import subprocess
-import sys
-import tempfile
-from concurrent.futures import ThreadPoolExecutor
-import unittest
-from unittest.mock import patch
+import hashlib, json, os, subprocess, sys, tempfile, unittest
+from concurrent.futures import ThreadPoolExecutor; from pathlib import Path; from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools import nano_export as ne

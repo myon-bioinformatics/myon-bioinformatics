@@ -1,11 +1,4 @@
-import base64
-import importlib.util
-import io
-import json
-import os
-import subprocess
-import sys
-import urllib.parse
+import base64, importlib.util, io, json, os, subprocess, sys, urllib.parse
 from pathlib import Path
 
 import pytest

@@ -6,13 +6,8 @@ separately. Actual remote locks are fetched from immutable consumer commits.
 """
 from __future__ import annotations
 
-import argparse
-import hashlib
-import json
-import os
-from pathlib import Path
-import sys
-from urllib.error import HTTPError, URLError
+import argparse, hashlib, json, os, sys
+from pathlib import Path; from urllib.error import HTTPError, URLError
 
 import vendor_catalog
 import vendor_consumers

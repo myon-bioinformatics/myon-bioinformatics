@@ -1,7 +1,6 @@
 """Execute the reusable workflow's Bash selector against real Git histories."""
-import os
+import os, subprocess
 from pathlib import Path
-import subprocess
 
 import pytest
 import yaml

@@ -1,0 +1,56 @@
+name: Reusable stdlib runtime
+
+on:
+  workflow_call:
+    inputs:
+      commands:
+        description: "Newline-separated shell commands run in order from the repository root; the first failure stops the job"
+        type: string
+        required: true
+      python-versions:
+        description: 'JSON array of Python versions on ubuntu-latest; "3.x" selects the newest managed Python'
+        type: string
+        default: '["3.11","3.12","3.13","3.14"]'
+      extra-runners:
+        description: 'JSON array of extra matrix entries, e.g. [{"os":"windows-latest","python":"3.11"}]'
+        type: string
+        default: "[]"
+      timeout-minutes:
+        type: number
+        default: 15
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ${{ fromJSON(inputs.python-versions) }}
+        include: ${{ fromJSON(inputs.extra-runners) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        # The latest lane must not reuse an older system Python before venv creation.
+        env:
+          UV_PYTHON_PREFERENCE: ${{ matrix.python == '3.x' && 'only-managed' || 'managed' }}
+        with:
+          version: "latest"
+          python-version: "${{ matrix.python == '3.x' && '3' || matrix.python }}"
+          activate-environment: true
+          enable-cache: true
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
+      - name: Exercise runtime behavior without site-packages
+        env:
+          COMMANDS: ${{ inputs.commands }}
+        run: bash -euo pipefail -c "$COMMANDS"

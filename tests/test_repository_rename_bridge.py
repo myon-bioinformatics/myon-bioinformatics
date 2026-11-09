@@ -1,7 +1,5 @@
 """Retired aliases fail closed; current source provenance checks stay strict."""
-import copy
-import hashlib
-import json
+import copy, hashlib, json
 from pathlib import Path
 
 import pytest
@@ -89,6 +87,8 @@ def test_adopted_audit_retains_provenance_and_bytes(monkeypatch, fault):
     registry, _ = documents(new)
     _, lock = documents(new)
     monkeypatch.setattr(sync, '_load_recorded_child_lock', lambda *a, **k: copy.deepcopy(lock))
+    # This fixture tests provenance/byte auditing with fake commits, not live repository metadata.
+    monkeypatch.setattr(sync, '_ensure_public_source_repository', lambda *a, **k: None)
     seen = []
     def merged(repository, revision, **kwargs):
         seen.append((repository,revision))

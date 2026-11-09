@@ -1,5 +1,4 @@
-from io import BytesIO
-from urllib.error import HTTPError
+from io import BytesIO; from urllib.error import HTTPError
 
 import pytest
 

@@ -6,11 +6,8 @@ network, installs, writes, or vendor adoption. A match is not execution readines
 """
 from __future__ import annotations
 
-import argparse
-import json
+import argparse, json, re, sys
 from pathlib import Path, PurePosixPath
-import re
-import sys
 
 
 SCHEMA = "nano-profiles/1"

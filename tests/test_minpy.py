@@ -1,11 +1,7 @@
 """minpy bundle behavior, fail-closed cases, and vendor metadata."""
 from __future__ import annotations
 
-import hashlib
-import json
-import os
-import subprocess
-import sys
+import hashlib, json, os, subprocess, sys
 from pathlib import Path
 
 import pytest

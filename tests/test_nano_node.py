@@ -1,12 +1,6 @@
 """Offline fake-npm regression tests; no dependency installation or network."""
-import concurrent.futures
-import importlib.util
-import json
-import os
-from pathlib import Path
-import tempfile
-import unittest
-from unittest.mock import patch
+import concurrent.futures, importlib.util, json, os, tempfile, unittest
+from pathlib import Path; from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location("nano_node", Path(__file__).parents[1] / "tools/nano_node.py")
 nano = importlib.util.module_from_spec(SPEC)

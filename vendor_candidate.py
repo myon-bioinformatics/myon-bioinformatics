@@ -1,16 +1,8 @@
 """Test one recommended artifact in a disposable consumer copy (stdlib only)."""
 from __future__ import annotations
 
-import argparse
-import copy
-import hashlib
-import json
+import argparse, copy, hashlib, json, shutil, subprocess, sys, tempfile, xml.etree.ElementTree as ET
 from pathlib import Path
-import shutil
-import subprocess
-import sys
-import tempfile
-import xml.etree.ElementTree as ET
 
 import vendor_catalog
 import vendor_consumers

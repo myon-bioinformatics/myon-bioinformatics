@@ -1,9 +1,6 @@
 """Read-only fleet plan tests with no external GitHub or network access."""
-import copy
-import json
+import copy, json, subprocess, sys
 from pathlib import Path
-import subprocess
-import sys
 
 import pytest
 

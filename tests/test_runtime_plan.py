@@ -1,13 +1,6 @@
 """Fake-only profile checks. No environment discovery or native workload runs."""
-import ast
-import copy
-import io
-import json
-from pathlib import Path
-import tempfile
-import unittest
-from contextlib import redirect_stderr, redirect_stdout
-from unittest.mock import patch
+import ast, copy, io, json, tempfile, unittest
+from contextlib import redirect_stderr, redirect_stdout; from pathlib import Path; from unittest.mock import patch
 
 from tools import runtime_plan as runtime
 

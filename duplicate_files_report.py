@@ -5,13 +5,8 @@ Markdown summary before propagating its status. Requires the #60 completeness
 contract; older pinned collectors cannot establish a complete fleet scan.
 """
 
-import argparse
-import importlib
-import json
-import os
+import argparse, importlib, json, os, subprocess, sys
 from pathlib import Path
-import subprocess
-import sys
 
 
 def run(identity, output, summary=None, owner="myon-bioinformatics", timeout=900):

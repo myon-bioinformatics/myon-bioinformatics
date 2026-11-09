@@ -2,11 +2,7 @@
 """Shared stdlib-only screenshot evidence manifest; independent browser engines."""
 from __future__ import annotations
 
-import argparse
-import hashlib
-import json
-import struct
-import zlib
+import argparse, hashlib, json, struct, zlib
 from pathlib import Path
 
 SCHEMA = "browser-screenshot-evidence/1"

@@ -5,9 +5,7 @@ main merge 8d8512fe. This historical lock still checks catalog behavior.
 The approved Non-Dart workflow at Flutter #210 adds the existing Ironmate handoff
 portable case; its immutable head also records the fetch-guard vendor rollout.
 """
-import copy
-import hashlib
-import json
+import copy, hashlib, json
 from pathlib import Path
 
 import pytest
