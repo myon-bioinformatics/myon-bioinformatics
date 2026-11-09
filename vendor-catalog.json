@@ -570,8 +570,8 @@
       "reason": "Reviewed parent fleet evidence and query implementation from #240; shared with the explicitly listed mcp-toolcall-lab consumer.",
       "consumers": {
         "myon-bioinformatics/mcp-toolcall-lab": {
-          "enrollment": "skipped",
-          "reason": "pending_explicit_enrollment"
+          "enrollment": "enrolled",
+          "reason": "locked_vendor_copy"
         }
       }
     }
