@@ -36,7 +36,7 @@ __version__ = "0.2.0"
 __all__ = ["repository", "observe", "summarize_checks", "render", "audit", "audit_repository", "link_dependencies",
            "workflow_facts", "check_conventions", "conventions", "render_conventions",
            "dependency_plan", "observe_vendor_pins", "render_dependency_report",
-           "load_records", "diff_snapshots", "render_audit_html", "write_audit_site", "main"]
+           "load_records", "diff_snapshots", "render_audit_html", "render_fleet_section", "write_audit_site", "main"]
 
 def get(path):
     """Compatibility shim backed by GHI transport; no independent HTTP client."""
@@ -576,7 +576,9 @@ def render_audit_html(snapshot, *, asset_base=".", title="Repository audit — m
                              trusted_cells=True, row_ids=tuple(r["id"] for r in chosen))
     changes = snapshot.get("changes", {})
     changed = set(changes.get("new", [])) | set(changes.get("changed", []))
-    views = (("queue", "◫ 作業キュー"), ("compare", "⇄ 依存・競合"), ("weekly", "▦ 週次差分"), ("rules", "⚖ 規約ずれ"), ("done", "✓ 完了"))
+    fleet = snapshot.get("fleet")
+    views = (("queue", "◫ 作業キュー"), ("compare", "⇄ 依存・競合"), ("weekly", "▦ 週次差分"), ("rules", "⚖ 規約ずれ"),
+             *((("fleet", "🔗 依存・更新"),) if fleet else ()), ("done", "✓ 完了"))
     tiles = ui.stat_tiles((("リポジトリ", summary["repositories"]), ("オープンPR", summary["pull_requests"]), ("Issue", summary["issues"]),
                            ("CI失敗", summary["ci_failed"], "最新 head の check-runs"), ("競合", summary["conflicts"], "mergeable=false"),
                            ("積み上げPR", summary["stacked"], "base が他 PR の head"), ("規約ずれ", summary.get("conventions", 0), "名前の規約との差"),
@@ -600,9 +602,107 @@ def render_audit_html(snapshot, *, asset_base=".", title="Repository audit — m
              + ui.data_table(("リポジトリ", "規約", "対象", "現状", "期待"), [(f["repository"], f["rule"], f["path"], str(f["found"]), f["expected"]) for f in findings],
                              id="table-rules", caption=f"規約ずれ（{len(findings)}件）") + "</section>")
     done = f'<section data-ui-view="done" hidden>{table("done", lambda r: r["state"] == "done", "完了記録")}</section>'
-    body = ui.records_board(head + queue + compare + weekly + rules + done, id="audit")
+    body = ui.records_board(head + queue + compare + weekly + rules + render_fleet_section(ui, fleet) + done, id="audit")
     return ui.render_document(trusted_html=f'<main class="ui-page">{body}</main>', title=title, css=ui.bundled_css(),
                               scripts=ui.shared_scripts(asset_base, names=("navigation.js", "records.js")))
+
+
+FLEET_LABEL = {"success": "✅ 成功", "failure": "❌ 失敗", "updated": "🔄 内容相違（更新候補）", "skipped": "⏭️ スキップ",
+               "blocked": "⛔ ブロック", "unavailable": "❔ 取得不能", "insufficient": "❔ 情報不足"}
+
+
+FLEET_FACET = {"match": "一致", "same": "同じ", "different": "相違", "unknown": "不明", "not_applicable": "—",
+               "not_assessed": "未評価", "not_collected": "未取得", "unverifiable": "検証不能", "success": "成功",
+               "failure": "失敗", "pending": "未判定", "running": "実行中"}
+
+
+def _fleet_evidence_rows(coverage):
+    """One row per repository from vendor_fleet_plan's evidence coverage: 判断の根拠 and 再テスト at a glance."""
+    f = FLEET_FACET
+    rows = []
+    for repo, cover in sorted(coverage.items()):
+        parts = []
+        for key, value in sorted(cover.items()):
+            kind, _, path = key.partition(":")
+            if kind == "receipt" and isinstance(value, dict):
+                parts.append(f"受領記録 {path}: 存在 {f.get(value['exists'])}・ハッシュ {f.get(value['digest'])}・形式 {f.get(value['format'])}")
+                parts.append(f"　操作 {f.get(value['operation'])}・画面期待 {f.get(value['visual'])}・記録時コミット {f.get(value['commit'])}")
+            elif kind == "receipt":
+                parts.append("受領記録: " + f.get(value, value) + "（ブラウザ検証キットを使うが受領記録なし。成功扱いしない）")
+            elif kind == "ledger":
+                d = value["definition"]
+                parts.append(f"台帳 {path}:")
+                parts.append(f"　命題 {value['propositions']}（{value['rows']}行）・データ一致 {value['data_match']}・"
+                             f"定義 一致{d['match']}/相違{d['different']}/不明{d['unknown']}・反例を含む {value['with_counterexamples']}")
+            elif kind == "corpus":
+                parts.append(f"失敗事例 {path}: {value['cases']}件（FOUND {value['found']} / NOT FOUND {value['not_found']} / HINT {value['hint']}）")
+            elif kind == "record" and value.get("pins"):
+                parts.append(f"固定 {path}: {value['pins']}件（一致 {value['match']}・相違 {value['different']}・不明 {value['unknown']}）")
+            elif kind == "pr":
+                parts.append(f"{path}: CI {f.get(value['ci'], value['ci'])}（head {str(value.get('head_sha') or '')[:8]}）")
+        retest = cover.get("retest") or {}
+        generated = cover.get("generated", "—")
+        # Trusted cells: every value is escaped here; one fact per line keeps the repository column readable.
+        rows.append((escape(repo), f"{retest.get('registered', 0)}/{retest.get('subjects', 0)}", str(retest.get("unregistered_count", 0)),
+                     escape(f.get(generated, generated) if isinstance(generated, str) else str(generated)),
+                     "<br>".join(escape(x) for x in parts) or "—"))
+    return rows
+
+
+def render_fleet_section(ui, fleet):
+    """The vendor_fleet_plan report embedded in the snapshot: same rows as its CLI, JSON and Markdown."""
+    if not fleet:
+        return ""
+    if fleet.get("status") == "unavailable":
+        return (f'<section data-ui-view="fleet" hidden><p class="ui-muted">依存・更新の解析は今回取得できませんでした'
+                f'（{escape(str(fleet.get("error", "")))}）。前回までの結果を現在の結果として表示しません。</p></section>')
+    counts, targets, graph, plan = fleet["counts"], fleet["targets"]["counts"], fleet["graph"], fleet["plan"]
+    code = sum(m["kind"] == "code" for m in graph.get("mutual", []))
+    tiles = ui.stat_tiles((("🎯 対象", targets["target"]), ("🚫 除外", targets["excluded"]), ("❔ 情報不足", targets["insufficient"]),
+                           ("🔗 依存", sum(graph["kinds"].values()), "ファイル単位の辺"), ("🔁 相互参照", code, "コード同士（情報）"),
+                           ("⭕ 循環", len(graph["cycles"]), "実行順で解けない"), ("🌊 手順", len(plan["steps"]), f"{len(plan['waves'])} 段"),
+                           *((FLEET_LABEL[k], counts[k]) for k in ("failure", "updated", "blocked", "unavailable"))))
+    notice = (f'生成 {escape(fleet["generated_at"])} · 親 {escape((fleet.get("parent_revision") or "—")[:8])} · '
+              f'各行の SHA と確認日時は観測時点のもの。リポジトリが進んだ行は「古い結果」に分け、現在の結果として表示しません。'
+              f' 同じ内容は CLI <code>python -S vendor_fleet_plan.py report</code> で再現できます。')
+    steps = ui.data_table(("段", "手順", "", "理由", "コマンド"),
+                          [(str(x.get("wave", "")), x["id"], "🤖" if x["auto"] else "👤", "; ".join(x["reasons"])[:200],
+                            " ".join(x.get("argv") or ["(手動)"])) for x in plan["steps"]], id="table-fleet-steps",
+                          caption=f"更新・再生成・検証・記録の順序（{len(plan['steps'])}件、dry-run）")
+    rows = [r for r in fleet["rows"] if r["status"] != "skipped" or r.get("kind") in ("check", "test")]
+    facets = lambda r: " / ".join(FLEET_FACET.get(r.get(k), "—") for k in ("content", "commit", "compatibility")) if "content" in r else "—"
+    results = ui.data_table(("状態", "対象", "SHA", "確認", "内容 / コミット / 互換性", "理由"),
+                            [(FLEET_LABEL[r["status"]], r["id"], (r.get("revision") or "—")[:8], r.get("checked_at") or "",
+                              facets(r), str(r["reason"])[:200]) for r in rows], id="table-fleet-rows",
+                            caption=f"結果（{len(rows)}件、内容が同じでスキップした {len(fleet['rows']) - len(rows)} 件は省略）")
+    left = ui.data_table(("区分", "番号", "内容", "詳細"), [(FLEET_LABEL.get(x["severity"], x["severity"]), x.get("no", ""), x["what"],
+                                                          x["detail"]) for x in fleet.get("remaining", [])], id="table-fleet-remaining",
+                         caption=f"残る対応（{len(fleet.get('remaining', []))}件、同じ事実はまとめて1件。番号は同じ事実に付き続けます）")
+    packed = fleet.get("compression")
+    if packed:
+        notice += (f' 🗜️ {packed["rows"]}行 → {packed["facts"]}事実（往復 {"✅" if packed["roundtrip"] else "❌"}・'
+                   f'識別子 {"✅" if not packed["missing_identifiers"] else "❌"}）。全依存は <a href="fleet.jsonld">fleet.jsonld</a>（JSON-LD）。')
+    stale = fleet.get("stale") or []
+    old = (ui.data_table(("状態", "対象", "確認時 SHA", "現在 SHA", "確認"),
+                         [(FLEET_LABEL[r["status"]], r["id"], (r.get("revision") or "")[:8], (r.get("current_revision") or "")[:8],
+                           r.get("checked_at") or "") for r in stale], id="table-fleet-stale", caption=f"古い結果（{len(stale)}件）")
+           if stale else "")
+    diff = fleet.get("diff") or {}
+    changed = (f'<p class="ui-muted">前回（{escape(diff["previous_at"])}）から 状態変化 {len(diff["changed"])} · 新規 {len(diff["new"])} · '
+               f'消失 {len(diff["gone"])}</p>') if diff.get("previous_at") else ""
+    evidence = graph.get("evidence") or {}
+    proof = ""
+    if evidence:
+        kinds = " · ".join(f"{k} {v}" for k, v in sorted((evidence.get("kinds") or {}).items()))
+        proof = (f'<p class="ui-muted">判断の根拠: {escape(kinds) or "—"}（関係ごとの記録・根拠の種類・一致判定は '
+                 f'<a href="fleet.jsonld">fleet.jsonld</a>）。変更の影響先と再テスト・再検証の対象は '
+                 f'<code>python -S vendor_fleet_plan.py impact Repo:path</code>、公開グラフだけなら '
+                 f'<code>query reverify Repo:path</code> / <code>query why Repo:path</code>。'
+                 f'内容やコミットの相違は古さ・非互換を意味しません（互換性はテストで判定）。</p>'
+                 + ui.data_table(("リポジトリ", "再テスト登録済み", "未登録", "生成物", "記録と検証証拠"),
+                                 _fleet_evidence_rows(evidence.get("coverage") or {}), id="table-fleet-evidence", trusted_cells=True,
+                                 caption=f"判断の根拠・再テスト（自動、{len(evidence.get('coverage') or {})}件）"))
+    return (f'<section data-ui-view="fleet" hidden><p class="ui-muted">{notice}</p>{tiles}{changed}{left}{steps}{results}{proof}{old}</section>')
 
 
 def write_audit_site(snapshot, directory):

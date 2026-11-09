@@ -88,7 +88,39 @@ def weekly_history(snapshot, previous):
     return {'schema': 'parent-audit-history/1', 'weeks': weeks[-13:]}
 
 
-def build(out, *, repos=None, previous=None, previous_history=None, source_root=ROOT):
+def fleet_report(names, previous, *, source_root=ROOT, scoped=False, snapshot=None):
+    """The vendor_fleet_plan report for the same public inventory (anonymous blob-less clones).
+
+    snapshot: this build's parent-audit/1 snapshot, whose PR dependencies and CI per head join the evidence
+    relations. Never blocks publication: a failed analysis is published as unavailable, so an old result is
+    not shown as the current one.
+    """
+    import vendor_fleet_plan as fleet
+    try:
+        with tempfile.TemporaryDirectory(prefix='fleet-') as checkouts:
+            analysed = fleet.Fleet(source_root, checkouts, fetch=True, repos=names if scoped else None)
+            return fleet.report(analysed, previous=previous, listing=[{'name': n} for n in names], snapshot=snapshot)
+    except Exception as exc:  # noqa: BLE001 - reported on the page, never a reason to retain stale observations
+        return {'schema': fleet.REPORT_SCHEMA, 'status': 'unavailable', 'error': type(exc).__name__}
+
+
+def split_fleet(report):
+    """(snapshot section, knowledge graph): the graph with every edge goes to fleet.jsonld; data.json keeps
+    rows and counts (facts are re-derivable from rows)."""
+    if not report or 'edges' not in report.get('graph', {}):
+        return report, None
+    import vendor_fleet_plan as fleet
+    graph = fleet.to_jsonld(report)
+    section = {k: v for k, v in report.items() if k != 'facts'}
+    section['graph'] = {k: v for k, v in report['graph'].items() if k != 'edges'} | {'edges_omitted': len(report['graph']['edges'])}
+    evidence = report['graph'].get('evidence')
+    if evidence:  # every relation is in fleet.jsonld; the page keeps counts, coverage and findings
+        section['graph']['evidence'] = {k: v for k, v in evidence.items() if k != 'relations'} | {
+            'relations_omitted': len(evidence.get('relations', []))}
+    return section, graph
+
+
+def build(out, *, repos=None, previous=None, previous_history=None, source_root=ROOT, fleet=None):
     out = Path(out)
     before = previous_json(previous)
     if before is not None and before.get('schema') != 'parent-audit/1':
@@ -99,6 +131,10 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
                         dependency_path=source_root / 'site/dependencies.json')
     ensure_complete(snapshot)
     snapshot['source'] = f'https://github.com/{ci.OWNER}/{ci.OWNER}'
+    fleet_graph = None
+    if fleet is not None:
+        produce = fleet if getattr(fleet, 'takes_snapshot', False) else (lambda names, before, snapshot=None: fleet(names, before))
+        snapshot['fleet'], fleet_graph = split_fleet(produce(names, (before or {}).get('fleet'), snapshot=snapshot))
     history = weekly_history(snapshot, old_history)
     # Build away from the destination. No partial generation overwrites a good local output.
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -115,6 +151,8 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
             if asset.is_file():
                 shutil.copyfile(asset, stage / asset.name)
         (stage / 'history.json').write_text(json.dumps(history, ensure_ascii=False) + '\n', encoding='utf-8')
+        if fleet_graph is not None:  # the whole graph as JSON-LD for agents and other tools
+            (stage / 'fleet.jsonld').write_text(json.dumps(fleet_graph, ensure_ascii=False) + '\n', encoding='utf-8')
         (stage / '.nojekyll').touch()
         progress = source_root / 'site/progress.json'
         (stage / 'progress.json').write_text(progress.read_text(encoding='utf-8') if progress.exists() else '{}\n', encoding='utf-8')
@@ -138,10 +176,17 @@ def main(argv=None):
     parser.add_argument('--repos', help='Comma-separated subset of public inventory for local checks')
     parser.add_argument('--previous', default=BASE_URL + '/data.json')
     parser.add_argument('--previous-history', default=BASE_URL + '/history.json')
+    parser.add_argument('--no-fleet', action='store_true', help='skip the vendor_fleet_plan dependency/update section')
     args = parser.parse_args(argv)
+    scoped = bool(args.repos)
+
+    def produce(names, before, snapshot=None):
+        return fleet_report(names, before, scoped=scoped, snapshot=snapshot)
+    produce.takes_snapshot = True  # build() passes this build's audit snapshot (PR dependencies, CI per head)
     try:
         snapshot = build(args.out, repos=args.repos.split(',') if args.repos else None,
-                         previous=args.previous, previous_history=args.previous_history)
+                         previous=args.previous, previous_history=args.previous_history,
+                         fleet=None if args.no_fleet else produce)
     except (OSError, ValueError, RuntimeError, KeyError) as exc:
         print(f'audit build failed: {type(exc).__name__}; deployment retained', file=sys.stderr)
         return 2

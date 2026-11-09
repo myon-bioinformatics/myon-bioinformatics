@@ -6,6 +6,8 @@ on:
     paths:
       - ci_status.py
       - tools/build_audit_pages.py
+      - vendor_fleet_plan.py
+      - fleet_records.py
       - vendor/web_ui.py
       - vendor/gh_identity.py
       - site/**
@@ -16,13 +18,15 @@ on:
     paths:
       - ci_status.py
       - tools/build_audit_pages.py
+      - vendor_fleet_plan.py
+      - fleet_records.py
       - site/**
       - tests/test_audit_pages.py
       - tests/test_audit_model.cjs
       - .github/workflows/pages.yml
       - .github/workflows/reusable-pages-static.yml
   schedule:
-    - cron: "17 21 * * *" # 06:17 JST; daily observations, first successful build per ISO week retained
+    - cron: "17 21 * * *" # 06:17 JST; daily observations (PRs/CI and the vendor fleet audit), first successful build per ISO week retained
   workflow_dispatch:
 
 permissions:

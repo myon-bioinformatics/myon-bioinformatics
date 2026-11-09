@@ -223,6 +223,35 @@ class AuditTests(unittest.TestCase):
                                            "conflicts": 1, "stacked": 1, "done": 0, "conventions": 0})
         self.assertEqual(snap["ignored_checks"], ["copilot-pull-request-reviewer"])
 
+    def test_fleet_report_is_one_more_view_of_the_same_rows(self):
+        fleet = {"schema": "vendor-fleet-report/1", "generated_at": "2026-11-09T00:00:00+00:00", "parent_revision": "a" * 40,
+                 "counts": {"success": 0, "failure": 1, "updated": 1, "skipped": 1, "blocked": 0, "unavailable": 0},
+                 "targets": {"counts": {"target": 2, "excluded": 1, "insufficient": 0}, "repositories": []},
+                 "graph": {"kinds": {"vendor": 2}, "mutual": [{"repositories": ["a", "b"], "kind": "code"}], "cycles": []},
+                 "plan": {"steps": [{"id": "vendor:app:vendor.lock.json:tool", "wave": 1, "auto": True, "reasons": ["vendor/tool.py: blob 1→2"],
+                                     "argv": ["python", "-S", "<tools>/vendor_sync.py", "update", "--only", "vendor/tool.py"]}], "waves": [["x"]]},
+                 "rows": [{"id": "vendor:app:vendor/tool.py<-tool:tool.py", "kind": "vendor", "status": "updated", "reason": "blob 1→2 <b>",
+                           "revision": "b" * 40, "checked_at": "2026-11-09T00:00:00+00:00"},
+                          {"id": "same", "kind": "vendor", "status": "skipped", "reason": "same content", "revision": None}],
+                 "stale": [{"id": "test:app:tests", "status": "success", "revision": "c" * 40, "current_revision": "d" * 40,
+                            "checked_at": "2026-11-08T00:00:00+00:00"}],
+                 "remaining": [{"severity": "failure", "what": "test:hub:tests", "detail": "1 failures"}],
+                 "diff": {"previous_at": "2026-11-08T00:00:00+00:00", "changed": [], "new": ["x"], "gone": []}}
+        snap = self.snapshot()
+        snap["fleet"] = fleet
+        html = ci.render_audit_html(snap)
+        self.assertIn('data-ui-view="fleet"', html)
+        self.assertIn("🔗 依存・更新", html)
+        self.assertIn("vendor:app:vendor.lock.json:tool", html)
+        self.assertIn("&lt;b&gt;", html)
+        self.assertIn("古い結果", html)
+        self.assertNotIn(">same<", html)  # same-content plan rows are counted, not listed
+        snap["fleet"] = {"schema": "vendor-fleet-report/1", "status": "unavailable", "error": "OSError"}
+        html = ci.render_audit_html(snap)
+        self.assertIn("取得できませんでした", html)
+        self.assertNotIn("table-fleet-rows", html)
+        self.assertNotIn('data-ui-view="fleet"', ci.render_audit_html(self.snapshot()))
+
     def test_records_file_and_previous_snapshot(self):
         import tempfile
         with tempfile.TemporaryDirectory() as directory:

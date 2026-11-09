@@ -62,23 +62,32 @@ def test_exact_self_vendoring_remains_rejected(old, pair, use_new):
 
 
 def test_current_registration_has_no_retired_identities():
+    """A retired name never identifies anything: not a consumer, a source, a head key or a catalog tool.
+
+    The one place it may appear is ``optional.previous_names`` of a child head, which is history
+    attached to the current name (the repository_id is the identity) so ``vendor_fleet_plan.py
+    query who OLD-NAME`` can answer; nothing fetches or matches by it.
+    """
     root = Path(__file__).resolve().parents[1]
     old = {pair[0].casefold() for pair in PAIRS}
     registry = json.loads((root / 'vendor-consumers.json').read_text())
     heads = json.loads((root / 'child-heads.json').read_text())
     catalog = json.loads((root / 'vendor-catalog.json').read_text())
-    def check(value):
+    def check(value, history=False):
         if isinstance(value, dict):
             for k, v in value.items():
                 assert k.casefold() not in old
-                check(v)
+                check(v, history=(k == 'previous_names'))
         elif isinstance(value, list):
             for v in value:
-                check(v)
-        elif isinstance(value, str):
+                check(v, history=history)
+        elif isinstance(value, str) and not history:
             assert value.casefold() not in old
     for doc in (registry, heads, catalog):
         check(doc)
+    recorded = {name.casefold() for entry in heads['heads'].values()
+                for name in (entry.get('optional') or {}).get('previous_names', [])}
+    assert recorded == old  # the two known renames are recorded as history, under their current names
 
 
 @pytest.mark.parametrize('fault', [None,'unmerged','source_blob','source_bytes','child_bytes'])

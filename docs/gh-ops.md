@@ -302,6 +302,30 @@ Dry runs list requested work; they do not predict every merge conflict. No CI is
 run by this command, and ancestry/receipt success does not mean CI success or a
 merge to the default branch.
 
+## Fleet facts as Issues (`fleet-issues`)
+
+`fleet-issues` turns the remaining items of a `vendor_fleet_plan.py report` into
+Issues of the hub repository, one per fact. The fact key (`updated|vendor|
+xprobe:xprobe.py|blob →9d9071f`) is the common identifier: it sits in the body as
+`<!-- fleet-key: … -->`, and matching is by that key only, never by title or
+number, so a renumbered report does not duplicate an Issue. An existing Issue
+keeps its `FLEET-n` number even when the report numbered the fact differently;
+new facts take numbers no Issue holds. Labels are applied only when the
+repository has them: `bug` for failure / blocked / unavailable / insufficient,
+`enhancement` for updated, plus `fleet` when it exists.
+
+```sh
+python -S vendor_fleet_plan.py report --fetch --out fleet.json
+python -S gh_ops.py fleet-issues fleet.json --repo OWNER/HUB                    # plan: 🆕 ✏️ ♻️ ⏭️
+python -S gh_ops.py fleet-issues fleet.json --repo OWNER/HUB --severities failure,insufficient --write
+python -S gh_ops.py fleet-issues fleet.json --repo OWNER/HUB --close-resolved --write   # ✅ facts that disappeared
+```
+
+Actions: create, update (title or body changed), reopen (the fact came back after
+its Issue was closed), unchanged, and with `--close-resolved` close with a comment
+for open fleet Issues whose key the report no longer lists. Issues without the
+marker are never touched. After `--write` every row is read back and verified.
+
 ## Edit title and body together (`pr-edit`)
 
 ```sh

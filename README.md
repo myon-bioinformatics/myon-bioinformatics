@@ -305,6 +305,8 @@ sibling repositories. It is both the profile README and the parent tooling repo.
 | --- | --- | --- |
 | Git inspection | [git_inspector.py](git_inspector.py), [contract](docs/git-inspector.md) | Request observations; keep repository-specific presentation local |
 | Vendor placement and artifact staging | [vendor_sync.py](vendor_sync.py), [vendor_stage.py](vendor_stage.py), [guide](docs/vendor-automation.md) | Enroll exact source/LICENSE bytes and an explicit lock; use the parent stager |
+| Fleet discovery, dependency graph, update plan, cross-repository tests | [vendor_fleet_plan.py](vendor_fleet_plan.py) `targets` / `graph` / `impact` / `plan` / `test` / `report` / `query`, [guide](docs/vendor-automation.md#fleet-entry-point-discover-graph-plan-test-report) | Keep locks, heads and tests where they are; the parent reads them and plans in order; `query` asks the published `fleet.jsonld` |
+| 変更の影響先・判断の根拠・再テスト対象 | [fleet_records.py](fleet_records.py) via `vendor_fleet_plan.py impact` / `report` / `query why\|reverify`, [spec](docs/fleet-records.md) | Tests, generators, browser receipts, failure corpus, ledgers, provenance pins and PR dependencies linked with their record, basis and time; differences are reported, never judged as outdated |
 | GitHub workflow operations | [gh_workflow.py](gh_workflow.py), [guide](docs/gh-workflow.md) | Keep explicit write preconditions and repository-specific orchestration |
 | JUnit failure identity | [reusable collector](.github/workflows/reusable-junit-identity.yml), [contract](docs/junit-identity.md) | Produce raw XML, preserve the test exit code, and configure exact expected report paths |
 | Browser screenshot evidence | [browser_evidence.py](browser_evidence.py), [contract](docs/browser-evidence.md) | Capture screenshots with the consumer's engine runner; supply run and checkout identity |
@@ -379,7 +381,8 @@ base, `mergeable`, check runs of the latest head, stacked-PR dependencies where 
 PR's head), and the page is rendered from that `data.json` with the vendored `web_ui.py` helpers
 (`stat_tiles`, `data_table`, `view_tabs`, drafts via `records.js`). The browser never calls GitHub.
 
-- Views: 作業キュー / 依存・競合 / 週次差分（前回の公開 `data.json` との差） / 完了
+- Views: 作業キュー / 依存・競合 / 週次差分（前回の公開 `data.json` との差） / 規約ずれ / 🔗 依存・更新（`vendor_fleet_plan.py report` と同じ結果） / 完了
+- 🔗 依存・更新の「残る対応」（`FLEET-n` ＋ 識別子）は `python -S gh_ops.py fleet-issues fleet.json --repo myon-bioinformatics/myon-bioinformatics` で 1 件 1 Issue に起票・更新・クローズ（既定は計画のみ、`--write` で実行）
 - 状態・メモ are browser-local drafts (`records.js`, localStorage); 「↓ JSON」 exports them. To make them
   part of the next build, import the export into `site/records.jsonl`
   (`{"id": "Repo#123", "state": "done", "notes": "..."}`; `state` is one of `doing`, `waiting`, `done` or empty):
@@ -411,4 +414,5 @@ commonization progress), strict complete-data validation, and 13 ISO-week snapsh
 See [Pages operation, tests and recovery](docs/audit-pages.md).
 
 ![Audit dashboard: queue, filter, compare view and a draft that survives reload](docs/audit-dashboard.gif)
+![Fleet view: dependency/update report and the per-repository column in the workbench](docs/audit-dashboard-fleet.gif)
 - If Pages is not enabled, select GitHub Actions as its build source in this repository's Pages settings.

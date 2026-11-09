@@ -929,6 +929,26 @@ def test_fetch_child_head_record_verifies_live_repository_id(monkeypatch):
         sync.fetch_child_head_record(repository, prior_record=prior)
 
 
+def test_fetch_child_head_record_keeps_the_previous_name_after_a_registry_rename(monkeypatch):
+    monkeypatch.setattr(sync, "fetch_child_head", lambda *a, **k: "b" * 40)
+    monkeypatch.setattr(sync, "_lookup_child_main_pull_number", lambda *a, **k: None)
+    monkeypatch.setattr(sync, "public_repository_page_record", lambda name, *a, **k: {
+        "id": 42, "full_name": name, "private": False, "visibility": "public", "archived": False,
+    })
+    prior_heads = {"owner/old-name": {"sha": "a" * 40, "repository_id": 42,
+                                      "optional": {"repository_created_at": "2026-01-01T00:00:00Z", "previous_names": ["owner/older"]}},
+                   "owner/other": {"sha": "c" * 40, "repository_id": 7}}
+    entry = sync.fetch_child_head_record("owner/new-name", prior_record=None, prior_heads=prior_heads)
+    assert entry["repository_id"] == 42 and entry["sha"] == "b" * 40
+    assert entry["optional"]["previous_names"] == ["owner/old-name", "owner/older"]
+    assert entry["optional"]["repository_created_at"] == "2026-01-01T00:00:00Z"
+    # A different repository_id under a new name is simply new: nothing is inherited.
+    fresh = sync.fetch_child_head_record("owner/brand-new", prior_record=None,
+                                         prior_heads={"owner/other": {"sha": "c" * 40, "repository_id": 7}})
+    assert "optional" not in fresh
+    sync.validate_child_heads({"schema": "child-heads/1", "ref": "main", "heads": {"owner/new-name": entry}})
+
+
 @pytest.mark.parametrize('field,value', [('number', 9), ('state', 'closed')])
 def test_resolver_rejects_wrong_pr_response(field, value):
     repo = {'id': 2, 'full_name': 'owner/parent'}
