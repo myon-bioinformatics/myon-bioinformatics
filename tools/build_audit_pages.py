@@ -130,6 +130,15 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
     snapshot = ci.audit(names, records_path=source_root / 'site/records.jsonl', previous=before, strict=True,
                         dependency_path=source_root / 'site/dependencies.json')
     ensure_complete(snapshot)
+    snapshot['integrations'] = []
+    for name in names:
+        count = sum(r['kind'] == 'pr' and r['repository'] == name for r in snapshot['records'])
+        try:
+            snapshot['integrations'].append(ci.integration_status(name, count))
+        except (ValueError, KeyError, RuntimeError, OSError) as exc:
+            snapshot['integrations'].append({'repository': name, 'open_prs': count, 'ci': 'UNKNOWN',
+                                             'error': type(exc).__name__, 'next': '既定ブランチの観測を再試行'})
+
     snapshot['source'] = f'https://github.com/{ci.OWNER}/{ci.OWNER}'
     fleet_graph = None
     if fleet is not None:

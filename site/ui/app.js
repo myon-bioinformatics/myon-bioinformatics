@@ -50,7 +50,7 @@ async function loadObservations(){
     const o=await response.json(),next=AuditModel.normalize(o);
     for(const r of items)archive[r.id]=r;items=next;for(const r of items)archive[r.id]=r;persist();observation=o;repoNames=o.repositories||[];selected=new Set([...selected].filter(id=>items.some(r=>r.id===id)));updateFilters();
     $('#notice').innerHTML=`◷ 統合状態確認 ${esc(o.integration_refreshed_at||o.generated_at||o.fetched||'未取得')} · ${items.length}件 ｜ <a href="data.json" download>今回の観測JSON ↓</a> ｜ <a href="https://myon-bioinformatics.github.io/myon-bioinformatics/" target="_blank" rel="noopener">親Pages ↗</a><br>${esc(o.integration_scope||o.coverage||'Pagesの自動収集結果です。required checks指定との照合は未実施です。')} 再読込は公開済みJSONを取得します。作業記録は保持されます。`+fleetNotice(o.fleet);
-    render();
+    render();renderIntegrations();
   }catch(e){$('#notice').textContent='観測データの取得失敗。前回の画面と作業記録を保持しています: '+e.message}
   finally{$('#refresh').disabled=false}
 }
@@ -61,3 +61,9 @@ fetch('history.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error(r.status)
   sharedHistory=(o.weeks||[]).map(w=>({at:w.at,week:w.week,items:AuditModel.normalize(w.snapshot),shared:true}));
   if(view==='history')render();
 }).catch(()=>{});
+
+function renderIntegrations(){
+ const rows=observation?.integrations||[];
+ $('#integration-summary').innerHTML=rows.length?`<div class="card"><h3>統合後の確認</h3><p>オープンPRゼロと検証完了を分けて表示します。履歴は直近に更新されたclosed PR最大30件のうち既定ブランチにマージされたもの。実際のマージ順であり、依存関係ではありません。CI成功は観測したチェックの結果です。</p><div class="table-wrap"><table><thead><tr><th>リポジトリ / open PR</th><th>既定ブランチ / SHA / 確認日時</th><th>CI</th><th>次の作業 / マージ履歴</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.repository)}<small>${esc(r.open_prs)}件</small></td><td>${esc(r.branch||'未取得')}<small>${esc(r.head_sha||'未取得')}</small><small>${esc(r.checked_at||'未取得')}</small></td><td>${esc(STATE_FOR_INTEGRATION[r.ci]||r.ci)}${(r.checks||[]).map(c=>`<small>${esc(c.name)}: ${esc(c.conclusion||c.status)}</small>`).join('')}</td><td>${esc(r.next)}<details><summary>直近のマージ ${(r.merged||[]).length}件</summary>${(r.merged||[]).map(p=>`<p><a href="${esc(p.url)}" target="_blank" rel="noopener">#${esc(p.number)} ${esc(p.title)}</a><small>${esc(p.merged_at)} · ${esc(p.merge_commit_sha)}</small></p>`).join('')}</details></td></tr>`).join('')}</tbody></table></div></div>`:'';
+}
+const STATE_FOR_INTEGRATION={COMPLETE:'成功',FAILED:'失敗',RUNNING:'実行中',UNKNOWN:'取得不能',INCOMPLETE:'不完全','NO CHECKS':'チェックなし'};
