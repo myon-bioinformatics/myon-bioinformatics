@@ -46,4 +46,4 @@ jobs:
       - name: Skip uv on Python 3.9
         run: python pilot/vendor_dispatch.py --assume-python 3.9 --dry-run --offline
       - name: Resolve main and record commits into the catalog workspace
-        run: python pilot/vendor_dispatch.py --resolve-ref main --record
+        run: python pilot/vendor_dispatch.py --resolve-ref main --record --preserve-missing-catalog-sources
