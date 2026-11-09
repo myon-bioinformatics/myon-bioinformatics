@@ -225,5 +225,14 @@ class ClosedPlanTests(unittest.TestCase):
         self.assertEqual(p['waiting'],{})
         self.assertEqual(p['order'],['A#2'])
 
+class TaskPlanTests(unittest.TestCase):
+    def test_explicit_tasks_do_not_infer_dependencies_from_missing_branch_names(self):
+        result=calculate({'records':[pr(1)],'dependency_tasks':[
+            {'id':'pin-update','kind':'pin-update','depends_on':['A#1']},
+            {'id':'independent-task','kind':'task','depends_on':[]}]})
+        self.assertFalse(result['cycle'])
+        self.assertEqual(result['edges']['independent-task'],[])
+        self.assertLess(result['order'].index('A#1'),result['order'].index('pin-update'))
+
 if __name__ == '__main__':
     unittest.main()

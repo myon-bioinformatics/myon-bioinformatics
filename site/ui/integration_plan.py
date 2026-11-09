@@ -21,7 +21,7 @@ def calculate(data):
         if isinstance(deps, str): deps = deps.splitlines()
         deps = {aliases.get(d.strip(), d.strip()) for d in deps if d.strip()}
         for other,s in by_id.items():
-            if other != k and other not in completed | closed and r.get('repository',r.get('repo')) == s.get('repository',s.get('repo')) and r.get('base_ref',r.get('base')) == s.get('head_ref'):
+            if other != k and other not in completed | closed and r.get('base_ref',r.get('base')) and s.get('head_ref') and r.get('repository',r.get('repo')) == s.get('repository',s.get('repo')) and r.get('base_ref',r.get('base')) == s.get('head_ref'):
                 deps.add(other)
         if k in completed | closed: continue
         missing[k] = sorted(d for d in deps if d not in by_id or d in closed)
