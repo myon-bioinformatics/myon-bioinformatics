@@ -43,6 +43,10 @@ MAX_BYTES = 2_000_000
 USER_AGENT = "vendor-dispatch/1"
 
 
+class SourceMissing(RuntimeError):
+    """A source path returned 404 at an immutable revision."""
+
+
 class Env(NamedTuple):
     python: tuple
     no_site: bool
@@ -298,6 +302,8 @@ def fetch_bytes(repository, ref, source, opener):
         if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
             raise RuntimeError("commit lookup did not return a sha")
     status, body = opener(raw_url(repository, sha, source))
+    if status == 404:
+        raise SourceMissing("fetch failed with status 404")
     if status != 200:
         raise RuntimeError("fetch failed with status " + str(status))
     return sha, body
@@ -314,6 +320,8 @@ def fetch_source(repository, ref, source, opener):
         if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
             raise RuntimeError("commit lookup did not return a sha")
     status, body = opener(raw_url(repository, sha, source))
+    if status == 404:
+        raise SourceMissing("fetch failed with status 404")
     if status != 200:
         raise RuntimeError("fetch failed with status " + str(status))
     return sha, hashlib.sha256(body).hexdigest()
@@ -476,7 +484,7 @@ def verify_lock(results, tools, opener):
             row["digest"] = "new commit"
 
 
-def dispatch(catalog, env, resolve_ref, opener, install, dry_run=False, node_install=None):
+def dispatch(catalog, env, resolve_ref, opener, install, dry_run=False, node_install=None, preserve_missing_catalog_sources=False):
     tools = entries_of(catalog)
     wanted = {}
     for tool in tools:
@@ -572,6 +580,19 @@ def dispatch(catalog, env, resolve_ref, opener, install, dry_run=False, node_ins
             except (RuntimeError, URLError, json.JSONDecodeError, UnicodeError, OSError, KeyError) as exc:
                 row["action"] = "error"
                 row["reason"] = one_line(exc)
+                # Catalog recommendations may retain a historical source until
+                # consumers deliberately migrate. Never relax a child lock audit.
+                if (preserve_missing_catalog_sources and isinstance(exc, SourceMissing)
+                        and resolve_ref == "main" and catalog.get("schema") == CATALOG_SCHEMA):
+                    tool = next(t for t in tools if _key(t) == _key(row))
+                    try:
+                        pinned, digest = fetch_source(row["repository"], tool["commit"], row["source"], opener)
+                    except (RuntimeError, URLError, json.JSONDecodeError, UnicodeError, OSError, KeyError) as fallback:
+                        row["reason"] += "; recorded pin also failed: " + one_line(fallback)
+                    else:
+                        row.update(action="pinned", commit=pinned, sha256=digest,
+                                   reason="main source missing (404); verified recorded pin retained; source migration required",
+                                   migration_required=True)
                 continue
             row["commit"] = commit
             row["sha256"] = digest
@@ -690,6 +711,8 @@ def build_parser():
     parser = argparse.ArgumentParser(description="Dispatch vendor-catalog entries from their GitHub coordinates")
     parser.add_argument("--manifest", default=os.fspath(DEFAULT_MANIFEST))
     parser.add_argument("--resolve-ref", default=None, help="main, or a 40-character commit. Default: each entry commit")
+    parser.add_argument("--preserve-missing-catalog-sources", action="store_true",
+                        help="on main-source 404 only, verify and retain catalog pins; report migration required; never applies to locks")
     parser.add_argument("--record", action="store_true", help="write resolved commits back into the manifest")
     parser.add_argument("--dry-run", action="store_true", help="classify only; do not install or fetch")
     parser.add_argument("--offline", action="store_true", help="do not contact GitHub or uv")
@@ -716,6 +739,7 @@ def main(argv=None):
     env = current_env(args.assume_python, args.offline)
     results = dispatch(
         catalog, env, args.resolve_ref, http_get, uv_install, dry_run=args.dry_run,
+        preserve_missing_catalog_sources=args.preserve_missing_catalog_sources,
     )
     changed = []
     if args.record:

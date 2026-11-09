@@ -3,7 +3,7 @@
   'use strict';
   const states = {'': '未着手', doing: '対応中', waiting: 'ブロック', done: '完了'};
   const ciLabels = {FAILED:'失敗', RUNNING:'実行中', COMPLETE:'成功', INCOMPLETE:'不完全', 'NO CHECKS':'チェックなし', UNKNOWN:'不明', '-':'対象外'};
-  const fields = ['state','priority','next','blocker','notes','completed'];
+  const fields = ['state','priority','next','blocker','notes','completed','dependencies','conflicts','order','noted_at'];
   function safeURL(value) {
     if (typeof value !== 'string' || !/^https:\/\/github\.com\/myon-bioinformatics\/[A-Za-z0-9_.-]+\/(pull|issues)\/[1-9][0-9]*$/.test(value)) throw Error('対象外のGitHub URL');
     return value;
@@ -23,6 +23,10 @@
         review:canonical?(r.review_complete?r.review:null):(r.review??null),
         failure:checks.filter(c=>['failure','timed_out','action_required','startup_failure'].includes(c.conclusion))
           .map(c=>c.name+(c.url?' '+c.url:'')).join('; ') || r.failure || '',
+        dependencies:r.dependencies || r.depends_on || [], observed_dependencies:r.depends_on || [],
+        conflicts:r.conflicts || (r.mergeable === false ? 'GitHub: mergeable=false（実競合）' : ''),
+        integration_rank:(o.dependency_plan?.order || []).indexOf(r.id) + 1,
+        integration_waiting:o.dependency_plan?.waiting?.[r.id] || [],
         labels:r.labels || [], next:r.next || '最新headの証跡と受入条件を確認',
         notes:r.notes || '', blocker:r.blocker || ''};
     });
@@ -32,7 +36,7 @@
   function mergeRecord(observation, drafts) {
     const result = {...observation};
     const draft = drafts[observation.id] || drafts[observation.record_id] || {};
-    for (const k of fields) if (Object.hasOwn(draft,k) && typeof draft[k] === 'string') result[k] = draft[k];
+    for (const k of fields) if (Object.hasOwn(draft,k) && (typeof draft[k] === 'string'||(['dependencies','conflicts'].includes(k)&&Array.isArray(draft[k])&&draft[k].every(v=>typeof v==='string')))) result[k] = draft[k];
     if (Object.hasOwn(states,result.state)) result.state=states[result.state];
     return result;
   }
@@ -44,7 +48,7 @@
       if (!/^https:\/\/github\.com\/myon-bioinformatics\//.test(id) && !/^[A-Za-z0-9_.-]+#i?[1-9][0-9]*$/.test(id)) throw Error('記録IDが不正です');
       if (!draft || typeof draft !== 'object' || Array.isArray(draft)) throw Error('記録形式が不正です');
       result[id] = Object.fromEntries(fields.filter(k=>Object.hasOwn(draft,k)).map(k=>{
-        if (typeof draft[k] !== 'string') throw Error('記録値は文字列で指定してください');
+        if (typeof draft[k] !== 'string' && !(['dependencies','conflicts'].includes(k)&&Array.isArray(draft[k])&&draft[k].every(v=>typeof v==='string'))) throw Error('記録値は文字列で指定してください');
         return [k,draft[k]];
       }));
     }
@@ -55,7 +59,25 @@
     return Object.values(archive).filter(r=>!ids.has(r.id) && mergeRecord(r,drafts).state==='完了')
       .map(r=>({...r,archived:true}));
   }
-  const model={normalize,mergeRecord,importBundle,completedRecords};
+  function priority(r) {
+    if (r.ci === '失敗' || r.review > 0) return 1;
+    const labels=(r.labels || []).map(l=>typeof l==='string'?l:l.name);
+    return Number(r.priority || (r.mergeable === false || labels.some(l=>/^(bug|type:bug|status:ci-failing)$/i.test(l)) ? 2 : 3));
+  }
+  function diff(current, previous) {
+    const old=new Map(previous.map(r=>[r.id,r])), now=new Map(current.map(r=>[r.id,r]));
+    const tracked=['head','ci','review','base','mergeable','title','labels'];
+    return {added:current.filter(r=>!old.has(r.id)), gone:previous.filter(r=>!now.has(r.id)),
+      changed:current.filter(r=>old.has(r.id) && tracked.some(k=>JSON.stringify(r[k])!==JSON.stringify(old.get(r.id)[k])))};
+  }
+  function weekBaseline(weeks, at) {
+    const date=new Date(new Date(at).getTime()+9*3600000);
+    const day=date.getUTCDay() || 7;
+    date.setUTCDate(date.getUTCDate()-day+1);date.setUTCHours(0,0,0,0);
+    const monday=date.getTime()-9*3600000;
+    return weeks.filter(w=>new Date(w.at).getTime()<monday).sort((a,b)=>new Date(a.at)-new Date(b.at)).at(-1);
+  }
+  const model={normalize,mergeRecord,importBundle,completedRecords,priority,diff,weekBaseline};
   if (typeof module !== 'undefined') module.exports=model;
   else root.AuditModel=model;
 })(typeof window === 'undefined'?{}:window);

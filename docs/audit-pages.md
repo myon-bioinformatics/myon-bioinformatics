@@ -79,3 +79,21 @@ mainがない場合も確認不能。取得失敗はpinのunknownとして残り
 python3 -S -m unittest discover -s tests -p test_ci_status.py
 python3 -S -c "import unittest; r=unittest.TextTestRunner().run(unittest.TestLoader().discover('tests', pattern='test_ci_status.py')); raise SystemExit(not r.wasSuccessful())"
 ```
+
+## 統合作業画面（2026-11-09）
+
+SitesとPagesで `site/ui/` の同じ画面・データ境界を使用する。
+CI失敗または未解決レビューのある項目は、手入力の優先度より先にP1表示する。
+bugラベル・実競合をP2とし、タイトル中の「失敗」等をCI結果とは扱わない。
+依存・統合順序・固定SHAタブでは、計算済み順序、直接の統合待ち、
+循環・欠損と固定SHA/main先端の比較を表示する。
+PR詳細の依存・競合・統合順序メモは観測された依存グラフとは別に保存する。
+手入力の確認日は `noted_at`、GitHubの観測日時は `checked` とし、後者を編集しない。
+完了記録は元の観測を保存し、一覧から消えた後も完了画面に残す。
+
+前週差分は現在の観測と前週以前の最後の自動保存を比較し、
+head・CI・レビュー件数・base・競合状態・タイトル・ラベルの変化を数える。
+毎回変わる観測日時や個人メモだけでは更新に数えない。
+前週基準がなければ比較不能と表示する。
+最新main採用手順とpyproject共通化には、確認日・採用SHA・PRリンク・
+残作業を記録する根拠欄を用意する。進捗は証拠を確認して入力する。

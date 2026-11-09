@@ -137,3 +137,14 @@ with a reason. Every reachable row is also fetched and its `blob_sha` and
 `sha256` are checked against the recorded commit. `--record` writes `ref`,
 `commit`, `blob_sha`, and `sha256` back into that same lock. No `uv.lock` and no
 second manifest are written. A mismatch at the recorded commit is an error.
+
+### 提供元でソースが移動した場合
+
+CIの `--preserve-missing-catalog-sources` は、mainのソース取得が404のときだけ、
+カタログの記録済みSHAで同じパスを再取得する。取得・SHA-256計算が成功した場合は
+`action=pinned`, `migration_required=true`, `recorded=false` として更新待ちを報告し、
+カタログのsource/commitを保持する。通信失敗、403/5xx、記録済みパスの欠損は失敗する。
+既定動作は引き続き失敗。`vendor-lock/1` の検証にはこの例外を適用しない。
+BrowserTestKitの `scripts/interaction.mjs` と `scripts/browser_execution.mjs` は
+mainでは `tools/` へ移動済み。利用側の採用済み参照は、移行PRで明示的に更新する。
+この結果は「最新main採用済み」を意味しない。

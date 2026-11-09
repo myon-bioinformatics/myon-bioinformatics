@@ -85,7 +85,10 @@ jobs:
           version: "latest"
           python-version: "${{ matrix.python }}"
           activate-environment: true
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Exercise runtime without third-party packages
         run: python -S tests/stdlib_runtime_smoke.py
 
@@ -103,7 +106,10 @@ jobs:
           version: "latest"
           python-version: "${{ matrix.python }}"
           activate-environment: true
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - run: python -m py_compile git_inspector.py gh_ops.py vendor_consumers.py tools/parent_pin_check.py tools/minpy.py
       - name: Verify enrolled GitHub identity dependency (offline)
         run: python -S vendor_sync.py check --manifest vendor.lock.json
@@ -163,7 +169,10 @@ jobs:
         with:
           version: "latest"
           python-version: "3.15"
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Verify py_launch vendor-catalog pin against GitHub
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         env:
@@ -197,7 +206,10 @@ jobs:
         with:
           version: "latest"
           python-version: "3.15"
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Verify node_launch vendor-catalog pin against GitHub
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         env:
@@ -243,7 +255,10 @@ jobs:
           version: "latest"
           python-version: "${{ matrix.python }}"
           activate-environment: true
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Regenerate minpy fixture and compare
         shell: bash
         run: |
