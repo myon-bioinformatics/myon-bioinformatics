@@ -381,3 +381,82 @@ class ConventionTests(unittest.TestCase):
         html = ci.render_audit_html(snap)
         self.assertIn('data-ui-view="rules"', html)
         self.assertIn("resolve-vendor", html)
+
+# Graph and pin contracts, offline and compatible with python -S.
+import base64
+
+
+def node(key, deps=(), **fields):
+    return dict(id=key, depends_on=list(deps), **fields)
+
+
+class DependencyTests(unittest.TestCase):
+    def test_provider_consumer_parent_and_waiting(self):
+        rows = [node('parent-pin', ['consumer']), node('consumer', ['provider']),
+                node('provider', state='done')]
+        plan = ci.dependency_plan(rows)
+        self.assertEqual(plan['order'], ['provider', 'consumer', 'parent-pin'])
+        self.assertEqual(plan['ready'], ['provider'])
+        self.assertEqual(plan['waiting']['consumer'], ['provider'])
+        rows[-1]['merged'] = True
+        self.assertEqual(ci.dependency_plan(rows)['ready'], ['consumer'])
+
+    def test_cycle_and_descendant_are_blocked_but_independent_orders(self):
+        plan = ci.dependency_plan([node('a', ['b']), node('b', ['a']),
+                                   node('child', ['a']), node('independent')])
+        self.assertTrue(plan['cycle'])
+        self.assertEqual(plan['blocked'], ['a', 'b', 'child'])
+        self.assertEqual(plan['order'], ['independent'])
+
+    def test_missing_is_not_silently_inserted_by_graphlib(self):
+        plan = ci.dependency_plan([node('a', ['absent']), node('b', ['a']), node('ok')])
+        self.assertEqual(plan['missing'], {'a': ['absent']})
+        self.assertEqual(plan['order'], ['ok'])
+        self.assertEqual(plan['blocked'], ['a', 'b'])
+
+    def test_empty_self_loop_duplicates_and_bad_edges(self):
+        self.assertEqual(ci.dependency_plan([])['order'], [])
+        self.assertEqual(ci.dependency_plan([node('x', ['x'])])['blocked'], ['x'])
+        for rows in ([node('x'), node('x')], [dict(id='x', depends_on='bad')]):
+            with self.assertRaises(ValueError):
+                ci.dependency_plan(rows)
+
+    def test_deterministic_diamond_and_duplicate_edges(self):
+        rows = [node('d', ['b', 'c', 'b']), node('c', ['a']), node('a'), node('b', ['a'])]
+        self.assertEqual(ci.dependency_plan(rows), ci.dependency_plan(list(reversed(rows))))
+        self.assertEqual(ci.dependency_plan(rows)['order'], ['a', 'b', 'c', 'd'])
+
+    def test_stacked_and_explicit_cross_repo_edges_survive(self):
+        rows = [dict(id='A#1', kind='pr', repository='A', head_ref='provider', base_ref='main'),
+                dict(id='A#2', kind='pr', repository='A', head_ref='consumer', base_ref='provider', depends_on=['B#1'])]
+        ci.link_dependencies(rows)
+        self.assertEqual(rows[1]['depends_on'], ['A#1', 'B#1'])
+
+    def test_pin_match_difference_unknown_and_cache(self):
+        entries = [dict(repository=ci.OWNER+'/source', commit=c, ref=c, destination='vendor/x')
+                   for c in ('a'*40, 'b'*40, 'main')]
+        content = base64.b64encode(json.dumps(dict(schema='vendor-lock/1', files=entries)).encode()).decode()
+        def get(path):
+            if '/contents/' in path:
+                self.assertIn('ref='+'c'*40, path)
+                return dict(content=content)
+            if path.endswith('/git/ref/heads/main'):
+                return dict(object=dict(sha='a'*40))
+            if '/git/ref/' in path:
+                return dict(object=dict(sha='c'*40))
+            return dict(default_branch='trunk', private=False, visibility='public', archived=False)
+        with patch.object(ci, 'get', side_effect=get) as mock:
+            rows = ci.observe_vendor_pins('consumer')
+        self.assertEqual([r['freshness'] for r in rows], ['match', 'different', 'unknown'])
+        self.assertEqual({r['compatibility'] for r in rows}, {'not_assessed'})
+        self.assertEqual(sum(c.args[0].endswith('/git/ref/heads/main') for c in mock.call_args_list), 1)
+        with patch.object(ci, 'get', side_effect=lambda path: get(path) if '/source' not in path else (_ for _ in ()).throw(OSError())):
+            self.assertEqual({r['freshness'] for r in ci.observe_vendor_pins('consumer')}, {'unknown'})
+
+    def test_report_escapes_and_legacy_snapshot(self):
+        html = ci.render_dependency_report({'dependency_plan': {'order': ['<script>']},
+                  'vendor_pins': [dict(repository='<img>', freshness='different')]})
+        self.assertNotIn('<script>', html)
+        self.assertNotIn('<img>', html)
+        self.assertIn('互換性未評価', html)
+        self.assertIn('依存順序', ci.render_dependency_report({}))

@@ -34,7 +34,7 @@ async function loadObservations(){
     if(!response.ok)throw Error('HTTP '+response.status);
     const o=await response.json(),next=AuditModel.normalize(o);
     items=next;repoNames=o.repositories||[];selected=new Set([...selected].filter(id=>items.some(r=>r.id===id)));updateFilters();
-    $('#notice').innerHTML=`◷ 最終生成 ${esc(o.generated_at||o.fetched||'未取得')} · ${items.length}件 ｜ <a href="report.html">生成レポート ↗</a><br>毎日06:17 JSTにGitHub Actionsで再生成（開始時刻は遅れる場合があります）。画面の再読込は公開済み観測値を取得します。作業記録・共通化進捗は保持されます。`;
+    $('#notice').innerHTML=`◷ 最終生成 ${esc(o.generated_at||o.fetched||'未取得')} · ${items.length}件 ｜ <a href="report.html">生成レポート ↗</a> ｜ <a href="dependencies.html">依存順序・固定SHA ↗</a><br>毎日06:17 JSTにGitHub Actionsで再生成（開始時刻は遅れる場合があります）。画面の再読込は公開済み観測値を取得します。作業記録・共通化進捗は保持されます。`;
     render();
   }catch(e){$('#notice').textContent='観測データの取得失敗。前回の画面と作業記録を保持しています: '+e.message}
   finally{$('#refresh').disabled=false}

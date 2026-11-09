@@ -95,7 +95,8 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         raise ValueError('invalid previous audit schema')
     old_history = previous_json(previous_history)
     names = public_repositories(repos)
-    snapshot = ci.audit(names, records_path=source_root / 'site/records.jsonl', previous=before, strict=True)
+    snapshot = ci.audit(names, records_path=source_root / 'site/records.jsonl', previous=before, strict=True,
+                        dependency_path=source_root / 'site/dependencies.json')
     ensure_complete(snapshot)
     snapshot['source'] = f'https://github.com/{ci.OWNER}/{ci.OWNER}'
     history = weekly_history(snapshot, old_history)
@@ -105,6 +106,11 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         stage = Path(directory) / 'dist'
         ci.write_audit_site(snapshot, stage)
         (stage / 'index.html').rename(stage / 'report.html')
+        (stage / 'dependencies.html').write_text(
+            '<!doctype html><html lang="ja"><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            '<title>依存順序・固定SHA</title><body><a href="index.html">監査画面へ戻る</a>'
+            + ci.render_dependency_report(snapshot) + '</body></html>', encoding='utf-8')
         for asset in (source_root / 'site/ui').iterdir():
             if asset.is_file():
                 shutil.copyfile(asset, stage / asset.name)

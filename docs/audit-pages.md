@@ -34,3 +34,48 @@ python3 -S tools/build_audit_pages.py --repos cli_args,xprobe --previous '' --pr
 ```
 
 全件の公開は `--repos` を指定せず行います。初回公開後はPages workflowの成功と `data.json` のgenerated_atを確認してください。
+
+## 依存グラフと固定SHA監査
+
+`graphlib.TopologicalSorter` を使用する。markdown.py のタスク検証と同じく、
+未知ノードを先に検出する（graphlib の暗黙ノード追加を欠損と混同しない）。
+Markdownの解析・Mermaid生成は持ち込まず、標準ライブラリを直接再利用する。
+
+同一リポジトリの base/head 一致に加え、`site/dependencies.json` で
+提供元→利用側→親の固定SHA更新を明示できる。依存はタイトルから推測しない。
+例（説明用ID。実際の観測IDに置き換える）:
+
+```json
+{
+  "edges": {"consumer#12": ["provider#34"]},
+  "tasks": [{"id": "parent-pin-update", "kind": "pin-update", "depends_on": ["consumer#12"]}]
+}
+```
+
+`dependency_plan` に決定的な推奨順序、代表的な循環経路、欠損参照、順序計算不能な
+ノード（循環の下流を含む）、直接の統合待ちを保存する。欠損・循環の影響を
+受けない独立した部分は順序を計算できる。ready は依存関係だけの判定で、
+CI・レビュー・競合を許可する意味ではない。手入力のdoneはマージ証拠ではない。
+設定ファイルによるmerged宣言は拒否する。統合済みPRはopen一覧から消えるため、
+残った依存は欠損として表示する。次回監査時にGitHubのマージ証拠を確認し、
+依存設定を整理する必要がある。自動的な統合済みPRの追跡は今回の範囲外。
+
+Pagesビルド（strict監査）は各公開リポジトリのdefault branchをSHAへ解決し、
+その不変リビジョンのルート `vendor.lock.json` を取得する。vendor-lock/1 の
+files[].commit/ref（完全40桁SHA）と提供元のmain先端を比較し、match / different /
+unknown を出す。ロックが404なら対象なし、通信失敗・非対応スキーマ等は確認不能。
+mainがない場合も確認不能。取得失敗はpinのunknownとして残り、既存のPR・CI観測の
+公開停止条件は変更しない。各レコードにlock_revisionを残す。子のロックも同じ処理。
+ネストしたロック、pyprojectのGit依存、child-heads.jsonは今回自動収集しない。
+
+不一致は「main先端と違う」だけで、祖先・分岐・互換性違反を意味しない。
+互換性は常にnot_assessed。固定SHAの更新やvendorファイルの置換は行わない。
+`dependencies.html` と生成レポートに表示し、操作画面からリンクする。
+従来の優先度、手入力記録、13週の履歴保存はそのまま維持する。
+
+検証:
+
+```sh
+python3 -S -m unittest discover -s tests -p test_ci_status.py
+python3 -S -c "import unittest; r=unittest.TextTestRunner().run(unittest.TestLoader().discover('tests', pattern='test_ci_status.py')); raise SystemExit(not r.wasSuccessful())"
+```
