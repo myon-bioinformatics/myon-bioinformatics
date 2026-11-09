@@ -69,7 +69,10 @@ jobs:
           version: "latest"
           python-version: "3.15"
           activate-environment: true
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Check the original Ironmate lock and file bytes with both verifiers
         run: |
           python -S .compat/parent-old/vendor_sync.py check --root .compat/ironmate --manifest vendor.lock.json

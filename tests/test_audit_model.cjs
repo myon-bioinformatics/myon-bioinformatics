@@ -38,3 +38,29 @@ test('completion evidence survives disappearing from open list without becoming 
  assert.equal(result.length,1);assert.equal(result[0].archived,true);assert.equal(result[0].head,item.head);
  assert.deepEqual(m.completedRecords([],archive,{[url]:{state:'対応中'}}),[]);
 });
+test('review and CI failures stay first even with a manually lowered priority',()=>{
+ assert.equal(m.priority({ci:'失敗',review:0,priority:'3'}),1);
+ assert.equal(m.priority({ci:'成功',review:1,priority:'3'}),1);
+ assert.equal(m.priority({ci:'成功',review:0,labels:['bug']}),2);
+});
+test('dependency notes round-trip without overwriting observed date or topology',()=>{
+ const r=m.normalize({records:[{...observation,depends_on:['Aoi#166']}],dependency_plan:{order:['Aoi#166','Aoi#167'],waiting:{'Aoi#167':['Aoi#166']}}})[0];
+ assert.deepEqual(r.dependencies,['Aoi#166']);assert.equal(r.integration_rank,2);
+ const bundle=m.importBundle({records:{[url]:{dependencies:['other#1'],conflicts:'file overlap',order:'after check',noted_at:'2026-11-09',checked:'fake'}}});
+ const result=m.mergeRecord(r,bundle);
+ assert.equal(result.checked,r.checked);assert.equal(result.noted_at,'2026-11-09');
+ assert.deepEqual(result.observed_dependencies,['Aoi#166']);assert.deepEqual(result.dependencies,['other#1']);
+ assert.throws(()=>m.importBundle({records:{[url]:{dependencies:[3]}}}));
+});
+test('weekly comparison excludes timestamps and work notes but detects review and base changes',()=>{
+ const prev=[{id:url,head:'a',ci:'成功',review:0,base:'main',checked:'old'}];
+ assert.equal(m.diff([{...prev[0],checked:'new',notes:'new'}],prev).changed.length,0);
+ assert.equal(m.diff([{...prev[0],review:1}],prev).changed.length,1);
+ assert.equal(m.diff([{...prev[0],base:'stack'}],prev).changed.length,1);
+ assert.equal(m.diff([],prev).gone.length,1);
+});
+test('previous week baseline uses JST Monday and ignores current-week/manual snapshots',()=>{
+ const weeks=[{at:'2026-11-08T14:59:00Z',week:'2026-W45'},{at:'2026-11-08T15:00:00Z',week:'2026-W46'}];
+ assert.equal(m.weekBaseline(weeks,'2026-11-09T03:00:00Z').week,'2026-W45');
+ assert.equal(m.weekBaseline([weeks[1]],'2026-11-09T03:00:00Z'),undefined);
+});

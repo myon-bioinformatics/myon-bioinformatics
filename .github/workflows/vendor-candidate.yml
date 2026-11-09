@@ -50,7 +50,10 @@ jobs:
         with:
           version: "latest"
           python-version: "${{ matrix.python }}"
-          enable-cache: false
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Test candidate verifier offline
         run: uv run pytest -q tests/test_vendor_candidate.py --junitxml=reports/verifier.xml
       - name: Verify recommended gh_identity in disposable consumer
