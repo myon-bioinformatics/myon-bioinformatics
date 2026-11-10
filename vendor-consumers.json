@@ -208,6 +208,11 @@
           "source": "web_ui.py",
           "destination": "vendor/web_ui.py",
           "license": "vendor/web-ui-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "vendor_fleet_plan.py",
+          "destination": "vendor/vendor_fleet_plan.py"
         }
       ]
     },

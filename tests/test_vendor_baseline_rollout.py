@@ -33,6 +33,8 @@ ROLLOUT_FIXTURES.update(json.loads(
 
 LATEST_FIXTURES = json.loads(
     (ROOT / 'tests/fixtures/reviewed_mcp_lock_20261109.json').read_text())
+LATEST_FIXTURES.update(json.loads(
+    (ROOT / 'tests/fixtures/reviewed_mcp_planner_lock_20261109.json').read_text()))
 REFRESHED_FIXTURES.update(LATEST_FIXTURES)
 
 # Registry entries enrolled after the 2026-10-29 observation. The parent registry
