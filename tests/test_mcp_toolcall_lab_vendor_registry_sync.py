@@ -14,11 +14,11 @@ def load(path):
 
 
 def reviewed_pr159_registry():
-    """The registry as PR #159 adopted it: later enrollments (web_ui.py) wait for their own lock."""
+    """Reconstruct PR #159 topology; web UI and planner were adopted later."""
     registry = copy.deepcopy(load("vendor-consumers.json"))
     for row in registry["consumers"]:
         if row["repository"] == CONSUMER:
-            row["entries"] = [e for e in row["entries"] if e["destination"] != "vendor/web_ui.py"]
+            row["entries"] = [e for e in row["entries"] if e["destination"] not in {"vendor/web_ui.py", "vendor/vendor_fleet_plan.py"}]
     return registry
 
 
@@ -47,5 +47,35 @@ def test_node_launch_is_registered_for_mcp_toolcall_lab_not_auto_proposed():
     assert len(web_ui) == 1
     assert web_ui[0]["action"] == "registered"
     assert web_ui[0]["destination"] == "vendor/web_ui.py"
-    assert result["counts"]["registered"] == 6
+    assert result["counts"]["registered"] == 7
     assert result["counts"]["skipped"] == 34
+
+
+def test_current_planner_registration_matches_immutable_child_lock():
+    import hashlib
+    import vendor_sync
+
+    snapshot = load("tests/fixtures/reviewed_mcp_planner_lock_20261109.json")[CONSUMER]
+    old = load("tests/fixtures/reviewed_mcp_lock_20261109.json")[CONSUMER]
+    assert old["sha"] == "31ff99fbe4c13b3feb570ae3ba1fc7cf972f8a16"
+    assert snapshot["sha"] == "cd04472040f0db991c5138144c01f56a2b79e44b"
+    heads = load("child-heads.json")["heads"][CONSUMER]
+    assert (heads["sha"], heads["repository_id"]) == (snapshot["sha"], snapshot["repository_id"])
+    lock = vendor_sync.validate(snapshot["lock"])
+    assert hashlib.sha256(json.dumps(lock, sort_keys=True, separators=(",", ":")).encode()).hexdigest() == snapshot["lock_sha256"]
+    registry = load("vendor-consumers.json")
+    assert vendor_consumers._compare_exact(registry, lock, CONSUMER)["matches"]
+    planner = [r for r in lock["files"] if r["destination"] == "vendor/vendor_fleet_plan.py"]
+    assert len(planner) == 1
+    assert planner[0]["source"] == "vendor_fleet_plan.py"
+    assert planner[0]["repository"] == "myon-bioinformatics/myon-bioinformatics"
+    assert all(r["ref"] == r["commit"] for r in lock["files"])
+    result = vendor_fleet_plan.plan(load("vendor-catalog.json"), registry, active_consumers=[CONSUMER])
+    registered = {(r["tool_repository"], r["source"], r["destination"]) for r in result["rows"] if r["action"] == "registered"}
+    locked = {(r["repository"], r["source"], r["destination"]) for r in lock["files"]}
+    assert len(registered) == result["counts"]["registered"] == 7
+    assert registered <= locked
+    for destination in ("vendor/vendor_fleet_plan.py", "vendor/web_ui.py"):
+        changed = copy.deepcopy(lock)
+        changed["files"] = [r for r in changed["files"] if r["destination"] != destination]
+        assert not vendor_consumers._compare_exact(registry, changed, CONSUMER)["matches"]
