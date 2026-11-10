@@ -22,6 +22,26 @@ def snapshot(at='2026-11-08T00:00:00+00:00'):
             'errors':[], 'truncated':[], 'conventions':[], 'changes':{'new':[],'gone':[],'changed':[]}}
 
 
+class IntegrationSummaryTests(unittest.TestCase):
+    def test_integration_card_is_written_by_python_and_escaped(self):
+        self.assertEqual(build.integration_summary([]), '')
+        self.assertIn('<section id="integration-summary" aria-label="統合後の確認"></section>', build.observatory_page())
+        rows = [{
+            'repository': 'A<b>', 'open_prs': 0, 'branch': None, 'head_sha': 'abc', 'checked_at': None, 'ci': 'NO CHECKS', 'next': None,
+            'checks': [{'name': 'ci', 'conclusion': None, 'status': 'queued'}], 'explanations': ['x&y'],
+            'references': [{'kind': 'vendor', 'consumer': 'B', 'state': '一致', 'sha': 's', 'revision': 'r'}],
+            'evidence': [{'current': True, 'sha': 's', 'command': 'pytest', 'result': 'ok', 'source': 'log', 'facts': ['f1']}],
+            'merged': [{'url': 'https://example.test/"1', 'number': 1, 'title': 't', 'merged_at': 'm', 'merge_commit_sha': 'c'}]},
+            {'repository': 'C', 'open_prs': 2, 'ci': 'ODD'}]
+        card = build.integration_summary(rows)
+        for part in ('A&lt;b&gt;<small>0件</small>', '<td>未取得<small>abc</small><small>未取得</small></td>', '<td>チェックなし<small>ci: queued</small></td>',
+                     '<td><small>x&amp;y</small><details>', '<p>vendor: B · 一致<small>s / 観測元 r</small></p>',
+                     '<p>現在SHAの記録 · s<small>pytest: ok</small><small>log</small><small>f1</small></p>', '直近のマージ 1件',
+                     'href="https://example.test/&quot;1"', '<td>ODD</td>', '直近のマージ 0件', '<div class="table-wrap"><table>'):
+            self.assertIn(part, card)
+        self.assertIn(f'aria-label="統合後の確認">{card}</section>', build.observatory_page({'integrations': rows}))
+
+
 class PublicationTests(unittest.TestCase):
     def test_404_only_is_optional_and_other_http_errors_stop_build(self):
         for code in (404,403,429,503):
@@ -74,7 +94,7 @@ class PublicationTests(unittest.TestCase):
         self.assertFalse((Path(__file__).resolve().parents[1] / "site/ui/index.html").exists())   # assembled, not hand-written
         self.assertEqual(html.count('data-view="history"'), 3)                                    # side, top, footer: one VIEWS list
         self.assertIn('<body data-ui-theme="green">', html)
-        self.assertEqual(html, build.observatory_page(theme=build.THEME))
+        self.assertEqual(html, build.observatory_page(None, theme=build.THEME))
         parser = Elements()
         parser.feed(html)
         ids = [attrs.get("id") for _, attrs in parser.rows if "id" in attrs]
@@ -104,7 +124,8 @@ class PublicationTests(unittest.TestCase):
             self.assertNotIn('src="/',html)
             ui = ci._load_web_ui()
             self.assertEqual((out/'pswb-shell.css').read_text(), ui.css_source('tokens.css') + ui.css_source('shell.css'))
-            self.assertEqual(html, build.observatory_page())
+            self.assertEqual(html, build.observatory_page(json.loads((out/'data.json').read_text())))
+            self.assertNotIn('renderIntegrations', (out/'app.js').read_text())                               # Python writes that card now
             self.assertIn(f'body[data-ui-theme="{build.THEME}"]', (out/'pswb-shell.css').read_text())      # the page's palette is PSWB's
             style = (out/'style.css').read_text()
             self.assertIn('--green:var(--ui-accent)', style)

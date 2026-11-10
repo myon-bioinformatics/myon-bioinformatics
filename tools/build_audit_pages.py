@@ -40,8 +40,44 @@ SCRIPTS = ('audit-model.js', 'scroll-controls.js', 'app.js', 'integration.js')
 THEME = 'green'  # a PySaiyanWeBoo token theme (web_ui.theme_palettes()); style.css reads its --ui-* tokens
 
 
-def observatory_page(theme=THEME):
-    """The observatory's static page. app.js fills #stats, #content and the repo/axis filters from data.json."""
+INTEGRATION_STATES = {'COMPLETE': '成功', 'FAILED': '失敗', 'RUNNING': '実行中', 'UNKNOWN': '取得不能', 'INCOMPLETE': '不完全', 'NO CHECKS': 'チェックなし'}
+
+
+def integration_summary(rows):
+    """The 統合後の確認 card: every value is an observation of this build, so it is written here and no script draws it."""
+    def text(value):
+        return escape('' if value is None else str(value), quote=True)
+
+    def small(*values):
+        return ''.join(f'<small>{text(value)}</small>' for value in values)
+
+    def row(r):
+        checks = ''.join(small(f"{c.get('name')}: {c.get('conclusion') or c.get('status')}") for c in r.get('checks') or [])
+        references = ''.join('<p>%s: %s · %s%s</p>' % (text(x.get('kind')), text(x.get('consumer')), text(x.get('state')),
+                                                       small(f"{x.get('sha')} / 観測元 {x.get('revision')}")) for x in r.get('references') or [])
+        evidence = ''.join('<p>%s · %s%s</p>' % ('現在SHAの記録' if x.get('current') else '過去SHAの記録', text(x.get('sha')),
+                                                small(f"{x.get('command')}: {x.get('result')}", x.get('source'), *x.get('facts', [])))
+                           for x in r.get('evidence') or [])
+        merged = ''.join('<p><a href="%s" target="_blank" rel="noopener">#%s %s</a>%s</p>' % (
+            text(p.get('url')), text(p.get('number')), text(p.get('title')), small(f"{p.get('merged_at')} · {p.get('merge_commit_sha')}"))
+            for p in r.get('merged') or [])
+        return ('<tr><td>%s%s</td><td>%s%s</td><td>%s%s</td><td>%s%s<details><summary>参照・検証記録</summary>%s%s</details>'
+                '<details><summary>直近のマージ %d件</summary>%s</details></td></tr>') % (
+            text(r.get('repository')), small(f"{r.get('open_prs')}件"), text(r.get('branch') or '未取得'),
+            small(r.get('head_sha') or '未取得', r.get('checked_at') or '未取得'), text(INTEGRATION_STATES.get(r.get('ci'), r.get('ci'))), checks,
+            text(r.get('next')), small(*(r.get('explanations') or [])), references, evidence, len(r.get('merged') or []), merged)
+    if not rows:
+        return ''
+    return ('<div class="card"><h3>統合後の確認</h3><p>オープンPRゼロと検証完了を分けて表示します。履歴は直近に更新されたclosed PR最大30件のうち'
+            '既定ブランチにマージされたもの。実際のマージ順であり、依存関係ではありません。CI成功は観測したチェックの結果です。</p>'
+            '<div class="table-wrap"><table><thead><tr><th>リポジトリ / open PR</th><th>既定ブランチ / SHA / 確認日時</th><th>CI</th>'
+            '<th>次の作業 / マージ履歴</th></tr></thead><tbody>' + ''.join(row(r) for r in rows) + '</tbody></table></div></div>')
+
+
+def observatory_page(snapshot=None, theme=THEME):
+    """The observatory's page. What this build observed and no reader changes (the 統合後の確認 card) is written here from ``snapshot``;
+    app.js fills #stats, #content and the repo/axis filters, which depend on the reader's own work records."""
+    integrations = integration_summary((snapshot or {}).get('integrations') or [])
     def views(side=False):
         return ''.join('<button data-view="%s"%s>%s%s</button>' % (view, ' class="active"' if index == 0 else '', icon, '　' + long if side else ' ' + short)
                        for index, (view, icon, short, long) in enumerate(VIEWS))
@@ -84,7 +120,7 @@ def observatory_page(theme=THEME):
   <section id="stats" class="stats"></section>
   <div class="tabs"><button id="listTab" class="active">監査一覧</button><button id="compare">選択項目を比較 <span id="count">0</span></button><span id="scope">全リポジトリ</span></div>
   <section id="filters"><input id="search" placeholder="⌕ リポジトリ、番号、課題を検索" aria-label="検索">{filters}<select id="sort" aria-label="並び順"><option value="priority">優先度順</option><option value="repo">リポジトリ順</option></select></section>
-  <section id="integration-summary" aria-label="統合後の確認"></section>
+  <section id="integration-summary" aria-label="統合後の確認">{integrations}</section>
   <section id="content" tabindex="-1" aria-label="監査結果"></section>
   <footer>
     {bottom}
@@ -261,7 +297,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         operations = source_root / 'site/component-ops'
         if operations.is_dir():
             shutil.copytree(operations, stage / 'component-ops')
-        (stage / 'index.html').write_text(observatory_page(), encoding='utf-8')
+        (stage / 'index.html').write_text(observatory_page(snapshot), encoding='utf-8')
         (stage / 'pswb-shell.css').write_text(pswb_css(), encoding='utf-8')
         (stage / 'history.json').write_text(json.dumps(history, ensure_ascii=False) + '\n', encoding='utf-8')
         if fleet_graph is not None:  # the whole graph as JSON-LD for agents and other tools
