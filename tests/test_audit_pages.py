@@ -109,6 +109,9 @@ class PublicationTests(unittest.TestCase):
             style = (out/'style.css').read_text()
             self.assertIn('--green:var(--ui-accent)', style)
             self.assertNotIn(':root{--ink', style)
+            import re
+            self.assertEqual(sorted(set(re.findall(r'#[0-9a-fA-F]{3,8}\b', style))), ['#987522', '#faf0da'])       # only the warning pair is chosen here
+            self.assertNotIn('white;', style.replace('white-space', ''))
             import zipfile
             with zipfile.ZipFile(out/'pages-source.zip') as archive:
                 self.assertEqual(archive.read('site/ui/pswb-shell.css'), (out/'pswb-shell.css').read_bytes())
