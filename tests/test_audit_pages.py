@@ -70,7 +70,11 @@ class PublicationTests(unittest.TestCase):
                 self.rows = []
             def handle_starttag(self, tag, attrs):
                 self.rows.append((tag, dict(attrs)))
-        html = (Path(__file__).resolve().parents[1] / "site/ui/index.html").read_text()
+        html = build.observatory_page()
+        self.assertFalse((Path(__file__).resolve().parents[1] / "site/ui/index.html").exists())   # assembled, not hand-written
+        self.assertEqual(html.count('data-view="history"'), 3)                                    # side, top, footer: one VIEWS list
+        self.assertIn('<body data-ui-theme="green">', html)
+        self.assertEqual(html, build.observatory_page(theme=build.THEME))
         parser = Elements()
         parser.feed(html)
         ids = [attrs.get("id") for _, attrs in parser.rows if "id" in attrs]
@@ -98,7 +102,13 @@ class PublicationTests(unittest.TestCase):
             for name in ('index.html', 'app.js', 'evidence.json'):
                 self.assertEqual((out/'component-ops'/name).read_bytes(), (build.ROOT/'site/component-ops'/name).read_bytes())
             self.assertNotIn('src="/',html)
-            self.assertEqual((out/'pswb-shell.css').read_text(), ci._load_web_ui().css_source('shell.css'))
+            ui = ci._load_web_ui()
+            self.assertEqual((out/'pswb-shell.css').read_text(), ui.css_source('tokens.css') + ui.css_source('shell.css'))
+            self.assertEqual(html, build.observatory_page())
+            self.assertIn(f'body[data-ui-theme="{build.THEME}"]', (out/'pswb-shell.css').read_text())      # the page's palette is PSWB's
+            style = (out/'style.css').read_text()
+            self.assertIn('--green:var(--ui-accent)', style)
+            self.assertNotIn(':root{--ink', style)
             import zipfile
             with zipfile.ZipFile(out/'pages-source.zip') as archive:
                 self.assertEqual(archive.read('site/ui/pswb-shell.css'), (out/'pswb-shell.css').read_bytes())

@@ -18,11 +18,11 @@ PRではPython標準unittestとNode 26の組込みテストを実行します。
 
 ![依存・更新ビューと作業画面の列（2026-11-09 の実データ、Chromium）](audit-dashboard-fleet.gif)
 
-`index.html` はSitesで作成した操作画面、`report.html` は共通web_uiヘルパーによる生成レポートです。すべて相対参照なのでプロジェクトPagesのサブパスでも動作します。最新head、観測日時、CI失敗のcheck名とURLを表示します。再読込ボタンは公開済みJSONを読むもので、GitHub Actionsの新規実行を起動するものではありません。
+`index.html` は `tools/build_audit_pages.py` の `observatory_page()` がビルド時に組み立てる操作画面（手書きの `site/ui/index.html` は無し。ナビ・操作・絞り込みの一覧は同ファイルの `VIEWS` / `ACTIONS` / `FILTERS` に1回だけ書く）で、配色は `<body data-ui-theme>` が指す PySaiyanWeBoo のトークンテーマ（既定 `green`、`style.css` は `--ui-*` を読むだけ）、`report.html` は共通web_uiヘルパーによる生成レポートです。すべて相対参照なのでプロジェクトPagesのサブパスでも動作します。最新head、観測日時、CI失敗のcheck名とURLを表示します。再読込ボタンは公開済みJSONを読むもので、GitHub Actionsの新規実行を起動するものではありません。
 
 ## 共通スクロール操作
 
-PSWBの採用済み `vendor/web_ui.py` の `css_source('shell.css')` から、
+PSWBの採用済み `vendor/web_ui.py` の `css_source('tokens.css')`（配色トークン）と `css_source('shell.css')` から、
 ビルド時に `pswb-shell.css` を生成します。`ui-shell-scroll` を上部ナビ・操作列・
 フッターナビ・表へ適用し、共通CSSを手書きで複製しません。生成物は
 `pages-source.zip` にも同梱します。vendorの固定SHAやlockの変更は不要です。
