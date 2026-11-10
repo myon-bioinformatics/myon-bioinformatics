@@ -43,12 +43,15 @@ THEME = 'green'  # a PySaiyanWeBoo token theme (web_ui.theme_palettes()); style.
 def observatory_page(theme=THEME):
     """The observatory's static page. app.js fills #stats, #content and the repo/axis filters from data.json."""
     def views(side=False):
-        return ''.join(f'<button data-view="{view}"{' class="active"' if index == 0 else ''}>{icon}{'　' + long if side else ' ' + short}</button>'
+        return ''.join('<button data-view="%s"%s>%s%s</button>' % (view, ' class="active"' if index == 0 else '', icon, '　' + long if side else ' ' + short)
                        for index, (view, icon, short, long) in enumerate(VIEWS))
 
     def row(label):
         return f'<nav class="horizontal-row ui-shell-scroll" data-scroll-label="{label}" aria-label="{label}">{views()}</nav>'
-    actions = ''.join(f'<a href="{href}">{escape(text)}</a>' for href, text in LINKS) + ''.join(f'<button{f' class="{kind}"' if kind else ''} id="{name}">{escape(text)}</button>' for name, text, kind in ACTIONS)
+    actions = ''.join('<a href="%s">%s</a>' % (href, escape(text)) for href, text in LINKS) + ''.join('<button%s id="%s">%s</button>' % (' class="%s"' % kind if kind else '', name, escape(text)) for name, text, kind in ACTIONS)
+    side, top, bottom = views(side=True), row('上部ナビゲーション'), row('フッターナビゲーション')
+    scripts = ''.join(f'<script src="{name}"></script>' for name in SCRIPTS)
+    theme = escape(theme, quote=True)
     filters = ''.join(f'<select id="{name}" aria-label="{label}"><option value="">{first}</option>'
                       + ''.join(f'<option>{option}</option>' for option in more) + '</select>' for name, label, first, more in FILTERS)
     return f'''<!doctype html>
@@ -60,18 +63,18 @@ def observatory_page(theme=THEME):
   <link rel="stylesheet" href="pswb-shell.css">
   <link rel="stylesheet" href="style.css">
 </head>
-<body data-ui-theme="{escape(theme, quote=True)}">
+<body data-ui-theme="{theme}">
 <a class="skip-link" href="#content">監査一覧へ移動</a>
 <aside>
   <div class="brand">◈ <span>OBSERVATORY</span></div>
   <div class="owner">{ci.OWNER}<br><small>REPOSITORY OPERATIONS</small></div>
-  <nav aria-label="サイドナビゲーション">{views(side=True)}</nav>
+  <nav aria-label="サイドナビゲーション">{side}</nav>
   <div class="aside-bottom"><span class="dot"></span> 静的 / GitHub Pages 対応<p>Python 3.11+ · 追加依存なし</p><a href="pages-source.zip">↓ Pages連携ソース</a></div>
 </aside>
 <main>
   <header class="workspace-header">
     <div class="header-meta"><span>WORKSPACE / WEEKLY AUDIT</span><a href="https://github.com/{ci.OWNER}/{ci.OWNER}" target="_blank" rel="noopener">親リポジトリ ↗</a></div>
-    {row('上部ナビゲーション')}
+    {top}
   </header>
   <section class="heading">
     <div><div class="eyebrow">ENGINEERING HEALTH</div><h1>親子リポジトリ監査<span> /</span></h1><p>気づく。揃える。次の週へつなぐ。</p></div>
@@ -84,13 +87,13 @@ def observatory_page(theme=THEME):
   <section id="integration-summary" aria-label="統合後の確認"></section>
   <section id="content" tabindex="-1" aria-label="監査結果"></section>
   <footer>
-    {row('フッターナビゲーション')}
+    {bottom}
     <div class="footer-meta">OBSERVATORY <span>作業記録はこのブラウザに保存されます。端末間の引き継ぎにはJSON書出しを使用。</span></div>
   </footer>
 </main>
 <dialog id="detail"><div id="detailBody"></div><button id="close">閉じる</button></dialog>
 <input type="file" id="file" accept="application/json,.json" hidden>
-{''.join(f'<script src="{name}"></script>' for name in SCRIPTS)}
+{scripts}
 </body>
 </html>
 '''
