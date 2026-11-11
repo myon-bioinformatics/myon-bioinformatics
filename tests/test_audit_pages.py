@@ -91,6 +91,11 @@ class PublicationTests(unittest.TestCase):
             def handle_starttag(self, tag, attrs):
                 self.rows.append((tag, dict(attrs)))
         html = build.observatory_page()
+        self.assertIn('<div class="eyebrow">監査</div>', html)
+        self.assertIn('PR・Issue・CI・依存関係を確認します。', html)
+        self.assertNotIn('ENGINEERING HEALTH', html)
+        self.assertNotIn('気づく。揃える。次の週へつなぐ。', html)
+        self.assertEqual(html.count('href="component-ops/"'), 1)
         self.assertFalse((Path(__file__).resolve().parents[1] / "site/ui/index.html").exists())   # assembled, not hand-written
         self.assertEqual(html.count('data-view="history"'), 3)                                    # side, top, footer: one VIEWS list
         self.assertIn('<body data-ui-theme="green">', html)

@@ -113,7 +113,7 @@ def observatory_page(snapshot=None, theme=THEME):
     {top}
   </header>
   <section class="heading">
-    <div><div class="eyebrow">ENGINEERING HEALTH</div><h1>親子リポジトリ監査<span> /</span></h1><p>気づく。揃える。次の週へつなぐ。</p></div>
+    <div><div class="eyebrow">監査</div><h1>親子リポジトリ監査<span> /</span></h1><p>PR・Issue・CI・依存関係を確認します。</p></div>
     <div class="actions horizontal-row ui-shell-scroll" data-scroll-label="監査の操作">{actions}</div>
   </section>
   <div id="notice" role="status">データを読み込み中…</div>
