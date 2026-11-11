@@ -11,19 +11,27 @@ the parent's other single-file tool.
 
 1. Validates each entry `.py`:
    - The file name is lowercase (`[a-z_][a-z0-9_]*.py`), i.e. the lowercase repository name.
-   - It parses, has no relative imports, and every import is the standard library
+   - It parses, has no relative imports, and every static `import` / `from ... import` is the standard library
      (`sys.stdlib_module_names`), another entry passed in the same build, or an optional
      import inside `try: ... except ImportError/ModuleNotFoundError`.
      Imports inside functions are checked too. A non-stdlib import that only runs
      inside a function on an optional path (for example BlueProbe's lazy
      `from queryu import Cache`) can be allowed explicitly with `--allow-import NAME`;
      module-level imports are never allowed that way.
-   - Every function used by a command (default `main`) is defined at top level.
+   - Every function used by a command (default `main`) is a synchronous function
+     defined at top level. An outer `try` does not make imports in a deferred
+     function body optional; that body needs its own guard or an explicit allowance.
 2. Copies the entries byte-for-byte into a new (or empty) output directory.
 3. Writes `pyproject.toml` with `dependencies = []`, `[project.scripts]` and
    `[tool.setuptools] py-modules`.
 
 Nothing is written when validation fails (exit code 1).
+
+This is a static syntax check, not a security boundary or proof of runtime
+stdlib-only behavior. It does not resolve dynamic imports (`__import__`,
+`importlib`), name rebinding/shadowing, callable signatures, or all control flow.
+Validate each installed command and its supported paths in an isolated environment;
+passing this check alone does not establish that the command runs successfully.
 
 ## Naming
 
@@ -55,6 +63,17 @@ python tools/uv_tool_build.py nagoyaction.py local_forge.py --out out \
 python tools/uv_tool_build.py sakanalytics.py --out out \
   --script sakanalytics-boundary=sakanalytics
 ```
+
+For QueRyu, first generate its single-file `queryu.py` with the child generator,
+then allow its function-local BlueProbe import explicitly:
+
+```sh
+python tools/uv_tool_build.py queryu.py --out out --allow-import blueprobe
+```
+
+This allowance neither bundles nor installs BlueProbe. QueRyu paths that need
+BlueProbe or a source module still require those components; successful packaging
+alone does not verify those paths.
 
 `--json` prints a `uv-tool-build/1` summary (modules, scripts, imports per entry).
 

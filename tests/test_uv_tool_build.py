@@ -184,3 +184,31 @@ def test_allow_import_only_for_function_local_imports(tmp_path):
         utb.build([_entry(tmp_path, "blueprobe.py", eager)], tmp_path / "o2", allow_imports=["queryu"])
     with pytest.raises(utb.UvToolBuildError, match="--allow-import must be"):
         utb.build([_entry(tmp_path)], tmp_path / "o3", allow_imports=["a.b"])
+
+
+@pytest.mark.parametrize("kind", ["def", "async def"])
+def test_outer_try_does_not_make_deferred_import_optional(tmp_path, kind):
+    source = (f"try:\n    {kind} helper():\n        import missing_dependency\n"
+              "except ImportError:\n    pass\n\ndef main():\n    return helper()\n")
+    out = tmp_path / "o"
+    with pytest.raises(utb.UvToolBuildError, match="non-stdlib imports: missing_dependency"):
+        utb.build([_entry(tmp_path, source=source)], out)
+    assert not out.exists()
+
+
+def test_function_own_try_still_allows_optional_import(tmp_path):
+    source = ("try:\n    def helper():\n        try:\n            import missing_dependency\n"
+              "        except ImportError:\n            pass\nexcept ImportError:\n    pass\n"
+              "def main():\n    return helper()\n")
+    utb.build([_entry(tmp_path, source=source)], tmp_path / "o")
+
+
+@pytest.mark.parametrize("function", ["main", "serve"])
+def test_async_console_entry_is_rejected_before_writing(tmp_path, function):
+    source = "def main():\n    return 0\n" if function == "serve" else ""
+    source += f"async def {function}():\n    return 0\n"
+    out = tmp_path / "o"
+    scripts = ["bp-serve=blueprobe:serve"] if function == "serve" else []
+    with pytest.raises(utb.UvToolBuildError, match="async.*command entry point"):
+        utb.build([_entry(tmp_path, source=source)], out, scripts=scripts)
+    assert not out.exists()

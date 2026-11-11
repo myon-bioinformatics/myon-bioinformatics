@@ -59,7 +59,13 @@ def parse_script(text: str) -> tuple[str, str, str]:
 
 
 def _optional_import_nodes(tree: ast.AST) -> set[int]:
-    """Imports inside ``try`` blocks that catch ImportError are optional."""
+    """Find syntactically guarded imports without crossing deferred bodies."""
+    def immediate_nodes(node):
+        yield node
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            return
+        for child in ast.iter_child_nodes(node):
+            yield from immediate_nodes(child)
     optional: set[int] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Try):
@@ -70,7 +76,7 @@ def _optional_import_nodes(tree: ast.AST) -> set[int]:
             caught.update(k.id for k in kinds if isinstance(k, ast.Name))
         if caught & _OPTIONAL_IMPORT_ERRORS:
             for stmt in node.body:
-                optional.update(id(n) for n in ast.walk(stmt) if isinstance(n, (ast.Import, ast.ImportFrom)))
+                optional.update(id(n) for n in immediate_nodes(stmt) if isinstance(n, (ast.Import, ast.ImportFrom)))
     return optional
 
 
@@ -114,10 +120,12 @@ def check_entry(path: Path, local_modules: frozenset[str] = frozenset(),
     if rejected:
         raise UvToolBuildError(f"{path.name}: non-stdlib imports: {', '.join(sorted(set(rejected)))}"
                                " (function-local optional imports: --allow-import NAME)")
-    defined = {n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    defined = {n.name: n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
     for func in functions:
         if func not in defined:
             raise UvToolBuildError(f"{path.name}: no top-level {func}() for the command entry point")
+        if isinstance(defined[func], ast.AsyncFunctionDef):
+            raise UvToolBuildError(f"{path.name}: async {func}() is not supported as a command entry point")
     return {"module": path.stem, "imports": sorted(imports - {"__future__"})}
 
 
