@@ -9,7 +9,8 @@ builders. It copies each entry ``.py`` into a new work directory and writes a
 
 Command names default to the lowercase entry stem, which by convention is the
 lowercase repository name (``blueprobe.py`` -> ``blueprobe``). Entry files must
-already use lowercase names. See ``docs/uv-tool-build.md``.
+already use lowercase names. Extra ``--module`` files are copied and listed in
+``py-modules`` but do not get a command. See ``docs/uv-tool-build.md``.
 """
 from __future__ import annotations
 
@@ -85,10 +86,12 @@ def check_entry(path: Path, local_modules: frozenset[str] = frozenset(),
     """Validate one entry file; return the imports it needs.
 
     Fails on syntax errors, relative imports, non-stdlib imports (unless they
-    are other bundled entries, optional ``try/except ImportError`` imports or
-    names in ``allow_imports``) and missing top-level functions.
-    ``allow_imports`` is only honoured inside functions: module-level imports
-    always run, so they must be stdlib or bundled.
+    are other bundled entries or ``--module`` files, optional
+    ``try/except ImportError`` imports or names in ``allow_imports``) and
+    missing top-level functions. ``allow_imports`` is only honoured inside
+    functions: module-level imports always run, so they must be stdlib or
+    bundled. ``functions`` may be empty: ``--module`` files do not need
+    ``main`` unless a command points at them.
     """
     source = path.read_text(encoding="utf-8")
     try:
@@ -148,33 +151,47 @@ def render_pyproject(name: str, modules: list[str], scripts: dict[str, str], *,
     return "\n".join(lines)
 
 
+def _existing_py(path: Path, *, kind: str) -> Path:
+    if path.suffix != ".py" or not path.is_file():
+        raise UvToolBuildError(f"{kind} must be an existing .py file: {path}")
+    if not _MODULE.fullmatch(path.stem):
+        if kind == "entry":
+            raise UvToolBuildError(f"entry file name must be lowercase (lowercase repository name): {path.name}")
+        raise UvToolBuildError(f"module file name must be lowercase: {path.name}")
+    return path
+
+
 def build(entries: list[str | Path], out: str | Path, *, command: str | None = None,
           scripts: list[str] = (), allow_imports: list[str] = (), name: str | None = None, version: str = DEFAULT_VERSION,
-          requires_python: str = DEFAULT_REQUIRES_PYTHON, description: str | None = None) -> dict:
+          requires_python: str = DEFAULT_REQUIRES_PYTHON, description: str | None = None,
+          extra_modules: list[str | Path] = ()) -> dict:
     """Write a uv tool project for ``entries`` into the new directory ``out``.
 
     Each entry gets the command ``default_command(entry)`` -> ``module:main``;
     ``command`` renames the first entry's command and ``scripts``
-    (``NAME=MODULE[:FUNC]``) add more commands. Returns a JSON-ready summary.
+    (``NAME=MODULE[:FUNC]``) add more commands. ``extra_modules`` are copied
+    and listed in ``py-modules`` with no command. Returns a JSON-ready summary.
     """
-    paths = [Path(e) for e in entries]
+    paths = [_existing_py(Path(e), kind="entry") for e in entries]
     if not paths:
         raise UvToolBuildError("at least one entry .py is required")
     modules: list[str] = []
     for path in paths:
-        if path.suffix != ".py" or not path.is_file():
-            raise UvToolBuildError(f"entry must be an existing .py file: {path}")
-        if not _MODULE.fullmatch(path.stem):
-            raise UvToolBuildError(f"entry file name must be lowercase (lowercase repository name): {path.name}")
         if path.stem in modules:
             raise UvToolBuildError(f"duplicate entry module: {path.stem}")
+        modules.append(path.stem)
+    extra_paths = [_existing_py(Path(p), kind="module") for p in extra_modules]
+    for path in extra_paths:
+        if path.stem in modules:
+            raise UvToolBuildError(f"duplicate module: {path.stem}")
         modules.append(path.stem)
     if command is not None and not _COMMAND.fullmatch(command):
         raise UvToolBuildError(f"command must be lowercase [a-z0-9._-]: {command!r}")
     if not _VERSION.fullmatch(version):
         raise UvToolBuildError(f"version must be numeric dotted: {version!r}")
     table: dict[str, tuple[str, str]] = {}
-    for index, module in enumerate(modules):
+    entry_stems = [path.stem for path in paths]
+    for index, module in enumerate(entry_stems):
         cmd = command if index == 0 and command else default_command(module)
         if cmd in table:
             raise UvToolBuildError(f"duplicate command: {cmd}")
@@ -184,7 +201,7 @@ def build(entries: list[str | Path], out: str | Path, *, command: str | None = N
         if cmd in table:
             raise UvToolBuildError(f"duplicate command: {cmd}")
         if module not in modules:
-            raise UvToolBuildError(f"--script {cmd}: module {module!r} is not one of the entries")
+            raise UvToolBuildError(f"--script {cmd}: module {module!r} is not a bundled module")
         table[cmd] = (module, func)
     dist = name or default_command(modules[0])
     if not _DIST.fullmatch(dist):
@@ -193,13 +210,18 @@ def build(entries: list[str | Path], out: str | Path, *, command: str | None = N
         if not _FUNC.fullmatch(top):
             raise UvToolBuildError(f"--allow-import must be a top-level module name: {top!r}")
     local = frozenset(modules)
-    checked = [check_entry(path, local, tuple(sorted({f for m, f in table.values() if m == path.stem})),
-                           frozenset(allow_imports)) for path in paths]
+    allowed = frozenset(allow_imports)
+
+    def _functions(stem: str) -> tuple[str, ...]:
+        return tuple(sorted({f for m, f in table.values() if m == stem}))
+
+    checked = [check_entry(path, local, _functions(path.stem), allowed) for path in paths]
+    checked_extra = [check_entry(path, local, _functions(path.stem), allowed) for path in extra_paths]
     out = Path(out)
     if out.exists() and (not out.is_dir() or any(out.iterdir())):
         raise UvToolBuildError(f"output must be a new or empty directory: {out}")
     out.mkdir(parents=True, exist_ok=True)
-    for path in paths:
+    for path in paths + extra_paths:
         shutil.copyfile(path, out / path.name)
     scripts_map = {cmd: f"{m}:{f}" for cmd, (m, f) in table.items()}
     (out / "pyproject.toml").write_text(
@@ -208,7 +230,7 @@ def build(entries: list[str | Path], out: str | Path, *, command: str | None = N
         encoding="utf-8", newline="\n")
     return {"schema": SCHEMA, "out": str(out), "name": dist, "version": version,
             "modules": modules, "scripts": scripts_map, "allow_imports": sorted(set(allow_imports)),
-            "entries": checked}
+            "entries": checked, "extra_modules": checked_extra}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -219,6 +241,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--command", help="rename the first entry's command (default: lowercase entry stem)")
     parser.add_argument("--script", action="append", default=[], metavar="NAME=MODULE[:FUNC]",
                         help="add another command (repeatable), e.g. local-forge=local_forge")
+    parser.add_argument("--module", action="append", default=[], type=Path, dest="extra_modules", metavar="FILE",
+                        help="copy FILE as a py-module with no command (repeatable)")
     parser.add_argument("--allow-import", action="append", default=[], metavar="NAME",
                         help="allow a non-stdlib import inside functions only (optional feature path), repeatable")
     parser.add_argument("--name", help="distribution name (default: lowercase first entry stem = repository name)")
@@ -231,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         result = build(args.entries, args.out, command=args.command, scripts=args.script,
                        allow_imports=args.allow_import, name=args.name,
                        version=args.version, requires_python=args.requires_python,
-                       description=args.description)
+                       description=args.description, extra_modules=args.extra_modules)
     except (UvToolBuildError, OSError) as exc:
         print(f"uv_tool_build: error: {exc}", file=sys.stderr)
         return 1
