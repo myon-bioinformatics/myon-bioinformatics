@@ -31,7 +31,7 @@ def test_build_copies_entry_and_writes_pyproject(tmp_path):
     assert (out / "blueprobe.py").read_bytes() == entry.read_bytes()
     data = _pyproject(out)
     assert data["build-system"] == {"requires": ["setuptools>=68"], "build-backend": "setuptools.build_meta"}
-    assert data["project"]["name"] == "blueprobe-stdlib"
+    assert data["project"]["name"] == "blueprobe"
     assert data["project"]["version"] == "0.1.0"
     assert data["project"]["requires-python"] == ">=3.11"
     assert data["project"]["dependencies"] == []
@@ -52,10 +52,11 @@ def test_default_command_is_lowercase_stem(entry, command):
 def test_command_override_and_extra_scripts(tmp_path):
     entry = _entry(tmp_path, "sakanalytics.py")
     utb.build([entry], tmp_path / "o", command="sakanalytics", scripts=["sakanalytics-boundary=sakanalytics"],
-              name="sakanalytics-stdlib", version="0.2.0", description="SakAnalytics \"stdlib\" CLI")
+              name="sakanalytics-cli", version="0.2.0", description="SakAnalytics \"stdlib\" CLI")
     data = _pyproject(tmp_path / "o")
     assert data["project"]["scripts"] == {"sakanalytics": "sakanalytics:main",
                                           "sakanalytics-boundary": "sakanalytics:main"}
+    assert data["project"]["name"] == "sakanalytics-cli"
     assert data["project"]["version"] == "0.2.0"
     assert data["project"]["description"] == 'SakAnalytics "stdlib" CLI'
     utb.build([entry], tmp_path / "o2", command="sakanalytics-x")
@@ -65,7 +66,7 @@ def test_command_override_and_extra_scripts(tmp_path):
 def test_multiple_entries_may_import_each_other(tmp_path):
     main_entry = _entry(tmp_path, "nagoyaction.py", "import local_forge\n\ndef main():\n    return 0\n")
     forge = _entry(tmp_path, "local_forge.py", "import os\n\ndef main():\n    return 0\n\ndef serve():\n    return 0\n")
-    result = utb.build([main_entry, forge], tmp_path / "o", name="nagoyaction",
+    result = utb.build([main_entry, forge], tmp_path / "o",
                        scripts=["local-forge=local_forge", "forge-serve=local_forge:serve"])
     data = _pyproject(tmp_path / "o")
     assert data["project"]["name"] == "nagoyaction"

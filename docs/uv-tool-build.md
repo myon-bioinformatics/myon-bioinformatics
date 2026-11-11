@@ -31,12 +31,13 @@ Nothing is written when validation fails (exit code 1).
 | --- | --- | --- |
 | Command | lowercase entry stem (`blueprobe.py` → `blueprobe`) | `--command NAME` (first entry only) |
 | Extra commands | none | `--script NAME=MODULE[:FUNC]` (repeatable) |
-| Distribution name | `<first entry stem>-stdlib` | `--name` |
+| Distribution name | lowercase first entry stem (= lowercase repository name, no `-stdlib` suffix) | `--name` |
 | Allowed lazy imports | none | `--allow-import NAME` (function-local only, repeatable) |
 | Version / requires-python | `0.1.0` / `>=3.11` | `--version` / `--requires-python` |
 
 CamelCase entry names (for example `BlueProbe.py`) are rejected; rename them to the
-lowercase repository name first.
+lowercase repository name first. Former suffixed command names such as DRAgoWing's
+`dragowing-html` are not kept as aliases: the command is `dragowing` only.
 
 ## Usage
 
@@ -50,7 +51,7 @@ Multiple entries (NagoyAction style) and extra command names:
 
 ```sh
 python tools/uv_tool_build.py nagoyaction.py local_forge.py --out out \
-  --name nagoyaction --script local-forge=local_forge
+  --script local-forge=local_forge
 python tools/uv_tool_build.py sakanalytics.py --out out \
   --script sakanalytics-boundary=sakanalytics
 ```

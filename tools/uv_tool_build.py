@@ -178,7 +178,7 @@ def build(entries: list[str | Path], out: str | Path, *, command: str | None = N
         if module not in modules:
             raise UvToolBuildError(f"--script {cmd}: module {module!r} is not one of the entries")
         table[cmd] = (module, func)
-    dist = name or f"{modules[0]}-stdlib"
+    dist = name or default_command(modules[0])
     if not _DIST.fullmatch(dist):
         raise UvToolBuildError(f"invalid distribution name: {dist!r}")
     for top in allow_imports:
@@ -213,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="add another command (repeatable), e.g. local-forge=local_forge")
     parser.add_argument("--allow-import", action="append", default=[], metavar="NAME",
                         help="allow a non-stdlib import inside functions only (optional feature path), repeatable")
-    parser.add_argument("--name", help="distribution name (default: <first entry>-stdlib)")
+    parser.add_argument("--name", help="distribution name (default: lowercase first entry stem = repository name)")
     parser.add_argument("--version", default=DEFAULT_VERSION)
     parser.add_argument("--requires-python", default=DEFAULT_REQUIRES_PYTHON)
     parser.add_argument("--description")
