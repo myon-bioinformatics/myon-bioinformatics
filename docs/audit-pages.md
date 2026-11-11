@@ -177,3 +177,7 @@ CI成功は観測したチェックの成功であり、required checks充足や
 例: `{"Demo":[{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","command":"uv run pytest","result":"10 passed","facts":["往復ゲートはnlのみ"],"source":"CI artifact/test report"}]}`。
 記録は報告値として表示するだけで、観測CIの判定を書き換えない。SHAが違う記録は過去の記録と明示する。
 この変更では子リポジトリからの記録生成・親への自動送信までは実装していない。
+
+## 利用導線と責務移管
+
+別画面の `component-ops/` は、エラー調査から取得・抽出・分析・描画までの手順と移管判断を示します。表示は2026-11-11時点の確認に基づく静的な資料で、GitHubの最新状態を自動取得しません。公開時に `site/component-ops/` を同じPages artifactへコピーし、監査画面のサイドナビから参照します。更新時は根拠と確認日時を見直してください。

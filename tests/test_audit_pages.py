@@ -94,11 +94,15 @@ class PublicationTests(unittest.TestCase):
                 self.assertTrue((out/path).is_file(),path)
             html=(out/'index.html').read_text()
             self.assertIn('src="audit-model.js"',html)
+            self.assertIn('href="component-ops/"', html)
+            for name in ('index.html', 'app.js', 'evidence.json'):
+                self.assertEqual((out/'component-ops'/name).read_bytes(), (build.ROOT/'site/component-ops'/name).read_bytes())
             self.assertNotIn('src="/',html)
             self.assertEqual((out/'pswb-shell.css').read_text(), ci._load_web_ui().css_source('shell.css'))
             import zipfile
             with zipfile.ZipFile(out/'pages-source.zip') as archive:
                 self.assertEqual(archive.read('site/ui/pswb-shell.css'), (out/'pswb-shell.css').read_bytes())
+                self.assertEqual(archive.read('site/component-ops/index.html'), (out/'component-ops/index.html').read_bytes())
             self.assertIn('&lt;script&gt;',(out/'report.html').read_text())
             self.assertEqual(json.loads((out/'data.json').read_text())['schema'],'parent-audit/1')
             self.assertEqual(len(json.loads((out/'history.json').read_text())['weeks']),1)

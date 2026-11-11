@@ -1,0 +1,82 @@
+{
+  "checked": "2026-11-11",
+  "repos": {
+    "Err-o-RoadRunner": {
+      "readme": "https://github.com/myon-bioinformatics/Err-o-RoadRunner/blob/main/README.md",
+      "blob_sha": "522d65b554be7d43a1243cbe942aa4e995a61eb3",
+      "pr": {
+        "number": 67,
+        "url": "https://github.com/myon-bioinformatics/Err-o-RoadRunner/pull/67",
+        "state": "open",
+        "draft": true,
+        "merged": false,
+        "head_sha": "4505255b24c8638cdc4cc52d008167454ae45d80",
+        "body": "## Summary\n- Provide `erroroadrunner`, direct unquoted text and `--paste`; generate self-contained `ErroRR.py` from project sources.\n- Document an OLNM/other-host subprocess contract and reuse the existing `cli_args.Command` / `run_command` for buffered execution; inherited subprocess streams are appropriate for live output.\n- Test both OLNM-style in-process loading and subprocess isolation when a host already has a module named triage.\n\n## Validation\n- 60 focused tests passed locally, including generated standalone CLI, digest, sentinel, Actions-log and collision isolation.\n- Verified the actual cli_args Command/run_command against generated ErroRR.py with unquoted argv and stdin; two integration checks passed locally. cli_args is not a runtime dependency.\n- Installed a multi-file wheel with uv into an isolated tool directory and invoked it outside the checkout.\n\n## Remaining work\nOLNM is not yet wired to or pinning ErroRR, generated output is not vendor-registered, and the latest head's CI/cross-platform validation is pending. cli_args buffers output and is not a streaming API. In-process bundles reject conflicting backend names."
+      }
+    },
+    "BlueProbe": {
+      "readme": "https://github.com/myon-bioinformatics/BlueProbe/blob/main/README.md",
+      "blob_sha": "0d997122b558a9478a97ac5e10aae1abe335a89d"
+    },
+    "QueRyu": {
+      "readme": "https://github.com/myon-bioinformatics/QueRyu/blob/main/README.md",
+      "blob_sha": "9302c914750b75417288e08252efa518743cf0fe",
+      "pr": {
+        "number": 40,
+        "url": "https://github.com/myon-bioinformatics/QueRyu/pull/40",
+        "state": "open",
+        "draft": true,
+        "merged": false,
+        "head_sha": "9d85ebc76370a7cda3ee7dfadc4da4ed9f49fb60",
+        "body": "Generate a standalone `queryu.py` with cache classes copied mechanically from the canonical `cache_core.py`, keeping source maintenance in one place. `--help` no longer imports BlueProbe, and the CLI explains when BlueProbe is missing.\n\nValidation: 9 focused pytest cases passed on Python 3.12. The generated file ran with `python -I` in an isolated directory, and an offline plan succeeded with `blueprobe.py` and `npb_calendar.py` alongside it.\n\nDraft limitations: source modules and BlueProbe remain separate components; uv tool installation and complete standalone data-path behavior are not implemented. No real network fetching was tested."
+      }
+    },
+    "xprobe": {
+      "readme": "https://github.com/myon-bioinformatics/xprobe/blob/main/README.md",
+      "blob_sha": "53449b9545da0ecc405695f8b9a8b505d7027a93"
+    },
+    "DRAgoWing": {
+      "readme": "https://github.com/myon-bioinformatics/DRAgoWing/blob/main/README.md",
+      "blob_sha": "70a1d70628b12635a4540f044e2ebfe7fb5f4751",
+      "pr": {
+        "number": 44,
+        "url": "https://github.com/myon-bioinformatics/DRAgoWing/pull/44",
+        "state": "open",
+        "draft": true,
+        "merged": false,
+        "head_sha": "a0e6e1836e58a247c3af39061c55eec8d5481219",
+        "body": "Provide a standalone `dragowing.py` for counting HTML tags from files or stdin, independent of the NPB analysis and full rendering backend. Share its implementation with the existing `html_tag_count` module. A build script prepares a separate uv tool project with the `dragowing-html` command and no third-party runtime dependencies.\n\nValidation: 3 focused pytest cases passed on Python 3.12, including existing count tests. Built a wheel locally, installed into isolated uv tool directories, and counted tags through `dragowing-html`.\n\nDraft scope: only HTML tag inspection is exposed; the full report-rendering CLI and its dependencies remain separate. Full project CI and Git-based uv installation remain to be validated."
+      }
+    },
+    "PythDRagoras": {
+      "readme": "https://github.com/myon-bioinformatics/PythDRagoras/blob/main/README.md",
+      "blob_sha": "c2398dad172fb9678c852c5cb1e29a276d1c9580",
+      "pr": {
+        "number": 43,
+        "url": "https://github.com/myon-bioinformatics/PythDRagoras/pull/43",
+        "state": "open",
+        "draft": true,
+        "merged": false,
+        "head_sha": "efbd47548bb9b5ae931b4babee232f4a7f5b51ce",
+        "body": "提供内容: 標準ライブラリだけで動く単一ファイルを生成し、分類指標（TP/FP/FN/TN）、ベイズ事後確率、期待値、ピタゴラス期待値をCLIで利用できます。既存の分類指標定義を使用し、未定義値はnullと理由を返します。\n\n検証: 生成ファイルの隔離実行と正常・不正入力のunittestを実施。wheel経由のuv tool installと実行を確認。生成ディレクトリからの直接インストールはオフライン環境のビルド依存不足で未確認です。\n\n残作業: Aoi連携、汎用命題評価、フル機能の統合検証。Draftのまま維持します。"
+      }
+    },
+    "SakAnalytics": {
+      "readme": "https://github.com/myon-bioinformatics/SakAnalytics/blob/main/README.md",
+      "blob_sha": "53528d99cd711b842da794e7bd64d113013e3f0d",
+      "pr": {
+        "number": 42,
+        "url": "https://github.com/myon-bioinformatics/SakAnalytics/pull/42",
+        "state": "open",
+        "draft": true,
+        "merged": false,
+        "head_sha": "6bc52d022561775e75f2ee57f39e7848668a6b8b",
+        "body": "提供内容: 標準ライブラリだけで動く単一ファイルを生成し、数値の基本統計、2組の比較、境界・epsilonの確認をCLIで利用できます。母標準偏差を明示し、ゼロ基準の増減率はnullと理由を返します。\n\n検証: 生成ファイルの隔離実行と正常・不正入力のunittestを実施。wheel経由のuv tool installと実行を確認。生成ディレクトリからの直接インストールはオフライン環境のビルド依存不足で未確認です。\n\n残作業: Aoi連携、CSV入力、数列の収束判定、フル機能の統合検証。Draftのまま維持します。"
+      }
+    },
+    "OneLinearNumerousMemo": {
+      "readme": "https://github.com/myon-bioinformatics/OneLinearNumerousMemo/blob/main/README.md",
+      "blob_sha": "da1c007c2c3912c0e5ed269680dd7b4feb17029f"
+    }
+  }
+}
