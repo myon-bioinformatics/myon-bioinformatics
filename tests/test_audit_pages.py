@@ -127,10 +127,8 @@ class PublicationTests(unittest.TestCase):
             html=(out/'index.html').read_text()
             self.assertIn('src="audit-model.js"',html)
             self.assertIn('href="component-ops/"', html)
-            for name in ('app.js', 'evidence.json'):
+            for name in ('index.html', 'app.js', 'evidence.json'):      # component-ops/ now only points to operations.html
                 self.assertEqual((out/'component-ops'/name).read_bytes(), (build.ROOT/'site/component-ops'/name).read_bytes())
-            self.assertIn('class="ui-heading"', (out/'component-ops/index.html').read_text())
-            self.assertIn('2026.11.11', (out/'component-ops/index.html').read_text())
             self.assertNotIn('src="/',html)
             ui = ci._load_web_ui()
             self.assertEqual((out/'pswb-shell.css').read_text(), ''.join(ui.css_source(name) for name in ('tokens.css', 'shell.css', 'records.css', 'scroll.css')))

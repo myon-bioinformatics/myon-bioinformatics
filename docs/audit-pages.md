@@ -227,5 +227,29 @@ PSWB #134へ5状態の手順カードとフィルタを還元しました。採�
 見出し・観測日時・ビルド時の観測JSON保存・横スクロールは PSWB を利用します。
 `scroll-controls.js` は親固有の領域を PSWB に接続するだけです。
 生成する `pswb-scroll.js` / `pswb-records.js` / `pswb-shell.css` は同じ vendor から出力し、ソースZIPにも収録します。
-Component Ops の見出しは同じビルダーで生成し、根拠の確認日は更新しません。
+旧 `component-ops/` は `operations.html` への案内になったため、見出しは差し込みません。
 ブラウザの作業記録JSONとビルド時の観測JSONは別です。取得・CI判定・依存計算は親側に残します。
+
+## 運用ページの責務整理
+
+`workspace.html` は確認順序と各ページの入口です。依存・固定SHA・vendor参照は
+既存の `index.html#dependencies` を再利用し、別の表を作りません。
+`evidence.html` は既存の公開時生成 `evidence-data.json` を使用します。
+ローカル確認用の固定スナップショットは新たに公開しません。
+
+`operations.html` はREADME確認日とmain SHAを持つ9工程を案内します。
+コマンドは未実行であり、READMEの期待出力と実測結果は区別します。
+ErrorRoadRunnerのcheckout入口はtriage.py、配布入口はerroroadrunnerです。
+BlueProbeのURL取得・cache生成とQueRyuの条件付き取得・cache履歴を区別します。
+旧component-ops/は新ページへの案内です。
+
+`records.html` が証跡・運用の手動完了記録と比較用週次記録を扱います。
+両ページの保存先はmyon-workspace-v2、5状態と次アクションを共通化しました。
+監査ビルドが生成する13週の観測履歴は従来どおりhistory.jsonに保持します。
+旧originからはJSONで移行します。同originの旧記録移行は元データを削除せず、
+既存IDを上書きしません。監査独自チェック・旧historyは元のJSONで保持します。
+手入力の完了はGitHub closureやマージ許可、CI成功を意味しません。
+
+workspace.js/CSSはPSWBへの還元候補です。PSWBのvendor pinや子リポジトリは
+この変更では更新しません。Node 26・Python 3.11+・既存setup-uv方針を維持し、
+追加のnpm/Python実行依存やworkflow権限はありません。

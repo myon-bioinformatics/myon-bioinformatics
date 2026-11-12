@@ -32,7 +32,7 @@ BASE_URL = 'https://myon-bioinformatics.github.io/myon-bioinformatics'
 VIEWS = (('all', '▤', '監査一覧', '監査ワークスペース'), ('focus', '◎', '優先対応', '優先対応'),
          ('dependencies', '⇄', '依存・統合順序・固定SHA', '依存・統合順序・固定SHA'), ('progress', '▦', '共通化の進捗', '共通化の進捗'),
          ('history', '◷', '週次記録', '週次スナップショット'), ('done', '✓', '完了記録', '完了記録'))
-LINKS = (('evidence.html', '◉ GitHub検証証跡 ↗'), ('component-ops/', '利用導線・責務移管 ↗'))  # other pages, before the actions
+LINKS = (('workspace.html', '運用の確認・記録'), ('evidence.html', '◉ GitHub検証証跡 ↗'), ('component-ops/', '利用導線・責務移管 ↗'))  # other pages, before the actions
 ACTIONS = (('refresh', '↻ 観測値を再読込', ''), ('import', '↑ JSON読込', ''), ('export', '↓ 記録を書出し', ''), ('snapshot', '＋ 週次記録', 'primary'))
 # (id, aria-label, first option, further options): app.js fills repo and axis from the data.
 FILTERS = (('repo', 'リポジトリ', '全リポジトリ', ()),
@@ -141,18 +141,6 @@ def observatory_page(snapshot=None, theme=THEME):
 </body>
 </html>
 '''
-
-
-def operations_page(source):
-    """Share the operations heading while retaining its evidence date and domain UI."""
-    ui = ci._load_web_ui()
-    heading = ui.page_heading(
-        'コンポーネント運用ビュー', eyebrow='MYON-BIOINFORMATICS / OPERATIONS GUIDE',
-        lead='実行手順と責務移管を確認します。',
-        chips=(('← 親の監査画面', '../'),),
-        stamp={'label': '根拠の確認日 / JST', 'value': '2026.11.11',
-               'note': 'README main + 関連Draft PR\nコマンドの実行検証は未実施'})
-    return source.replace('<!-- PSWB_PAGE_HEADING -->', heading)
 
 
 def pswb_css():
@@ -443,8 +431,6 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         operations = source_root / 'site/component-ops'
         if operations.is_dir():
             shutil.copytree(operations, stage / 'component-ops')
-            target = stage / 'component-ops/index.html'
-            target.write_text(operations_page(target.read_text(encoding='utf-8')), encoding='utf-8')
         (stage / 'index.html').write_text(observatory_page(snapshot), encoding='utf-8')
         (stage / 'pswb-shell.css').write_text(pswb_css(), encoding='utf-8')
         ui = ci._load_web_ui()
@@ -464,8 +450,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
             if operations.is_dir():
                 for path in sorted(operations.rglob('*')):
                     if path.is_file():
-                        published = stage / path.relative_to(source_root / 'site')
-                        archive.write(published, path.relative_to(source_root))
+                        archive.write(path, path.relative_to(source_root))
             for name in ('pswb-shell.css', 'pswb-scroll.js', 'pswb-records.js'):
                 archive.write(stage / name, 'site/ui/' + name)
             archive.write(source_root / 'tools/build_audit_pages.py', 'tools/build_audit_pages.py')
@@ -506,4 +491,3 @@ def main(argv=None):
 
 if __name__ == '__main__':
     raise SystemExit(main())
-
