@@ -49,6 +49,41 @@ POST_BASELINE_ENROLLMENTS = {
 }
 
 
+# Registry entries retired after the reviewed snapshots, and what replaced them. As with the enrollments above, the
+# registry lands first, so a reviewed lock that holds none of the replacements is compared with the retired entries
+# until its consumer is re-observed.
+POST_BASELINE_REPLACEMENTS = {
+    # web-ui handed its card-flow code to ascii_artist: Ironmate takes the module and the sample from there.
+    "myon-bioinformatics/Ironmate": {
+        "retired": [
+            {"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "tool/flow_diagram.py", "destination": "vendor/web_ui_flow.py", "license": "vendor/web-ui-LICENSE"},
+            {"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "examples/pr-flow.json", "destination": "examples/flow.json"},
+            {"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "tool/flow_diagram.py", "destination": "vendor/web_ui/tool/flow_diagram.py"},
+            {"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "tool/flow_patch.py", "destination": "vendor/web_ui/tool/flow_patch.py"},
+            {"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "js/flow.cjs", "destination": "vendor/web_ui/js/flow.cjs"},
+            {"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "js/flow-patch.cjs", "destination": "vendor/web_ui/js/flow-patch.cjs"},
+        ],
+        "added": [{"repository": "myon-bioinformatics/ascii_artist", "source": "examples/pr-flow.json", "destination": "examples/flow.json"}],
+    },
+}
+
+
+def _key(entry):
+    return entry["repository"].casefold(), entry["source"], entry["destination"].casefold()
+
+
+def before_replacements(registry, name, lock):
+    """``registry`` as ``name``'s reviewed ``lock`` last saw it: the retired entries back if the lock holds no replacement."""
+    change = POST_BASELINE_REPLACEMENTS.get(name)
+    if not change or {_key(e) for e in change["added"]} & {_key(e) for e in lock["files"]}:
+        return registry
+    registry = copy.deepcopy(registry)
+    consumer = next(c for c in registry["consumers"] if c["repository"].casefold() == name.casefold())
+    added = {_key(e) for e in change["added"]}
+    consumer["entries"] = [e for e in consumer["entries"] if _key(e) not in added] + copy.deepcopy(change["retired"])
+    return registry
+
+
 def baseline_registry(registry):
     registry = copy.deepcopy(registry)
     for consumer in registry["consumers"]:
@@ -69,6 +104,9 @@ def test_post_baseline_enrollments_are_registered():
         row = vendor_consumers.get_consumer(registry, name)
         seen = {e["destination"] for e in row["entries"]} | {e.get("license") for e in row["entries"]}
         assert paths <= seen
+    for name, change in POST_BASELINE_REPLACEMENTS.items():
+        keys = {_key(e) for e in vendor_consumers.get_consumer(registry, name)["entries"]}
+        assert {_key(e) for e in change["added"]} <= keys and not {_key(e) for e in change["retired"]} & keys
 
 
 @pytest.mark.parametrize("name", sorted(FIXTURES))
@@ -77,6 +115,7 @@ def test_observed_lock_topology_and_immutable_revision(name):
     heads = vendor_sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
     fixture = LATEST_FIXTURES.get(name, ROLLOUT_FIXTURES.get(name, REFRESHED_FIXTURES.get(name, FIXTURES[name])))
     lock = vendor_sync.validate(fixture["lock"])
+    registry = before_replacements(registry, name, lock)
     observed = json.loads((ROOT / "tests/fixtures/parent_observation_20261102.json").read_text())
     expected_sha = fixture["sha"]
     if name in ROLLOUT_FIXTURES or name in LATEST_FIXTURES:
@@ -130,7 +169,7 @@ def test_ironmate_adoption_preserves_previous_snapshot_and_checks_new_entries():
     assert all(row["repository"] == "myon-bioinformatics/Aoi" and
                row["ref"] == row["commit"] == "9cfa841818de56a22048c8c6196f10f698118122"
                for row in added)
-    registry = baseline_registry(json.loads((ROOT / "vendor-consumers.json").read_text()))
+    registry = before_replacements(baseline_registry(json.loads((ROOT / "vendor-consumers.json").read_text())), name, current["lock"])
     assert vendor_consumers.compare(registry, current["lock"], name)["matches"]
     assert not vendor_consumers.compare(registry, old["lock"], name)["matches"]
 
@@ -155,5 +194,5 @@ def test_rename_rollout_is_exact_without_identity_fallback():
     }
     for name, fixture in ROLLOUT_FIXTURES.items():
         assert fixture["sha"] == heads["heads"][name]["sha"]
-        assert vendor_consumers._compare_exact(registry, fixture["lock"], name)["matches"]
+        assert vendor_consumers._compare_exact(before_replacements(registry, name, fixture["lock"]), fixture["lock"], name)["matches"]
         assert all(row["ref"] == row["commit"] for row in fixture["lock"]["files"])

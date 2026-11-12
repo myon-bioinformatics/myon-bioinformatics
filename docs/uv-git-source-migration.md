@@ -105,7 +105,7 @@ are not exported by that package, so they remain raw-fetch candidates.
 | browser-test-kit | `scripts/interaction.mjs` |
 | browser-test-kit | `scripts/browser_execution.mjs` |
 | gh_identity, Ironmate, and this parent | `LICENSE` next to a locked tool |
-| web-ui | `css/*.css`, `js/*.js`, `js/flow.cjs`, `js/flow-patch.cjs`, `examples/pr-flow.json` |
+| ascii_artist | `examples/pr-flow.json` (web-ui's CSS and JS now live in `web_ui.py`, and its flow code moved to ascii_artist) |
 
 ## What this parent runs
 
