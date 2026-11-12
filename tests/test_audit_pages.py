@@ -91,11 +91,14 @@ class PublicationTests(unittest.TestCase):
             def handle_starttag(self, tag, attrs):
                 self.rows.append((tag, dict(attrs)))
         html = build.observatory_page()
+        self.assertIn('<option>調査中</option><option>着手中</option><option>完了</option><option>保留</option><option>ブロッカー</option>', html)
         self.assertIn('<div class="eyebrow">監査</div>', html)
         self.assertIn('PR・Issue・CI・依存関係を確認します。', html)
         self.assertNotIn('ENGINEERING HEALTH', html)
         self.assertNotIn('気づく。揃える。次の週へつなぐ。', html)
         self.assertEqual(html.count('href="component-ops/"'), 1)
+        self.assertEqual(html.count('href="evidence.html"'), 1)
+        self.assertLess(html.index('href="evidence.html"'), html.index('href="component-ops/"'))
         self.assertFalse((Path(__file__).resolve().parents[1] / "site/ui/index.html").exists())   # assembled, not hand-written
         self.assertEqual(html.count('data-view="history"'), 3)                                    # side, top, footer: one VIEWS list
         self.assertIn('<body data-ui-theme="green">', html)
@@ -305,3 +308,81 @@ class TaskPlanTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+
+class GithubEvidencePagesTests(unittest.TestCase):
+    def test_counts_keep_missing_api_values_distinct_from_observed_inventory(self):
+        result = build.github_evidence(snapshot())
+        count = result['repository_counts'][0]
+        self.assertEqual((count['issues'], count['pull_requests']), (0, 1))
+        self.assertIsNone(count['open_issues_count'])
+        self.assertIsNone(count['get_issues'])
+
+    def test_changes_compare_semantic_values_and_preserve_capture_date(self):
+        current = snapshot()
+        current['records'][0]['github_state'] = 'open'
+        captured = {'schema':'github-evidence/1', 'built_at':'2026-11-01T00:00:00Z',
+                    'records':[dict(current['records'][0], head_sha='b'*40, events=[])]}
+        result = build.github_evidence(current, captured)
+        self.assertEqual(result['previous_at'], captured['built_at'])
+        self.assertEqual(result['changes'][0]['changes']['head_sha']['before'], 'b'*40)
+        self.assertNotIn('metadata_checked', result['changes'][0]['changes'])
+
+    def test_current_head_invalidates_captured_ci_without_inventing_closure(self):
+        from tools.build_audit_pages import github_evidence as project
+        current = snapshot()
+        current['records'][0].update(head_sha='b'*40, ci_head='b'*40,
+                                     metadata_checked=current['generated_at'], github_state='open',
+                                     checks=[{'name':'CI','status':'completed','conclusion':'success'}])
+        captured = {'schema':'github-evidence/1', 'records':[
+            dict(current['records'][0], head_sha='a'*40, metadata_checked='2026-11-01T00:00:00Z',
+                 events=[{'type':'ci','head_sha':'a'*40,'conclusion':'success'}]),
+            {'id':'Demo#2','repository':'Demo','kind':'pr','number':2,'github_state':'open','events':[]},
+            {'id':'unavailable#3','repository':'unavailable','kind':'pr','number':3,'events':[]}]}
+        result = project(current, captured)
+        records = {x['id']:x for x in result['records']}
+        self.assertNotIn('unavailable#3', records)
+        record = records['Demo#1']
+        self.assertEqual(record['head_sha'], 'b'*40)
+        self.assertTrue(record['events'][0]['historical'])
+        self.assertEqual(record['events'][-1]['head_sha'], 'b'*40)
+        self.assertIsNone(record['events'][-1]['at'])
+        self.assertEqual(records['Demo#2']['github_state'], 'open')
+        self.assertEqual(records['Demo#2']['inventory_presence'], 'absent')
+        self.assertNotIn('main_sha', record)
+        self.assertFalse(captured['records'][0]['events'][0].get('historical', False))
+
+    def test_post_merge_requires_exact_successful_commit_and_main_is_independent(self):
+        from tools.build_audit_pages import github_evidence as project
+        for sha, ci, branch, expected in [('m'*40,'COMPLETE','main',True),
+                                           ('n'*40,'COMPLETE','main',False),
+                                           ('m'*40,'FAILED','main',False),
+                                           ('m'*40,'COMPLETE','develop',True)]:
+            current = snapshot()
+            current['integrations'] = [{'repository':'Demo','branch':branch,'head_sha':sha,'ci':ci,
+                'merged':[{'number':1,'merged_at':'2026-11-08T00:00:00Z',
+                           'merge_commit_sha':'m'*40,'url':current['records'][0]['url']}]}]
+            record = project(current)['records'][0]
+            self.assertEqual(record['github_state'], 'closed')
+            self.assertTrue(record['merged'])
+            self.assertEqual(any(e['type']=='post_merge' for e in record['events']), expected)
+            self.assertEqual(record['main_sha'], sha if branch=='main' else None)
+
+    def test_pages_and_source_archive_include_evidence(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)/'dist'
+            with patch.object(build,'public_repositories',return_value=['Demo']), patch.object(ci,'audit',return_value=snapshot()), patch.object(ci,'integration_status',return_value={'repository':'Demo','ci':'UNKNOWN'}):
+                build.build(out)
+            for asset in ('evidence.html','evidence.css','evidence.js','evidence-model.js','evidence-data.json'):
+                self.assertTrue((out/asset).is_file(), asset)
+            self.assertIn('evidence.html', (out/'index.html').read_text())
+            with zipfile.ZipFile(out/'pages-source.zip') as archive:
+                self.assertIn('tools/build_audit_pages.py', archive.namelist())
+                self.assertIn('site/ui/evidence.html', archive.namelist())
+                self.assertNotIn('site/ui/evidence-data.json', archive.namelist())
+            alias = (out/'dependencies.html').read_text()
+            self.assertIn('url=index.html#dependencies', alias)
+            self.assertNotIn('<table', alias)
+            self.assertIn("DOMContentLoaded',routeAuditView", (out/'app.js').read_text())

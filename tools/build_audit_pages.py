@@ -5,6 +5,9 @@ No writes to GitHub. On any incomplete observation the deployed site is retained
 """
 from __future__ import annotations
 import argparse
+import copy
+import gzip
+import re
 import datetime as dt
 from html import escape
 import json
@@ -29,12 +32,12 @@ BASE_URL = 'https://myon-bioinformatics.github.io/myon-bioinformatics'
 VIEWS = (('all', '▤', '監査一覧', '監査ワークスペース'), ('focus', '◎', '優先対応', '優先対応'),
          ('dependencies', '⇄', '依存・統合順序・固定SHA', '依存・統合順序・固定SHA'), ('progress', '▦', '共通化の進捗', '共通化の進捗'),
          ('history', '◷', '週次記録', '週次スナップショット'), ('done', '✓', '完了記録', '完了記録'))
-LINKS = (('component-ops/', '利用導線・責務移管 ↗'),)  # other pages, before the actions
+LINKS = (('evidence.html', '◉ GitHub検証証跡 ↗'), ('component-ops/', '利用導線・責務移管 ↗'))  # other pages, before the actions
 ACTIONS = (('refresh', '↻ 観測値を再読込', ''), ('import', '↑ JSON読込', ''), ('export', '↓ 記録を書出し', ''), ('snapshot', '＋ 週次記録', 'primary'))
 # (id, aria-label, first option, further options): app.js fills repo and axis from the data.
 FILTERS = (('repo', 'リポジトリ', '全リポジトリ', ()),
            ('ci', 'CI', 'すべてのCI', ('失敗', '成功', '実行中', '不明', '不完全', 'チェックなし', '対象外')),
-           ('state', '作業状態', 'すべての状態', ('未着手', '調査中', '対応中', '保留', 'ブロッカー', '統合済み', 'ブロック', '完了')),
+           ('state', '作業状態', 'すべての状態', ('調査中', '着手中', '完了', '保留', 'ブロッカー')),
            ('axis', '監査軸', 'すべての監査軸', ()))
 SCRIPTS = ('audit-model.js', 'scroll-controls.js', 'app.js', 'integration.js')
 THEME = 'green'  # a PySaiyanWeBoo token theme (web_ui.theme_palettes()); style.css reads its --ui-* tokens
@@ -239,6 +242,130 @@ def split_fleet(report):
     return section, graph
 
 
+SCHEMA = 'github-evidence/1'
+
+
+def _time(value):
+    try:
+        return dt.datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp()
+    except (ValueError, TypeError, AttributeError):
+        return float('-inf')
+
+
+def _checks(record, checks, sha, observed, *, phase='pre_merge'):
+    for check in checks:
+        url = check.get('url') or ''
+        match = re.search(r'/runs/(\d+)(?:/job/(\d+))?', url)
+        record['events'].append({
+            'type': 'ci', 'at': None, 'observed_at': observed, 'head_sha': sha,
+            'name': check.get('name'), 'status': check.get('status'),
+            'conclusion': check.get('conclusion'), 'url': url,
+            'run_id': match[1] if match else None,
+            'job_id': match[2] if match else None, 'attempt': None,
+            'phase': phase, 'source': 'Pages parent-audit/1 / executed checks; execution time not returned',
+        })
+
+
+def github_evidence(snapshot, captured=None):
+    """Missing open-list entries never imply closure; base SHA never becomes main SHA."""
+    if snapshot.get('schema') != 'parent-audit/1':
+        raise ValueError('expected parent-audit/1')
+    if captured and captured.get('schema') != SCHEMA:
+        raise ValueError('invalid captured evidence schema')
+    public = set(snapshot['repositories'])
+    records = {}
+    for value in (captured or {}).get('records', []):
+        if value['repository'] in public:
+            record = copy.deepcopy(value)
+            record['inventory_presence'] = 'absent'
+            records[record['id']] = record
+    observed = snapshot['generated_at']
+    for value in snapshot['records']:
+        if value['repository'] not in public:
+            continue
+        record = records.setdefault(value['id'], {'id': value['id'], 'events': []})
+        record['inventory_presence'] = 'present'
+        at = value.get('metadata_checked') or value.get('checked') or observed
+        if _time(at) < _time(record.get('metadata_checked')):
+            continue
+        for field in ('repository', 'number', 'kind', 'title', 'url', 'head_sha', 'base_sha',
+                      'base_ref', 'head_ref', 'draft', 'mergeable', 'mergeable_state', 'labels',
+                      'github_state', 'merged', 'merged_at', 'closed_at', 'merge_commit_sha'):
+            if field in value:
+                record[field] = value[field]
+        record['metadata_checked'] = at
+        record['events'].append({'type': 'status_sync', 'at': at, 'head_sha': record.get('head_sha'),
+                                 'state': record.get('github_state'), 'url': record.get('url'),
+                                 'source': 'Pages parent-audit/1 current observation'})
+        if value.get('ci_head') and value['ci_head'] == value.get('head_sha'):
+            for event in record['events']:
+                if event['type'] in ('ci', 'job'):
+                    event['historical'] = True
+            _checks(record, value.get('checks', []), value['ci_head'],
+                    value.get('workflow_checked') or at)
+    integrations = {value['repository']: value for value in snapshot.get('integrations', [])}
+    for record in records.values():
+        integration = integrations.get(record['repository'])
+        if not integration:
+            continue
+        if integration.get('branch') == 'main' and integration.get('head_sha'):
+            record['main_sha'] = integration['head_sha']
+            record['main_observed_at'] = integration.get('checked_at') or observed
+            record['events'].append({'type': 'main_sync', 'at': record['main_observed_at'],
+                                     'head_sha': record['main_sha'], 'source': 'Pages integration_status / main'})
+        else:
+            record['main_sha'] = None
+            record['main_observed_at'] = observed
+        merged = next((x for x in integration.get('merged', [])
+                       if record['kind'] == 'pr' and x['number'] == record['number']), None)
+        if merged:
+            record.update(merged=True, github_state='closed', merged_at=merged['merged_at'],
+                          closed_at=merged['merged_at'], merge_commit_sha=merged.get('merge_commit_sha'))
+            record['events'].append({'type': 'closure', 'at': merged['merged_at'], 'merged': True,
+                                     'url': merged['url'], 'source': 'Pages bounded merged-PR API history'})
+            if (record.get('merge_commit_sha') == integration.get('head_sha')
+                    and integration.get('ci') == 'COMPLETE'):
+                record['events'].append({'type': 'post_merge', 'at': None,
+                                         'observed_at': integration.get('checked_at') or observed,
+                                         'head_sha': record['merge_commit_sha'], 'conclusion': 'success',
+                                         'source': 'Pages exact merge-commit checks / required checks not assessed'})
+                _checks(record, integration.get('checks', []), record['merge_commit_sha'],
+                        integration.get('checked_at') or observed, phase='post_merge')
+    counts = snapshot.get('repository_counts')
+    if counts is None:
+        counts = [{'repository': name, 'open_issues_count': None, 'get_issues': None,
+                   'issues': sum(r['repository'] == name and r['kind'] == 'issue'
+                                 and r.get('github_state', 'open') == 'open' for r in snapshot['records']),
+                   'pull_requests': sum(r['repository'] == name and r['kind'] == 'pr'
+                                        and r.get('github_state', 'open') == 'open' for r in snapshot['records']),
+                   'checked': observed, 'sources': []} for name in sorted(public)]
+    before = {r['id']: r for r in (captured or {}).get('records', [])}
+    fields = ('head_sha', 'main_sha', 'github_state', 'merged', 'draft', 'mergeable')
+    changes = []
+    for key, record in records.items():
+        values = {field: {'before': before.get(key, {}).get(field), 'after': record.get(field)}
+                  for field in fields if before.get(key, {}).get(field) != record.get(field)}
+        if values:
+            changes.append({'id': key, 'changes': values})
+    return {'schema': SCHEMA, 'built_at': observed, 'audit_observed_at': observed,
+            'repository_counts': counts, 'changes': changes,
+            'previous_at': (captured or {}).get('built_at'),
+            'captured_at': (captured or {}).get('built_at'),
+            'coverage': 'Pages公開時の監査＋保存済み証跡。コメント・レビュー・attempt履歴は取得済み範囲のみ。'
+                        '一覧からの消失はclosureではありません。bot checksの除外など監査側の取得範囲も継承します。'
+                        'required checksの照合、マージ実行、GitHubへの書込みは行いません。',
+            'records': list(records.values())}
+
+
+def write_github_evidence(snapshot, stage, *, source_root):
+    source = Path(source_root) / 'site/evidence/observations.json.gz'
+    captured = json.loads(gzip.decompress(source.read_bytes())) if source.exists() else None
+    result = github_evidence(snapshot, captured)
+    (Path(stage) / 'evidence-data.json').write_text(
+        json.dumps(result, ensure_ascii=False, separators=(',', ':')) + '\n', encoding='utf-8')
+    return result
+
+
 def build(out, *, repos=None, previous=None, previous_history=None, source_root=ROOT, fleet=None):
     out = Path(out)
     before = previous_json(previous)
@@ -288,11 +415,13 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         (stage / 'dependencies.html').write_text(
             '<!doctype html><html lang="ja"><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
-            '<title>依存順序・固定SHA</title><body><a href="index.html">監査画面へ戻る</a>'
-            + ci.render_dependency_report(snapshot) + '</body></html>', encoding='utf-8')
+            '<meta http-equiv="refresh" content="0;url=index.html#dependencies">'
+            '<title>依存・統合順序</title><a href="index.html#dependencies">依存・統合順序を開く</a></html>',
+            encoding='utf-8')
         for asset in (source_root / 'site/ui').iterdir():
             if asset.is_file():
                 shutil.copyfile(asset, stage / asset.name)
+        write_github_evidence(snapshot, stage, source_root=source_root)
         # Publish the standalone operations guide alongside the audit workspace.
         operations = source_root / 'site/component-ops'
         if operations.is_dir():
@@ -317,6 +446,9 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
             archive.write(stage / 'pswb-shell.css', 'site/ui/pswb-shell.css')
             archive.write(source_root / 'tools/build_audit_pages.py', 'tools/build_audit_pages.py')
             archive.write(source_root / 'docs/audit-pages.md', 'docs/audit-pages.md')
+            captured = source_root / 'site/evidence/observations.json.gz'
+            if captured.exists():
+                archive.write(captured, 'site/evidence/observations.json.gz')
         # Publication is a single Pages artifact; all validation has finished before copying it.
         if out.exists():
             shutil.rmtree(out)
@@ -350,3 +482,4 @@ def main(argv=None):
 
 if __name__ == '__main__':
     raise SystemExit(main())
+
