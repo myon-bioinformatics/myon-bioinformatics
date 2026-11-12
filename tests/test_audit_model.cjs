@@ -5,7 +5,7 @@ const url='https://github.com/myon-bioinformatics/Aoi/pull/167';
 const observation={id:'Aoi#167',repository:'Aoi',number:167,kind:'pr',url,title:'<script>',head_sha:'a'.repeat(40),ci:'COMPLETE',review:0,review_complete:true,checks:[],state:''};
 test('canonical parent snapshot retains complete zero reviews and exact head',()=>{
  const [r]=m.normalize({records:[observation],generated_at:'2026-11-08T00:00:00Z'});
- assert.equal(r.id,url);assert.equal(r.head,'a'.repeat(40));assert.equal(r.review,0);assert.equal(r.ci,'成功');assert.equal(r.state,'未着手');
+ assert.equal(r.id,url);assert.equal(r.head,'a'.repeat(40));assert.equal(r.review,0);assert.equal(r.ci,'成功');assert.equal(r.state,'調査中');
  assert.equal(r.checked,'2026-11-08T00:00:00Z');
 });
 test('unknown reviews never become zero and failed check evidence is exposed',()=>{
@@ -87,3 +87,5 @@ test('overlap only compares known file inventories in the same repository',()=>{
 
 require('./test_github_evidence.cjs');
 
+
+test('legacy work states migrate without changing GitHub status',()=>{for(const [before,after] of Object.entries({'未着手':'調査中','対応中':'着手中','ブロック':'ブロッカー','統合済み':'完了'})){const r=m.normalize({records:[{...observation,state:before,github_state:'open'}]})[0];assert.equal(r.state,after);assert.equal(r.github_state,'open')}});
