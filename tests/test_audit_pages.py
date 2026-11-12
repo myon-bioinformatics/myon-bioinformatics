@@ -340,3 +340,7 @@ class GithubEvidencePagesTests(unittest.TestCase):
                 self.assertIn('tools/build_audit_pages.py', archive.namelist())
                 self.assertIn('site/ui/evidence.html', archive.namelist())
                 self.assertNotIn('site/ui/evidence-data.json', archive.namelist())
+            alias = (out/'dependencies.html').read_text()
+            self.assertIn('url=index.html#dependencies', alias)
+            self.assertNotIn('<table', alias)
+            self.assertIn("DOMContentLoaded',routeAuditView", (out/'app.js').read_text())
