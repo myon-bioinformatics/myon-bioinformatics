@@ -270,6 +270,23 @@ if __name__ == '__main__':
 
 
 class GithubEvidencePagesTests(unittest.TestCase):
+    def test_counts_keep_missing_api_values_distinct_from_observed_inventory(self):
+        result = build.github_evidence(snapshot())
+        count = result['repository_counts'][0]
+        self.assertEqual((count['issues'], count['pull_requests']), (0, 1))
+        self.assertIsNone(count['open_issues_count'])
+        self.assertIsNone(count['get_issues'])
+
+    def test_changes_compare_semantic_values_and_preserve_capture_date(self):
+        current = snapshot()
+        current['records'][0]['github_state'] = 'open'
+        captured = {'schema':'github-evidence/1', 'built_at':'2026-11-01T00:00:00Z',
+                    'records':[dict(current['records'][0], head_sha='b'*40, events=[])]}
+        result = build.github_evidence(current, captured)
+        self.assertEqual(result['previous_at'], captured['built_at'])
+        self.assertEqual(result['changes'][0]['changes']['head_sha']['before'], 'b'*40)
+        self.assertNotIn('metadata_checked', result['changes'][0]['changes'])
+
     def test_current_head_invalidates_captured_ci_without_inventing_closure(self):
         from tools.build_audit_pages import github_evidence as project
         current = snapshot()
