@@ -49,9 +49,9 @@ POST_BASELINE_ENROLLMENTS = {
 }
 
 
-# Registry entries retired after the reviewed snapshots, and what replaced them. As with the enrollments above, the
-# registry lands first, so a reviewed lock that holds none of the replacements is compared with the retired entries
-# until its consumer is re-observed.
+# Registry entries retired after the reviewed snapshots, and what replaced them. Unlike pure additions, PR validation
+# compares retired entries strictly with the merged child, so the child lands first; until the parent re-observes it,
+# a reviewed lock that holds none of the replacements is compared with the retired entries.
 POST_BASELINE_REPLACEMENTS = {
     # web-ui handed its card-flow code to ascii_artist: Ironmate takes the module and the sample from there.
     "myon-bioinformatics/Ironmate": {
