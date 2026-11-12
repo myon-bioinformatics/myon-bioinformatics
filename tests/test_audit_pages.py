@@ -266,3 +266,60 @@ class TaskPlanTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+
+class GithubEvidencePagesTests(unittest.TestCase):
+    def test_current_head_invalidates_captured_ci_without_inventing_closure(self):
+        from tools.build_audit_pages import github_evidence as project
+        current = snapshot()
+        current['records'][0].update(head_sha='b'*40, ci_head='b'*40,
+                                     metadata_checked=current['generated_at'], github_state='open',
+                                     checks=[{'name':'CI','status':'completed','conclusion':'success'}])
+        captured = {'schema':'github-evidence/1', 'records':[
+            dict(current['records'][0], head_sha='a'*40, metadata_checked='2026-11-01T00:00:00Z',
+                 events=[{'type':'ci','head_sha':'a'*40,'conclusion':'success'}]),
+            {'id':'Demo#2','repository':'Demo','kind':'pr','number':2,'github_state':'open','events':[]},
+            {'id':'unavailable#3','repository':'unavailable','kind':'pr','number':3,'events':[]}]}
+        result = project(current, captured)
+        records = {x['id']:x for x in result['records']}
+        self.assertNotIn('unavailable#3', records)
+        record = records['Demo#1']
+        self.assertEqual(record['head_sha'], 'b'*40)
+        self.assertTrue(record['events'][0]['historical'])
+        self.assertEqual(record['events'][-1]['head_sha'], 'b'*40)
+        self.assertIsNone(record['events'][-1]['at'])
+        self.assertEqual(records['Demo#2']['github_state'], 'open')
+        self.assertEqual(records['Demo#2']['inventory_presence'], 'absent')
+        self.assertNotIn('main_sha', record)
+        self.assertFalse(captured['records'][0]['events'][0].get('historical', False))
+
+    def test_post_merge_requires_exact_successful_commit_and_main_is_independent(self):
+        from tools.build_audit_pages import github_evidence as project
+        for sha, ci, branch, expected in [('m'*40,'COMPLETE','main',True),
+                                           ('n'*40,'COMPLETE','main',False),
+                                           ('m'*40,'FAILED','main',False),
+                                           ('m'*40,'COMPLETE','develop',True)]:
+            current = snapshot()
+            current['integrations'] = [{'repository':'Demo','branch':branch,'head_sha':sha,'ci':ci,
+                'merged':[{'number':1,'merged_at':'2026-11-08T00:00:00Z',
+                           'merge_commit_sha':'m'*40,'url':current['records'][0]['url']}]}]
+            record = project(current)['records'][0]
+            self.assertEqual(record['github_state'], 'closed')
+            self.assertTrue(record['merged'])
+            self.assertEqual(any(e['type']=='post_merge' for e in record['events']), expected)
+            self.assertEqual(record['main_sha'], sha if branch=='main' else None)
+
+    def test_pages_and_source_archive_include_evidence(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)/'dist'
+            with patch.object(build,'public_repositories',return_value=['Demo']), patch.object(ci,'audit',return_value=snapshot()), patch.object(ci,'integration_status',return_value={'repository':'Demo','ci':'UNKNOWN'}):
+                build.build(out)
+            for asset in ('evidence.html','evidence.css','evidence.js','evidence-model.js','evidence-data.json'):
+                self.assertTrue((out/asset).is_file(), asset)
+            self.assertIn('evidence.html', (out/'index.html').read_text())
+            with zipfile.ZipFile(out/'pages-source.zip') as archive:
+                self.assertIn('tools/build_audit_pages.py', archive.namelist())
+                self.assertIn('site/ui/evidence.html', archive.namelist())
+                self.assertNotIn('site/ui/evidence-data.json', archive.namelist())

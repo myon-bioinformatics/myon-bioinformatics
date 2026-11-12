@@ -181,3 +181,28 @@ CI成功は観測したチェックの成功であり、required checks充足や
 ## 利用導線と責務移管
 
 別画面の `component-ops/` は、エラー調査から取得・抽出・分析・描画までの手順と移管判断を示します。表示は2026-11-11時点の確認に基づく静的な資料で、GitHubの最新状態を自動取得しません。公開時に `site/component-ops/` を同じPages artifactへコピーし、監査画面のサイドナビから参照します。更新時は根拠と確認日時を見直してください。
+
+
+## GitHub検証証跡ビュー
+
+`evidence.html` を監査画面から開く。Issue・PRのstatus sync、コメント、レビュー対象SHA、
+head/main SHA、run/attempt/job、supersessionの記載、closureを同じ対象IDで確認する。
+依存・競合・統合順序は既存画面を再利用する。検索、条件別フィルタ、時系列、比較、
+確認順序、5状態の作業記録、次アクション、完了記録、週次差分、JSON保存・読込に対応する。
+
+Pagesビルドは `tools/build_audit_pages.py` の証跡生成処理 で公開時の `parent-audit/1` と
+`site/evidence/observations.json.gz`（公開リポジトリから取得済みの証跡）を結合する。
+保存済み証跡の最新取得範囲はPSWB #134。全リポジトリのコメント・レビューや全attemptを
+再取得する機能ではない。現在の公開在庫に含まれないリポジトリは出力しない。
+生成した `evidence-data.json` は公開artifactのみへ出力し、取得済み入力と再生成コードは
+Pagesソースアーカイブへ収録する。追加依存やworkflow権限の変更はない。
+
+新しいheadの観測では過去CIを履歴として残し、現headのCIへ昇格させない。
+実行日時がないcheckには観測日時のみを表示する。base SHAをmain SHAとして扱わず、
+main以外の既定ブランチもmainと呼ばない。現行一覧からの消失、本文のsupersedes、
+手入力の完了だけではGitHub closureを推定しない。マージ後成功は観測対象と
+merge commitが完全一致する場合だけ記録する。CI成功はrequired checksの充足や承認を意味しない。
+
+作業記録はoriginごとのlocalStorageに保存する。Sitesから移す場合は証跡ビューの
+JSON書出し・読込を使用する。週次記録は最大8件の比較用要約を保持し、追加・更新・消失IDを表示する。
+GitHubへの書込み、マージ、CI起動は行わない。取得範囲の不足は画面に明示する。
