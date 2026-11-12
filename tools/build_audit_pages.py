@@ -296,8 +296,9 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         (stage / 'dependencies.html').write_text(
             '<!doctype html><html lang="ja"><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
-            '<title>依存順序・固定SHA</title><body><a href="index.html">監査画面へ戻る</a>'
-            + ci.render_dependency_report(snapshot) + '</body></html>', encoding='utf-8')
+            '<meta http-equiv="refresh" content="0;url=index.html#dependencies">'
+            '<title>依存・統合順序</title><a href="index.html#dependencies">依存・統合順序を開く</a></html>',
+            encoding='utf-8')
         for asset in (source_root / 'site/ui').iterdir():
             if asset.is_file():
                 shutil.copyfile(asset, stage / asset.name)

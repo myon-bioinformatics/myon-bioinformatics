@@ -1,7 +1,7 @@
 /* Pure data boundary shared by the Pages UI and Node's built-in regression tests. */
 (function(root) {
   'use strict';
-  const states = {'': '未着手', doing: '対応中', waiting: 'ブロック', done: '完了'};
+  const states = {'': '調査中', todo:'調査中', doing:'着手中', waiting:'ブロッカー', done:'完了', '未着手':'調査中', '対応中':'着手中', '作業中':'着手中', 'ブロック':'ブロッカー', '統合済み':'完了'};
   const ciLabels = {FAILED:'失敗', RUNNING:'実行中', COMPLETE:'成功', INCOMPLETE:'不完全', 'NO CHECKS':'チェックなし', UNKNOWN:'不明', '-':'対象外'};
   const fields = ['state','priority','next','blocker','notes','completed','dependencies','conflicts','order','noted_at','revalidated_head','revalidated_base','revalidated_at','revalidation_notes'];
   function safeURL(value) {
@@ -18,7 +18,7 @@
       return {...r, id:url, record_id:canonical?r.id:undefined, repo:r.repository || r.repo,
         type:canonical?(r.kind === 'pr'?'PR':'Issue'):r.type,
         head:r.head_sha || r.head || '', base:r.base_ref || r.base || '',
-        ci:ciLabels[r.ci] || r.ci || '不明', state:states[r.state] || r.state || '未着手',
+        ci:ciLabels[r.ci] || r.ci || '不明', state:states[r.state] || r.state || '調査中',
         checked:r.checked || o.generated_at || r.checked || '',
         review:canonical?(r.review_complete?r.review:null):(r.review??null),
         failure:checks.filter(c=>['failure','timed_out','action_required','startup_failure'].includes(c.conclusion))
