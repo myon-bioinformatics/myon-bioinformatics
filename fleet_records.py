@@ -361,10 +361,12 @@ def _corpus(rel, fleet, repo, rev, path, items, names):
                     state="success" if golden in files else "not_collected")
     whole = [x for x in items if isinstance(x, dict) and x.get("id")]
     identity = key_report(whole, [("id",), ("id", "source_file"), ("repo", "run_id", "artifact")])
-    differing = set(identity["id"]["examples"]) if identity["id"]["verdict"] == "collides" else set()
+    contents = {}
+    for item in whole:
+        contents.setdefault(item["id"], set()).add(json.dumps(item, sort_keys=True, ensure_ascii=False))
     for case, n in sorted(ids.items()):
         if n > 1:  # one id with different content is a broken key; the same entry listed twice is only a repeat
-            same = case not in differing and identity["id"]["collisions"] == 0
+            same = len(contents[case]) == 1
             rel.finding(repo, "repeated-entry" if same else "duplicate-id", f"{path}#{case}",
                         f"{path}: case id {case} appears {n} times" + (" with identical fields" if same else " with different fields"))
     counts["identity"] = {k: {f: v[f] for f in ("verdict", "distinct", "repeats", "collisions", "missing")} for k, v in identity.items()}
@@ -777,3 +779,4 @@ def relation_cycles(edges, *, limit=5):
                 path.append(child)
                 stack.append((child, iter(sorted(out.get(child, ())))))
     return cycles
+

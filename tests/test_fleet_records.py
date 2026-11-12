@@ -298,6 +298,27 @@ class ShapesCyclesLimits(unittest.TestCase):
         broken = records.key_report(rows + [{"id": "a", "run": 9, "job": "y"}], [("id",)])["id"]  # one more entry demotes it
         self.assertEqual((broken["verdict"], broken["examples"]), ("collides", ["a"]))
 
+    def test_corpus_distinguishes_repeats_from_other_ids_collisions(self):
+        class EmptyFleet:
+            def files(self, *_args):
+                return []
+
+        rows = [{"id": "repeat", "source_file": "same.xml"}] * 2
+        for index in range(7):  # More collisions than the five displayed examples.
+            rows.extend({"id": f"conflict-{index}", "source_file": source}
+                        for source in ("first.xml", "second.xml"))
+        rel = records.Relations()
+        records._corpus(rel, EmptyFleet(), "repo", "rev", "cases.json", rows, {})
+        findings = {f["subject"]: f for f in rel.findings
+                    if f["kind"] in ("repeated-entry", "duplicate-id")}
+        self.assertEqual(findings["cases.json#repeat"]["kind"], "repeated-entry")
+        self.assertIn("identical fields", findings["cases.json#repeat"]["detail"])
+        for index in range(7):
+            self.assertEqual(findings[f"cases.json#conflict-{index}"]["kind"], "duplicate-id")
+            self.assertIn("different fields", findings[f"cases.json#conflict-{index}"]["detail"])
+        identity = rel.coverage["repo"]["corpus:cases.json"]["identity"]["id"]
+        self.assertEqual((identity["repeats"], identity["collisions"]), (1, 7))
+
     def test_cycles_are_reported_and_the_rest_is_still_walked(self):
         relations = [{"kind": "derived_from", "source": "a:x", "target": "a:y", "lock": "a:r"},
                      {"kind": "derived_from", "source": "a:y", "target": "a:x", "lock": "a:r"},
@@ -376,3 +397,4 @@ class RealCheckouts(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
