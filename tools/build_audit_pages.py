@@ -212,7 +212,25 @@ def github_evidence(snapshot, captured=None):
                                          'source': 'Pages exact merge-commit checks / required checks not assessed'})
                 _checks(record, integration.get('checks', []), record['merge_commit_sha'],
                         integration.get('checked_at') or observed, phase='post_merge')
+    counts = snapshot.get('repository_counts')
+    if counts is None:
+        counts = [{'repository': name, 'open_issues_count': None, 'get_issues': None,
+                   'issues': sum(r['repository'] == name and r['kind'] == 'issue'
+                                 and r.get('github_state', 'open') == 'open' for r in snapshot['records']),
+                   'pull_requests': sum(r['repository'] == name and r['kind'] == 'pr'
+                                        and r.get('github_state', 'open') == 'open' for r in snapshot['records']),
+                   'checked': observed, 'sources': []} for name in sorted(public)]
+    before = {r['id']: r for r in (captured or {}).get('records', [])}
+    fields = ('head_sha', 'main_sha', 'github_state', 'merged', 'draft', 'mergeable')
+    changes = []
+    for key, record in records.items():
+        values = {field: {'before': before.get(key, {}).get(field), 'after': record.get(field)}
+                  for field in fields if before.get(key, {}).get(field) != record.get(field)}
+        if values:
+            changes.append({'id': key, 'changes': values})
     return {'schema': SCHEMA, 'built_at': observed, 'audit_observed_at': observed,
+            'repository_counts': counts, 'changes': changes,
+            'previous_at': (captured or {}).get('built_at'),
             'captured_at': (captured or {}).get('built_at'),
             'coverage': 'Pages公開時の監査＋保存済み証跡。コメント・レビュー・attempt履歴は取得済み範囲のみ。'
                         '一覧からの消失はclosureではありません。bot checksの除外など監査側の取得範囲も継承します。'
