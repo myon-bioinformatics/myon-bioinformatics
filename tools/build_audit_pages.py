@@ -32,7 +32,7 @@ BASE_URL = 'https://myon-bioinformatics.github.io/myon-bioinformatics'
 VIEWS = (('all', '▤', '監査一覧', '監査ワークスペース'), ('focus', '◎', '優先対応', '優先対応'),
          ('dependencies', '⇄', '依存・統合順序・固定SHA', '依存・統合順序・固定SHA'), ('progress', '▦', '共通化の進捗', '共通化の進捗'),
          ('history', '◷', '週次記録', '週次スナップショット'), ('done', '✓', '完了記録', '完了記録'))
-LINKS = (('evidence.html', '◉ GitHub検証証跡 ↗'), ('component-ops/', '利用導線・責務移管 ↗'))  # other pages, before the actions
+LINKS = (('workspace.html', '運用の確認・記録'), ('evidence.html', '◉ GitHub検証証跡 ↗'), ('component-ops/', '利用導線・責務移管 ↗'))  # other pages, before the actions
 ACTIONS = (('refresh', '↻ 観測値を再読込', ''), ('import', '↑ JSON読込', ''), ('export', '↓ 記録を書出し', ''), ('snapshot', '＋ 週次記録', 'primary'))
 # (id, aria-label, first option, further options): app.js fills repo and axis from the data.
 FILTERS = (('repo', 'リポジトリ', '全リポジトリ', ()),
@@ -482,4 +482,3 @@ def main(argv=None):
 
 if __name__ == '__main__':
     raise SystemExit(main())
-

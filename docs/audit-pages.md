@@ -220,3 +220,28 @@ CIのhistorical・superseded・後続attemptを現行判定から除外し、レ
 依存・統合順序は `index.html#dependencies` に統一しました。従来の `dependencies.html` は同じタブへの案内として残し、別の依存表を生成しません。作業状態は調査中・着手中・完了・保留・ブロッカーに統一し、既存の保存値は読込時に移行します。GitHubのopen/closedとは別です。
 
 PSWB #134へ5状態の手順カードとフィルタを還元しました。採用先のvendor pin更新はPSWBのmain統合後に行います。証跡ビューはレビューSHA/run/attempt/job、運用ガイドは実行手順を扱うため、現段階では役割の異なる画面として維持します。監査のPR一覧・依存計算の複製は追加しません。
+
+
+## 運用ページの責務整理
+
+`workspace.html` は確認順序と各ページの入口です。依存・固定SHA・vendor参照は
+既存の `index.html#dependencies` を再利用し、別の表を作りません。
+`evidence.html` は既存の公開時生成 `evidence-data.json` を使用します。
+ローカル確認用の固定スナップショットは新たに公開しません。
+
+`operations.html` はREADME確認日とmain SHAを持つ9工程を案内します。
+コマンドは未実行であり、READMEの期待出力と実測結果は区別します。
+ErrorRoadRunnerのcheckout入口はtriage.py、配布入口はerroroadrunnerです。
+BlueProbeのURL取得・cache生成とQueRyuの条件付き取得・cache履歴を区別します。
+旧component-ops/は新ページへの案内です。
+
+`records.html` が証跡・運用の手動完了記録と比較用週次記録を扱います。
+両ページの保存先はmyon-workspace-v2、5状態と次アクションを共通化しました。
+監査ビルドが生成する13週の観測履歴は従来どおりhistory.jsonに保持します。
+旧originからはJSONで移行します。同originの旧記録移行は元データを削除せず、
+既存IDを上書きしません。監査独自チェック・旧historyは元のJSONで保持します。
+手入力の完了はGitHub closureやマージ許可、CI成功を意味しません。
+
+workspace.js/CSSはPSWBへの還元候補です。PSWBのvendor pinや子リポジトリは
+この変更では更新しません。Node 26・Python 3.11+・既存setup-uv方針を維持し、
+追加のnpm/Python実行依存やworkflow権限はありません。
