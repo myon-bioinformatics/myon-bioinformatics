@@ -18,36 +18,22 @@ main, #content, .card, .integration-board { min-width: 0; }
 .header-meta, .footer-meta { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .header-meta { padding-bottom: 10px; }
 .header-meta a { flex: none; }
-.scroll-shell { min-width: 0; max-width: 100%; position: relative; }
-.row-shell { display: flex; align-items: center; gap: 6px; width: 100%; }
 .horizontal-row { display: flex; flex: 1 1 auto; min-width: 0; max-width: 100%; overflow-x: auto; overflow-y: hidden; flex-wrap: nowrap; justify-content: flex-start; gap: 6px; margin: 0; padding: 4px 2px 8px; white-space: nowrap; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--side-muted) var(--bg); }
 .horizontal-row > * { flex: 0 0 auto; }
 .horizontal-row button { min-height: 40px; padding: 8px 12px; font-size: 12px; text-align: center; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
 .horizontal-row button.active, .horizontal-row button.primary { background: var(--green); border-color: var(--green); color: var(--panel); }
-.heading > .row-shell { width: min(560px, 100%); }
-.scroll-arrow { flex: 0 0 34px; width: 34px; height: 40px; min-height: 40px; padding: 0; font-size: 26px; line-height: 1; color: var(--green); }
-.scroll-arrow:disabled { opacity: .35; cursor: default; }
-.row-shell.can-scroll-left::before, .row-shell.can-scroll-right::after { content: ''; pointer-events: none; position: absolute; top: 0; bottom: 0; width: 18px; z-index: 1; }
-.row-shell.can-scroll-left::before { left: 40px; background: linear-gradient(to right, var(--bg), transparent); }
-.row-shell.can-scroll-right::after { right: 40px; background: linear-gradient(to left, var(--bg), transparent); }
-.table-shell .table-wrap { max-height: 64vh; max-height: 64dvh; overflow: auto; overscroll-behavior-x: contain; scrollbar-gutter: stable; }
+.heading > .ui-scroll-row { width: min(560px, 100%); }
+.ui-scroll-table .table-wrap { max-height: 64vh; max-height: 64dvh; overflow: auto; overscroll-behavior-x: contain; scrollbar-gutter: stable; }
 .table-wrap table { min-width: 780px; }
 .table-wrap thead th { position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 0 var(--line); }
 .table-wrap .compare { table-layout: auto; }
 .compare td { min-width: 220px; max-width: 360px; }
 .compare th { position: sticky; left: 0; z-index: 1; }
-.table-scroll-toolbar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--tint); border: 1px solid var(--line); border-bottom: 0; border-radius: 8px 8px 0 0; }
-.has-overflow > .table-wrap { border-top-left-radius: 0; border-top-right-radius: 0; }
-.scroll-hint { font-size: 10px; white-space: nowrap; color: var(--muted); }
-.table-scroll-top { flex: 1 1 auto; min-width: 0; height: 22px; overflow-x: scroll; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-color: var(--muted) var(--line); }
-.scroll-spacer { height: 1px; }
-.table-scroll-toolbar .scroll-arrow { height: 32px; min-height: 32px; }
-.scroll-shell :focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
 footer { display: block; }
-footer > .row-shell { margin-bottom: 14px; }
+footer > .ui-scroll-row { margin-bottom: 14px; }
 .footer-meta { font-size: 10px; line-height: 1.8; }
 pre { max-width: 100%; overflow: auto; }
-@media (max-width: 1100px) { .heading > .row-shell { width: 100%; } }
+@media (max-width: 1100px) { .heading > .ui-scroll-row { width: 100%; } }
 @media (max-width: 700px) {
   aside nav { display: none; }
   .workspace-header { padding-top: 10px; }
@@ -57,10 +43,13 @@ pre { max-width: 100%; overflow: auto; }
   #scope { width: 100%; margin: -5px 0 8px; }
   #filters input { min-width: 0; width: 100%; flex-basis: 100%; }
   #filters select { flex: 1 1 120px; min-width: 0; }
-  .table-scroll-toolbar { gap: 6px; padding: 6px; }
-  .scroll-hint { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .footer-meta { display: block; }
   .footer-meta span { display: block; margin-top: 6px; }
 }
-@media (prefers-reduced-motion: reduce) { .ui-shell-scroll, .table-scroll-top { scroll-behavior: auto; } }
+@media (prefers-reduced-motion: reduce) { .ui-shell-scroll, .ui-scroll-top { scroll-behavior: auto; } }
 #content { scroll-margin-top: 126px; }
+
+/* Layout integration for shared PSWB headings; the sidebar alone is fixed. */
+.heading .ui-heading {height:auto; border:0; letter-spacing:normal; flex:1; min-width:0; flex-wrap:wrap;}
+.heading .ui-stamp {position:static; width:auto; height:auto; padding:0 0 0 16px; background:transparent; color:var(--muted);}
+.heading .ui-stamp b {font-size:14px; overflow-wrap:anywhere;}

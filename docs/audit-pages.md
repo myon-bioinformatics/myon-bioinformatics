@@ -220,3 +220,12 @@ CIのhistorical・superseded・後続attemptを現行判定から除外し、レ
 依存・統合順序は `index.html#dependencies` に統一しました。従来の `dependencies.html` は同じタブへの案内として残し、別の依存表を生成しません。作業状態は調査中・着手中・完了・保留・ブロッカーに統一し、既存の保存値は読込時に移行します。GitHubのopen/closedとは別です。
 
 PSWB #134へ5状態の手順カードとフィルタを還元しました。採用先のvendor pin更新はPSWBのmain統合後に行います。証跡ビューはレビューSHA/run/attempt/job、運用ガイドは実行手順を扱うため、現段階では役割の異なる画面として維持します。監査のPR一覧・依存計算の複製は追加しません。
+
+## PSWB 運用部品
+
+`vendor.lock.json` の PSWB は main の `af273ee76f2ef255c1f042906a6cb09f88584ec4` に固定。
+見出し・観測日時・ビルド時の観測JSON保存・横スクロールは PSWB を利用します。
+`scroll-controls.js` は親固有の領域を PSWB に接続するだけです。
+生成する `pswb-scroll.js` / `pswb-records.js` / `pswb-shell.css` は同じ vendor から出力し、ソースZIPにも収録します。
+Component Ops の見出しは同じビルダーで生成し、根拠の確認日は更新しません。
+ブラウザの作業記録JSONとビルド時の観測JSONは別です。取得・CI判定・依存計算は親側に残します。
