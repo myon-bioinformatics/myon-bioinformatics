@@ -59,7 +59,7 @@ COMMIT_KEY = re.compile(r"(?:^|_)(commit|revision|head|code_version)$")
 FAILED = {"failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale"}
 PASSED = {"success", "skipped", "neutral"}
 __all__ = ["STATES", "COMPARE", "BASIS", "Relations", "collect", "tests_for", "receipt_layers", "ci_state",
-           "compare_runs", "pr_relations", "canonical_names", "relation_cycles", "LIMIT"]
+           "compare_runs", "pr_relations", "canonical_names", "relation_cycles", "key_report", "LIMIT"]
 
 
 def short(name):
@@ -114,6 +114,31 @@ class Relations:
         return {"relations": kept, "kinds": dict(sorted(kinds.items())), "dropped": len(unique) - len(kept),
                 "findings": [findings[k] for k in sorted(findings)], "coverage": dict(sorted(self.coverage.items())),
                 "cycles": relation_cycles(kept)}
+
+
+def key_report(items, candidates):
+    """Can an attribute set serve as the key of these entries? One verdict per candidate (a tuple of field names).
+
+    key        : complete and unique — it may be promoted from a handle to the identity.
+    repeat     : unique except for entries that are equal in every field (the same entry listed twice).
+    collides   : one value names entries that differ — not an identity; ``examples`` lists some values.
+    incomplete : some entry lacks a field, so nothing is claimed about uniqueness.
+    A verdict is about these entries only; one more entry can turn ``key`` into ``collides``.
+    """
+    out = {}
+    for fields in candidates:
+        groups, missing = {}, 0
+        for item in items:
+            if any(item.get(f) in (None, "") for f in fields):
+                missing += 1
+                continue
+            groups.setdefault(tuple(str(item[f]) for f in fields), []).append(json.dumps(item, sort_keys=True, ensure_ascii=False))
+        repeats = sorted(k for k, v in groups.items() if len(v) > 1 and len(set(v)) == 1)
+        conflicts = sorted(k for k, v in groups.items() if len(set(v)) > 1)
+        verdict = "incomplete" if missing else "collides" if conflicts else "repeat" if repeats else "key"
+        out["+".join(fields)] = {"verdict": verdict, "distinct": len(groups), "repeats": len(repeats), "collisions": len(conflicts),
+                                 "missing": missing, "examples": ["+".join(k) for k in (conflicts or repeats)[:5]]}
+    return out
 
 
 def canonical_names(discovery):
@@ -334,9 +359,15 @@ def _corpus(rel, fleet, repo, rev, path, items, names):
                     counts[key] += value[key]
             rel.add("derived_from", f"{repo}:{xml}", f"{repo}:{golden}", lock, method="junit-corpus", value=value,
                     state="success" if golden in files else "not_collected")
+    whole = [x for x in items if isinstance(x, dict) and x.get("id")]
+    identity = key_report(whole, [("id",), ("id", "source_file"), ("repo", "run_id", "artifact")])
+    differing = set(identity["id"]["examples"]) if identity["id"]["verdict"] == "collides" else set()
     for case, n in sorted(ids.items()):
-        if n > 1:
-            rel.finding(repo, "duplicate-id", f"{path}#{case}", f"{path}: case id {case} appears {n} times")
+        if n > 1:  # one id with different content is a broken key; the same entry listed twice is only a repeat
+            same = case not in differing and identity["id"]["collisions"] == 0
+            rel.finding(repo, "repeated-entry" if same else "duplicate-id", f"{path}#{case}",
+                        f"{path}: case id {case} appears {n} times" + (" with identical fields" if same else " with different fields"))
+    counts["identity"] = {k: {f: v[f] for f in ("verdict", "distinct", "repeats", "collisions", "missing")} for k, v in identity.items()}
     counts["truncated"] = max(0, len(entries) - PER_RECORD)
     if not local:
         counts["goldens"] = "not_collected"

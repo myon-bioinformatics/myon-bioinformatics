@@ -289,6 +289,15 @@ class ShapesCyclesLimits(unittest.TestCase):
         wrong = [{"kind": "observed_in", "source": "lab:file.txt", "target": "lab:x.xml", "lock": "lab:c.json"}]
         self.assertEqual([f["kind"] for f in fleet.check_shapes(wrong, {"repositories": [{"repository": "lab"}]})], ["shape"])
 
+    def test_a_handle_becomes_a_key_only_while_it_is_complete_and_unique(self):
+        rows = [{"id": "a", "run": 1, "job": "x"}, {"id": "b", "run": 1, "job": None}, {"id": "c", "run": 2, "job": "x"}]
+        report = records.key_report(rows, [("id",), ("run",), ("job",), ("run", "id")])
+        self.assertEqual([report[k]["verdict"] for k in ("id", "run", "job", "run+id")], ["key", "collides", "incomplete", "key"])
+        again = records.key_report(rows + [dict(rows[0])], [("id",)])["id"]  # the same entry listed twice
+        self.assertEqual((again["verdict"], again["repeats"], again["collisions"]), ("repeat", 1, 0))
+        broken = records.key_report(rows + [{"id": "a", "run": 9, "job": "y"}], [("id",)])["id"]  # one more entry demotes it
+        self.assertEqual((broken["verdict"], broken["examples"]), ("collides", ["a"]))
+
     def test_cycles_are_reported_and_the_rest_is_still_walked(self):
         relations = [{"kind": "derived_from", "source": "a:x", "target": "a:y", "lock": "a:r"},
                      {"kind": "derived_from", "source": "a:y", "target": "a:x", "lock": "a:r"},

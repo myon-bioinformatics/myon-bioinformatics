@@ -25,6 +25,42 @@ Versions are commit SHAs, Git blob ids, sha256 digests or a TOML entry's content
 record's own (`recorded_at`, `recorded`, `date`, a snapshot's `generated_at`); the time of the run that read
 them is `checkedAt` and is never presented as an observation time.
 
+### From handle to key (鍵の昇格)
+
+A relational table fixes its primary key first. Here identity is a claim that is settled last and can be
+withdrawn: a thing gets a handle at once and a key only when the observations support one.
+
+| Step | What happens | Here |
+| --- | --- | --- |
+| 1 🏷️ handle | give a name that carries no claim | `R1`, a row number, a path, a repository name |
+| 2 👁️ observe | add attributes and relations, each with its record, time and basis | section 2 |
+| 3 🧩 group | put what cannot be told apart into one class; "indistinguishable" is not "the same" | `rule_graph` classes (PythDRagoras), `sha256-index` |
+| 4 ✂️ split | one new observation may split a class; nothing is merged for good | a new row splits a rule class |
+| 5 🔑 promote | an attribute set that is complete and unique, and survives change, becomes the key; old handles stay as aliases | `repository_id` over the name, `previous_names` |
+| 6 🚨 demote | a key that collides is reported, never overwritten | `duplicate-id`, identity conflict of a repository |
+
+`key_report(items, candidates)` is step 5 and 6 for any list of entries: per candidate it says `key`, `repeat`
+(the same entry twice), `collides` or `incomplete`, for those entries only. On the Err-o-RoadRunner corpus
+(458 entries): `id` collides for 7 ids; the colliding entries differ in `source_file` and `sha256`;
+`id+source_file` is unique where present but 101 entries lack it, so it is `incomplete` and not promoted.
+
+A surrogate key plus a unique constraint added later is the same idea in a table (steps 1 and 5). What a
+fixed schema has no place for is steps 3 and 4 — "not yet known to be the same" and "may split later".
+
+### Who owns which logic
+
+One owner per kind of logic; the others call it or read its output, and nothing is copied.
+
+| Logic | Owner | Others |
+| --- | --- | --- |
+| identifiers, relation vocabulary, basis / compare / state, key promotion, impact and basis walks | parent: `fleet_records.py`, `vendor_fleet_plan.py` | read `fleet.jsonld`; mcp-toolcall-lab `fleet_query` passes through |
+| proofs between rules (exclusive, implies), rule classes | PythDRagoras `bitwise_surrogate.py` | Aoi takes it by subtree |
+| ledgers that shorten text, round trip, cost with the codebook | TalkCompress | the parent's compressed facts and `rule_graph`'s listing reuse the idea, not the code |
+| GitHub reads (runs, attempts, heads) | gh_identity | `ci_state` takes its rows |
+| a record's own format | the repository that writes it | the parent adds a reader in section 3, never a writer |
+
+New graph logic goes to the owner of its row; a new row is added here before a second copy appears anywhere.
+
 ## 2. Relations
 
 Every relation is an edge **from what is depended on (`source`) to what must be rechecked when it changes
