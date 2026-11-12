@@ -80,6 +80,10 @@ def integration_summary(rows):
 def observatory_page(snapshot=None, theme=THEME):
     """The observatory's page. What this build observed and no reader changes (the 統合後の確認 card) is written here from ``snapshot``;
     app.js fills #stats, #content and the repo/axis filters, which depend on the reader's own work records."""
+    ui = ci._load_web_ui()
+    heading = ui.page_heading("親子リポジトリ監査", eyebrow="監査", lead="PR・Issue・CI・依存関係を確認します。",
+                              stamp={"label": "観測日時", "value": str((snapshot or {}).get("generated_at") or "未取得")})
+    data_download = ui.download_json(snapshot or {}, id="audit-observation", filename="audit-observation.json", label="ビルド時の観測JSON ↓")
     integrations = integration_summary((snapshot or {}).get('integrations') or [])
     def views(side=False):
         return ''.join('<button data-view="%s"%s>%s%s</button>' % (view, ' class="active"' if index == 0 else '', icon, '　' + long if side else ' ' + short)
@@ -89,7 +93,8 @@ def observatory_page(snapshot=None, theme=THEME):
         return f'<nav class="horizontal-row ui-shell-scroll" data-scroll-label="{label}" aria-label="{label}">{views()}</nav>'
     actions = ''.join('<a href="%s">%s</a>' % (href, escape(text)) for href, text in LINKS) + ''.join('<button%s id="%s">%s</button>' % (' class="%s"' % kind if kind else '', name, escape(text)) for name, text, kind in ACTIONS)
     side, top, bottom = views(side=True), row('上部ナビゲーション'), row('フッターナビゲーション')
-    scripts = ''.join(f'<script src="{name}"></script>' for name in SCRIPTS)
+    scripts = ''.join(f'<script src="{name}"></script>' for name in SCRIPTS if name != 'scroll-controls.js')
+    scripts += '<script type="module" src="scroll-controls.js"></script><script type="module" src="pswb-records.js"></script>'
     theme = escape(theme, quote=True)
     filters = ''.join(f'<select id="{name}" aria-label="{label}"><option value="">{first}</option>'
                       + ''.join(f'<option>{option}</option>' for option in more) + '</select>' for name, label, first, more in FILTERS)
@@ -116,8 +121,8 @@ def observatory_page(snapshot=None, theme=THEME):
     {top}
   </header>
   <section class="heading">
-    <div><div class="eyebrow">監査</div><h1>親子リポジトリ監査<span> /</span></h1><p>PR・Issue・CI・依存関係を確認します。</p></div>
-    <div class="actions horizontal-row ui-shell-scroll" data-scroll-label="監査の操作">{actions}</div>
+    {heading}
+    <div class="actions horizontal-row ui-shell-scroll" data-scroll-label="監査の操作">{actions}{data_download}</div>
   </section>
   <div id="notice" role="status">データを読み込み中…</div>
   <section id="stats" class="stats"></section>
@@ -142,7 +147,7 @@ def pswb_css():
     """PySaiyanWeBoo's tokens (the --ui-* palette of every token theme) and shell contract, from the reviewed vendor pin.
     Python remains the source of shared CSS; no npm package or CDN is required."""
     ui = ci._load_web_ui()
-    return ui.css_source('tokens.css') + ui.css_source('shell.css')
+    return ''.join(ui.css_source(name) for name in ('tokens.css', 'shell.css', 'records.css', 'scroll.css'))
 
 
 def previous_json(source):
@@ -428,6 +433,9 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
             shutil.copytree(operations, stage / 'component-ops')
         (stage / 'index.html').write_text(observatory_page(snapshot), encoding='utf-8')
         (stage / 'pswb-shell.css').write_text(pswb_css(), encoding='utf-8')
+        ui = ci._load_web_ui()
+        for name in ('scroll.js', 'records.js'):
+            (stage / ('pswb-' + name)).write_text(ui.js_source(name), encoding='utf-8')
         (stage / 'history.json').write_text(json.dumps(history, ensure_ascii=False) + '\n', encoding='utf-8')
         if fleet_graph is not None:  # the whole graph as JSON-LD for agents and other tools
             (stage / 'fleet.jsonld').write_text(json.dumps(fleet_graph, ensure_ascii=False) + '\n', encoding='utf-8')
@@ -443,7 +451,8 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
                 for path in sorted(operations.rglob('*')):
                     if path.is_file():
                         archive.write(path, path.relative_to(source_root))
-            archive.write(stage / 'pswb-shell.css', 'site/ui/pswb-shell.css')
+            for name in ('pswb-shell.css', 'pswb-scroll.js', 'pswb-records.js'):
+                archive.write(stage / name, 'site/ui/' + name)
             archive.write(source_root / 'tools/build_audit_pages.py', 'tools/build_audit_pages.py')
             archive.write(source_root / 'docs/audit-pages.md', 'docs/audit-pages.md')
             captured = source_root / 'site/evidence/observations.json.gz'

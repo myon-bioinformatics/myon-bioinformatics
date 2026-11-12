@@ -92,7 +92,7 @@ class PublicationTests(unittest.TestCase):
                 self.rows.append((tag, dict(attrs)))
         html = build.observatory_page()
         self.assertIn('<option>調査中</option><option>着手中</option><option>完了</option><option>保留</option><option>ブロッカー</option>', html)
-        self.assertIn('<div class="eyebrow">監査</div>', html)
+        self.assertIn('<p class="ui-eyebrow">監査</p>', html)
         self.assertIn('PR・Issue・CI・依存関係を確認します。', html)
         self.assertNotIn('ENGINEERING HEALTH', html)
         self.assertNotIn('気づく。揃える。次の週へつなぐ。', html)
@@ -122,16 +122,18 @@ class PublicationTests(unittest.TestCase):
             with patch.object(build,'public_repositories',return_value=['Demo']),patch.object(ci,'audit',return_value=snapshot()) as audit:
                 build.build(out)
             self.assertTrue(audit.call_args.kwargs['strict'])
-            for path in ('index.html','app.js','style.css','audit-model.js','scroll-controls.js','pswb-shell.css','data.json','report.html','history.json','pages-source.zip','.nojekyll'):
+            for path in ('index.html','app.js','style.css','audit-model.js','scroll-controls.js','pswb-shell.css','pswb-scroll.js','pswb-records.js','data.json','report.html','history.json','pages-source.zip','.nojekyll'):
                 self.assertTrue((out/path).is_file(),path)
             html=(out/'index.html').read_text()
             self.assertIn('src="audit-model.js"',html)
             self.assertIn('href="component-ops/"', html)
-            for name in ('index.html', 'app.js', 'evidence.json'):
+            for name in ('index.html', 'app.js', 'evidence.json'):      # component-ops/ now only points to operations.html
                 self.assertEqual((out/'component-ops'/name).read_bytes(), (build.ROOT/'site/component-ops'/name).read_bytes())
             self.assertNotIn('src="/',html)
             ui = ci._load_web_ui()
-            self.assertEqual((out/'pswb-shell.css').read_text(), ui.css_source('tokens.css') + ui.css_source('shell.css'))
+            self.assertEqual((out/'pswb-shell.css').read_text(), ''.join(ui.css_source(name) for name in ('tokens.css', 'shell.css', 'records.css', 'scroll.css')))
+            for name in ('scroll.js', 'records.js'):
+                self.assertEqual((out/('pswb-' + name)).read_text(), ui.js_source(name))
             self.assertEqual(html, build.observatory_page(json.loads((out/'data.json').read_text())))
             self.assertNotIn('renderIntegrations', (out/'app.js').read_text())                               # Python writes that card now
             self.assertIn(f'body[data-ui-theme="{build.THEME}"]', (out/'pswb-shell.css').read_text())      # the page's palette is PSWB's

@@ -221,6 +221,14 @@ CIのhistorical・superseded・後続attemptを現行判定から除外し、レ
 
 PSWB #134へ5状態の手順カードとフィルタを還元しました。採用先のvendor pin更新はPSWBのmain統合後に行います。証跡ビューはレビューSHA/run/attempt/job、運用ガイドは実行手順を扱うため、現段階では役割の異なる画面として維持します。監査のPR一覧・依存計算の複製は追加しません。
 
+## PSWB 運用部品
+
+`vendor.lock.json` の PSWB は main の `af273ee76f2ef255c1f042906a6cb09f88584ec4` に固定。
+見出し・観測日時・ビルド時の観測JSON保存・横スクロールは PSWB を利用します。
+`scroll-controls.js` は親固有の領域を PSWB に接続するだけです。
+生成する `pswb-scroll.js` / `pswb-records.js` / `pswb-shell.css` は同じ vendor から出力し、ソースZIPにも収録します。
+旧 `component-ops/` は `operations.html` への案内になったため、見出しは差し込みません。
+ブラウザの作業記録JSONとビルド時の観測JSONは別です。取得・CI判定・依存計算は親側に残します。
 
 ## 運用ページの責務整理
 
