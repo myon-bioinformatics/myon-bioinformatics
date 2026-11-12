@@ -76,6 +76,113 @@ def test_multiple_entries_may_import_each_other(tmp_path):
     assert result["entries"][0]["imports"] == ["local_forge"]
 
 
+def test_extra_modules_are_copied_without_commands(tmp_path):
+    entry = _entry(tmp_path, "nagoyaction.py",
+                   "def hub():\n    import local_forge, localci\n\ndef main():\n    return 0\n")
+    forge = _entry(tmp_path, "local_forge.py", "import os\n")
+    lint = _entry(tmp_path, "localci.py", "import json\n")
+    result = utb.build([entry], tmp_path / "o", extra_modules=[forge, lint])
+    data = _pyproject(tmp_path / "o")
+    assert data["project"]["name"] == "nagoyaction"
+    assert data["project"]["scripts"] == {"nagoyaction": "nagoyaction:main"}
+    assert data["tool"]["setuptools"]["py-modules"] == ["nagoyaction", "local_forge", "localci"]
+    assert (tmp_path / "o" / "local_forge.py").read_bytes() == forge.read_bytes()
+    assert (tmp_path / "o" / "localci.py").read_bytes() == lint.read_bytes()
+    assert result["scripts"] == {"nagoyaction": "nagoyaction:main"}
+    assert result["modules"] == ["nagoyaction", "local_forge", "localci"]
+    assert result["entries"][0]["imports"] == ["local_forge", "localci"]
+    assert [item["module"] for item in result["extra_modules"]] == ["local_forge", "localci"]
+    assert "local_forge" not in data["project"]["scripts"]
+    assert "localci" not in data["project"]["scripts"]
+
+
+def test_extra_module_does_not_require_main(tmp_path):
+    entry = _entry(tmp_path)
+    helper = _entry(tmp_path, "helper.py", "import json\nVALUE = 1\n")
+    utb.build([entry], tmp_path / "o", extra_modules=[helper])
+    assert _pyproject(tmp_path / "o")["project"]["scripts"] == {"blueprobe": "blueprobe:main"}
+    assert (tmp_path / "o" / "helper.py").is_file()
+
+
+@pytest.mark.parametrize("source, message", [
+    ("import requests\n", "non-stdlib imports: requests"),
+    ("def load():\n    from polars import DataFrame\n", "non-stdlib imports: polars"),
+    ("from . import helper\n", "relative imports"),
+    ("def broken(:\n", "syntax error"),
+])
+def test_rejects_extra_module_non_stdlib_and_relative_imports(tmp_path, source, message):
+    out = tmp_path / "o"
+    helper = _entry(tmp_path, "helper.py", source)
+    with pytest.raises(utb.UvToolBuildError, match=message.replace("(", r"\(").replace(")", r"\)")):
+        utb.build([_entry(tmp_path)], out, extra_modules=[helper])
+    assert not out.exists()
+
+
+def test_rejects_duplicate_module_names(tmp_path):
+    entry = _entry(tmp_path, "nagoyaction.py")
+    forge = _entry(tmp_path, "local_forge.py", "import os\n")
+    with pytest.raises(utb.UvToolBuildError, match="duplicate module"):
+        utb.build([entry], tmp_path / "o", extra_modules=[forge, forge])
+    other = tmp_path / "other" / "local_forge.py"
+    other.parent.mkdir()
+    other.write_text("import os\n", encoding="utf-8")
+    with pytest.raises(utb.UvToolBuildError, match="duplicate module"):
+        utb.build([entry], tmp_path / "o2", extra_modules=[forge, other])
+    clone = tmp_path / "also" / "nagoyaction.py"
+    clone.parent.mkdir()
+    clone.write_text(ENTRY, encoding="utf-8")
+    with pytest.raises(utb.UvToolBuildError, match="duplicate module"):
+        utb.build([entry], tmp_path / "o3", extra_modules=[clone])
+    assert not (tmp_path / "o").exists()
+    assert not (tmp_path / "o2").exists()
+    assert not (tmp_path / "o3").exists()
+
+
+def test_rejects_bad_extra_module_files(tmp_path):
+    entry = _entry(tmp_path)
+    with pytest.raises(utb.UvToolBuildError, match="module file name must be lowercase"):
+        utb.build([entry], tmp_path / "o", extra_modules=[_entry(tmp_path, "Helper.py", "VALUE = 1\n")])
+    with pytest.raises(utb.UvToolBuildError, match="module must be an existing .py"):
+        utb.build([entry], tmp_path / "o2", extra_modules=[tmp_path / "missing.py"])
+    with pytest.raises(utb.UvToolBuildError, match="module must be an existing .py"):
+        utb.build([entry], tmp_path / "o3", extra_modules=[_entry(tmp_path, "helper.txt", "VALUE = 1\n")])
+    with pytest.raises(utb.UvToolBuildError, match="at least one"):
+        utb.build([], tmp_path / "o4", extra_modules=[_entry(tmp_path, "helper.py", "VALUE = 1\n")])
+
+
+def test_script_may_target_extra_module(tmp_path):
+    entry = _entry(tmp_path, "nagoyaction.py")
+    forge = _entry(tmp_path, "local_forge.py", "def main():\n    return 0\n")
+    result = utb.build([entry], tmp_path / "o", extra_modules=[forge], scripts=["local-forge=local_forge"])
+    data = _pyproject(tmp_path / "o")
+    assert data["project"]["scripts"] == {"nagoyaction": "nagoyaction:main", "local-forge": "local_forge:main"}
+    assert "local_forge" not in data["project"]["scripts"]
+    assert result["modules"] == ["nagoyaction", "local_forge"]
+    bare = _entry(tmp_path, "helper.py", "VALUE = 1\n")
+    with pytest.raises(utb.UvToolBuildError, match=r"no top-level main\(\)"):
+        utb.build([entry], tmp_path / "o2", extra_modules=[bare], scripts=["help=helper"])
+
+
+def test_cli_module_flag(tmp_path):
+    entry = _entry(tmp_path, "nagoyaction.py")
+    forge = _entry(tmp_path, "local_forge.py", "import os\n")
+    lint = _entry(tmp_path, "localci.py", "import json\n")
+    run = subprocess.run(
+        [sys.executable, "-S", str(SCRIPT), str(entry), "--module", str(forge), "--module", str(lint),
+         "--out", str(tmp_path / "o"), "--json"],
+        capture_output=True, text=True, check=False,
+    )
+    assert run.returncode == 0, run.stderr
+    payload = json.loads(run.stdout)
+    assert payload["scripts"] == {"nagoyaction": "nagoyaction:main"}
+    assert payload["modules"] == ["nagoyaction", "local_forge", "localci"]
+    assert [item["module"] for item in payload["extra_modules"]] == ["local_forge", "localci"]
+    assert _pyproject(tmp_path / "o")["project"]["scripts"] == {"nagoyaction": "nagoyaction:main"}
+    assert _pyproject(tmp_path / "o")["tool"]["setuptools"]["py-modules"] == [
+        "nagoyaction", "local_forge", "localci",
+    ]
+
+
 def test_optional_and_function_local_stdlib_imports_are_allowed(tmp_path):
     source = ("from __future__ import annotations\ntry:\n    import yaml\nexcept ImportError:\n    yaml = None\n"
               "try:\n    import numpy as np\nexcept (ModuleNotFoundError, OSError):\n    np = None\n\n"
@@ -108,7 +215,7 @@ def test_script_function_must_exist(tmp_path):
     ({"command": "BlueProbe"}, "command must be lowercase"),
     ({"scripts": ["Bad=blueprobe"]}, "--script must be"),
     ({"scripts": ["x"]}, "--script must be"),
-    ({"scripts": ["x=other"]}, "not one of the entries"),
+    ({"scripts": ["x=other"]}, "not a bundled module"),
     ({"scripts": ["blueprobe=blueprobe"]}, "duplicate command"),
     ({"name": "-bad"}, "invalid distribution name"),
     ({"version": "v1"}, "version must be"),
