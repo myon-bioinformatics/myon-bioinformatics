@@ -84,3 +84,6 @@ test('overlap only compares known file inventories in the same repository',()=>{
  assert.match(context.revalidation({revalidated_at:'today',head:'a',base_sha:'c',revalidated_head:'a',revalidated_base:'b'}),/再検証必要/);
  assert.match(context.revalidation({revalidated_at:'today',head:'a'}),/未取得/);
 });
+
+require('./test_github_evidence.cjs');
+
