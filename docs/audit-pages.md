@@ -22,7 +22,7 @@ PRではPython標準unittestとNode 26の組込みテストを実行します。
 
 ## 共通スクロール操作
 
-PSWBの採用済み `vendor/web_ui.py` の `css_source('tokens.css')`（配色トークン）と `css_source('shell.css')` から、
+PSWBの採用済み `vendor/pysaiyanweboo.py` の `css_source('tokens.css')`（配色トークン）と `css_source('shell.css')` から、
 ビルド時に `pswb-shell.css` を生成します。`ui-shell-scroll` を上部ナビ・操作列・
 フッターナビ・表へ適用し、共通CSSを手書きで複製しません。生成物は
 `pages-source.zip` にも同梱します。vendorの固定SHAやlockの変更は不要です。
@@ -223,9 +223,9 @@ PSWB #134へ5状態の手順カードとフィルタを還元しました。採�
 
 ## PSWB 運用部品
 
-`vendor.lock.json` の PSWB は main の `af273ee76f2ef255c1f042906a6cb09f88584ec4` に固定。
+`vendor.lock.json` の PSWB は main の `635f2f265ea64d41326772b6b55011d7ad82037c` に固定（`vendor/pysaiyanweboo.py`。PSWB 本体は `web_ui.py` から改名された）。
 見出し・観測日時・ビルド時の観測JSON保存・横スクロールは PSWB を利用します。
-`scroll-controls.js` は親固有の領域を PSWB に接続するだけです。
+横スクロールさせたい行・表は markup に `data-ui-scroll="row"` / `"table"` を書き、PSWB の `pswb-scroll.js` がそのまま拾います（以前の接続用 `scroll-controls.js` は削除）。
 生成する `pswb-scroll.js` / `pswb-records.js` / `pswb-shell.css` は同じ vendor から出力し、ソースZIPにも収録します。
 旧 `component-ops/` は `operations.html` への案内になったため、見出しは差し込みません。
 ブラウザの作業記録JSONとビルド時の観測JSONは別です。取得・CI判定・依存計算は親側に残します。

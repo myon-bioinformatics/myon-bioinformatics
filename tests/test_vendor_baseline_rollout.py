@@ -43,8 +43,8 @@ REFRESHED_FIXTURES.update(LATEST_FIXTURES)
 POST_BASELINE_ENROLLMENTS = {
     "myon-bioinformatics/Ironmate": {"vendor/fetch_module.py", "vendor/Aoi-LICENSE"},
     "myon-bioinformatics/myon-bioinformatics.github.io": {"tools/vendor/web-ui-generator/web_ui.py"},
-    # The parent audit dashboard (ci_status.py --audit --html) renders through the vendored web_ui.py.
-    "myon-bioinformatics/myon-bioinformatics": {"vendor/web_ui.py", "vendor/web_ui-LICENSE"},
+    # The parent audit dashboard (ci_status.py --audit --html) renders through the vendored pysaiyanweboo.py.
+    "myon-bioinformatics/myon-bioinformatics": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
     "myon-bioinformatics/mcp-toolcall-lab": {"vendor/web_ui.py", "vendor/web-ui-LICENSE"},
 }
 

@@ -12,9 +12,9 @@ ALLOW = (
     ".github/workflows/update-readme-stats.yml",
 )
 SKIP_PREFIXES = ("tests/", "docs/", ".git/")
-# Pattern hits that are not GitHub writes: the vendored web_ui.py carries a browser-side curl builder
+# Pattern hits that are not GitHub writes: the vendored pysaiyanweboo.py carries a browser-side curl builder
 # whose JS sets method="POST" for arbitrary HTTP requests the page displays; it never calls the GitHub API.
-NOT_GITHUB = ("vendor/web_ui.py",)
+NOT_GITHUB = ("vendor/pysaiyanweboo.py",)
 SUFFIXES = {".py", ".yml", ".yaml", ".mjs", ".cjs", ".js"}
 WRITE_PATTERNS = (
     re.compile(r'_github_api\(\s*"(?:PUT|POST|PATCH|DELETE)"'),

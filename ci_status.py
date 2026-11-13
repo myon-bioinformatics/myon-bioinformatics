@@ -3,7 +3,7 @@
 
 The ``--audit`` mode takes the same observations across every open PR and Issue of the
 organization (via the vendored gh_identity) and writes ``data.json`` plus a read-only
-``index.html`` built from the vendored web_ui.py helpers: the parent audit dashboard.
+``index.html`` built from the vendored pysaiyanweboo.py helpers (PySaiyanWeBoo): the parent audit dashboard.
 
 Exit codes: 0 = observation succeeded (with --ci-check, all states are COMPLETE or
 NO CHECKS); 1 = --ci-check observed a non-passing state; 2 = observation or usage error.
@@ -635,10 +635,10 @@ def render_conventions(report):
 
 # ---------------------------------------------------------------- audit page (consumer, read-only)
 
-def _load_web_ui():
-    source = Path(__file__).resolve().parent / "vendor" / "web_ui.py"
+def _load_pysaiyanweboo():
+    source = Path(__file__).resolve().parent / "vendor" / "pysaiyanweboo.py"
     if not source.is_file():
-        raise RuntimeError("vendored web_ui.py is not present")
+        raise RuntimeError("vendored pysaiyanweboo.py is not present")
     spec = importlib.util.spec_from_file_location("ci_status_web_ui", source)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -684,7 +684,7 @@ def render_dependency_report(snapshot):
 
 def render_audit_html(snapshot, *, asset_base=".", title="Repository audit — myon-bioinformatics"):
     """Read-only dashboard from a snapshot: queue / compare / weekly / done views built with web_ui helpers."""
-    ui = _load_web_ui()
+    ui = _load_pysaiyanweboo()
     records = snapshot["records"]
     summary = snapshot["summary"]
     columns = ("記録", "件名", "ブランチ / ラベル", "CI", "状態フラグ", "状態", "メモ")
@@ -830,7 +830,7 @@ def write_audit_site(snapshot, directory):
     out.mkdir(parents=True, exist_ok=True)
     (out / "data.json").write_text(json.dumps(snapshot, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     (out / "index.html").write_text(render_audit_html(snapshot), encoding="utf-8")
-    ui = _load_web_ui()
+    ui = _load_pysaiyanweboo()
     (out / "js").mkdir(exist_ok=True)
     for name in ("navigation.js", "records.js"):
         (out / "js" / name).write_text(ui.js_source(name), encoding="utf-8", newline="\n")
