@@ -584,6 +584,26 @@
           "reason": "locked_vendor_copy"
         }
       }
+    },
+    {
+      "repository": "myon-bioinformatics/Aoi",
+      "commit": "385e14a09ad56b69c57ec1cbae04c16299d387c5",
+      "source": "shrink/numpy_min.py",
+      "reason": "Existing Aoi-generated numerical subset, not full NumPy or a minpy bundle. Supported operation/backend scope and limitations: https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/docs/contracts/numpy-min-acceptance-v2.md . Set NUMPY_MIN_PURE=1 before import for stdlib execution; automatic mode can load system BLAS/LAPACK. No end-to-end score/ranking equivalence or universal error-bound claim. Existing QueRyu and DRAgoWing locks hold these same file bytes at independently reviewed commits; this recommendation does not update those locks.",
+      "consumers": {
+        "myon-bioinformatics/QueRyu": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        },
+        "myon-bioinformatics/DRAgoWing": {
+          "enrollment": "enrolled",
+          "reason": "already_locked_by_consumer"
+        }
+      },
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
     }
   ]
 }
