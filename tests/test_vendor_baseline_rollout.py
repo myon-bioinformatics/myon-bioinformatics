@@ -42,7 +42,6 @@ REFRESHED_FIXTURES.update(LATEST_FIXTURES)
 # are excluded from the frozen-baseline comparison until the baseline is re-observed.
 POST_BASELINE_ENROLLMENTS = {
     "myon-bioinformatics/Ironmate": {"vendor/fetch_module.py", "vendor/Aoi-LICENSE"},
-    "myon-bioinformatics/myon-bioinformatics.github.io": {"tools/vendor/web-ui-generator/web_ui.py"},
     # The parent audit dashboard (ci_status.py --audit --html) renders through the vendored pysaiyanweboo.py.
     "myon-bioinformatics/myon-bioinformatics": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
     "myon-bioinformatics/mcp-toolcall-lab": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
@@ -79,6 +78,17 @@ def _key(entry):
 
 def before_replacements(registry, name, lock):
     """``registry`` as ``name``'s reviewed ``lock`` last saw it: the retired entries back if the lock holds no replacement."""
+    # Current desired topology can retire copies while frozen observations remain
+    # bound to their reviewed old contract. Never rewrite historical fixtures.
+    migrations = json.loads((ROOT / 'vendor-observation-transitions.json').read_text())
+    for transition in migrations['transitions']:
+        if transition['consumer'] == name and name in {
+            'myon-bioinformatics/Aoi', 'myon-bioinformatics/myon-bioinformatics.github.io'
+        }:
+            registry = copy.deepcopy(registry)
+            row = next(c for c in registry['consumers'] if c['repository'] == name)
+            row['entries'] = copy.deepcopy(transition['old_entries'])
+            return registry
     change = POST_BASELINE_REPLACEMENTS.get(name)
     if not change or {_key(e) for e in change["added"]} & {_key(e) for e in lock["files"]}:
         return registry

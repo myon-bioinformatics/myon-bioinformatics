@@ -578,19 +578,22 @@
         {
           "repository": "myon-bioinformatics/markdown",
           "source": "markdown.py",
-          "destination": "vendor/markdown.py",
-          "license": "vendor/markdown-LICENSE"
+          "destination": "vendor/markdown.py"
         },
         {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "web_ui.py",
-          "destination": "vendor/web_ui.py",
-          "license": "vendor/web-ui-LICENSE"
+          "repository": "myon-bioinformatics/markdown",
+          "source": "LICENSE",
+          "destination": "vendor/markdown-LICENSE"
         },
         {
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "py_launch.cjs",
           "destination": "vendor/py_launch.cjs"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "tools/uv_tool_build.py",
+          "destination": "vendor/uv_tool_build.py"
         }
       ]
     },
@@ -715,50 +718,18 @@
       "entries": [
         {
           "repository": "myon-bioinformatics/mcp-toolcall-lab",
+          "source": "LICENSE",
+          "destination": "tools/vendor/lab/LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/mcp-toolcall-lab",
           "source": "src/mcp_toolcall_lab/adapters/html_snapshot.py",
-          "destination": "tools/vendor/lab/html_snapshot.py",
-          "license": "tools/vendor/lab/LICENSE"
+          "destination": "tools/vendor/lab/html_snapshot.py"
         },
         {
           "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "css/base.css",
-          "destination": "tools/vendor/web-ui/css/base.css",
-          "license": "tools/vendor/web-ui/LICENSE"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "css/components.css",
-          "destination": "tools/vendor/web-ui/css/components.css"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "css/themes/modern.css",
-          "destination": "tools/vendor/web-ui/css/themes/modern.css"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "css/tokens.css",
-          "destination": "tools/vendor/web-ui/css/tokens.css"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "js/navigation.js",
-          "destination": "tools/vendor/web-ui/js/navigation.js"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "js/ui.js",
-          "destination": "tools/vendor/web-ui/js/ui.js"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "web_ui.py",
-          "destination": "tools/vendor/web-ui/web_ui.py"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "js/controls.js",
-          "destination": "tools/vendor/web-ui/js/controls.js"
+          "source": "LICENSE",
+          "destination": "tools/vendor/web-ui/LICENSE"
         },
         {
           "repository": "myon-bioinformatics/Ironmate",
@@ -769,16 +740,6 @@
           "repository": "myon-bioinformatics/Ironmate",
           "source": "pillow_min.py",
           "destination": "tools/vendor/ironmate/pillow_min.py"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "js/collection.js",
-          "destination": "tools/vendor/web-ui/js/collection.js"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "web_ui.py",
-          "destination": "tools/vendor/web-ui-generator/web_ui.py"
         }
       ]
     }
