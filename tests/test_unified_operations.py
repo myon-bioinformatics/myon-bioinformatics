@@ -2,9 +2,40 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from tools.unified_operations import view_data, write_workspace, collect_main_runs
+from tools.unified_operations import view_data, write_workspace, collect_main_runs, snapshot_comparison
 
 class UnifiedOperationsTests(unittest.TestCase):
+    def test_consecutive_snapshots_separate_absence_counts_and_metadata_noise(self):
+        def record(n, **values):
+            return dict(id=f'r#{n}', repository='r', number=n, kind='pr',
+                        title='PR', head_sha='h', ci='COMPLETE', **values)
+        previous = {'generated_at': '2026-11-12T00:00:00Z', 'repositories': ['r', 'unmonitored'],
+                    'records': [record(1), record(2), dict(id='hidden#1', repository='unmonitored')],
+                    'integrations': [{'repository': 'r', 'branch': 'main', 'head_sha': 'm'}],
+                    'repository_counts': [{'repository': 'r', 'issues': 3, 'pull_requests': 2,
+                                           'open_issues_count': 5, 'get_issues': 5}]}
+        current = {'generated_at': '2026-11-13T00:00:00Z', 'repositories': ['r'],
+                   'records': [record(1, metadata_checked='new'), record(3)],
+                   'integrations': previous['integrations'],
+                   'repository_counts': [{'repository': 'r', 'issues': 2, 'pull_requests': 2,
+                                          'open_issues_count': 4, 'get_issues': 4}]}
+        result = snapshot_comparison(current, previous)
+        self.assertEqual([r['id'] for r in result['added']], ['r#3'])
+        self.assertEqual([r['id'] for r in result['absent']], ['r#2'])
+        self.assertNotIn('merged', result['absent'][0])
+        self.assertEqual(result['changed'], [])
+        self.assertEqual(result['counts'][0]['changes']['issues'], {'before': 3, 'after': 2})
+        self.assertEqual(result['open_prs'], {'before': 2, 'after': 2})
+        current['records'][0]['head_sha'] = 'new-head'
+        current['records'][0]['ci'] = 'FAILURE'
+        changes = snapshot_comparison(current, previous)['changed'][0]['changes']
+        self.assertEqual(set(changes), {'head_sha', 'ci'})
+
+    def test_first_publication_has_no_inferred_additions(self):
+        result = snapshot_comparison({'generated_at': 'now', 'records': [{'id': 'r#1'}]}, None)
+        self.assertFalse(result['available'])
+        self.assertEqual(result['added'], [])
+
     def test_main_runs_separate_events_old_sha_and_bot_jobs(self):
         snap={'owner':'demo','integrations':[{'repository':'r','branch':'main','head_sha':'a'}]}
         def run(number, event='push', sha='a', name='CI'):
@@ -57,3 +88,4 @@ class UnifiedOperationsTests(unittest.TestCase):
             self.assertNotIn('</script><script>',(stage/'workspace.html').read_text())
             self.assertEqual(json.loads((stage/'unified-data.json').read_text())['records'][1]['title'],ev['records'][1]['title'])
 if __name__=='__main__':unittest.main()
+
