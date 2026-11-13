@@ -44,6 +44,19 @@ withdrawn: a thing gets a handle at once and a key only when the observations su
 (458 entries): `id` collides for 7 ids; the colliding entries differ in `source_file` and `sha256`;
 `id+source_file` is unique where present but 101 entries lack it, so it is `incomplete` and not promoted.
 
+`collides` takes precedence over `incomplete`, then `repeat`, then `key`. Missing entries and collision
+groups are counted independently, so a partial observation never hides a known collision. Empty observations
+are `incomplete`. `distinct`, `repeats` and `collisions` count complete value groups (a group with differing
+entries is a collision, not a repeat); `missing` counts entries. Missing means absent, null or empty string;
+zero and false are values. All dictionary entries in a corpus participate, including entries without `id`.
+Values and complete entries are compared as canonical JSON: number `1`, string `"1"`, boolean `true` and
+number `1.0` are distinct; object member order is irrelevant. Non-finite numbers are rejected. Candidate
+field sets must be nonempty, with distinct nonempty names without `+` (reserved for report labels).
+Composite values are grouped as tuples, never by joining display strings. Existing output fields and the
+five-example cap are preserved; examples are display labels only. Input iterators are read once for all
+candidates. Reports are snapshots, not a persistent identity registry: rerun on new observations to demote
+a previous key; previously returned reports are unchanged. A `repeat` is not a promoted `key`.
+
 A surrogate key plus a unique constraint added later is the same idea in a table (steps 1 and 5). What a
 fixed schema has no place for is steps 3 and 4 — "not yet known to be the same" and "may split later".
 

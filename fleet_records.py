@@ -122,22 +122,30 @@ def key_report(items, candidates):
     key        : complete and unique — it may be promoted from a handle to the identity.
     repeat     : unique except for entries that are equal in every field (the same entry listed twice).
     collides   : one value names entries that differ — not an identity; ``examples`` lists some values.
-    incomplete : some entry lacks a field, so nothing is claimed about uniqueness.
+    incomplete : some entry lacks a field, or there are no observations.
+    Collisions take precedence over missing fields; both counts are always retained.
+    Values use canonical JSON identity (including type), not their display strings.
     A verdict is about these entries only; one more entry can turn ``key`` into ``collides``.
     """
+    items = list(items)
     out = {}
     for fields in candidates:
-        groups, missing = {}, 0
+        fields = tuple(fields)
+        if not fields or any(not isinstance(f, str) or not f or "+" in f for f in fields) or len(set(fields)) != len(fields):
+            raise ValueError("candidates require distinct nonempty field names without '+'")
+        groups, labels, missing = {}, {}, 0
         for item in items:
             if any(item.get(f) in (None, "") for f in fields):
                 missing += 1
                 continue
-            groups.setdefault(tuple(str(item[f]) for f in fields), []).append(json.dumps(item, sort_keys=True, ensure_ascii=False))
+            key = tuple(json.dumps(item[f], sort_keys=True, ensure_ascii=False, allow_nan=False) for f in fields)
+            labels[key] = "+".join(str(item[f]) for f in fields)
+            groups.setdefault(key, []).append(json.dumps(item, sort_keys=True, ensure_ascii=False, allow_nan=False))
         repeats = sorted(k for k, v in groups.items() if len(v) > 1 and len(set(v)) == 1)
         conflicts = sorted(k for k, v in groups.items() if len(set(v)) > 1)
-        verdict = "incomplete" if missing else "collides" if conflicts else "repeat" if repeats else "key"
+        verdict = "collides" if conflicts else "incomplete" if missing or not items else "repeat" if repeats else "key"
         out["+".join(fields)] = {"verdict": verdict, "distinct": len(groups), "repeats": len(repeats), "collisions": len(conflicts),
-                                 "missing": missing, "examples": ["+".join(k) for k in (conflicts or repeats)[:5]]}
+                                 "missing": missing, "examples": [labels[k] for k in (conflicts or repeats)[:5]]}
     return out
 
 
@@ -360,7 +368,8 @@ def _corpus(rel, fleet, repo, rev, path, items, names):
             rel.add("derived_from", f"{repo}:{xml}", f"{repo}:{golden}", lock, method="junit-corpus", value=value,
                     state="success" if golden in files else "not_collected")
     whole = [x for x in items if isinstance(x, dict) and x.get("id")]
-    identity = key_report(whole, [("id",), ("id", "source_file"), ("repo", "run_id", "artifact")])
+    identity = key_report([x for x in items if isinstance(x, dict)],
+                          [("id",), ("id", "source_file"), ("repo", "run_id", "artifact")])
     contents = {}
     for item in whole:
         contents.setdefault(item["id"], set()).add(json.dumps(item, sort_keys=True, ensure_ascii=False))

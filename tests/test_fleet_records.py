@@ -45,6 +45,67 @@ def receipt(image, **extra):
     return json.dumps(data)
 
 
+class KeyPromotion(unittest.TestCase):
+    def test_collision_is_visible_even_with_missing_fields(self):
+        rows = [{"id": "a", "value": 1}, {"id": "a", "value": 2}, {}, {"id": None}, {"id": ""}]
+        result = records.key_report(rows, [("id",)])["id"]
+        self.assertEqual((result["verdict"], result["collisions"], result["missing"]), ("collides", 1, 3))
+
+    def test_json_types_are_distinct_and_object_order_is_irrelevant(self):
+        values = [1, "1", True, 1.0, False, 0, "False", [1], "[1]", {"a": 1, "b": 2}]
+        rows = [{"id": value} for value in values]
+        result = records.key_report(rows, [("id",)])["id"]
+        self.assertEqual((result["verdict"], result["distinct"]), ("key", len(values)))
+        rows.append({"id": {"b": 2, "a": 1}})
+        self.assertEqual(records.key_report(rows, [("id",)])["id"]["verdict"], "repeat")
+
+    def test_composite_values_do_not_merge_on_display_separator(self):
+        rows = [{"a": "x+y", "b": "z"}, {"a": "x", "b": "y+z"}, {"a": "x+y", "b": "q"}]
+        result = records.key_report(rows, [("a",), ("a", "b")])
+        self.assertEqual(result["a"]["verdict"], "collides")
+        self.assertEqual(result["a+b"]["verdict"], "key")
+
+    def test_repeats_collisions_and_missing_are_counted_independently(self):
+        rows = [{"id": "a"}, {"id": "a"}, {"id": "b", "v": 1}, {"id": "b", "v": 2}, {}]
+        result = records.key_report(rows, [("id",)])["id"]
+        self.assertEqual((result["verdict"], result["repeats"], result["collisions"], result["missing"]),
+                         ("collides", 1, 1, 1))
+
+    def test_additional_observations_demote_keys_without_mutating_history(self):
+        rows = [{"id": "a", "source": "one"}]
+        before = records.key_report(rows, [("id",), ("id", "source")])
+        rows.append({"id": "a", "source": "two"})
+        after = records.key_report(rows, [("id",), ("id", "source")])
+        rows.append({"id": "b"})
+        missing = records.key_report(rows, [("id", "source")])
+        self.assertEqual(before["id"]["verdict"], "key")
+        self.assertEqual(after["id"]["verdict"], "collides")
+        self.assertEqual(after["id+source"]["verdict"], "key")
+        self.assertEqual(missing["id+source"]["verdict"], "incomplete")
+
+    def test_empty_observations_do_not_promote_and_candidates_are_unambiguous(self):
+        self.assertEqual(records.key_report([], [("id",)])["id"]["verdict"], "incomplete")
+        for candidate in [(), ("id", "id"), ("a+b",), ("",)]:
+            with self.subTest(candidate=candidate), self.assertRaises(ValueError):
+                records.key_report([{"id": 1}], [candidate])
+
+    def test_iterator_is_shared_across_candidates_and_input_is_not_changed(self):
+        rows = [{"id": "a", "source": "one"}, {"id": "b", "source": "one"}]
+        original = json.dumps(rows)
+        result = records.key_report(iter(rows), [("id",), ("source",)])
+        self.assertEqual(result["source"]["verdict"], "collides")
+        self.assertEqual(json.dumps(rows), original)
+
+    def test_corpus_identity_includes_entries_without_id(self):
+        class EmptyFleet:
+            def files(self, *_args):
+                return []
+        rel = records.Relations()
+        records._corpus(rel, EmptyFleet(), "repo", "rev", "cases.json", [{"id": "a"}, {"source_file": "b.xml"}], {})
+        identity = rel.coverage["repo"]["corpus:cases.json"]["identity"]["id"]
+        self.assertEqual((identity["verdict"], identity["missing"]), ("incomplete", 1))
+
+
 class EvidenceFixture(FleetFixture):
     """The tool → app → relay chain plus a research ledger (lab), a browser receipt (web) and generated files (gen)."""
 
@@ -292,7 +353,8 @@ class ShapesCyclesLimits(unittest.TestCase):
     def test_a_handle_becomes_a_key_only_while_it_is_complete_and_unique(self):
         rows = [{"id": "a", "run": 1, "job": "x"}, {"id": "b", "run": 1, "job": None}, {"id": "c", "run": 2, "job": "x"}]
         report = records.key_report(rows, [("id",), ("run",), ("job",), ("run", "id")])
-        self.assertEqual([report[k]["verdict"] for k in ("id", "run", "job", "run+id")], ["key", "collides", "incomplete", "key"])
+        self.assertEqual([report[k]["verdict"] for k in ("id", "run", "job", "run+id")], ["key", "collides", "collides", "key"])
+        self.assertEqual((report["job"]["collisions"], report["job"]["missing"]), (1, 1))
         again = records.key_report(rows + [dict(rows[0])], [("id",)])["id"]  # the same entry listed twice
         self.assertEqual((again["verdict"], again["repeats"], again["collisions"]), ("repeat", 1, 0))
         broken = records.key_report(rows + [{"id": "a", "run": 9, "job": "y"}], [("id",)])["id"]  # one more entry demotes it
@@ -345,6 +407,26 @@ class ShapesCyclesLimits(unittest.TestCase):
 
 
 class Compatibility(EvidenceFixture):
+    def test_partial_corpus_collision_reaches_audit_and_retains_coverage(self):
+        from tools.build_audit_pages import split_fleet
+        class EmptyFleet:
+            def files(self, *_args):
+                return []
+        rel = records.Relations()
+        rows = [{"id": "a", "source_file": "one.xml"}, {"id": "a", "source_file": "two.xml"}, {}]
+        records._corpus(rel, EmptyFleet(), "lab", "rev", "cases.json", rows, {})
+        result = fleet.report(self.fleet())
+        edges = list(result["graph"]["edges"])
+        result["graph"]["evidence"] = rel.result()
+        todo = fleet.remaining(result)
+        self.assertTrue(any(r["key"] == "duplicate-id:lab:cases.json#a" for r in todo))
+        section, document = split_fleet(result)
+        identity = section["graph"]["evidence"]["coverage"]["lab"]["corpus:cases.json"]["identity"]["id"]
+        self.assertEqual((identity["verdict"], identity["collisions"], identity["missing"]), ("collides", 1, 1))
+        self.assertTrue(any(f["kind"] == "duplicate-id" for f in section["graph"]["evidence"]["findings"]))
+        self.assertEqual(result["graph"]["edges"], edges)
+        json.dumps(document)  # evidence and dependency output remain JSON serializable
+
     def test_cli_impact_keeps_its_fields_and_exit_code_and_no_evidence_restores_the_old_graph(self):
         out = Path(self.tmp.name) / "impact.json"
         argv = ["impact", "--root", str(self.parent), "--checkouts", str(self.checkouts), "--format", "json", "--out", str(out)]
