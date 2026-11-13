@@ -253,3 +253,9 @@ BlueProbeのURL取得・cache生成とQueRyuの条件付き取得・cache履歴�
 workspace.js/CSSはPSWBへの還元候補です。PSWBのvendor pinや子リポジトリは
 この変更では更新しません。Node 26・Python 3.11+・既存setup-uv方針を維持し、
 追加のnpm/Python実行依存やworkflow権限はありません。
+
+### 2026-11-13 継続監査の反映
+
+既存の `workspace.html` を使用し、5状態・検索・表・保存・週次記録を再利用する。PSWBに追加する汎用APIはない。`site/evidence/observations.json.gz` のコメント・レビュー・run/attempt/jobを更新し、固定mainのREADMEから実行手順を照合した。必須チェック規則・期待SHA・独立承認は未確認のまま表示する。
+
+ビルド時に既定ブランチの直近30 runを追加取得する。workflow/eventごとの最新を選び、現main SHAの失敗・bot・旧SHAを分離する。失敗jobは現mainの最新attemptのみを最大100件取得し、欠損・取得エラーを表示する。既定ブランチが取得中に動いた場合は現mainの証拠にしない。ログ本文は取得しない。既存の日次更新・Pages設定は維持する。
