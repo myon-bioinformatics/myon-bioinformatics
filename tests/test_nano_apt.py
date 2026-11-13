@@ -1,6 +1,25 @@
-"""Offline tests for tools/nano_apt.py: fake apt/dpkg; one real read-only dpkg-query check."""
-import contextlib, hashlib, importlib.util, io, json, os, shutil, subprocess, sys, tempfile, threading, unittest
-from pathlib import Path; from unittest.mock import patch
+"""nano_apt: offline apt planning, the Ironmate adoption experiment, and fatal dpkg observations (stdlib only, runs under python -S)."""
+
+import contextlib
+import hashlib
+import importlib.util
+import io
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+# ═══ · nano apt ══════════════════════════════════════════════════════════════════════════════════════════
+# Offline tests for tools/nano_apt.py: fake apt/dpkg; one real read-only dpkg-query check.
 
 SPEC = importlib.util.spec_from_file_location("nano_apt", Path(__file__).parents[1] / "tools/nano_apt.py")
 nano = importlib.util.module_from_spec(SPEC)
@@ -596,6 +615,163 @@ class NanoAptTests(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             self.assertEqual(nano.main(["--list", lack]), 1)
         self.assertEqual(json.loads(out.getvalue())["to_install"], ["nano-apt-no-such-package"])
+
+
+# ═══ · nano apt adoption ═════════════════════════════════════════════════════════════════════════════════
+# Offline adoption experiment for Ironmate #203 at 77b4a584795c.
+#
+# Install commands are mocked; one guarded inherited observation runs real dpkg-query.
+# Host apt and other mutating commands are prohibited.
+
+class AdoptionTests(NanoAptTests):
+    def groups(self):
+        return [self.lst('fonts.txt', 'fonts-noto-cjk\n'),
+                self.lst('uno.txt', 'python3-uno\nlibreoffice-impress\n')]
+
+    def test_exact_groups_and_duplicate_elimination(self):
+        fonts, uno = self.groups()
+        self.assertEqual(list(nano.read_list(fonts)), ['fonts-noto-cjk'])
+        self.assertEqual(list(nano.read_list(uno)), ['python3-uno', 'libreoffice-impress'])
+        self.assertEqual(list(nano.merge([fonts, uno, fonts])),
+                         ['fonts-noto-cjk', 'python3-uno', 'libreoffice-impress'])
+
+    def test_separate_calls_preserve_groups_but_update_twice(self):
+        fake = Fake({})
+        for group in self.groups():
+            self.assertEqual(self.call(['--list', group, '--install'], fake)[0], 0)
+        apt = [argv for argv, _ in fake.calls if argv[0].endswith('apt-get')]
+        self.assertEqual(sum(argv[-1] == 'update' for argv in apt), 2)
+        self.assertEqual(apt[1][-1:], ['fonts-noto-cjk'])
+        self.assertEqual(apt[3][-2:], ['libreoffice-impress', 'python3-uno'])
+
+    def test_merged_call_updates_once_but_sorts_across_groups(self):
+        fonts, uno = self.groups()
+        fake = Fake({})
+        self.assertEqual(self.call(['--list', fonts, '--list', uno, '--install'], fake)[0], 0)
+        apt = [argv for argv, _ in fake.calls if argv[0].endswith('apt-get')]
+        self.assertEqual(len(apt), 2)
+        self.assertEqual(apt[-1][-3:], ['fonts-noto-cjk', 'libreoffice-impress', 'python3-uno'])
+
+    def test_second_run_never_repeats_apt(self):
+        fonts, uno = self.groups()
+        fake = Fake({})
+        args = ['--list', fonts, '--list', uno, '--install']
+        self.assertEqual(self.call(args, fake)[0], 0)
+        fake.calls.clear()
+        self.assertEqual(self.call(args, fake)[0], 0)
+        self.assertTrue(all(argv[0].endswith('dpkg-query') for argv, _ in fake.calls))
+
+    def test_install_failure_is_code_three(self):
+        class InstallFailure(Fake):
+            def __call__(self, argv, **kw):
+                if 'install' in argv:
+                    self.calls.append((list(argv), kw))
+                    return subprocess.CompletedProcess(argv, 100)
+                return super().__call__(argv, **kw)
+        fake = InstallFailure({})
+        code, result = self.call(['--list', self.groups()[0], '--install'], fake)
+        self.assertEqual((code, result['status']), (3, 'failed'))
+        self.assertEqual(len(fake.calls), 3)
+
+    def test_empty_list_currently_succeeds(self):
+        code, result = self.call(['--list', self.lst('empty.txt', '# comment\n'), '--install'], Fake({}))
+        self.assertEqual((code, result['status']), (0, 'satisfied'))
+
+    def test_query_failure_stops_before_install(self):
+        def broken(argv, **kw):
+            return subprocess.CompletedProcess(argv, 2, stdout='', stderr='database error')
+        calls = []
+        def guarded(argv, **kw):
+            calls.append(list(argv))
+            self.assertTrue(argv[0].endswith('dpkg-query'))
+            return broken(argv, **kw)
+        code, result = self.call(['--list', self.groups()[0], '--install'], guarded)
+        self.assertEqual((code, result['status']), (2, 'failed'))
+        self.assertEqual(len(calls), 1)
+
+    def test_real_dpkg_query_is_read_only(self):
+        real_run = subprocess.run
+        def readonly(argv, **kw):
+            if not argv[0].endswith('dpkg-query'):
+                raise RuntimeError('host mutation prohibited')
+            return real_run(argv, **kw)
+        with patch.object(nano.subprocess, 'run', readonly):
+            super().test_real_dpkg_query_is_read_only()
+
+
+# ═══ · nano apt query failure ════════════════════════════════════════════════════════════════════════════
+# Fatal dpkg observation must never trigger installation.
+
+class QueryFailureTests(unittest.TestCase):
+    setUp = NanoAptTests.setUp
+    lst = NanoAptTests.lst
+    call = NanoAptTests.call
+
+    def test_fatal_query_blocks_report_install_and_download(self):
+        for mode in ([], ['--install'], ['--download-only']):
+            calls = []
+            def fail(argv, **kwargs):
+                calls.append(argv)
+                if not argv[0].endswith('dpkg-query'):
+                    self.fail('apt must not run after observation failure')
+                return subprocess.CompletedProcess(argv, 2, stdout='', stderr='database unreadable')
+            with self.subTest(mode=mode):
+                code, report = self.call(['--list', self.lst('packages.txt', 'git\n')] + mode, fail)
+                self.assertEqual(code, 2)
+                self.assertEqual(report['status'], 'failed')
+                self.assertEqual(report['executed'], [])
+                self.assertIn('dpkg-query failed', report['error'])
+                self.assertEqual(len(calls), 1)
+
+    def test_post_install_query_failure_preserves_before_and_receipt(self):
+        queries = []
+        def run(argv, **kwargs):
+            if argv[0].endswith('dpkg-query'):
+                queries.append(argv)
+                return subprocess.CompletedProcess(
+                    argv, 0 if len(queries) == 1 else 2,
+                    stdout='git ii 1.0\n' if len(queries) == 1 else '', stderr='')
+            return subprocess.CompletedProcess(argv, 0)
+        receipt = self.root / 'receipt.json'
+        code, report = self.call(['--list', self.lst('packages.txt', 'git=2.0\n'),
+                                  '--install', '--receipt', str(receipt)], run)
+        self.assertEqual(code, 2)
+        self.assertEqual(report['status'], 'failed')
+        self.assertEqual(report['before'], {'git': '1.0'})
+        self.assertEqual(len(report['executed']), 2)
+        self.assertEqual(len(queries), 2)
+        self.assertEqual(json.loads(receipt.read_text()), report)
+
+    def test_failed_download_query_publishes_failed_state(self):
+        state = self.root / 'download.json'
+        def run(argv, **kwargs):
+            if not argv[0].endswith('dpkg-query'):
+                self.fail('no apt command expected')
+            return subprocess.CompletedProcess(argv, 2, stdout='', stderr='')
+        code, report = self.call(['--list', self.lst('packages.txt', 'git\n'),
+                                  '--download-only', '--state', str(state)], run)
+        self.assertEqual(code, 2)
+        self.assertEqual(report['status'], 'failed')
+        self.assertEqual(json.loads(state.read_text())['status'], 'failed')
+        self.assertEqual(report['executed'], [])
+
+    def test_query_spawn_error_is_reported_without_apt(self):
+        for exception in (FileNotFoundError('executable disappeared'),
+                          PermissionError('executable denied')):
+            for mode in ([], ['--install'], ['--download-only']):
+                calls = []
+                def run(argv, **kwargs):
+                    calls.append(argv)
+                    if not argv[0].endswith('dpkg-query'):
+                        self.fail('apt must not run when observation cannot start')
+                    raise exception
+                with self.subTest(exception=type(exception).__name__, mode=mode):
+                    code, report = self.call(['--list', self.lst('packages.txt', 'git\n')] + mode, run)
+                    self.assertEqual(code, 2)
+                    self.assertEqual(report['status'], 'failed')
+                    self.assertIn('dpkg-query could not start', report['error'])
+                    self.assertEqual(report['executed'], [])
+                    self.assertEqual(len(calls), 1)
 
 
 if __name__ == "__main__":

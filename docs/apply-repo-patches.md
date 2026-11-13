@@ -80,7 +80,7 @@ rollout. This change does not re-enable vendor auto-update jobs.
 ## Regression tests
 
 ```sh
-uv run pytest -q tests/test_apply_repo_patches.py
+uv run pytest -q tests/test_tools.py
 ```
 
 Tests use real disposable local Git repositories, including a patch rejected
