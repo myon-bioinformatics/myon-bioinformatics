@@ -37,7 +37,7 @@ def test_python_39_lane_uses_uv_on_current_runner_without_lowering_pytest_floor(
 def test_node_python_39_lane_uses_uv_on_current_runner_without_changing_modern_matrix():
     root = Path(__file__).resolve().parents[1]
     workflow = yaml.load(
-        (root / ".github/workflows/node-launch-tests.yml").read_text(),
+        (root / ".github/workflows/njs-launch-tests.yml").read_text(),
         Loader=yaml.BaseLoader,
     )
     legacy = workflow["jobs"]["stdlib-py39"]
@@ -50,7 +50,7 @@ def test_node_python_39_lane_uses_uv_on_current_runner_without_changing_modern_m
     test = next(step for step in legacy["steps"] if "run" in step)
     assert test["run"] == (
         "uv run --python 3.9 --no-project --with pytest==8.4.2 pytest -q "
-        "tests/test_node_launch.py tests/test_node_launch_cli_args_parity.py"
+        "tests/test_njs_launch.py"
     )
     modern = workflow["jobs"]["node-test"]
     assert modern["runs-on"] == "${{ matrix.os }}"

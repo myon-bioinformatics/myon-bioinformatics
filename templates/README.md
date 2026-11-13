@@ -81,7 +81,7 @@ Rules of thumb: file names are lowercase with hyphens (no underscores);
 `name:` is a short title-case label; `workflow_run` triggers reference the
 `name:` value, so rename both together. Repository-specific lanes keep their
 own descriptive names. The parent itself is a hub with several test lanes
-(`python-tests.yml`, `node-launch-tests.yml`, ...) and has no single `ci.yml`.
+(`python-tests.yml`, `njs-launch-tests.yml`, ...) and has no single `ci.yml`.
 
 Canonical public data is maintained separately in `myon-bioinformatics/myon-bioinformatics.github.io`:
 

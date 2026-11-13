@@ -52,7 +52,7 @@ or a verbatim enrolled copy). That contract is withdrawn as a uv exclusion.
 | Ironmate | `pillow_min.py` | cannot move (standalone copy) |
 | myon-bioinformatics | `gh_ops.py` | package first |
 | myon-bioinformatics | `gh_workflow.py` | package first |
-| myon-bioinformatics | `node_launch.py` | package first |
+| myon-bioinformatics | `njs_launch.py` | package first |
 | myon-bioinformatics | `git_inspector.py` | package first |
 | myon-bioinformatics | `browser_evidence.py` | package first |
 | myon-bioinformatics | `publish_check.py` | package first |

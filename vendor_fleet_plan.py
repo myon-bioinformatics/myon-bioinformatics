@@ -50,7 +50,7 @@ WORKTREE = "WORKTREE"
 STATUSES = ("success", "failure", "updated", "skipped", "blocked", "unavailable")
 ICON = {"success": "✅", "failure": "❌", "updated": "🔄", "skipped": "⏭️", "blocked": "⛔", "unavailable": "❔",
         "target": "🎯", "excluded": "🚫", "insufficient": "❔"}
-LAUNCHERS = ("py_launch.cjs", "node_launch.py")
+LAUNCHERS = ("py_launch.cjs", "njs_launch.py", "node_launch.py")  # node_launch.py: the old name, still in children's locks
 SKIP_PARTS = {".git", "node_modules", "__pycache__", ".venv", "fixtures", "dist", "build", ".fleet-cache"}
 # Repository redirections and interpreter/test overrides that must not reach another repository's checks.
 # Transport settings (GIT_CONFIG_* proxies, GIT_SSL_CAINFO) stay: they describe the machine, not a checkout.
