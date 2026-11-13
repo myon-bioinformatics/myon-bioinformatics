@@ -303,8 +303,9 @@ PSWB #141の利用側6件・親 #262・#141は、監査と同じrepo/PR番号で
 既存の独自スクロールボタンは不要。PSWB API・vendor pin・追加依存・Pages設定は変更しない。
 公開時の既存producerで最新データを取得し、確認版HTMLの固定スナップショットは公開しない。
 
-CLIの公開ビルドは、対象repoのGET /repos・GET /issues・GET /pullsを取り直す。
-GET /issuesのPRを除外して純Issue数を計算する。取得失敗は空欄・未完了として表示し、保存済み件数で埋めない。
+
+REST件数は親側の `collect_repository_counts()` でリポジトリ情報・GET /issues・GET /pullsを独立取得する。両一覧をページ末尾まで読み、PR属性の有無で純Issueを分離する。部分取得は件数を未確認に保ち、合算差はそのまま表示する。追加依存・PSWB変更は不要。
+
 現行PR/Issueと移行8件のコメント・レビュー・現headのrun/attempt/jobも読み取り専用で再取得する。
 各集合は最大1000件、Actionsはworkflow/eventごとに最新run・最新attemptを採用する。
 取得失敗・途中のhead/state移動は網羅済みにしない。過去attempt・必須チェック規則・ログ本文は別確認。
