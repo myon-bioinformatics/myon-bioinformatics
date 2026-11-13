@@ -111,7 +111,7 @@ def pswb_migration(snapshot, fetch):
                 raise ValueError('registry unavailable')
             main = integrations[repo]['head_sha']
             pr = fetch(f'{root}/pulls/{number}')
-            row.update(open=pr['state'] == 'open', draft=pr['draft'], mergeable=pr['mergeable'],
+            row.update(title=pr.get('title'), open=pr['state'] == 'open', draft=pr['draft'], mergeable=pr['mergeable'],
                        merged=bool(pr['merged_at']), merged_at=pr['merged_at'], head_sha=pr['head']['sha'],
                        base_sha=pr['base']['sha'], main_sha=main, merge_sha=pr.get('merge_commit_sha'))
             row['runs'] = {}
@@ -554,12 +554,28 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
                 shutil.copyfile(asset, stage / asset.name)
         evidence = write_github_evidence(snapshot, stage, source_root=source_root)
         from tools.unified_operations import write_workspace
-        write_workspace(snapshot, evidence, history, stage, source_root, previous=before)
+        workspace = write_workspace(snapshot, evidence, history, stage, source_root, previous=before)
         # Publish the standalone operations guide alongside the audit workspace.
         operations = source_root / 'site/component-ops'
         if operations.is_dir():
             shutil.copytree(operations, stage / 'component-ops')
-        (stage / 'index.html').write_text(observatory_page(snapshot), encoding='utf-8')
+        if workspace is not None:
+            (stage / 'workspace.html').replace(stage / 'index.html')
+            aliases = {'workspace.html': 'queue', 'evidence.html': 'queue',
+                       'dependencies.html': 'audit', 'operations.html': 'ops', 'records.html': 'records',
+                       'component-ops/index.html': 'ops'}
+            for path, view in aliases.items():
+                target = ('../' if '/' in path else '') + 'index.html'
+                (stage / path).parent.mkdir(parents=True, exist_ok=True)
+                (stage / path).write_text(
+                    '<!doctype html><html lang="ja"><meta charset="utf-8">'
+                    '<meta name="viewport" content="width=device-width,initial-scale=1">'
+                    f'<meta http-equiv="refresh" content="0;url={target}#{view}">'
+                    f'<title>継続監査</title><a href="{target}#{view}">継続監査を開く</a>'
+                    f'<script>location.replace({json.dumps(target)}+(location.hash||"#{view}"))</script></html>',
+                    encoding='utf-8')
+        else:
+            (stage / 'index.html').write_text(observatory_page(snapshot), encoding='utf-8')
         (stage / 'pswb-shell.css').write_text(pswb_css(), encoding='utf-8')
         ui = ci._load_pysaiyanweboo()
         for name in ('scroll.js', 'records.js'):

@@ -11,7 +11,8 @@ function summarize(r){
  if(r.kind==='pr'){if(!effective.length)gaps.push('現head CI');if(!r.review_coverage||r.review_coverage.head_sha&&r.review_coverage.head_sha!==r.head_sha)gaps.push('レビュー網羅');if(!r.required_checks_verified)gaps.push('required checks');if(!r.expected_sha)gaps.push('期待SHA');if(!r.main_sha)gaps.push('main SHA');if(!r.current_collection||r.current_collection.head_sha&&r.current_collection.head_sha!==r.head_sha)gaps.push('run/attempt/job再取得');}
  const open=r.github_state==='open'&&!r.inventory_absent,failedSha=!!r.expected_sha&&r.expected_sha!==r.head_sha;
  const flags=[];if(open){if(failed.length)flags.push('CI失敗');if(r.mergeable===false)flags.push('競合');if(r.review>0||changesRequested)flags.push('未解決レビュー');if(gaps.length||failedSha)flags.push('証跡不足');if(r.kind==='pr'&&!approved)flags.push('承認待ち');if(r.kind==='pr')flags.push('未クローズPR');}
- const priority=flags.some(x=>['CI失敗','競合','未解決レビュー'].includes(x))?0:flags.includes('証跡不足')?1:open?2:3;
+ if(r.migration?.state==='ブロッカー')flags.push('統合ブロッカー');
+ const priority=flags.some(x=>['CI失敗','競合','未解決レビュー','統合ブロッカー'].includes(x))?0:flags.includes('証跡不足')?1:open?2:3;
  let ci=failed.length?'失敗':effective.some(e=>e.status!=='completed')?'実行中':effective.length&&effective.every(e=>e.conclusion==='success')?'成功（観測分）':effective.length?'skip等を含む':'未確認';
  return {open,approved,changesRequested,gaps,flags,priority,ci,effective,next:failed.length?'失敗jobとheadを照合':r.mergeable===false?'重複ファイルと依存順を確認':r.review>0||changesRequested?'レビュー対象SHAと未解決内容を確認':gaps.length?'不足証跡を収集':!approved&&r.kind==='pr'?'現headのレビューを確認':'状態とclosureを再確認'};
 }

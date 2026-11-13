@@ -105,3 +105,11 @@ test('unified CI keeps workflow events distinct',()=>{
   {type:'ci',head_sha:head,workflow_id:1,event:'schedule',run_number:1,status:'completed',conclusion:'failure'}]});
  assert.equal(s.effective.length,2);assert(s.flags.includes('CI失敗'));
 });
+
+test('closed migration blockers remain ahead of ordinary open PRs',()=>{
+ const u=require('../site/ui/unified-model.js');
+ const r={kind:'pr',github_state:'closed',merged:true,events:[],migration:{state:'ブロッカー'}};
+ assert.equal(u.summarize(r).priority,0);
+ assert.equal(u.summarize(r).open,false);
+ assert.ok(u.summarize(r).flags.includes('統合ブロッカー'));
+});
