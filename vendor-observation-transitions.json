@@ -315,6 +315,56 @@
         }
       ],
       "reason": "Ironmate #223 replaces the PSWB flow contract; retire this record after observing its merged main and lock."
+    },
+    {
+      "consumer": "myon-bioinformatics/mcp-toolcall-lab",
+      "repository_id": 1374450603,
+      "recorded_sha": "cd04472040f0db991c5138144c01f56a2b79e44b",
+      "lock_sha256": "40496c0e700ff3c4894541bc87dca28c6755b0ed0065cb5a740ec0c0e1583135",
+      "target_consumer_sha256": "8cf50ecdf096f9b5263b01efe6794c2f362d6bb9d39db263a8194a3ff4deb3b6",
+      "old_entries": [
+        {
+          "repository": "myon-bioinformatics/ascii_artist",
+          "source": "ascii_artist.py",
+          "destination": "vendor/ascii_artist.py",
+          "license": "vendor/ascii_artist-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "gh_ops.py",
+          "destination": "vendor/gh_ops.py",
+          "license": "vendor/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/markdown",
+          "source": "markdown.py",
+          "destination": "vendor/markdown.py",
+          "license": "vendor/markdown-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/gh_identity",
+          "source": "gh_identity.py",
+          "destination": "vendor/gh_identity.py",
+          "license": "vendor/gh_identity-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "node_launch.py",
+          "destination": "vendor/node_launch.py"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "web_ui.py",
+          "destination": "vendor/web_ui.py",
+          "license": "vendor/web-ui-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "vendor_fleet_plan.py",
+          "destination": "vendor/vendor_fleet_plan.py"
+        }
+      ],
+      "reason": "Migrate MCP PSWB module to pysaiyanweboo.py while preserving the exact recorded pre-migration lock audit until the merged child observation is refreshed."
     }
   ]
 }
