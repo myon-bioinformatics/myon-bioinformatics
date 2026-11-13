@@ -365,6 +365,126 @@
         }
       ],
       "reason": "Migrate MCP PSWB module to pysaiyanweboo.py while preserving the exact recorded pre-migration lock audit until the merged child observation is refreshed."
+    },
+    {
+      "consumer": "myon-bioinformatics/Aoi",
+      "repository_id": 1402862784,
+      "recorded_sha": "0d7bfc6287186852cdff85d5d363cffff5aacde6",
+      "lock_sha256": "d5b99997bb54eb6573cc062cd8da7525d5f980d2663680df53d49bebdf8fed64",
+      "target_consumer_sha256": "6a93f53da0bdcb1565febacbf98e8b1f99281b46a8734c6937054ad222b4bbd3",
+      "old_entries": [
+        {
+          "repository": "myon-bioinformatics/markdown",
+          "source": "markdown.py",
+          "destination": "vendor/markdown.py"
+        },
+        {
+          "repository": "myon-bioinformatics/markdown",
+          "source": "LICENSE",
+          "destination": "vendor/markdown-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "web_ui.py",
+          "destination": "vendor/web_ui.py"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "LICENSE",
+          "destination": "vendor/web-ui-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "py_launch.cjs",
+          "destination": "vendor/py_launch.cjs"
+        }
+      ],
+      "reason": "PSWB canonical-module migration: desired topology follows merged main; preserve exact historical observation until a separately audited heads refresh."
+    },
+    {
+      "consumer": "myon-bioinformatics/myon-bioinformatics.github.io",
+      "repository_id": 638795008,
+      "recorded_sha": "79f72ed3369480e990aa62f678bba4b888070718",
+      "lock_sha256": "f6ef14c32c7c060cf40891641ba12934d4b08b65752b3a7798f5af3d38785481",
+      "target_consumer_sha256": "11f557779f37d5abe83bd89f6cc47b2709bb4fa374d75736dd23ca885f81871d",
+      "old_entries": [
+        {
+          "repository": "myon-bioinformatics/mcp-toolcall-lab",
+          "source": "src/mcp_toolcall_lab/adapters/html_snapshot.py",
+          "destination": "tools/vendor/lab/html_snapshot.py"
+        },
+        {
+          "repository": "myon-bioinformatics/mcp-toolcall-lab",
+          "source": "LICENSE",
+          "destination": "tools/vendor/lab/LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "css/base.css",
+          "destination": "tools/vendor/web-ui/css/base.css"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "LICENSE",
+          "destination": "tools/vendor/web-ui/LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "css/components.css",
+          "destination": "tools/vendor/web-ui/css/components.css"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "css/themes/modern.css",
+          "destination": "tools/vendor/web-ui/css/themes/modern.css"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "css/tokens.css",
+          "destination": "tools/vendor/web-ui/css/tokens.css"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "js/navigation.js",
+          "destination": "tools/vendor/web-ui/js/navigation.js"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "js/ui.js",
+          "destination": "tools/vendor/web-ui/js/ui.js"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "web_ui.py",
+          "destination": "tools/vendor/web-ui/web_ui.py"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "js/controls.js",
+          "destination": "tools/vendor/web-ui/js/controls.js"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "LICENSE",
+          "destination": "tools/vendor/ironmate/LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/Ironmate",
+          "source": "pillow_min.py",
+          "destination": "tools/vendor/ironmate/pillow_min.py"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "js/collection.js",
+          "destination": "tools/vendor/web-ui/js/collection.js"
+        },
+        {
+          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "source": "web_ui.py",
+          "destination": "tools/vendor/web-ui-generator/web_ui.py"
+        }
+      ],
+      "reason": "PSWB canonical-module migration: desired topology follows merged main; preserve exact historical observation until a separately audited heads refresh."
     }
   ]
 }
