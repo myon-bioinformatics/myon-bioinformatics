@@ -1,6 +1,21 @@
-"""Fixed BTK graph/failure tests; fake npm, no installs or browser execution."""
-import concurrent.futures, importlib.util, json, tempfile, unittest
-from pathlib import Path; from unittest.mock import patch
+"""nano_btk: snapshot contracts and the Node26-only profiles and parser updates (stdlib only, runs under python -S)."""
+
+import concurrent.futures
+import copy
+import importlib.util
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+# ═══ · nano btk ══════════════════════════════════════════════════════════════════════════════════════════
+# Fixed BTK graph/failure tests; fake npm, no installs or browser execution.
 
 SPEC = importlib.util.spec_from_file_location("nano_node_btk", Path(__file__).parents[1] / "tools/nano_node.py")
 nano = importlib.util.module_from_spec(SPEC)
@@ -136,6 +151,201 @@ p.write_text(json.dumps(d))
         with self.assertRaisesRegex(ValueError, "unsupported named feature"):
             nano.prepare(self.source, self.output, str(self.npm), feature="all-peers")
         self.assertFalse(self.output.exists())
+
+
+# ═══ · nano btk node26 ═══════════════════════════════════════════════════════════════════════════════════
+# Node26-only snapshot contracts; fake npm, no installs or network.
+
+NANO_BTK_NODE26_SPEC = importlib.util.spec_from_file_location('nano_node26', ROOT / 'tools/nano_node.py')
+nano_nano_btk_node26 = importlib.util.module_from_spec(NANO_BTK_NODE26_SPEC)
+NANO_BTK_NODE26_SPEC.loader.exec_module(nano_nano_btk_node26)
+SOURCE = ROOT / 'tests/fixtures/btk-node26'
+
+
+class Node26Tests(unittest.TestCase):
+    def setUp(self):
+        self.manifest = json.loads((SOURCE / 'package.json').read_bytes())
+        self.lock = json.loads((SOURCE / 'package-lock.json').read_bytes())
+
+    def projected(self):
+        value = copy.deepcopy(self.lock)
+        value['name'] = 'browser-test-kit'
+        value['packages'] = {k: v for k, v in value['packages'].items() if not k or k in nano_nano_btk_node26.BTK_NODE26_EXPECTED_PATHS}
+        value['packages']['']['devDependencies'] = nano_nano_btk_node26.BTK_NODE26_SELECTED
+        return value
+
+    def test_exact_inputs_and_unchanged_dependency_versions(self):
+        nano_nano_btk_node26.read_snapshot(SOURCE, blobs=nano_nano_btk_node26.BTK_NODE26_SOURCE_BLOBS)
+        nano_nano_btk_node26.validate_original(self.manifest, self.lock, feature=nano_nano_btk_node26.BTK_NODE26_FEATURE)
+        self.assertEqual(nano_nano_btk_node26.BTK_NODE26_SELECTED, nano_nano_btk_node26.BTK_SELECTED)
+        self.assertEqual(nano_nano_btk_node26.BTK_NODE26_EXPECTED_PATHS, nano_nano_btk_node26.BTK_EXPECTED_PATHS)
+        self.assertEqual(len(nano_nano_btk_node26.BTK_NODE26_EXPECTED_PATHS), 30)
+        self.assertEqual(self.lock['packages']['node_modules/marked']['version'], '18.1.1')
+        self.assertEqual(self.lock['packages']['node_modules/linkedom']['version'], '0.18.13')
+        self.assertEqual(self.lock['packages']['node_modules/exceljs']['version'], '4.4.0')
+
+    def test_historical_selector_remains_exact_and_rejects_node26_metadata(self):
+        self.assertEqual(nano_nano_btk_node26.BTK_SOURCE_BLOBS['package.json'], '9dbada6ad25af5051818d4399796d8d2cfc400c6')
+        self.assertEqual(nano_nano_btk_node26.BTK_SOURCE_BLOBS['package-lock.json'], 'b0191e266c3516596cb4c6a9ad69b47628551145')
+        with self.assertRaisesRegex(ValueError, 'blob mismatch'):
+            nano_nano_btk_node26.read_snapshot(SOURCE, blobs={k: nano_nano_btk_node26.BTK_SOURCE_BLOBS[k] for k in nano_nano_btk_node26.BTK_NODE26_SOURCE_BLOBS})
+
+    def test_projection_preserves_full_records_and_node26_floor(self):
+        projected = self.projected()
+        nano_nano_btk_node26.validate_projection(self.lock, projected, feature=nano_nano_btk_node26.BTK_NODE26_FEATURE)
+        self.assertEqual(projected['packages']['']['engines'], {'node': '>=26'})
+        for path, value in projected['packages'].items():
+            if path:
+                self.assertEqual(value, self.lock['packages'][path])
+
+    def test_changed_versions_peer_or_engine_rejected(self):
+        for mode in ('version', 'peer', 'engines', 'extra'):
+            projected = self.projected()
+            if mode == 'version': projected['packages']['node_modules/marked']['version'] = '18.1.2'
+            if mode == 'peer': projected['packages']['node_modules/linkedom']['peerDependenciesMeta']['canvas']['optional'] = False
+            if mode == 'engines': projected['packages']['']['engines'] = {'node': '>=24'}
+            if mode == 'extra': projected['packages']['node_modules/canvas'] = {}
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                nano_nano_btk_node26.validate_projection(self.lock, projected, feature=nano_nano_btk_node26.BTK_NODE26_FEATURE)
+
+    def test_original_node_floor_rejected(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest['engines'] = {'node': '>=24'}
+        with self.assertRaisesRegex(ValueError, 'Node 26 engines'):
+            nano_nano_btk_node26.validate_original(manifest, self.lock, feature=nano_nano_btk_node26.BTK_NODE26_FEATURE)
+
+    def test_requires_dependency_only_and_ignores_no_guard(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(nano_nano_btk_node26.subprocess, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'requires --dependencies-only'):
+                nano_nano_btk_node26.prepare(SOURCE, Path(tmp), feature=nano_nano_btk_node26.BTK_NODE26_FEATURE)
+            run.assert_not_called()
+
+    def test_prepare_receipt_retains_real_source_and_no_install_claim(self):
+        def fake_npm(argv, **kwargs):
+            if argv[1:] == ['--version']:
+                return subprocess.CompletedProcess(argv, 0, '11.9.0-test\n', '')
+            self.assertEqual(argv[1:7], ['install', '--package-lock-only', '--offline', '--ignore-scripts', '--no-audit', '--no-fund'])
+            project = Path(kwargs['cwd'])
+            self.assertEqual({p.name for p in project.iterdir()}, {'package.json', 'package-lock.json'})
+            (project / 'package-lock.json').write_text(json.dumps(self.projected()))
+            return subprocess.CompletedProcess(argv, 0, '', '')
+        with tempfile.TemporaryDirectory() as tmp, patch.object(nano_nano_btk_node26.shutil, 'which', return_value=sys.executable), patch.object(nano_nano_btk_node26.subprocess, 'run', side_effect=fake_npm):
+            output = nano_nano_btk_node26.prepare(SOURCE, Path(tmp), feature=nano_nano_btk_node26.BTK_NODE26_FEATURE, dependencies_only=True)
+            receipt = json.loads((output / 'receipt.json').read_text())
+            self.assertEqual(receipt['source_commit'], '8de4a8c145a1361c477c67e87f0e74a1c45faa50')
+            self.assertEqual(receipt['npm_root_metadata_changes']['engines'], {'node': '>=26'})
+            self.assertEqual(receipt['candidate_locked_package_records'], 30)
+            self.assertIsNone(receipt['installed_bytes'])
+            self.assertFalse(receipt['application_source_staged'])
+            self.assertFalse((output / 'browser-test-kit/node_modules').exists())
+
+
+# ═══ · nano btk node26 parser updates ════════════════════════════════════════════════════════════════════
+# Additive Node26 parser profiles: exact inputs and fail-closed projections.
+
+NANO_BTK_NODE26_PARSER_UPDATES_SPEC = importlib.util.spec_from_file_location('nano_parser_updates', ROOT / 'tools/nano_node.py')
+nano_nano_btk_node26_parser_updates = importlib.util.module_from_spec(NANO_BTK_NODE26_PARSER_UPDATES_SPEC)
+NANO_BTK_NODE26_PARSER_UPDATES_SPEC.loader.exec_module(nano_nano_btk_node26_parser_updates)
+
+class ParserProfileTests(unittest.TestCase):
+    def profiles(self):
+        for label, feature in [('marked', nano_nano_btk_node26_parser_updates.BTK_NODE26_MARKED_FEATURE), ('parsers', nano_nano_btk_node26_parser_updates.BTK_NODE26_PARSERS_FEATURE)]:
+            source = ROOT / 'tests/fixtures' / ('btk-node26-' + label)
+            manifest = json.loads((source / 'package.json').read_bytes())
+            lock = json.loads((source / 'package-lock.json').read_bytes())
+            commit, blobs, selected, paths = nano_nano_btk_node26_parser_updates.BTK_NODE26_PROFILES[feature]
+            yield label, feature, source, manifest, lock, commit, blobs, selected, paths
+
+    @staticmethod
+    def projected(lock, selected, paths):
+        result = copy.deepcopy(lock)
+        result['name'] = 'browser-test-kit'
+        result['packages'] = {k: v for k, v in result['packages'].items() if not k or k in paths}
+        result['packages']['']['devDependencies'] = selected
+        return result
+
+    def test_exact_snapshots_and_closures(self):
+        for label, feature, source, manifest, lock, commit, blobs, selected, paths in self.profiles():
+            with self.subTest(profile=label):
+                self.assertRegex(commit, r'^[0-9a-f]{40}$')
+                nano_nano_btk_node26_parser_updates.read_snapshot(source, blobs=blobs)
+                nano_nano_btk_node26_parser_updates.validate_original(manifest, lock, feature=feature)
+                self.assertEqual(len(paths), 30)
+                self.assertEqual(manifest['engines'], {'node': '>=26'})
+                self.assertEqual(lock['packages']['node_modules/marked']['version'], '18.1.2')
+                self.assertEqual(lock['packages']['node_modules/linkedom']['version'], '0.18.14' if label == 'parsers' else '0.18.13')
+                self.assertEqual(lock['packages']['node_modules/exceljs']['version'], '4.4.0')
+                self.assertNotIn('node_modules/exceljs', paths)
+                self.assertNotIn('node_modules/canvas', paths)
+                self.assertEqual('node_modules/@acemir/cssom' in paths, label == 'parsers')
+                self.assertEqual('node_modules/cssom' in paths, label == 'marked')
+                projected = self.projected(lock, selected, paths)
+                nano_nano_btk_node26_parser_updates.validate_projection(lock, projected, feature=feature)
+                for path in paths:
+                    self.assertEqual(projected['packages'][path], lock['packages'][path])
+
+    def test_changed_inputs_and_wrong_profile_are_rejected(self):
+        for label, feature, source, manifest, lock, commit, blobs, selected, paths in self.profiles():
+            with self.subTest(profile=label), tempfile.TemporaryDirectory() as tmp:
+                changed = Path(tmp)
+                for name in blobs:
+                    (changed / name).write_bytes((source / name).read_bytes())
+                with (changed / 'package.json').open('a') as stream:
+                    stream.write(' ')
+                with self.assertRaisesRegex(ValueError, 'blob mismatch'):
+                    nano_nano_btk_node26_parser_updates.read_snapshot(changed, blobs=blobs)
+                with self.assertRaisesRegex(ValueError, 'blob mismatch'):
+                    nano_nano_btk_node26_parser_updates.read_snapshot(source, blobs=nano_nano_btk_node26_parser_updates.BTK_NODE26_SOURCE_BLOBS)
+
+    def test_projection_rejects_mutated_retained_records(self):
+        for label, feature, source, manifest, lock, commit, blobs, selected, paths in self.profiles():
+            for mode in ('version', 'integrity', 'peer', 'engine', 'extra', 'missing'):
+                projected = self.projected(lock, selected, paths)
+                if mode == 'version': projected['packages']['node_modules/marked']['version'] = '18.1.1'
+                if mode == 'integrity': projected['packages']['node_modules/marked']['integrity'] = 'sha512-wrong'
+                if mode == 'peer': projected['packages']['node_modules/linkedom']['peerDependenciesMeta']['canvas']['optional'] = False
+                if mode == 'engine': projected['packages']['']['engines'] = {'node': '>=24'}
+                if mode == 'extra': projected['packages']['node_modules/canvas'] = {}
+                if mode == 'missing': del projected['packages']['node_modules/marked']
+                with self.subTest(profile=label, mode=mode), self.assertRaises(ValueError):
+                    nano_nano_btk_node26_parser_updates.validate_projection(lock, projected, feature=feature)
+
+    def test_original_rejects_wrong_engine_and_peer(self):
+        for label, feature, source, manifest, lock, commit, blobs, selected, paths in self.profiles():
+            for mode in ('engine', 'peer'):
+                m, l = copy.deepcopy(manifest), copy.deepcopy(lock)
+                if mode == 'engine': m['engines'] = {'node': '>=24'}
+                if mode == 'peer': l['packages']['node_modules/linkedom']['peerDependencies']['canvas'] = '*'
+                with self.subTest(profile=label, mode=mode), self.assertRaises(ValueError):
+                    nano_nano_btk_node26_parser_updates.validate_original(m, l, feature=feature)
+
+    def test_dependency_only_required_before_npm(self):
+        for label, feature, source, *_ in self.profiles():
+            with self.subTest(profile=label), tempfile.TemporaryDirectory() as tmp, patch.object(nano_nano_btk_node26_parser_updates.subprocess, 'run') as run:
+                with self.assertRaisesRegex(ValueError, 'requires --dependencies-only'):
+                    nano_nano_btk_node26_parser_updates.prepare(source, Path(tmp), feature=feature)
+                run.assert_not_called()
+
+    def test_prepare_receipts_do_not_claim_install_or_copy_source(self):
+        for label, feature, source, manifest, lock, commit, blobs, selected, paths in self.profiles():
+            def fake_npm(argv, **kwargs):
+                if argv[1:] == ['--version']:
+                    return subprocess.CompletedProcess(argv, 0, '11.9.0-test\n', '')
+                self.assertEqual(argv[1:7], ['install', '--package-lock-only', '--offline', '--ignore-scripts', '--no-audit', '--no-fund'])
+                project = Path(kwargs['cwd'])
+                self.assertEqual({p.name for p in project.iterdir()}, {'package.json', 'package-lock.json'})
+                (project / 'package-lock.json').write_text(json.dumps(self.projected(lock, selected, paths)))
+                return subprocess.CompletedProcess(argv, 0, '', '')
+            with self.subTest(profile=label), tempfile.TemporaryDirectory() as tmp, patch.object(nano_nano_btk_node26_parser_updates.shutil, 'which', return_value=sys.executable), patch.object(nano_nano_btk_node26_parser_updates.subprocess, 'run', side_effect=fake_npm):
+                output = nano_nano_btk_node26_parser_updates.prepare(source, Path(tmp), feature=feature, dependencies_only=True)
+                receipt = json.loads((output / 'receipt.json').read_text())
+                self.assertEqual(receipt['source_commit'], commit)
+                self.assertEqual(receipt['source_git_blobs'], blobs)
+                self.assertEqual(receipt['candidate_locked_package_records'], 30)
+                self.assertEqual(receipt['npm_root_metadata_changes']['engines'], {'node': '>=26'})
+                self.assertIsNone(receipt['installed_package_count'])
+                self.assertFalse(receipt['application_source_staged'])
+                self.assertFalse((output / 'browser-test-kit/node_modules').exists())
 
 
 if __name__ == "__main__":

@@ -224,7 +224,7 @@ WEB_UI = "myon-bioinformatics/web-ui"
 
 def load_web_ui(path):
     # These regressions exercise the historical PR's reviewed contract.
-    # Current fleet acceptance is covered by test_vendor_baseline_rollout.py.
+    # Current fleet acceptance is covered by test_vendor_contracts.py.
     historical = json.loads((ROOT / "tests/fixtures/vendor_baseline_before_20261029.json").read_text())
     requested = path
     if requested == "vendor-consumers.json":
@@ -269,7 +269,7 @@ XPROBE = "myon-bioinformatics/xprobe"
 
 def load_xprobe(path):
     # These regressions exercise the historical PR's reviewed contract.
-    # Current fleet acceptance is covered by test_vendor_baseline_rollout.py.
+    # Current fleet acceptance is covered by test_vendor_contracts.py.
     historical = json.loads((ROOT / "tests/fixtures/vendor_baseline_before_20261029.json").read_text())
     requested = path
     if requested == "vendor-consumers.json":
@@ -320,7 +320,7 @@ GH_OPS_CATALOG_COMMIT = "09831b992dc91d83b15c44861a788e03b1e654c4"
 
 def load_flutter(filename):
     # These regressions exercise the historical PR's reviewed contract.
-    # Current fleet acceptance is covered by test_vendor_baseline_rollout.py.
+    # Current fleet acceptance is covered by test_vendor_contracts.py.
     historical = json.loads((ROOT / "tests/fixtures/vendor_baseline_before_20261029.json").read_text())
     requested = filename
     if requested == "vendor-consumers.json":
