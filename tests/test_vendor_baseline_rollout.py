@@ -45,7 +45,7 @@ POST_BASELINE_ENROLLMENTS = {
     "myon-bioinformatics/myon-bioinformatics.github.io": {"tools/vendor/web-ui-generator/web_ui.py"},
     # The parent audit dashboard (ci_status.py --audit --html) renders through the vendored pysaiyanweboo.py.
     "myon-bioinformatics/myon-bioinformatics": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
-    "myon-bioinformatics/mcp-toolcall-lab": {"vendor/web_ui.py", "vendor/web-ui-LICENSE"},
+    "myon-bioinformatics/mcp-toolcall-lab": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
 }
 
 
@@ -53,6 +53,11 @@ POST_BASELINE_ENROLLMENTS = {
 # compares retired entries strictly with the merged child, so the child lands first; until the parent re-observes it,
 # a reviewed lock that holds none of the replacements is compared with the retired entries.
 POST_BASELINE_REPLACEMENTS = {
+    # Exact old/new topology; immutable historical observations stay unchanged.
+    "myon-bioinformatics/mcp-toolcall-lab": {
+        "retired": [{"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "web_ui.py", "destination": "vendor/web_ui.py", "license": "vendor/web-ui-LICENSE"}],
+        "added": [{"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "pysaiyanweboo.py", "destination": "vendor/pysaiyanweboo.py", "license": "vendor/pysaiyanweboo-LICENSE"}],
+    },
     # web-ui handed its card-flow code to ascii_artist: Ironmate takes the module and the sample from there.
     "myon-bioinformatics/Ironmate": {
         "retired": [
