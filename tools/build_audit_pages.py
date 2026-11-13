@@ -431,7 +431,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
                 shutil.copyfile(asset, stage / asset.name)
         evidence = write_github_evidence(snapshot, stage, source_root=source_root)
         from tools.unified_operations import write_workspace
-        write_workspace(snapshot, evidence, history, stage, source_root)
+        write_workspace(snapshot, evidence, history, stage, source_root, previous=before)
         # Publish the standalone operations guide alongside the audit workspace.
         operations = source_root / 'site/component-ops'
         if operations.is_dir():
@@ -499,4 +499,5 @@ def main(argv=None):
 
 if __name__ == '__main__':
     raise SystemExit(main())
+
 

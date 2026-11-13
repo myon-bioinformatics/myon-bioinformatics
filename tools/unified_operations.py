@@ -53,7 +53,52 @@ def collect_main_runs(snapshot, fetch):
     return {'runs': results, 'errors': errors, 'scope': '各repoの既定ブランチ直近30 run内、workflow/eventの最新。失敗jobは現mainの最新attemptのみ。ログ本文・必須チェックは未取得。'}
 
 
-def view_data(snapshot, evidence, history, operations):
+def snapshot_comparison(snapshot, previous):
+    """Compare consecutive published observations; absence is never a closure."""
+    result = {'available': previous is not None, 'previous_at': (previous or {}).get('generated_at'),
+              'current_at': snapshot['generated_at'], 'added': [], 'changed': [], 'absent': [],
+              'counts': []}
+    if previous is None:
+        return result
+    public = set(snapshot.get('repositories', []))
+    if not public:  # A scoped fixture may only declare its records.
+        public = {r['repository'] for r in snapshot['records'] if 'repository' in r}
+    fields = ('title', 'head_sha', 'main_sha', 'base_sha', 'base_ref', 'draft', 'mergeable',
+              'ci', 'github_state', 'review')
+    def inventory(value):
+        mains = {i['repository']: i.get('head_sha') for i in value.get('integrations', [])
+                 if i.get('branch') == 'main'}
+        return {r['id']: dict(r, github_state=r.get('github_state', 'open'),
+                              main_sha=mains.get(r['repository']))
+                for r in value['records'] if r.get('repository') in public}
+    before, current = inventory(previous), inventory(snapshot)
+    for key, record in current.items():
+        identity = {k: record.get(k) for k in ('id', 'repository', 'number', 'kind', 'title', 'url')}
+        if key not in before:
+            result['added'].append(identity)
+            continue
+        changes = {f: {'before': before[key].get(f), 'after': record.get(f)}
+                   for f in fields if before[key].get(f) != record.get(f)}
+        if changes:
+            result['changed'].append(dict(identity, changes=changes))
+    result['absent'] = [{k: r.get(k) for k in ('id', 'repository', 'number', 'kind', 'title', 'url')}
+                        for key, r in before.items() if key not in current]
+    old_counts = {c['repository']: c for c in previous.get('repository_counts', [])}
+    for c in snapshot.get('repository_counts', []):
+        if c['repository'] not in public:
+            continue
+        old = old_counts.get(c['repository'], {})
+        changes = {k: {'before': old.get(k), 'after': c.get(k)}
+                   for k in ('open_issues_count', 'get_issues', 'issues', 'pull_requests')
+                   if old.get(k) != c.get(k)}
+        if changes:
+            result['counts'].append({'repository': c['repository'], 'changes': changes})
+    result['open_prs'] = {'before': sum(r.get('kind') == 'pr' for r in before.values()),
+                         'after': sum(r.get('kind') == 'pr' for r in current.values())}
+    return result
+
+
+def view_data(snapshot, evidence, history, operations, previous=None):
     records = evidence.get('records', [])
     current = {r['id'] for r in snapshot['records']}
     normalized = []
@@ -83,6 +128,7 @@ def view_data(snapshot, evidence, history, operations):
     return {'schema': 'integrated-operations/1', 'built_at': snapshot['generated_at'],
             'coverage': '🔄 ビルド時の監査値。⚠️ コメント・全attempt・必須CI：取得範囲のみ。',
             'records': normalized, 'counts': counts, 'changes': changes,
+            'comparison': snapshot_comparison(snapshot, previous),
             'pins': snapshot.get('vendor_pins', []), 'conventions': snapshot.get('conventions', []),
             'fleet': snapshot.get('fleet', {}), 'history': history, 'operations': operations,
             'main_workflows': snapshot.get('main_workflows', {'runs': [], 'errors': [], 'scope': '未取得'}),
@@ -91,13 +137,13 @@ def view_data(snapshot, evidence, history, operations):
             'source': {'parent_main': parent.get('head_sha') or '', 'kind': 'Pages audit build'}}
 
 
-def write_workspace(snapshot, evidence, history, stage, source_root):
+def write_workspace(snapshot, evidence, history, stage, source_root, previous=None):
     ui = Path(source_root) / 'site/ui'
     template = ui / 'unified.template.html'
     if not template.exists():
         return  # Older fixture/checkout: existing workspace remains intact.
     operations = json.loads((ui / 'operations-data.json').read_text(encoding='utf-8'))
-    data = view_data(snapshot, evidence, history, operations)
+    data = view_data(snapshot, evidence, history, operations, previous)
     content = template.read_text(encoding='utf-8')
     for token, name in [('CSS', 'unified.css'), ('MODEL', 'unified-model.js'), ('APP', 'unified-app.js')]:
         text = (ui / name).read_text(encoding='utf-8')
@@ -109,3 +155,4 @@ def write_workspace(snapshot, evidence, history, stage, source_root):
     (Path(stage) / 'workspace.html').write_text(content, encoding='utf-8')
     (Path(stage) / 'unified-data.json').write_text(encoded, encoding='utf-8')
     return data
+
