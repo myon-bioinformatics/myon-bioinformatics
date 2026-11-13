@@ -98,6 +98,10 @@ A diagram summarizing the flow of activity and the value it aims for. "This site
 
 ---
 
+## 🖼️ Project icons & favicons
+
+[![myon-bioinformatics の15プロジェクトのアイコン・favicon一覧](./assets/brand/project-icons.jpg)](./assets/brand/project-icons.jpg)
+
 <!-- PROJECTS:START -->
 ## 📦 Featured Repositories
 
