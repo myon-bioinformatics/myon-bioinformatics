@@ -1,4 +1,4 @@
-"""Parent topology follows Ironmate #126's locked flow workspace snapshot."""
+"""Parent topology follows Ironmate's locked flow snapshot: the flow code and its sample now come from ascii_artist."""
 import copy, json
 from pathlib import Path
 
@@ -15,8 +15,9 @@ def load(path):
 
 def test_ironmate_registry_matches_reviewed_flow_lock():
     registry = load('vendor-consumers.json')
-    lock = load('tests/fixtures/ironmate-flow-workspace.lock.json')
-    assert len(lock['files']) == 61
+    lock = load('tests/fixtures/ironmate-flow-ascii-artist.lock.json')
+    assert len(lock['files']) == 55
+    assert not [x for x in lock['files'] if x['repository'].endswith('/PySaiyanWeBoo')]   # web-ui has no flow code now
     assert vendor_consumers.compare(registry, lock, CONSUMER)['matches']
     # All adopted source digests remain owned by the child's immutable lock.
     assert all(x['ref'] == x['commit'] for x in lock['files'])
@@ -45,3 +46,11 @@ def test_old_flow_export_lock_is_not_silently_accepted_after_patch_enrollment():
     result = vendor_consumers.compare(load('vendor-consumers.json'), old, CONSUMER)
     assert not result['matches']
     assert len(old['files']) == 54
+
+
+def test_web_ui_flow_workspace_lock_is_not_accepted_after_the_move_to_ascii_artist():
+    old = load('tests/fixtures/ironmate-flow-workspace.lock.json')
+    result = vendor_consumers.compare(load('vendor-consumers.json'), old, CONSUMER)
+    assert not result['matches'] and len(old['files']) == 61
+    assert {x['repository'] for x in result['unexpected']} == {'myon-bioinformatics/PySaiyanWeBoo'}
+    assert [(x['repository'], x['source']) for x in result['missing']] == [('myon-bioinformatics/ascii_artist', 'examples/pr-flow.json')]

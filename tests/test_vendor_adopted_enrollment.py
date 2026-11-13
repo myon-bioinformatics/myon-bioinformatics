@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_ironmate_registered_contract_ignores_recommendation_skips():
     registry = json.loads((ROOT / 'vendor-consumers.json').read_text())
     catalog = json.loads((ROOT / 'vendor-catalog.json').read_text())
-    lock = json.loads((ROOT / 'tests/fixtures/ironmate-flow-workspace.lock.json').read_text())
+    lock = json.loads((ROOT / 'tests/fixtures/ironmate-flow-ascii-artist.lock.json').read_text())
     ironmate_rows = [t for t in catalog['tools'] if t['repository'].casefold() == 'myon-bioinformatics/ironmate']
     assert len(ironmate_rows) == 1 and ironmate_rows[0]['source'] == 'pillow_min.py'
     assert 'myon-bioinformatics/Ironmate' not in ironmate_rows[0].get('consumers', {})

@@ -228,6 +228,34 @@ def classify(source, env, probe):
                 "from a git URL until that repository contains a project file",
             )
         ok, reason = installable(probe.pyproject, env.python)
+        if ok:
+            import tomllib
+            metadata = tomllib.loads(probe.pyproject)
+            backend = metadata.get("build-system", {}).get("build-backend", "")
+            setuptools = metadata.get("tool", {}).get("setuptools", {})
+            modules = setuptools.get("py-modules")
+            package_dirs = setuptools.get("package-dir")
+            # A single explicit discovery root cannot install a source outside
+            # that root. Keep the original catalog path, not a guessed rename.
+            if (backend in ("setuptools.build_meta", "setuptools.build_meta:__legacy__")
+                    and isinstance(package_dirs, dict) and set(package_dirs) == {""}
+                    and isinstance(package_dirs[""], str)):
+                package_root = Path(package_dirs[""])
+                if (package_root.parts and not package_root.is_absolute()
+                        and ".." not in package_root.parts
+                        and not Path(source).is_relative_to(package_root)):
+                    return Decision(
+                        "fetch", "source is outside the setuptools package discovery root; "
+                        "fetch original source bytes instead of guessing a replacement",
+                    )
+            if (backend in ("setuptools.build_meta", "setuptools.build_meta:__legacy__")
+                    and isinstance(modules, list)
+                    and all(isinstance(module, str) for module in modules)
+                    and Path(source).stem not in modules):
+                return Decision(
+                    "fetch", "source is not an explicitly installed setuptools py-module; "
+                    "fetch source bytes instead of claiming an installed import",
+                )
         return Decision("uv" if ok else "skip", reason)
     if suffix in NODE_SUFFIXES:
         if env.node is None:
@@ -750,3 +778,4 @@ def main(argv=None):
 
 if __name__ == "__main__":
     sys.exit(main())
+

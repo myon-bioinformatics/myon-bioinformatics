@@ -385,35 +385,9 @@
           "license": "vendor/cli_args-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "tool/flow_diagram.py",
-          "destination": "vendor/web_ui_flow.py",
-          "license": "vendor/web-ui-LICENSE"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
+          "repository": "myon-bioinformatics/ascii_artist",
           "source": "examples/pr-flow.json",
           "destination": "examples/flow.json"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "tool/flow_diagram.py",
-          "destination": "vendor/web_ui/tool/flow_diagram.py"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "tool/flow_patch.py",
-          "destination": "vendor/web_ui/tool/flow_patch.py"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "js/flow.cjs",
-          "destination": "vendor/web_ui/js/flow.cjs"
-        },
-        {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "js/flow-patch.cjs",
-          "destination": "vendor/web_ui/js/flow-patch.cjs"
         },
         {
           "repository": "myon-bioinformatics/myon-bioinformatics",
