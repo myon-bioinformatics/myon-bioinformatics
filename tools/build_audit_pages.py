@@ -32,7 +32,7 @@ BASE_URL = 'https://myon-bioinformatics.github.io/myon-bioinformatics'
 VIEWS = (('all', '▤', '監査一覧', '監査ワークスペース'), ('focus', '◎', '優先対応', '優先対応'),
          ('dependencies', '⇄', '依存・統合順序・固定SHA', '依存・統合順序・固定SHA'), ('progress', '▦', '共通化の進捗', '共通化の進捗'),
          ('history', '◷', '週次記録', '週次スナップショット'), ('done', '✓', '完了記録', '完了記録'))
-LINKS = (('workspace.html', '運用の確認・記録'), ('evidence.html', '◉ GitHub検証証跡 ↗'), ('component-ops/', '利用導線・責務移管 ↗'))  # other pages, before the actions
+LINKS = (('#pswb-migration', 'PSWB #141 統合順序'), ('workspace.html', '運用の確認・記録'), ('evidence.html', '◉ GitHub検証証跡 ↗'), ('component-ops/', '利用導線・責務移管 ↗'))  # other pages, before the actions
 ACTIONS = (('refresh', '↻ 観測値を再読込', ''), ('import', '↑ JSON読込', ''), ('export', '↓ 記録を書出し', ''), ('snapshot', '＋ 週次記録', 'primary'))
 # (id, aria-label, first option, further options): app.js fills repo and axis from the data.
 FILTERS = (('repo', 'リポジトリ', '全リポジトリ', ()),
@@ -77,6 +77,128 @@ def integration_summary(rows):
             '<th>次の作業 / マージ履歴</th></tr></thead><tbody>' + ''.join(row(r) for r in rows) + '</tbody></table></div></div>')
 
 
+# Domain evidence stays in the parent; presentation uses the adopted PSWB helpers.
+PSWB_TARGETS = (('Aoi', 188), ('markdown', 149), ('ascii_artist', 78),
+                ('mcp-toolcall-lab', 209), ('myon-bioinformatics.github.io', 109),
+                ('BrowserTestKit', 170), ('PySaiyanWeBoo', 141), (ci.OWNER, 262))
+
+
+def pswb_migration(snapshot, fetch):
+    """Observe the eight named PRs even after closure. No cached success fallback."""
+    import base64
+    at = dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')
+    result = {'schema': 'pswb-migration/1', 'checked_at': at, 'rows': []}
+    integrations = {r['repository']: r for r in snapshot.get('integrations', [])}
+    if not all(repo in integrations for repo, _ in PSWB_TARGETS):
+        return None  # scoped builds do not probe repositories outside their inventory
+    parent_sha = integrations[ci.OWNER].get('head_sha')
+    result['registry_main'] = parent_sha
+    try:
+        content = fetch(f'/repos/{ci.OWNER}/{ci.OWNER}/contents/vendor-consumers.json?ref={parent_sha}')
+        registry = json.loads(base64.b64decode(content['content']))['consumers']
+        result['registry_blob'] = content['sha']
+    except (ValueError, KeyError, RuntimeError, OSError, TypeError):
+        registry = None
+    for repo, number in PSWB_TARGETS:
+        root = f'/repos/{ci.OWNER}/{repo}'
+        row = {'repository': repo, 'number': number, 'url': f'https://github.com/{ci.OWNER}/{repo}/pull/{number}',
+               'checked_at': at, 'stage': 3 if repo == 'PySaiyanWeBoo' else 1 if repo == ci.OWNER else 2,
+               'dependencies': [f'{name}#{num}' for name, num in PSWB_TARGETS if name != repo] if repo == 'PySaiyanWeBoo' else [],
+               'state': '調査中', 'next': '最新head・main・登録証跡を取得'}
+        result['rows'].append(row)
+        try:
+            if not parent_sha or registry is None:
+                raise ValueError('registry unavailable')
+            main = integrations[repo]['head_sha']
+            pr = fetch(f'{root}/pulls/{number}')
+            row.update(open=pr['state'] == 'open', draft=pr['draft'], mergeable=pr['mergeable'],
+                       merged=bool(pr['merged_at']), merged_at=pr['merged_at'], head_sha=pr['head']['sha'],
+                       base_sha=pr['base']['sha'], main_sha=main, merge_sha=pr.get('merge_commit_sha'))
+            row['runs'] = {}
+            for phase, sha in dict(head=row['head_sha'], merge=row['merge_sha'] if row['merged'] else None, main=main).items():
+                if not sha:
+                    row['runs'][phase] = {'complete': False, 'runs': []}
+                    continue
+                raw = fetch(f'{root}/actions/runs?head_sha={sha}&per_page=100')
+                runs = raw['workflow_runs']
+                row['runs'][phase] = {'complete': raw['total_count'] == len(runs), 'runs': [
+                    {key: r.get(key) for key in ('id', 'name', 'workflow_id', 'head_sha', 'event', 'status', 'conclusion', 'run_attempt', 'html_url')}
+                    for r in runs]}
+            lock = fetch(f'{root}/contents/vendor.lock.json?ref={main}')
+            files = json.loads(base64.b64decode(lock['content']))['files']
+            actual = {(x['source'], x['destination']) for x in files if x['repository'] == f'{ci.OWNER}/PySaiyanWeBoo' and x['source'] != 'LICENSE'}
+            registered = {(x['source'], x['destination']) for c in registry if c['repository'] == f'{ci.OWNER}/{repo}'
+                          for x in c['entries'] if x['repository'] == f'{ci.OWNER}/PySaiyanWeBoo' and x['source'] != 'LICENSE'}
+            row['registration'] = {'matches': actual == registered, 'actual': sorted(actual), 'registered': sorted(registered)}
+            row['main_contains_merge'] = False
+            if row['merged']:
+                comparison = fetch(f"{root}/compare/{row['merge_sha']}...{main}")
+                row['main_contains_merge'] = comparison['status'] in ('ahead', 'identical') and comparison['behind_by'] == 0
+            # Do not certify CI or topology collected across a moving head/default branch.
+            again = fetch(f'{root}/pulls/{number}')
+            ref = fetch(f'{root}/git/ref/heads/main')
+            if (again['head']['sha'], again['state'], again['merged_at'], ref['object']['sha']) != (row['head_sha'], pr['state'], pr['merged_at'], main):
+                raise ValueError('observation moved')
+            all_runs = [r for phase in row['runs'].values() for r in phase['runs']]
+            incomplete = any(not p['complete'] or not p['runs'] for p in row['runs'].values())
+            failure = any(r['conclusion'] in ('failure', 'timed_out', 'action_required', 'startup_failure') for r in all_runs)
+            running = any(r['status'] != 'completed' for r in all_runs)
+            if failure or actual != registered or (row['merged'] and not row['main_contains_merge']) or (row['open'] and row['mergeable'] is False):
+                row.update(state='ブロッカー', next='失敗run・登録差分・main包含・競合を確認')
+            elif incomplete:
+                row.update(state='調査中', next='未取得・部分取得の実行証跡を再確認')
+            elif running:
+                row.update(state='着手中', next='実行中run終了後、同じSHAで再確認')
+            elif row['merged']:
+                row.update(state='完了', next='新名での再生成・公開URLの動作確認は未実施')
+            elif row['draft']:
+                row.update(state='保留', next='Draftの受入条件を確認')
+            else:
+                row.update(state='着手中', next='先行PR・登録照合・必須チェックを確認')
+        except (ValueError, KeyError, RuntimeError, OSError, TypeError):
+            row.update(state='調査中', next='取得失敗・観測中のSHA変更。再取得が必要', complete=False)
+    return result
+
+
+def pswb_migration_html(value):
+    if not value:
+        return ''
+    ui = ci._load_pysaiyanweboo()
+    def safe(text):
+        return escape(str(text if text is not None else '未取得'), quote=True)
+    def runs(row, phase):
+        value = row.get('runs', {}).get(phase, {})
+        entries = value.get('runs', [])
+        ok = sum(r['conclusion'] == 'success' for r in entries)
+        fail = sum(r['conclusion'] in ('failure', 'timed_out', 'action_required', 'startup_failure') for r in entries)
+        pending = sum(r['status'] != 'completed' for r in entries)
+        other = len(entries) - ok - fail - pending
+        links = ''.join(f'<p><a href="{safe(r["html_url"])}">{safe(r["name"])}</a> · {safe(r["conclusion"] or r["status"])}<small>run {r["id"]} / attempt {safe(r["run_attempt"])} / {safe(r["event"])}</small></p>' for r in entries)
+        return f'<details><summary>{phase}: 成功{ok} / 失敗{fail} / 実行中{pending} / skip・取消等{other}</summary><p>{"取得範囲完全" if value.get("complete") else "未取得・部分取得"}</p>{links}</details>'
+    rows = []
+    rank = {'ブロッカー': 0, '調査中': 1, '着手中': 2, '保留': 3, '完了': 4}
+    for r in sorted(value['rows'], key=lambda r: (rank[r['state']], r['stage'], r['repository'])):
+        registration = r.get('registration', {})
+        registered = '一致' if registration.get('matches') else '不一致' if registration else '未取得'
+        rows.append([
+            f'<a href="{safe(r["url"])}">{safe(r["repository"])} #{r["number"]}</a><small>{safe(r["state"])}</small>',
+            f'open {safe(r.get("open"))} / Draft {safe(r.get("draft"))}<small>mergeable {safe(r.get("mergeable"))}（API値）</small><small>{"マージ済み・再統合対象外" if r.get("merged") else "未統合"}</small>',
+            ''.join(f'<small class="mono">{key} {safe(r.get(key))}</small>' for key in ('head_sha', 'base_sha', 'main_sha', 'merge_sha')),
+            ''.join(runs(r, p) for p in ('head', 'merge', 'main')),
+            f'段階{r["stage"]}<small>{safe(" / ".join(r["dependencies"]) or "この8件内の先行PRなし")}</small>',
+            f'{safe(r.get("merged_at"))}<small>main包含: {safe(r.get("main_contains_merge"))}</small><small>新名実行・公開URL: 未検証</small>',
+            f'{registered}<small>{safe(json.dumps(registration.get("actual", []), ensure_ascii=False))}</small>',
+            safe(r['next'])])
+    chronology = ' → '.join(f'{r["repository"]}#{r["number"]}' for r in sorted(value['rows'], key=lambda r: r.get('merged_at') or '9999') if r.get('merged'))
+    body = ui.scroll_html(ui.table(['PR / 状態', 'GitHub状態', 'SHA', 'Actions', '依存 / 順序', 'マージ後確認 / UTC', '台帳 / PSWBコード', '次アクション'], rows, trusted_html=True), label='PSWB統合順序', kind='table')
+    return ('<details id="pswb-migration" class="card" open><summary>PSWB #141 統合順序</summary>'
+            f'<p>観測 {safe(value["checked_at"])} · 親 #262 → 利用側6件・台帳照合 → #141を最後に統合。</p>'
+            '<p>ローカル7失敗はmainでも発生すると#141本文に報告。test_copied_artifact 6件・metadata/tooling 1件。941 passed / 48 skipped。今回の独立再現なし。Actionsと区別。</p>'
+            '<p>skip・取消は成功に含めない。必須チェック規則・承認・新名の再実行は未確認。取得失敗は完了にしない。</p>'
+            + ui.download_json(value, id='pswb-migration-observation', filename='pswb-migration.json', label='確認結果JSON')
+            + f'<p>実際の統合順: {safe(chronology)}</p>' + body + f'<p>台帳main <code>{safe(value.get("registry_main"))}</code> / blob <code>{safe(value.get("registry_blob"))}</code>。コードのsource・destinationをmain lockと照合。LICENSE・パッケージ・sparse checkoutは別扱い。</p></details>')
+
+
 def observatory_page(snapshot=None, theme=THEME):
     """The observatory's page. What this build observed and no reader changes (the 統合後の確認 card) is written here from ``snapshot``;
     app.js fills #stats, #content and the repo/axis filters, which depend on the reader's own work records."""
@@ -84,7 +206,7 @@ def observatory_page(snapshot=None, theme=THEME):
     heading = ui.page_heading("親子リポジトリ監査", eyebrow="監査", lead="PR・Issue・CI・依存関係を確認します。",
                               stamp={"label": "観測日時", "value": str((snapshot or {}).get("generated_at") or "未取得")})
     data_download = ui.download_json(snapshot or {}, id="audit-observation", filename="audit-observation.json", label="ビルド時の観測JSON ↓")
-    integrations = integration_summary((snapshot or {}).get('integrations') or [])
+    integrations = pswb_migration_html((snapshot or {}).get('pswb_migration')) + integration_summary((snapshot or {}).get('integrations') or [])
     def views(side=False):
         return ''.join('<button data-view="%s"%s>%s%s</button>' % (view, ' class="active"' if index == 0 else '', icon, '　' + long if side else ' ' + short)
                        for index, (view, icon, short, long) in enumerate(VIEWS))
@@ -411,6 +533,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
     if fleet is not None:
         produce = fleet if getattr(fleet, 'takes_snapshot', False) else (lambda names, before, snapshot=None: fleet(names, before))
         snapshot['fleet'], fleet_graph = split_fleet(produce(names, (before or {}).get('fleet'), snapshot=snapshot))
+    snapshot['pswb_migration'] = pswb_migration(snapshot, ci.get)
     history = weekly_history(snapshot, old_history)
     from tools.unified_operations import collect_main_runs
     snapshot['main_workflows'] = collect_main_runs(snapshot, ci.get)

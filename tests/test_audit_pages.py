@@ -312,6 +312,68 @@ class TaskPlanTests(unittest.TestCase):
         self.assertEqual(result['edges']['independent-task'],[])
         self.assertLess(result['order'].index('A#1'),result['order'].index('pin-update'))
 
+class PswbMigrationTests(unittest.TestCase):
+    def test_scoped_build_does_not_probe_unselected_repositories(self):
+        def fetch(path):
+            self.fail('unexpected public API read')
+        self.assertIsNone(build.pswb_migration({'integrations': []}, fetch))
+
+    def fixture(self, *, move=False, partial=False, registry_error=False):
+        import base64
+        integrations = [{'repository': repo, 'head_sha': 'a' * 40} for repo, _ in build.PSWB_TARGETS]
+        calls = []
+        def encoded(value):
+            return {'sha': 'b' * 40, 'content': base64.b64encode(json.dumps(value).encode()).decode()}
+        def fetch(path):
+            calls.append(path)
+            if '/contents/vendor-consumers.json' in path:
+                if registry_error:
+                    raise RuntimeError('unavailable')
+                return encoded({'consumers': []})
+            if '/pulls/' in path:
+                return {'state': 'closed', 'draft': False, 'mergeable': False,
+                        'merged_at': '2026-11-13T07:30:47Z', 'merge_commit_sha': 'c' * 40,
+                        'head': {'sha': 'd' * 40}, 'base': {'sha': 'e' * 40}}
+            if '/actions/runs?' in path:
+                return {'total_count': 2 if partial else 1, 'workflow_runs': [
+                    {'id': 1, 'name': '<script>', 'workflow_id': 1, 'head_sha': 'd' * 40,
+                     'status': 'completed', 'conclusion': 'success', 'run_attempt': 1,
+                     'event': 'push', 'html_url': 'https://github.com/myon-bioinformatics/Aoi/actions/runs/1'}]}
+            if '/contents/vendor.lock.json' in path:
+                return encoded({'files': []})
+            if '/compare/' in path:
+                return {'status': 'ahead', 'behind_by': 0}
+            if '/git/ref/' in path:
+                return {'object': {'sha': ('f' if move else 'a') * 40}}
+            self.fail(path)
+        return {'integrations': integrations}, fetch, calls
+
+    def test_closed_mergeable_false_is_not_a_conflict_and_pswb_ui_is_reused(self):
+        s, fetch, calls = self.fixture()
+        value = build.pswb_migration(s, fetch)
+        self.assertEqual(len(value['rows']), 8)
+        self.assertEqual({r['state'] for r in value['rows']}, {'完了'})
+        self.assertTrue(all(r['main_contains_merge'] for r in value['rows']))
+        pswb = next(r for r in value['rows'] if r['repository'] == 'PySaiyanWeBoo')
+        self.assertEqual(pswb['stage'], 3)
+        self.assertEqual(len(pswb['dependencies']), 7)
+        html = build.pswb_migration_html(value)
+        self.assertIn('data-ui-scroll="table"', html)
+        self.assertIn('pswb-migration-observation', html)
+        self.assertIn('&lt;script&gt;', html)
+        self.assertNotIn('><script></a>', html)
+        self.assertIn('今回の独立再現なし', html)
+        self.assertTrue(all('?ref=' + 'a' * 40 in p for p in calls if '/contents/' in p))
+        self.assertIn(html, build.observatory_page({'pswb_migration': value}))
+
+    def test_partial_runs_moving_main_and_registry_failure_are_not_complete(self):
+        for options in ({'move': True}, {'partial': True}, {'registry_error': True}):
+            with self.subTest(options=options):
+                s, fetch, _ = self.fixture(**options)
+                value = build.pswb_migration(s, fetch)
+                self.assertEqual({r['state'] for r in value['rows']}, {'調査中'})
+
+
 if __name__ == '__main__':
     unittest.main()
 
