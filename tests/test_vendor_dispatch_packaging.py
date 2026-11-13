@@ -35,6 +35,17 @@ class ExplicitModules(unittest.TestCase):
         for env in (ENV._replace(offline=True), ENV._replace(no_site=True)):
             self.assertEqual(dispatch.classify("scripts/xprobe_pytest.py", env, dispatch.Probe(PROJECT, None)).action, "skip")
 
+    def test_discovery_root_retains_original_source(self):
+        project = PROJECT.split("[tool.setuptools]")[0] + '[tool.setuptools]\npackage-dir = { "" = "tools" }\n'
+        probe = dispatch.Probe(project, None)
+        self.assertEqual(dispatch.classify("scripts/check_png.py", ENV, probe).action, "fetch")
+        self.assertEqual(dispatch.classify("tools/btk.py", ENV, probe).action, "uv")
+        self.assertEqual(dispatch.classify("toolsmith/btk.py", ENV, probe).action, "fetch")
+
+    def test_multiple_package_roots_do_not_guess(self):
+        project = PROJECT.split("[tool.setuptools]")[0] + '[tool.setuptools]\npackage-dir = { "" = "tools", "other" = "scripts" }\n'
+        self.assertEqual(dispatch.classify("scripts/other.py", ENV, dispatch.Probe(project, None)).action, "uv")
+
     def test_fetch_not_install_and_failure_not_hidden(self):
         catalog = {"schema": "vendor-catalog/1", "tools": [{"repository": "example/xprobe", "source": "scripts/xprobe_pytest.py", "commit": "a"*40}]}
         with patch.object(dispatch, "load_probe", return_value=dispatch.Probe(PROJECT, None)), patch.object(dispatch, "fetch_source", return_value=("a"*40, "b"*64)) as fetch:
