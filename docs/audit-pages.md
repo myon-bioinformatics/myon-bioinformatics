@@ -312,3 +312,9 @@ REST件数は親側の `collect_repository_counts()` でリポジトリ情報・
 承認待ちは承認必須が明示されたPRだけに表示し、承認証跡なしと区別する。
 生成カタログは観測した親mainの内容を取得し、利用側での採用・再生成とは分けて表示する。
 追加のPSWB API・依存・公開設定変更は不要。
+
+## olnm・TalkCompressの利用導線
+
+既存の `index.html#ops` に統合する。olnmのカードIDは維持し、計算・uv tool install / uvx・更新・削除を同じカードで表示する。ErrorRoadRunnerへの接続案は未検証として残す。TalkCompressは代表CLIと期待値、過去の検証記録と今回の確認範囲を分けて表示する。カードのコピー対象は最短例だけで、削除等の任意操作は詳細内へ分ける。
+
+親READMEは短い入口、子READMEと既存olnm Pagesは詳細の正とする。標準ライブラリによる基本実行と開発・ブラウザ・tokenizer依存を区別する。PSWBの採用済みCSS・スクロール・状態・保存UIをそのまま再利用し、vendor/lock・Node 26・setup-uv・公開構成は変更しない。

@@ -15,5 +15,6 @@ test('workspace pages keep local assets and source pins',()=>{
   assert.ok(fs.existsSync(path.resolve(root,m[1].split('#')[0])),`${file}: ${m[1]}`);
  }
  const ops=JSON.parse(fs.readFileSync(path.join(root,'operations-data.json')));
- assert.equal(ops.length,9);assert.ok(ops.every(x=>x.execution==='未実行'&&/^[a-f0-9]{40}$/.test(x.source_sha)));
+ assert.equal(new Set(ops.map(x=>x.id)).size,ops.length);
+ assert.ok(ops.every(x=>typeof x.execution==='string'&&x.execution.length>0&&/^[a-f0-9]{40}$/.test(x.source_sha)));
 });
