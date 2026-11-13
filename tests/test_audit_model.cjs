@@ -113,3 +113,13 @@ test('closed migration blockers remain ahead of ordinary open PRs',()=>{
  assert.equal(u.summarize(r).open,false);
  assert.ok(u.summarize(r).flags.includes('統合ブロッカー'));
 });
+
+test('approval waiting requires an explicit requirement and comments do not dismiss a review',()=>{
+ const u=require('../site/ui/unified-model.js'),r={kind:'pr',head_sha:'head',github_state:'open',events:[]};
+ assert.ok(!u.summarize(r).flags.includes('承認待ち'));
+ assert.ok(u.summarize({...r,approval_required:true}).flags.includes('承認待ち'));
+ const events=[{type:'review',actor:'a',state:'APPROVED',review_sha:'head',at:'2026-11-12'},
+               {type:'review',actor:'a',state:'COMMENTED',review_sha:'head',at:'2026-11-13'}];
+ assert.ok(u.summarize({...r,approval_required:true,events}).approved);
+ assert.ok(!u.summarize({...r,approval_required:true,events}).flags.includes('承認待ち'));
+});
