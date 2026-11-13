@@ -2,7 +2,60 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from tools.unified_operations import view_data, write_workspace, collect_main_runs, snapshot_comparison
+from tools.unified_operations import view_data, write_workspace, collect_main_runs, snapshot_comparison, collect_counts, refresh_evidence
+
+
+class CurrentRestObservationTests(unittest.TestCase):
+    def test_counts_page_raw_issues_and_do_not_count_prs_as_issues(self):
+        def fetch(path):
+            if '/issues?' in path:
+                return [{'number': n} for n in range(100)] if path.endswith('&page=1') else [{'number': 101, 'pull_request': {}}]
+            if '/pulls?' in path:
+                return [{'number': 101}]
+            return {'open_issues_count': 101}
+        row = collect_counts({'owner': 'o', 'repositories': ['r']}, fetch)[0]
+        self.assertEqual((row['get_issues'], row['issues'], row['pull_requests']), (101, 100, 1))
+        self.assertTrue(row['complete'])
+        def unavailable(path):
+            raise RuntimeError('unavailable')
+        row = collect_counts({'owner': 'o', 'repositories': ['r']}, unavailable)[0]
+        self.assertFalse(row['complete'])
+        self.assertIsNone(row['open_issues_count'])
+        self.assertIsNone(row['issues'])
+
+    def test_current_run_attempt_jobs_and_reviews_join_without_old_success_fallback(self):
+        def fetch(path):
+            if path.endswith('/pulls/1'):
+                return {'head': {'sha': 'head'}, 'state': 'open'}
+            if '/reviews?' in path:
+                return [{'id': 2, 'user': {'login': 'reviewer'}, 'submitted_at': 'today',
+                         'commit_id': 'head', 'state': 'CHANGES_REQUESTED', 'html_url': 'https://github.com/o/r/pull/1'}]
+            if '/comments?' in path:
+                return []
+            if '/actions/runs?' in path:
+                run = dict(id=3, name='CI', head_sha='head', workflow_id=7, event='push', status='completed',
+                           conclusion='success', updated_at='today', html_url='https://github.com/o/r/actions/runs/3')
+                return {'total_count': 2, 'workflow_runs': [dict(run, run_attempt=1, conclusion='failure'), dict(run, run_attempt=2)]}
+            self.assertIn('/runs/3/attempts/2/jobs?', path)
+            return {'total_count': 1, 'jobs': [dict(id=4, name='test', status='completed', conclusion='success',
+                                                  html_url='https://github.com/o/r/actions/runs/3/job/4')]}
+        record = {'id': 'r#1', 'repository': 'r', 'number': 1, 'kind': 'pr', 'head_sha': 'head',
+                  'github_state': 'open', 'events': [{'type': 'ci', 'head_sha': 'old', 'conclusion': 'success'}]}
+        snap = {'owner': 'o', 'records': [{'id': 'r#1'}]}
+        result = refresh_evidence({'records': [record]}, snap, fetch)['records'][0]
+        events = result['events']
+        self.assertTrue(events[0]['historical'])
+        self.assertEqual([(e['run_id'], e['attempt']) for e in events if e['type'] == 'ci' and not e.get('historical')], [(3, 2)])
+        self.assertEqual([(e['run_id'], e['attempt'], e['job_id'], e['head_sha']) for e in events if e['type'] == 'job'], [(3, 2, 4, 'head')])
+        self.assertEqual(result['review_coverage']['head_sha'], 'head')
+        def moved(path):
+            if path.endswith('/pulls/1'):
+                return {'head': {'sha': 'changed'}, 'state': 'open'}
+            return fetch(path)
+        result = refresh_evidence({'records': [record]}, snap, moved)['records'][0]
+        self.assertEqual(result['collection_error'], 'ValueError')
+        self.assertNotIn('current_collection', result)
+        self.assertNotIn('review_coverage', result)
 
 class UnifiedOperationsTests(unittest.TestCase):
     def test_closed_migration_joins_same_identity_without_mutating_captured_evidence(self):

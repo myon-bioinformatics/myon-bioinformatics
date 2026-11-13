@@ -121,9 +121,15 @@ def pswb_migration(snapshot, fetch):
                     continue
                 raw = fetch(f'{root}/actions/runs?head_sha={sha}&per_page=100')
                 runs = raw['workflow_runs']
+                latest = {}
+                for run in runs:
+                    key = (run['workflow_id'], run['event'])
+                    previous = latest.get(key)
+                    if previous is None or (run['id'], run['run_attempt']) > (previous['id'], previous['run_attempt']):
+                        latest[key] = run
                 row['runs'][phase] = {'complete': raw['total_count'] == len(runs), 'runs': [
                     {key: r.get(key) for key in ('id', 'name', 'workflow_id', 'head_sha', 'event', 'status', 'conclusion', 'run_attempt', 'html_url')}
-                    for r in runs]}
+                    for r in latest.values()]}
             lock = fetch(f'{root}/contents/vendor.lock.json?ref={main}')
             files = json.loads(base64.b64decode(lock['content']))['files']
             actual = {(x['source'], x['destination']) for x in files if x['repository'] == f'{ci.OWNER}/PySaiyanWeBoo' and x['source'] != 'LICENSE'}
@@ -418,10 +424,12 @@ def github_evidence(snapshot, captured=None):
             continue
         for field in ('repository', 'number', 'kind', 'title', 'url', 'head_sha', 'base_sha',
                       'base_ref', 'head_ref', 'draft', 'mergeable', 'mergeable_state', 'labels',
-                      'github_state', 'merged', 'merged_at', 'closed_at', 'merge_commit_sha'):
+                      'github_state', 'merged', 'merged_at', 'closed_at', 'merge_commit_sha',
+                      'review', 'review_complete', 'review_checked', 'threads'):
             if field in value:
                 record[field] = value[field]
         record['metadata_checked'] = at
+        record['github_state'] = value.get('github_state', 'open')
         record['events'].append({'type': 'status_sync', 'at': at, 'head_sha': record.get('head_sha'),
                                  'state': record.get('github_state'), 'url': record.get('url'),
                                  'source': 'Pages parent-audit/1 current observation'})
@@ -485,16 +493,19 @@ def github_evidence(snapshot, captured=None):
             'records': list(records.values())}
 
 
-def write_github_evidence(snapshot, stage, *, source_root):
+def write_github_evidence(snapshot, stage, *, source_root, observe_details=False):
     source = Path(source_root) / 'site/evidence/observations.json.gz'
     captured = json.loads(gzip.decompress(source.read_bytes())) if source.exists() else None
     result = github_evidence(snapshot, captured)
+    if observe_details:
+        from tools.unified_operations import refresh_evidence
+        result = refresh_evidence(result, snapshot, ci.get)
     (Path(stage) / 'evidence-data.json').write_text(
         json.dumps(result, ensure_ascii=False, separators=(',', ':')) + '\n', encoding='utf-8')
     return result
 
 
-def build(out, *, repos=None, previous=None, previous_history=None, source_root=ROOT, fleet=None):
+def build(out, *, repos=None, previous=None, previous_history=None, source_root=ROOT, fleet=None, observe_details=False):
     out = Path(out)
     before = previous_json(previous)
     if before is not None and before.get('schema') != 'parent-audit/1':
@@ -534,6 +545,19 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         produce = fleet if getattr(fleet, 'takes_snapshot', False) else (lambda names, before, snapshot=None: fleet(names, before))
         snapshot['fleet'], fleet_graph = split_fleet(produce(names, (before or {}).get('fleet'), snapshot=snapshot))
     snapshot['pswb_migration'] = pswb_migration(snapshot, ci.get)
+    if observe_details:
+        from tools.unified_operations import collect_counts
+        snapshot['repository_counts'] = collect_counts(snapshot, ci.get)
+        if parent and parent.get('head_sha'):
+            try:
+                import base64
+                content = ci.get(f"/repos/{ci.OWNER}/{ci.OWNER}/contents/vendor-catalog.json?ref={parent['head_sha']}")
+                catalog = json.loads(base64.b64decode(content['content']))
+                snapshot['catalog_observation'] = {'ref': parent['head_sha'], 'blob': content['sha'],
+                                                   'tools': len(catalog['tools']), 'status': '取得済み',
+                                                   'adoption': '親main版を取得。利用側の採用変更・再生成は別確認。'}
+            except (ValueError, KeyError, RuntimeError, OSError, TypeError) as exc:
+                snapshot['catalog_observation'] = {'status': '取得不能', 'error': type(exc).__name__}
     history = weekly_history(snapshot, old_history)
     from tools.unified_operations import collect_main_runs
     snapshot['main_workflows'] = collect_main_runs(snapshot, ci.get)
@@ -552,7 +576,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         for asset in (source_root / 'site/ui').iterdir():
             if asset.is_file():
                 shutil.copyfile(asset, stage / asset.name)
-        evidence = write_github_evidence(snapshot, stage, source_root=source_root)
+        evidence = write_github_evidence(snapshot, stage, source_root=source_root, observe_details=observe_details)
         from tools.unified_operations import write_workspace
         workspace = write_workspace(snapshot, evidence, history, stage, source_root, previous=before)
         # Publish the standalone operations guide alongside the audit workspace.
@@ -628,7 +652,7 @@ def main(argv=None):
     try:
         snapshot = build(args.out, repos=args.repos.split(',') if args.repos else None,
                          previous=args.previous, previous_history=args.previous_history,
-                         fleet=None if args.no_fleet else produce)
+                         fleet=None if args.no_fleet else produce, observe_details=True)
     except (OSError, ValueError, RuntimeError, KeyError) as exc:
         print(f'audit build failed: {type(exc).__name__}; deployment retained', file=sys.stderr)
         return 2
