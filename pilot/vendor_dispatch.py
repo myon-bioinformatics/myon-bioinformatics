@@ -228,6 +228,19 @@ def classify(source, env, probe):
                 "from a git URL until that repository contains a project file",
             )
         ok, reason = installable(probe.pyproject, env.python)
+        if ok:
+            import tomllib
+            metadata = tomllib.loads(probe.pyproject)
+            backend = metadata.get("build-system", {}).get("build-backend", "")
+            modules = metadata.get("tool", {}).get("setuptools", {}).get("py-modules")
+            if (backend in ("setuptools.build_meta", "setuptools.build_meta:__legacy__")
+                    and isinstance(modules, list)
+                    and all(isinstance(module, str) for module in modules)
+                    and Path(source).stem not in modules):
+                return Decision(
+                    "fetch", "source is not an explicitly installed setuptools py-module; "
+                    "fetch source bytes instead of claiming an installed import",
+                )
         return Decision("uv" if ok else "skip", reason)
     if suffix in NODE_SUFFIXES:
         if env.node is None:
@@ -750,3 +763,4 @@ def main(argv=None):
 
 if __name__ == "__main__":
     sys.exit(main())
+

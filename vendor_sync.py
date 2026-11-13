@@ -2089,6 +2089,68 @@ def _unadopted_pending_enrollments(registry, document, pending, monitored, *, to
     return result
 
 
+def _transition_digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def _registry_for_recorded_transitions(registry, document, transitions, monitored, *, token=None):
+    """Audit explicitly frozen observations under their frozen contract, never skip bytes.
+
+    The desired registry remains the child enrollment contract. Only an exact
+    reviewed observation and complete lock may use the recorded old entries.
+    Changed observations return to the normal strict desired-contract audit.
+    """
+    import vendor_consumers
+    registry = vendor_consumers.validate(registry)
+    if set(transitions) != {"schema", "transitions"} or transitions["schema"] != "vendor-observation-transitions/1":
+        raise ValueError("invalid observation transition manifest")
+    rows = transitions["transitions"]
+    if not isinstance(rows, list):
+        raise ValueError("invalid observation transitions")
+    result = copy.deepcopy(registry)
+    applied, seen = [], set()
+    for row in rows:
+        fields = {"consumer", "repository_id", "recorded_sha", "lock_sha256", "target_consumer_sha256", "old_entries", "reason"}
+        if not isinstance(row, dict) or set(row) != fields:
+            raise ValueError("invalid observation transition fields")
+        name = row["consumer"]
+        key = name.casefold()
+        if key in seen or key == PARENT_REPOSITORY.casefold():
+            raise ValueError("duplicate or parent observation transition")
+        seen.add(key)
+        if not re.fullmatch(r"[0-9a-f]{40}", row["recorded_sha"]) or any(
+                not re.fullmatch(r"[0-9a-f]{64}", row[k]) for k in ("lock_sha256", "target_consumer_sha256")):
+            raise ValueError("invalid observation transition digest")
+        if not isinstance(row["reason"], str) or not row["reason"].strip():
+            raise ValueError("observation transition requires a reason")
+        consumer = vendor_consumers.get_consumer(registry, name)
+        if consumer["state"] != "locked" or _transition_digest(consumer) != row["target_consumer_sha256"]:
+            raise ValueError("observation transition target contract changed")
+        old_registry = copy.deepcopy(registry)
+        old = next(c for c in old_registry["consumers"] if c["repository"].casefold() == key)
+        old["entries"] = copy.deepcopy(row["old_entries"])
+        old_registry = vendor_consumers.validate(old_registry)
+        recorded = next((v for k, v in document["heads"].items() if k.casefold() == key), None)
+        if key not in {n.casefold() for n in monitored} or recorded is None:
+            continue  # Never fetch unmonitored repositories.
+        if recorded["sha"] != row["recorded_sha"]:
+            continue  # A new observation must satisfy the desired contract.
+        if recorded["repository_id"] != row["repository_id"]:
+            raise ValueError("observation transition repository id mismatch")
+        lock = _load_recorded_child_lock(registry, document, name, token=token)
+        if _transition_digest(lock) != row["lock_sha256"]:
+            raise ValueError("observation transition lock changed")
+        if not vendor_consumers.compare(old_registry, lock, name)["matches"]:
+            raise ValueError("observation transition old contract mismatch")
+        replacement = vendor_consumers.get_consumer(old_registry, name)
+        for i, c in enumerate(result["consumers"]):
+            if c["repository"].casefold() == key:
+                result["consumers"][i] = replacement
+        applied.append({"consumer": name, "recorded_sha": recorded["sha"],
+                        "lock_sha256": row["lock_sha256"], "reason": row["reason"]})
+    return result, applied
+
+
 @_parent_fetch_scope
 def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, token=None,
                         autofix=False, parent_repository=PARENT_REPOSITORY, local_roots=None,
@@ -2105,6 +2167,13 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         registry, document, pending, monitored, token=token,
     ) if pending else []
     audit_registry = _registry_without_pending(registry, pending) if pending else registry
+    transitions_path = Path(parent_root) / "vendor-observation-transitions.json"
+    observation_transitions = []
+    if transitions_path.exists():
+        audit_registry, observation_transitions = _registry_for_recorded_transitions(
+            audit_registry, document, json.loads(transitions_path.read_text(encoding="utf-8")),
+            monitored, token=token,
+        )
     drift = []
     identity_failures = []
     missing_heads = []
@@ -2280,6 +2349,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         "pr_validation": pr_validation,
         "pending_enrollments": pending,
         "pending_enrollment_count": len(pending),
+        "observation_transitions": observation_transitions,
         "failure_count": failure_count,
     }
 
@@ -3143,3 +3213,4 @@ def main(argv=None, *, get=_get):
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
