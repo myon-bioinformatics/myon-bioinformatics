@@ -163,7 +163,7 @@ class RuntimePlanTests(unittest.TestCase):
                 source["path"] = path
                 with self.assertRaises(ValueError):
                     runtime.validate_manifest(self.manifest)
-        source["path"] = "node_launch.py"
+        source["path"] = "njs_launch.py"
         upstream = self.manifest["profiles"]["aoi-numeric-native"]["sources"][0]
         original = upstream["evidence_url"]
         for url in [original.replace("2f6907f69856a0f1b1570a039d1feefcf6b2edea", "main"),

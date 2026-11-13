@@ -6,7 +6,7 @@
       "sources": [
         {
           "repository": "myon-bioinformatics/myon-bioinformatics",
-          "path": "node_launch.py",
+          "path": "njs_launch.py",
           "scope": "optional",
           "ledger": "vendor-catalog.json",
           "evidence_url": null

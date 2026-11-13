@@ -1,4 +1,4 @@
-"""Catalog pins of the two launchers: py_launch.cjs (parent PR #171 merge) and njs_launch.py (catalogued as node_launch.py, PR #158 merge)."""
+"""Catalog pins of the two launchers: py_launch.cjs (parent PR #171 merge) and njs_launch.py (parent PR #266 merge)."""
 import hashlib, json
 from pathlib import Path
 
@@ -8,15 +8,15 @@ import vendor_sync
 
 ROOT = Path(__file__).resolve().parents[1]
 # One row per launcher. The catalog pin stays the accepted main merge until a reviewed promotion; the worktree bytes move
-# with this checkout. njs_launch.py is still catalogued under its old name: the pin moves once the rename is on main.
+# with this checkout.
 LAUNCHERS = pytest.mark.parametrize("pin", [
     {"source": "py_launch.cjs", "worktree": "py_launch.cjs", "commit": "1116d5c4f55d25af4d21cfe9b3c88f49d3a476fa",
      "fixture": "py-launch-catalog-pin.lock.json",
      "pin_blob": "006817bc813187fa45abc3e8954fde27a2b73caa", "pin_sha256": "a78fe656cde285a83501b9b19d97b9ebde6f9637919b3adb95c50eb254154536",
      "worktree_blob": "c858a1f71e1d75a1fbbefbd762fd7038287880aa", "worktree_sha256": "c0e1333d34bcb95aec94cc78b2ee2ad9d01abe4e556c81c99094e2c8faf0feaa"},
-    {"source": "node_launch.py", "worktree": "njs_launch.py", "commit": "fe79d3441c225b9d460b92041e06c166e686abdf",
-     "fixture": "node-launch-catalog-pin.lock.json",
-     "pin_blob": "5284dc7f99cd5434a0c9db51aec541393ad2e8ae", "pin_sha256": "fc5c5ff8f751ef0bc6429546c928aed63494f45d9b7cfa8d5782b542ea90e029",
+    {"source": "njs_launch.py", "worktree": "njs_launch.py", "commit": "0d20801e2e372a72426ce85cee7ac04d701e71b5",
+     "fixture": "njs-launch-catalog-pin.lock.json",
+     "pin_blob": "79521fdd4d77f4a0ae91ca4a1791f4ad46a0d574", "pin_sha256": "2499b0c407388c7977e8c8aab51467e882080566b0aab03019cb7bb8d263672f",
      "worktree_blob": "79521fdd4d77f4a0ae91ca4a1791f4ad46a0d574", "worktree_sha256": "2499b0c407388c7977e8c8aab51467e882080566b0aab03019cb7bb8d263672f"},
 ], ids=["py_launch", "njs_launch"])
 
