@@ -6,6 +6,7 @@ on:
     paths:
       - ci_status.py
       - tools/build_audit_pages.py
+      - tools/unified_operations.py
       - vendor_fleet_plan.py
       - fleet_records.py
       - vendor/web_ui.py
@@ -18,6 +19,7 @@ on:
     paths:
       - ci_status.py
       - tools/build_audit_pages.py
+      - tools/unified_operations.py
       - vendor_fleet_plan.py
       - fleet_records.py
       - site/**
@@ -45,6 +47,10 @@ jobs:
         run: |
           python3 -S -m unittest discover -s tests -p test_ci_status.py
           python3 -S -m unittest discover -s tests -p test_audit_pages.py
+          python3 -S -m unittest discover -s tests -p test_unified_operations.py
+          node --check site/ui/unified-app.js
+          node --check site/ui/unified-model.js
+          node --check site/ui/shared-ui.js
           node --check site/ui/app.js
           node --test tests/test_audit_model.cjs
   live-smoke:
@@ -72,3 +78,4 @@ jobs:
     with:
       artifact_path: site/dist
       build: python3 -S tools/build_audit_pages.py
+

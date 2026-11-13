@@ -426,7 +426,9 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         for asset in (source_root / 'site/ui').iterdir():
             if asset.is_file():
                 shutil.copyfile(asset, stage / asset.name)
-        write_github_evidence(snapshot, stage, source_root=source_root)
+        evidence = write_github_evidence(snapshot, stage, source_root=source_root)
+        from tools.unified_operations import write_workspace
+        write_workspace(snapshot, evidence, history, stage, source_root)
         # Publish the standalone operations guide alongside the audit workspace.
         operations = source_root / 'site/component-ops'
         if operations.is_dir():
@@ -454,6 +456,9 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
             for name in ('pswb-shell.css', 'pswb-scroll.js', 'pswb-records.js'):
                 archive.write(stage / name, 'site/ui/' + name)
             archive.write(source_root / 'tools/build_audit_pages.py', 'tools/build_audit_pages.py')
+            unified = source_root / 'tools/unified_operations.py'
+            if unified.exists():
+                archive.write(unified, 'tools/unified_operations.py')
             archive.write(source_root / 'docs/audit-pages.md', 'docs/audit-pages.md')
             captured = source_root / 'site/evidence/observations.json.gz'
             if captured.exists():
@@ -491,3 +496,4 @@ def main(argv=None):
 
 if __name__ == '__main__':
     raise SystemExit(main())
+
