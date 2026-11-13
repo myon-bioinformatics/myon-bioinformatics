@@ -75,7 +75,7 @@ def test_retired_sources_are_not_proposed_for_reenrollment():
                 'myon-bioinformatics/myon-bioinformatics' and x['source'] == source]
         assert len(rows) == 1 and rows[0]['action'] == 'skipped'
     assert result['counts']['registered'] == 29
-    assert result['counts']['skipped'] == 19
+    assert result['counts']['skipped'] == 20  # +1 while node_launch.py (old name of njs_launch.py) stays catalogued
     py_launch = [x for x in result['rows'] if x['source'] == 'py_launch.cjs']
     assert len(py_launch) == 1
     assert py_launch[0]['action'] == 'registered'
@@ -125,7 +125,7 @@ def test_node_launch_is_registered_for_markdown_not_auto_proposed():
     assert node_launch[0]["action"] == "registered"
     assert node_launch[0]["destination"] == "vendor/node_launch.py"
     assert result["counts"]["registered"] == 3
-    assert result["counts"]["skipped"] == 36
+    assert result["counts"]["skipped"] == 37  # +1 while node_launch.py (old name of njs_launch.py) stays catalogued
 
 
 # ═══ 🧪 mcp-toolcall-lab ══════════════════════════════════════════════════════════════════════════════════
@@ -170,7 +170,7 @@ def test_node_launch_is_registered_for_mcp_toolcall_lab_not_auto_proposed():
     # The old catalog recommendation is not the desired canonical-module contract.
     assert web_ui[0]["destination"] is None
     assert result["counts"]["registered"] == 6
-    assert result["counts"]["skipped"] == 34
+    assert result["counts"]["skipped"] == 35  # +1 while node_launch.py (old name of njs_launch.py) stays catalogued
 
 
 def test_current_planner_registration_matches_immutable_child_lock():
@@ -294,7 +294,7 @@ def test_node_launch_is_registered_for_xprobe_not_auto_proposed():
     assert node_launch[0]["action"] == "registered"
     assert node_launch[0]["destination"] == "vendor/node_launch.py"
     assert result["counts"]["registered"] == 1
-    assert result["counts"]["skipped"] == 36
+    assert result["counts"]["skipped"] == 37  # +1 while node_launch.py (old name of njs_launch.py) stays catalogued
 
 
 # ═══ 🦋 flutter_navigation_basic ══════════════════════════════════════════════════════════════════════════

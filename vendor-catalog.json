@@ -539,8 +539,18 @@
     },
     {
       "repository": "myon-bioinformatics/myon-bioinformatics",
+      "commit": "0d20801e2e372a72426ce85cee7ac04d701e71b5",
+      "reason": "Shared Python stdlib launcher for vendored Node tools (parent PR #266 merge: node_launch.py renamed njs_launch.py, the mirror of py_launch.cjs). Consumers lock vendor/njs_launch.py with vendor-lock/1 blob_sha and sha256 from vendor_sync inspect_source.",
+      "source": "njs_launch.py",
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
+    },
+    {
+      "repository": "myon-bioinformatics/myon-bioinformatics",
       "commit": "fe79d3441c225b9d460b92041e06c166e686abdf",
-      "reason": "Shared Python stdlib launcher for vendored Node tools (parent PR #158 merge). Consumers lock vendor/node_launch.py with vendor-lock/1 blob_sha and sha256 from vendor_sync inspect_source.",
+      "reason": "Old name of njs_launch.py (parent PR #158 merge). Kept only until markdown, mcp-toolcall-lab, PySaiyanWeBoo and xprobe lock vendor/njs_launch.py; then this entry is removed.",
       "source": "node_launch.py",
       "default_enrollment": {
         "enrollment": "skipped",

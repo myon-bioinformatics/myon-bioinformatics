@@ -83,10 +83,10 @@ merge `1116d5c4f55d25af4d21cfe9b3c88f49d3a476fa`. `tests/test_py_launch_catalog.
 checks the pin commit and verifies Git blob/SHA-256 via `vendor_sync.inspect_source`.
 This recommendation refresh leaves all consumer locks, enrollment decisions and recorded child baselines unchanged. Grandchildren continue to adopt through their immediate parent after its accepting main merge.
 
-`node_launch.py` landed in parent PR #158; the catalog pin uses accepting main merge
-`fe79d3441c225b9d460b92041e06c166e686abdf`. `tests/test_py_launch_catalog.py`
+`njs_launch.py` (named `node_launch.py` when it landed in parent PR #158) is catalogued at the rename's accepting main merge
+`0d20801e2e372a72426ce85cee7ac04d701e71b5` (PR #266). `tests/test_py_launch_catalog.py`
 checks the pin commit and verifies Git blob/SHA-256 via `vendor_sync.inspect_source`.
-The file is `njs_launch.py` on main since 2026-11-13; the catalog entry keeps the old name at this pin until the rename's merge commit is promoted.
+The old entry `node_launch.py` at `fe79d3441c225b9d460b92041e06c166e686abdf` stays catalogued only until markdown, mcp-toolcall-lab, PySaiyanWeBoo and xprobe lock `vendor/njs_launch.py`; remove it then (and take back the +1 in `tests/test_vendor_registry_sync.py`).
 
 2026-10-17 acceptance completed: Flutter #197 was squash-merged at
 `a9b19253fd9923ee4799e5178fd07b20de5a6ed4`; the reviewed lock and workflow

@@ -29,7 +29,7 @@ on:
       - ".github/workflows/uv-git-sources.yml"
       - "py_launch.cjs"
       - "njs_launch.py"
-      - "tests/fixtures/node-launch-catalog-pin.lock.json"
+      - "tests/fixtures/njs-launch-catalog-pin.lock.json"
   push:
     branches: [main]
     paths:
@@ -59,7 +59,7 @@ on:
       - ".github/workflows/uv-git-sources.yml"
       - "py_launch.cjs"
       - "njs_launch.py"
-      - "tests/fixtures/node-launch-catalog-pin.lock.json"
+      - "tests/fixtures/njs-launch-catalog-pin.lock.json"
   schedule:
     - cron: "0 14 * * 1"
 
