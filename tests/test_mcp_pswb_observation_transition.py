@@ -88,7 +88,10 @@ def test_selected_old_contract_still_rejects_tampered_bytes(bad):
 def test_new_observation_uses_desired_contract_without_transition():
     registry, heads, manifest, _ = inputs()
     heads['heads'][NAME]['sha'] = '2' * 40
-    lock = json.loads((ROOT/'tests/fixtures/mcp-pswb-observation-new.lock.json').read_text())
+    # The PSWB-only stage remains historical; desired topology now includes njs_launch.
+    historical = json.loads((ROOT/'tests/fixtures/mcp-pswb-observation-new.lock.json').read_text())
+    assert not consumers.compare(registry, historical, NAME)['matches']
+    lock = json.loads((ROOT/'tests/fixtures/njs-mcp-toolcall-lab-new.lock.json').read_text())
     result, reports = resolve(registry, heads, manifest, lock)
     assert not reports and consumers.compare(result, lock, NAME)['matches']
 

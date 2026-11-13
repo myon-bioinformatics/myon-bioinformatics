@@ -83,11 +83,14 @@ def before_replacements(registry, name, lock):
     migrations = json.loads((ROOT / 'vendor-observation-transitions.json').read_text())
     for transition in migrations['transitions']:
         if transition['consumer'] == name and name in {
-            'myon-bioinformatics/Aoi', 'myon-bioinformatics/myon-bioinformatics.github.io'
+            'myon-bioinformatics/Aoi', 'myon-bioinformatics/myon-bioinformatics.github.io',
+            'myon-bioinformatics/mcp-toolcall-lab', 'myon-bioinformatics/PySaiyanWeBoo',
+            'myon-bioinformatics/markdown', 'myon-bioinformatics/xprobe'
         }:
             registry = copy.deepcopy(registry)
             row = next(c for c in registry['consumers'] if c['repository'] == name)
             row['entries'] = copy.deepcopy(transition['old_entries'])
+            assert vendor_consumers.compare(registry, lock, name)['matches']
             return registry
     change = POST_BASELINE_REPLACEMENTS.get(name)
     if not change or {_key(e) for e in change["added"]} & {_key(e) for e in lock["files"]}:

@@ -164,8 +164,8 @@
         },
         {
           "repository": "myon-bioinformatics/myon-bioinformatics",
-          "source": "node_launch.py",
-          "destination": "vendor/node_launch.py"
+          "source": "njs_launch.py",
+          "destination": "vendor/njs_launch.py"
         }
       ]
     },
@@ -200,8 +200,8 @@
         },
         {
           "repository": "myon-bioinformatics/myon-bioinformatics",
-          "source": "node_launch.py",
-          "destination": "vendor/node_launch.py"
+          "source": "njs_launch.py",
+          "destination": "vendor/njs_launch.py"
         },
         {
           "repository": "myon-bioinformatics/PySaiyanWeBoo",
@@ -450,18 +450,12 @@
         {
           "repository": "myon-bioinformatics/Ironmate",
           "source": "LICENSE",
-          "destination": "tool/vendor/LICENSE"
-        },
-        {
-          "repository": "myon-bioinformatics/gh_identity",
-          "source": "gh_identity.py",
-          "destination": "tool/vendor/gh_identity.py",
-          "license": "tool/vendor/gh_identity-LICENSE"
+          "destination": "tools/vendor/LICENSE"
         },
         {
           "repository": "myon-bioinformatics/myon-bioinformatics",
-          "source": "node_launch.py",
-          "destination": "vendor/node_launch.py"
+          "source": "njs_launch.py",
+          "destination": "vendor/njs_launch.py"
         },
         {
           "repository": "myon-bioinformatics/myon-bioinformatics",
@@ -701,8 +695,8 @@
         },
         {
           "repository": "myon-bioinformatics/myon-bioinformatics",
-          "source": "node_launch.py",
-          "destination": "vendor/node_launch.py"
+          "source": "njs_launch.py",
+          "destination": "vendor/njs_launch.py"
         },
         {
           "repository": "myon-bioinformatics/myon-bioinformatics",
