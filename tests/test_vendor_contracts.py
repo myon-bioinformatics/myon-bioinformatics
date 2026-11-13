@@ -100,7 +100,19 @@ LATEST_FIXTURES = json.loads(
     (ROOT / 'tests/fixtures/reviewed_mcp_lock_20261109.json').read_text())
 LATEST_FIXTURES.update(json.loads(
     (ROOT / 'tests/fixtures/reviewed_mcp_planner_lock_20261109.json').read_text()))
+# 2026-11-14: the four njs_launch children, audited at their merged main and re-observed. Their adopted locks equal
+# the reviewed njs-<repo>-new.lock.json targets; the retired transitions stay in the same fixture (recorded_before_njs_adoption).
+NJS_ADOPTION = json.loads((ROOT / 'tests/fixtures/njs_launch_adoption_20261114.json').read_text())
+LATEST_FIXTURES.update({name: {**row, 'lock': json.loads((ROOT / row['lock_fixture']).read_text())}
+                        for name, row in NJS_ADOPTION['adopted'].items()})
 REFRESHED_FIXTURES.update(LATEST_FIXTURES)
+
+
+def recorded_before_njs_adoption():
+    """child-heads.json and the observation transitions as they stood before that re-observation."""
+    heads = json.loads((ROOT / 'child-heads.json').read_text())
+    heads['heads'].update(copy.deepcopy(NJS_ADOPTION['recorded']['heads']))
+    return heads, copy.deepcopy(NJS_ADOPTION['recorded']['transitions'])
 
 # Registry entries enrolled after the 2026-10-29 observation. The parent registry
 # must land before the child lock (the child CI reads the live registry), so these
@@ -276,6 +288,8 @@ def test_rename_rollout_is_exact_without_identity_fallback():
             "myon-bioinformatics.github.io", "PySaiyanWeBoo", "BrowserTestKit")
     }
     for name, fixture in ROLLOUT_FIXTURES.items():
+        if name in NJS_ADOPTION['adopted']:
+            continue  # re-observed later; test_observed_lock_topology_and_immutable_revision checks the newer snapshot
         assert fixture["sha"] == heads["heads"][name]["sha"]
         assert vendor_consumers._compare_exact(before_replacements(registry, name, fixture["lock"]), fixture["lock"], name)["matches"]
         assert all(row["ref"] == row["commit"] for row in fixture["lock"]["files"])
@@ -920,8 +934,8 @@ MCP_PSWB_OBSERVATION_TRANSITION_NAME = 'myon-bioinformatics/mcp-toolcall-lab'
 
 def inputs_mcp_pswb_observation_transition():
     load = lambda p: json.loads((ROOT / p).read_text())
-    return (load('vendor-consumers.json'), load('child-heads.json'),
-            load('vendor-observation-transitions.json'), load('tests/fixtures/mcp-pswb-observation-old.lock.json'))
+    heads, transitions = recorded_before_njs_adoption()   # the transition itself is retired; its mechanism still is tested
+    return (load('vendor-consumers.json'), heads, transitions, load('tests/fixtures/mcp-pswb-observation-old.lock.json'))
 
 def resolve_mcp_pswb_observation_transition(registry, heads, manifest, lock, selected=None):
     with patch.object(sync, '_load_recorded_child_lock', return_value=lock):
@@ -1005,13 +1019,14 @@ def test_new_observation_uses_desired_contract_without_transition_mcp_pswb_obser
 
 
 # ═══ · njs observation transitions ═══════════════════════════════════════════════════════════════════════
+# Retired on 2026-11-14 once the merged children were re-observed: these keep testing the exact old observations.
 
 REPOS=['mcp-toolcall-lab','PySaiyanWeBoo','markdown','xprobe']
 def load(p): return json.loads((ROOT/p).read_text())
 @pytest.mark.parametrize('repo',REPOS)
 def test_exact_old_and_desired_new_contracts(repo):
  name='myon-bioinformatics/'+repo
- r=load('vendor-consumers.json'); h=load('child-heads.json'); t=load('vendor-observation-transitions.json')
+ r=load('vendor-consumers.json'); h,t=recorded_before_njs_adoption()
  old=load('tests/fixtures/njs-'+repo+'-old.lock.json');new=load('tests/fixtures/njs-'+repo+'-new.lock.json');before=copy.deepcopy(r)
  assert c.compare(r,new,name)['matches']
  assert not c.compare(r,old,name)['matches']
@@ -1039,7 +1054,7 @@ def test_pswb_cleanup_predates_launcher_migration():
     assert [e for e in base['files'] if e['source']!='node_launch.py']==[e for e in new['files'] if e['source']!='njs_launch.py']
 
 def test_mcp_prior_pswb_transition_keeps_same_frozen_lock():
-    row=next(t for t in load('vendor-observation-transitions.json')['transitions'] if t['consumer'].endswith('/mcp-toolcall-lab'))
+    row=next(t for t in NJS_ADOPTION['recorded']['transitions']['transitions'] if t['consumer'].endswith('/mcp-toolcall-lab'))
     assert row['recorded_sha']=='cd04472040f0db991c5138144c01f56a2b79e44b'
     assert row['lock_sha256']=='40496c0e700ff3c4894541bc87dca28c6755b0ed0065cb5a740ec0c0e1583135'
     old=load('tests/fixtures/njs-mcp-toolcall-lab-old.lock.json')
