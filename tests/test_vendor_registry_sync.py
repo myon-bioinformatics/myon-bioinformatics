@@ -97,6 +97,13 @@ def test_web_ui_flow_workspace_lock_is_not_accepted_after_the_move_to_ascii_arti
     assert [(x['repository'], x['source']) for x in result['missing']] == [('myon-bioinformatics/ascii_artist', 'examples/pr-flow.json')]
 
 
+def recorded_registry(name):
+    registry = copy.deepcopy(load('vendor-consumers.json'))
+    transition = next(t for t in load('vendor-observation-transitions.json')['transitions'] if t['consumer'] == name)
+    next(c for c in registry['consumers'] if c['repository'] == name)['entries'] = copy.deepcopy(transition['old_entries'])
+    return registry
+
+
 # ═══ 📝 markdown ══════════════════════════════════════════════════════════════════════════════════════════
 # Parent topology follows markdown PR #125 vendor.lock.json snapshot.
 
@@ -104,7 +111,7 @@ MARKDOWN = "myon-bioinformatics/markdown"
 
 
 def test_markdown_registry_matches_reviewed_pr125_lock():
-    registry = load("vendor-consumers.json")
+    registry = recorded_registry(MARKDOWN)
     lock = load("tests/fixtures/markdown-pr125.lock.json")
     assert len(lock["files"]) == 7
     assert vendor_consumers.compare(registry, lock, MARKDOWN)["matches"]
@@ -114,18 +121,18 @@ def test_markdown_registry_matches_reviewed_pr125_lock():
     assert not vendor_consumers.compare(registry, changed, MARKDOWN)["matches"]
 
 
-def test_node_launch_is_registered_for_markdown_not_auto_proposed():
+def test_njs_launch_is_registered_for_markdown_not_auto_proposed():
     result = vendor_fleet_plan.plan(
         load("vendor-catalog.json"),
         load("vendor-consumers.json"),
         active_consumers=[MARKDOWN],
     )
-    node_launch = [x for x in result["rows"] if x["source"] == "node_launch.py"]
-    assert len(node_launch) == 1
-    assert node_launch[0]["action"] == "registered"
-    assert node_launch[0]["destination"] == "vendor/node_launch.py"
+    njs_launch = [x for x in result["rows"] if x["source"] == "njs_launch.py"]
+    assert len(njs_launch) == 1
+    assert njs_launch[0]["action"] == "registered"
+    assert njs_launch[0]["destination"] == "vendor/njs_launch.py"
     assert result["counts"]["registered"] == 3
-    assert result["counts"]["skipped"] == 37  # +1 while node_launch.py (old name of njs_launch.py) stays catalogued
+    assert result["counts"]["skipped"] == 37  # +1 while njs_launch.py (old name of njs_launch.py) stays catalogued
 
 
 # ═══ 🧪 mcp-toolcall-lab ══════════════════════════════════════════════════════════════════════════════════
@@ -136,10 +143,10 @@ MCP_TOOLCALL_LAB = "myon-bioinformatics/mcp-toolcall-lab"
 
 def reviewed_pr159_registry():
     """Reconstruct PR #159 topology; web UI and planner were adopted later."""
-    registry = copy.deepcopy(load("vendor-consumers.json"))
+    registry = recorded_registry(MCP_TOOLCALL_LAB)
     for row in registry["consumers"]:
         if row["repository"] == MCP_TOOLCALL_LAB:
-            row["entries"] = [e for e in row["entries"] if e["destination"] not in {"vendor/pysaiyanweboo.py", "vendor/vendor_fleet_plan.py"}]
+            row["entries"] = [e for e in row["entries"] if e["destination"] not in {"vendor/web_ui.py", "vendor/vendor_fleet_plan.py"}]
     return registry
 
 
@@ -154,23 +161,23 @@ def test_mcp_toolcall_lab_registry_matches_reviewed_pr159_lock():
     assert not vendor_consumers.compare(registry, changed, MCP_TOOLCALL_LAB)["matches"]
 
 
-def test_node_launch_is_registered_for_mcp_toolcall_lab_not_auto_proposed():
+def test_njs_launch_is_registered_for_mcp_toolcall_lab_not_auto_proposed():
     result = vendor_fleet_plan.plan(
         load("vendor-catalog.json"),
         load("vendor-consumers.json"),
         active_consumers=[MCP_TOOLCALL_LAB],
     )
-    node_launch = [x for x in result["rows"] if x["source"] == "node_launch.py"]
-    assert len(node_launch) == 1
-    assert node_launch[0]["action"] == "registered"
-    assert node_launch[0]["destination"] == "vendor/node_launch.py"
+    njs_launch = [x for x in result["rows"] if x["source"] == "njs_launch.py"]
+    assert len(njs_launch) == 1
+    assert njs_launch[0]["action"] == "registered"
+    assert njs_launch[0]["destination"] == "vendor/njs_launch.py"
     web_ui = [x for x in result["rows"] if x["source"] == "web_ui.py"]
     assert len(web_ui) == 1
     assert web_ui[0]["action"] == "needs_registration"
     # The old catalog recommendation is not the desired canonical-module contract.
     assert web_ui[0]["destination"] is None
     assert result["counts"]["registered"] == 6
-    assert result["counts"]["skipped"] == 35  # +1 while node_launch.py (old name of njs_launch.py) stays catalogued
+    assert result["counts"]["skipped"] == 35  # +1 while njs_launch.py (old name of njs_launch.py) stays catalogued
 
 
 def test_current_planner_registration_matches_immutable_child_lock():

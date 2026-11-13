@@ -15,15 +15,27 @@ OLD = load('tests/fixtures/pswb_consumer_old_locks_20261113.json')
 
 
 @pytest.mark.parametrize('name', NEW)
-def test_merged_lock_matches_desired_topology(name):
+def test_merged_lock_matches_its_historical_topology(name):
     snapshot = NEW[name]
     assert sync._transition_digest(snapshot['lock']) == snapshot['lock_sha256']
-    assert consumers.compare(load('vendor-consumers.json'), snapshot['lock'], name)['matches']
+    registry = load('vendor-consumers.json')
+    if name == 'myon-bioinformatics/mcp-toolcall-lab':
+        # This frozen snapshot records the PSWB migration before the separate
+        # launcher rename. Preserve its evidence, not a claim of current adoption.
+        assert not consumers.compare(registry, snapshot['lock'], name)['matches']
+        target = load('tests/fixtures/njs-mcp-toolcall-lab-new.lock.json')
+        assert consumers.compare(registry, target, name)['matches']
+        entry = next(row for row in registry['consumers'] if row['repository'] == name)
+        launcher = next(row for row in entry['entries'] if row['source'] == 'njs_launch.py')
+        assert launcher['destination'] == 'vendor/njs_launch.py'
+        launcher['source'] = 'node_launch.py'
+        launcher['destination'] = 'vendor/node_launch.py'
+    assert consumers.compare(registry, snapshot['lock'], name)['matches']
     assert all(row['ref'] == row['commit'] for row in snapshot['lock']['files'])
     assert not any(row['source'] == 'web_ui.py' for row in snapshot['lock']['files'])
     changed = copy.deepcopy(snapshot['lock'])
     changed['files'].pop()
-    assert not consumers.compare(load('vendor-consumers.json'), changed, name)['matches']
+    assert not consumers.compare(registry, changed, name)['matches']
 
 
 @pytest.mark.parametrize('name', OLD)
