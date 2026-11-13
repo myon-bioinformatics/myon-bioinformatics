@@ -205,9 +205,9 @@
         },
         {
           "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "web_ui.py",
-          "destination": "vendor/web_ui.py",
-          "license": "vendor/web-ui-LICENSE"
+          "source": "pysaiyanweboo.py",
+          "destination": "vendor/pysaiyanweboo.py",
+          "license": "vendor/pysaiyanweboo-LICENSE"
         },
         {
           "repository": "myon-bioinformatics/myon-bioinformatics",
