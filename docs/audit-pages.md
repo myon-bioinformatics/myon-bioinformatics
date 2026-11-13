@@ -275,3 +275,14 @@ open PR（Draft込み）、追加・更新・一覧からの不在、Issue/PR件
 GitHub固有の差分計算は親に保持し、PSWBのAPI追加・vendor pin更新・
 公開設定の変更は行いません。公開時にGitHubを再取得するため、
 確認版HTMLの固定データは複製しません。
+
+## PSWB #141 統合順序
+
+親Pagesの「PSWB #141 統合順序」から、利用側6件・PSWB #141・親 #262を確認する。
+全体ビルドではclosed PRも番号指定で再取得し、head/base/main/merge SHA、各SHAのActions、
+mainへの包含、固定mainのvendor-consumers.jsonと各main lockのsource/destinationを照合する。
+部分ビルドでは対象8リポジトリがすべて収集範囲にある場合だけ取得する。
+取得不能・SHA移動・100runを超える部分取得は完了にしない。skip/取消は成功と分離する。
+#141のローカル7失敗はPR本文による既知報告として保持し、独立再現・Actions成功とは区別する。
+表示・JSON保存・横スクロールは採用済みPSWBのtable/download_json/scroll_htmlを使用する。
+新規の共通UI、PSWB変更、依存・vendor pin・公開設定変更は不要。

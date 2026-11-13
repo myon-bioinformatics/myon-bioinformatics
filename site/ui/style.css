@@ -53,3 +53,7 @@ pre { max-width: 100%; overflow: auto; }
 .heading .ui-heading {height:auto; border:0; letter-spacing:normal; flex:1; min-width:0; flex-wrap:wrap;}
 .heading .ui-stamp {position:static; width:auto; height:auto; padding:0 0 0 16px; background:transparent; color:var(--muted);}
 .heading .ui-stamp b {font-size:14px; overflow-wrap:anywhere;}
+
+/* Eight evidence columns keep SHA and run details readable in the shared PSWB scroller. */
+#pswb-migration{scroll-margin-top:130px}
+#pswb-migration table{min-width:1600px}
