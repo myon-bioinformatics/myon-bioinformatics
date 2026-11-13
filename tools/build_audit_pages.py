@@ -199,6 +199,27 @@ def pswb_migration_html(value):
             + f'<p>実際の統合順: {safe(chronology)}</p>' + body + f'<p>台帳main <code>{safe(value.get("registry_main"))}</code> / blob <code>{safe(value.get("registry_blob"))}</code>。コードのsource・destinationをmain lockと照合。LICENSE・パッケージ・sparse checkoutは別扱い。</p></details>')
 
 
+
+def favicon_link_tags(href_prefix=""):
+    """Relative favicon links. A root-absolute href would hit the portfolio host, not this Pages site."""
+    ico = href_prefix + "favicon.ico"
+    png = href_prefix + "favicon.png"
+    return (
+        f'<link rel="icon" href="{ico}" sizes="16x16 32x32 48x48">'
+        f'<link rel="icon" type="image/png" href="{png}">'
+    )
+
+
+def publish_brand_favicons(stage, source_root):
+    """Copy assets/brand favicon files to the published site root."""
+    brand = Path(source_root) / "assets/brand"
+    for name in ("favicon.ico", "favicon.png"):
+        src = brand / name
+        if not src.is_file():
+            raise FileNotFoundError("missing %s" % src)
+        shutil.copyfile(src, Path(stage) / name)
+
+
 def observatory_page(snapshot=None, theme=THEME):
     """The observatory's page. What this build observed and no reader changes (the 統合後の確認 card) is written here from ``snapshot``;
     app.js fills #stats, #content and the repo/axis filters, which depend on the reader's own work records."""
@@ -227,6 +248,7 @@ def observatory_page(snapshot=None, theme=THEME):
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Repository Observatory | 親子リポジトリ監査</title>
+  {favicon_link_tags()}
   <link rel="stylesheet" href="pswb-shell.css">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -547,6 +569,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         (stage / 'dependencies.html').write_text(
             '<!doctype html><html lang="ja"><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            + favicon_link_tags() +
             '<meta http-equiv="refresh" content="0;url=index.html#dependencies">'
             '<title>依存・統合順序</title><a href="index.html#dependencies">依存・統合順序を開く</a></html>',
             encoding='utf-8')
@@ -571,6 +594,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
                 (stage / path).write_text(
                     '<!doctype html><html lang="ja"><meta charset="utf-8">'
                     '<meta name="viewport" content="width=device-width,initial-scale=1">'
+                    + favicon_link_tags('../' if '/' in path else '') +
                     f'<meta http-equiv="refresh" content="0;url={target}#{view}">'
                     f'<title>継続監査</title><a href="{target}#{view}">継続監査を開く</a>'
                     f'<script>location.replace({json.dumps(target)}+(location.hash||"#{view}"))</script></html>',
@@ -585,6 +609,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         if fleet_graph is not None:  # the whole graph as JSON-LD for agents and other tools
             (stage / 'fleet.jsonld').write_text(json.dumps(fleet_graph, ensure_ascii=False) + '\n', encoding='utf-8')
         (stage / '.nojekyll').touch()
+        publish_brand_favicons(stage, source_root)
         progress = source_root / 'site/progress.json'
         (stage / 'progress.json').write_text(progress.read_text(encoding='utf-8') if progress.exists() else '{}\n', encoding='utf-8')
         with zipfile.ZipFile(stage / 'pages-source.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
