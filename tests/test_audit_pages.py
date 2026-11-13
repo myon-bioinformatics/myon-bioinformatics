@@ -37,7 +37,7 @@ class IntegrationSummaryTests(unittest.TestCase):
         for part in ('A&lt;b&gt;<small>0件</small>', '<td>未取得<small>abc</small><small>未取得</small></td>', '<td>チェックなし<small>ci: queued</small></td>',
                      '<td><small>x&amp;y</small><details>', '<p>vendor: B · 一致<small>s / 観測元 r</small></p>',
                      '<p>現在SHAの記録 · s<small>pytest: ok</small><small>log</small><small>f1</small></p>', '直近のマージ 1件',
-                     'href="https://example.test/&quot;1"', '<td>ODD</td>', '直近のマージ 0件', '<div class="table-wrap"><table>'):
+                     'href="https://example.test/&quot;1"', '<td>ODD</td>', '直近のマージ 0件', '<div class="table-wrap" data-ui-scroll="table"><table>'):
             self.assertIn(part, card)
         self.assertIn(f'aria-label="統合後の確認">{card}</section>', build.observatory_page({'integrations': rows}))
 
@@ -114,7 +114,10 @@ class PublicationTests(unittest.TestCase):
         self.assertTrue({"上部ナビゲーション", "監査の操作", "フッターナビゲーション"} <= labels)
         self.assertIn('class="skip-link" href="#content"', html)
         self.assertIn('href="pswb-shell.css"', html)
-        self.assertIn('src="scroll-controls.js"', html)
+        self.assertIn('<script type="module" src="pswb-scroll.js">', html)               # PySaiyanWeBoo's module, no adapter
+        self.assertNotIn('scroll-controls.js', html)
+        scrolls = [attrs.get("data-ui-scroll") for _, attrs in parser.rows if "data-scroll-label" in attrs]
+        self.assertEqual(scrolls, ["row"] * len(scrolls))                                # every labelled row is a PSWB scroll row
 
     def test_success_builds_relocatable_ui_report_data_and_history(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -122,7 +125,8 @@ class PublicationTests(unittest.TestCase):
             with patch.object(build,'public_repositories',return_value=['Demo']),patch.object(ci,'audit',return_value=snapshot()) as audit:
                 build.build(out)
             self.assertTrue(audit.call_args.kwargs['strict'])
-            for path in ('index.html','app.js','style.css','audit-model.js','scroll-controls.js','pswb-shell.css','pswb-scroll.js','pswb-records.js','data.json','report.html','history.json','pages-source.zip','.nojekyll'):
+            self.assertFalse((out/'scroll-controls.js').exists())
+            for path in ('index.html','app.js','style.css','audit-model.js','pswb-shell.css','pswb-scroll.js','pswb-records.js','data.json','report.html','history.json','pages-source.zip','.nojekyll'):
                 self.assertTrue((out/path).is_file(),path)
             html=(out/'index.html').read_text()
             self.assertIn('src="audit-model.js"',html)
@@ -130,7 +134,7 @@ class PublicationTests(unittest.TestCase):
             for name in ('index.html', 'app.js', 'evidence.json'):      # component-ops/ now only points to operations.html
                 self.assertEqual((out/'component-ops'/name).read_bytes(), (build.ROOT/'site/component-ops'/name).read_bytes())
             self.assertNotIn('src="/',html)
-            ui = ci._load_web_ui()
+            ui = ci._load_pysaiyanweboo()
             self.assertEqual((out/'pswb-shell.css').read_text(), ''.join(ui.css_source(name) for name in ('tokens.css', 'shell.css', 'records.css', 'scroll.css')))
             for name in ('scroll.js', 'records.js'):
                 self.assertEqual((out/('pswb-' + name)).read_text(), ui.js_source(name))

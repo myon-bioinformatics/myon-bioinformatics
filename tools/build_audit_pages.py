@@ -39,7 +39,7 @@ FILTERS = (('repo', 'リポジトリ', '全リポジトリ', ()),
            ('ci', 'CI', 'すべてのCI', ('失敗', '成功', '実行中', '不明', '不完全', 'チェックなし', '対象外')),
            ('state', '作業状態', 'すべての状態', ('調査中', '着手中', '完了', '保留', 'ブロッカー')),
            ('axis', '監査軸', 'すべての監査軸', ()))
-SCRIPTS = ('audit-model.js', 'scroll-controls.js', 'app.js', 'integration.js')
+SCRIPTS = ('audit-model.js', 'app.js', 'integration.js')
 THEME = 'green'  # a PySaiyanWeBoo token theme (web_ui.theme_palettes()); style.css reads its --ui-* tokens
 
 
@@ -73,14 +73,14 @@ def integration_summary(rows):
         return ''
     return ('<div class="card"><h3>統合後の確認</h3><p>オープンPRゼロと検証完了を分けて表示します。履歴は直近に更新されたclosed PR最大30件のうち'
             '既定ブランチにマージされたもの。実際のマージ順であり、依存関係ではありません。CI成功は観測したチェックの結果です。</p>'
-            '<div class="table-wrap"><table><thead><tr><th>リポジトリ / open PR</th><th>既定ブランチ / SHA / 確認日時</th><th>CI</th>'
+            '<div class="table-wrap" data-ui-scroll="table"><table><thead><tr><th>リポジトリ / open PR</th><th>既定ブランチ / SHA / 確認日時</th><th>CI</th>'
             '<th>次の作業 / マージ履歴</th></tr></thead><tbody>' + ''.join(row(r) for r in rows) + '</tbody></table></div></div>')
 
 
 def observatory_page(snapshot=None, theme=THEME):
     """The observatory's page. What this build observed and no reader changes (the 統合後の確認 card) is written here from ``snapshot``;
     app.js fills #stats, #content and the repo/axis filters, which depend on the reader's own work records."""
-    ui = ci._load_web_ui()
+    ui = ci._load_pysaiyanweboo()
     heading = ui.page_heading("親子リポジトリ監査", eyebrow="監査", lead="PR・Issue・CI・依存関係を確認します。",
                               stamp={"label": "観測日時", "value": str((snapshot or {}).get("generated_at") or "未取得")})
     data_download = ui.download_json(snapshot or {}, id="audit-observation", filename="audit-observation.json", label="ビルド時の観測JSON ↓")
@@ -90,11 +90,12 @@ def observatory_page(snapshot=None, theme=THEME):
                        for index, (view, icon, short, long) in enumerate(VIEWS))
 
     def row(label):
-        return f'<nav class="horizontal-row ui-shell-scroll" data-scroll-label="{label}" aria-label="{label}">{views()}</nav>'
+        return f'<nav class="horizontal-row ui-shell-scroll" data-ui-scroll="row" data-scroll-label="{label}" aria-label="{label}">{views()}</nav>'
     actions = ''.join('<a href="%s">%s</a>' % (href, escape(text)) for href, text in LINKS) + ''.join('<button%s id="%s">%s</button>' % (' class="%s"' % kind if kind else '', name, escape(text)) for name, text, kind in ACTIONS)
     side, top, bottom = views(side=True), row('上部ナビゲーション'), row('フッターナビゲーション')
-    scripts = ''.join(f'<script src="{name}"></script>' for name in SCRIPTS if name != 'scroll-controls.js')
-    scripts += '<script type="module" src="scroll-controls.js"></script><script type="module" src="pswb-records.js"></script>'
+    scripts = ''.join(f'<script src="{name}"></script>' for name in SCRIPTS)
+    # PySaiyanWeBoo's modules bind themselves: scroll.js enhances every [data-ui-scroll] the page has or adds later.
+    scripts += '<script type="module" src="pswb-scroll.js"></script><script type="module" src="pswb-records.js"></script>'
     theme = escape(theme, quote=True)
     filters = ''.join(f'<select id="{name}" aria-label="{label}"><option value="">{first}</option>'
                       + ''.join(f'<option>{option}</option>' for option in more) + '</select>' for name, label, first, more in FILTERS)
@@ -122,7 +123,7 @@ def observatory_page(snapshot=None, theme=THEME):
   </header>
   <section class="heading">
     {heading}
-    <div class="actions horizontal-row ui-shell-scroll" data-scroll-label="監査の操作">{actions}{data_download}</div>
+    <div class="actions horizontal-row ui-shell-scroll" data-ui-scroll="row" data-scroll-label="監査の操作">{actions}{data_download}</div>
   </section>
   <div id="notice" role="status">データを読み込み中…</div>
   <section id="stats" class="stats"></section>
@@ -146,7 +147,7 @@ def observatory_page(snapshot=None, theme=THEME):
 def pswb_css():
     """PySaiyanWeBoo's tokens (the --ui-* palette of every token theme) and shell contract, from the reviewed vendor pin.
     Python remains the source of shared CSS; no npm package or CDN is required."""
-    ui = ci._load_web_ui()
+    ui = ci._load_pysaiyanweboo()
     return ''.join(ui.css_source(name) for name in ('tokens.css', 'shell.css', 'records.css', 'scroll.css'))
 
 
@@ -435,7 +436,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
             shutil.copytree(operations, stage / 'component-ops')
         (stage / 'index.html').write_text(observatory_page(snapshot), encoding='utf-8')
         (stage / 'pswb-shell.css').write_text(pswb_css(), encoding='utf-8')
-        ui = ci._load_web_ui()
+        ui = ci._load_pysaiyanweboo()
         for name in ('scroll.js', 'records.js'):
             (stage / ('pswb-' + name)).write_text(ui.js_source(name), encoding='utf-8')
         (stage / 'history.json').write_text(json.dumps(history, ensure_ascii=False) + '\n', encoding='utf-8')

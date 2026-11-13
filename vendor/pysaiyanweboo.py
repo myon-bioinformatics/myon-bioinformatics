@@ -8,8 +8,8 @@ only as an explicit subprocess helper for pytest/CI one-liners.
 """
 from __future__ import annotations
 
-import argparse, base64, bisect, colorsys, errno, functools, hashlib, heapq, hmac, http.client, http.server, importlib.util, json, math, os, random, re, shutil, struct, subprocess, sys, time, unicodedata, urllib.error, urllib.request, xml.etree.ElementTree as ET, zlib
-from collections import Counter, defaultdict; from datetime import date; from decimal import Decimal; from html import escape; from pathlib import Path; from typing import Any, Sequence; from urllib.parse import parse_qsl, quote, urlsplit
+import argparse, base64, bisect, colorsys, errno, functools, hashlib, heapq, hmac, http.client, http.server, importlib.util, json, math, os, random, re, shlex, shutil, struct, subprocess, sys, time, unicodedata, urllib.error, urllib.request, xml.etree.ElementTree as ET, zlib
+from collections import Counter, defaultdict; from datetime import date, datetime, timezone; from decimal import Decimal; from html import escape; from pathlib import Path; from typing import Any, Sequence; from urllib.parse import parse_qsl, quote, urlsplit
 
 THEMES = ("modern", "github-like")
 # Token-only candidates: their values live in the Python tokens.css source; not in contract v1 yet.
@@ -390,7 +390,7 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
 })(typeof globalThis !== "undefined" ? globalThis : this);
 """,
     "gif.js": r"""/* gif.js — animated GIF from canvas frames, for pages and tools built with web_ui. No dependencies.
- * Browser: classic script, sets window.UiGif. Node: require() the file `web_ui.py --site DIR` writes (the encoder needs
+ * Browser: classic script, sets window.UiGif. Node: require() the file `pysaiyanweboo.py --site DIR` writes (the encoder needs
  * no DOM; Composer and Recorder need a canvas).
  *
  * The browser does what it already does well: decode the PNG (createImageBitmap), resize and crop it (drawImage) and
@@ -1464,6 +1464,108 @@ def installed_commit() -> str | None:
         return None
 
 
+# --- 🏷️ Output names for recordings (GIFs, stills) that people and agents rerun: <prefix><name><suffix>[-<run detail>...].<ext>.
+# Moved from tools/record_demo.py so every recorder (record_demo here, BrowserTestKit's evidence_gif) names its files the same way.
+
+NAME_PART = re.compile(r"[\w.-]{0,64}")
+
+
+def name_part(value):
+    """argparse type for ``--prefix`` / ``--suffix``: letters, digits, ``_``, ``.`` and ``-`` only (up to 64), so the name stays one file name."""
+    if not NAME_PART.fullmatch(value):
+        raise argparse.ArgumentTypeError(f"{value!r}: letters, digits, _ . - only, up to 64 characters")
+    return value
+
+
+RUN_DETAILS = ("timestamp", "git-commit")
+
+
+class _AddRunDetail(argparse.Action):
+    """``--timestamp`` / ``--git-commit``: append that detail to ``run_details`` in the order the options are given (a repeat adds nothing)."""
+
+    def __init__(self, option_strings, dest, detail, **kwargs):
+        super().__init__(option_strings, dest, nargs=0, default=[], **kwargs)
+        self.detail = detail
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        details = list(getattr(namespace, self.dest) or [])
+        if self.detail not in details:
+            details.append(self.detail)
+        setattr(namespace, self.dest, details)
+
+
+def add_gif_arguments(parser):
+    """The output arguments shared by the CLI and ``WEB_UI_GIFS``: ``out``, ``--prefix``, ``--suffix``, ``--timestamp``, ``--git-commit``, ``--force``."""
+    parser.add_argument("out", type=Path, help="directory for <prefix><name><suffix>[-<run detail>...].gif")
+    parser.add_argument("--prefix", type=name_part, default="", metavar="TEXT", help="put TEXT before every file name")
+    parser.add_argument("--suffix", type=name_part, default="", metavar="TEXT",
+                        help="put TEXT right after the name, before the run details (write --suffix=-x when TEXT starts with -)")
+    parser.add_argument("--timestamp", action=_AddRunDetail, detail="timestamp", dest="run_details",
+                        help="add when this run started, in UTC as ISO 8601 basic format (-20261108T113412Z), so every run keeps its own file;"
+                             " run details follow the order their options are given")
+    parser.add_argument("--git-commit", action=_AddRunDetail, detail="git-commit", dest="run_details",
+                        help="add the git commit the pages were built from (-288cbed, or -288cbed-dirty with uncommitted changes); records nothing in git")
+    parser.add_argument("--force", action="store_true", help="replace existing GIFs")
+    return parser
+
+
+def run_timestamp(now=None):
+    """``now`` (default: the current time) in UTC as ISO 8601 basic format, ``20261108T113412Z``: sorts in recording order, reads the same in any time zone."""
+    now = datetime.now(timezone.utc) if now is None else now
+    if now.tzinfo is None:
+        raise ValueError("now needs a time zone")
+    return now.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def checkout_commit(root=None):
+    """``root``'s (default: the current directory's) short commit (``git rev-parse --short=7 HEAD``) plus ``-dirty`` when tracked files differ (``git describe --dirty``'s word)."""
+    root = Path.cwd() if root is None else root
+    try:
+        head = subprocess.run(["git", "-C", str(root), "rev-parse", "--short=7", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        dirty = subprocess.run(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValueError(f"--git-commit needs a git checkout at {root}") from exc
+    return head + ("-dirty" if dirty else "")
+
+
+def gif_targets(directory, stems, *, prefix="", suffix="", run_details=(), force=False, now=None, revision=None, ext=".gif", root=None):
+    """``{stem: directory/<prefix><stem><suffix>[-<run detail>...]<ext>}`` (``ext`` .gif by default, .png for stills), one timestamp and
+    commit for the whole batch; creates the directory. ``root`` is the checkout ``"git-commit"`` describes (default: the current directory).
+
+    ``run_details`` lists ``RUN_DETAILS`` names in the order they are added, left to right: ``"timestamp"`` is ``run_timestamp(now)``,
+    ``"git-commit"`` is ``revision`` (default ``checkout_commit(root)``), so repeated runs get files that say when and from which code they were
+    recorded. Without ``force`` an existing target raises FileExistsError before anything is written.
+    """
+    directory = Path(directory)
+    stems, run_details = list(stems), list(run_details)
+    if len(set(stems)) != len(stems) or not all(NAME_PART.fullmatch(s) and s for s in stems):
+        raise ValueError("stems are distinct file-name parts (letters, digits, _ . -)")
+    if len(set(run_details)) != len(run_details) or set(run_details) - set(RUN_DETAILS):
+        raise ValueError("run_details are distinct names from " + ", ".join(RUN_DETAILS))
+    name_part(prefix), name_part(suffix)
+    value = {"timestamp": lambda: run_timestamp(now), "git-commit": lambda: revision or checkout_commit(root)}
+    details = "".join(f"-{value[d]()}" for d in run_details)
+    if not re.fullmatch(r"\.[a-z0-9]{1,8}", ext):
+        raise ValueError("ext is a file extension such as .gif or .png")
+    targets = {stem: directory / f"{prefix}{stem}{suffix}{details}{ext}" for stem in stems}
+    if not force and any(p.exists() for p in targets.values()):
+        raise FileExistsError("refusing to overwrite " + ", ".join(str(p) for p in targets.values() if p.exists())
+                              + " (add --force to replace it, or --timestamp to keep each run)")
+    directory.mkdir(parents=True, exist_ok=True)
+    return targets
+
+
+def gif_targets_from(spec, stems, *, now=None, revision=None, ext=".gif", root=None):
+    """``gif_targets`` from one setting string, ``"DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"`` (``WEB_UI_GIFS`` in the
+    browser tests). The words are split like a shell command line and parsed by the same argparse definitions as the CLI (the run details
+    keep their order), so a bad option raises argparse.ArgumentError here instead of exiting.
+    """
+    parser = add_gif_arguments(argparse.ArgumentParser(prog="WEB_UI_GIFS", add_help=False, allow_abbrev=False, exit_on_error=False))
+    args = parser.parse_args(shlex.split(spec))
+    return gif_targets(args.out, stems, prefix=args.prefix, suffix=args.suffix, run_details=args.run_details,
+                       force=args.force, now=now, revision=revision, ext=ext, root=root)
+
+
 def repository_diagnostics_page(
     repository: str,
     *,
@@ -1688,7 +1790,7 @@ def page_document(spec: Any, *, layouts: Any = None) -> str:
     ``section`` (title, text, nested blocks), ``links``, ``image``, ``kv`` (key–value rows) and ``badges``
     (``{text, status: pass|fail}``). Text is never HTML; links and images are relative paths or HTTPS. The theme is one
     of ours, ``auto`` or a brand registered with ``theme_css`` (its CSS is appended when registered in this process);
-    ``layouts`` adds switchable presets. The same from the shell or Node: ``python -S web_ui.py --page spec.json``.
+    ``layouts`` adds switchable presets. The same from the shell or Node: ``python -S pysaiyanweboo.py --page spec.json``.
     """
     if not isinstance(spec, dict) or spec.get("schema") != PAGE_SCHEMA:
         raise ValueError(f"expected schema {PAGE_SCHEMA}")
@@ -5358,7 +5460,7 @@ def _layout_note(preset: dict[str, Any], candidates: dict[str, Any] | None) -> s
 
 def layout_switch_html(spec: Any, candidates: dict[str, Any] | None = None, *, legend: str = "Layout") -> str:
     """Radio buttons, one per preset, the default checked; with a ``web-ui-layout-candidates/1`` sweep result
-    (tool/layout_presets.py sweep) each is labelled with the widths where it held — none is disabled."""
+    (tools/layout_presets.py sweep) each is labelled with the widths where it held — none is disabled."""
     data = validate_layout_presets(spec)
     if candidates is not None and (not isinstance(candidates, dict) or candidates.get("schema") != LAYOUT_CANDIDATES_SCHEMA):
         raise ValueError(f"candidates must be {LAYOUT_CANDIDATES_SCHEMA}")
@@ -5687,7 +5789,7 @@ _COMPONENT_CSS = {"world_css": lambda *a: world_css(a[0], base=False), "showcase
 def component_parts(name: str, /, *args: Any, **kwargs: Any) -> dict[str, str]:
     """``{"html", "css", "js"}`` of one component of COMPONENTS: the HTML its builder makes from ``args``/``kwargs`` (a spec, a dial's numbers),
     the stylesheet text it needs beyond bundled_css(), and the module source that binds it (it mounts itself when the page loads).
-    Another repository that vendors web_ui.py calls this from Python and places the three where its page wants them."""
+    Another repository that vendors pysaiyanweboo.py calls this from Python and places the three where its page wants them."""
     try:
         part = COMPONENTS[name]
     except KeyError:
@@ -6032,7 +6134,8 @@ _PHOTO_FAILURES = {"empty": "decodeFailed", "tooLargeBytes": "tooLargeBytes", "t
                    "heicConversionFailed": "heicUnsupported"}
 
 
-def _photo_half_up(value: float) -> int:
+def _math_round(value: float) -> int:
+    """JavaScript's Math.round: halves go up (also for negatives), as the photo and image studios round in the page."""
     floor = math.floor(value)
     return floor + 1 if value - floor >= 0.5 else floor
 
@@ -6281,13 +6384,13 @@ def photo_reject_size(width: int, height: int) -> str | None:
 
 def photo_document_size(width: int, height: int) -> tuple[int, int]:
     """The size the studio keeps a ``width`` x ``height`` photo at: two thirds of each side, then the long side at most 4096 (what Flutter's web adapter does)."""
-    tw = min(max(_photo_half_up(width * PHOTO_DOWNSCALE), 1), width)
-    th = min(max(_photo_half_up(height * PHOTO_DOWNSCALE), 1), height)
+    tw = min(max(_math_round(width * PHOTO_DOWNSCALE), 1), width)
+    th = min(max(_math_round(height * PHOTO_DOWNSCALE), 1), height)
     long_edge = max(tw, th)
     if long_edge > PHOTO_MAX_EDGE:
         fit = PHOTO_MAX_EDGE / long_edge
-        tw = min(max(_photo_half_up(tw * fit), 1), width)
-        th = min(max(_photo_half_up(th * fit), 1), height)
+        tw = min(max(_math_round(tw * fit), 1), width)
+        th = min(max(_math_round(th * fit), 1), height)
     return tw, th
 
 
@@ -6546,7 +6649,7 @@ def photo_hit_stamp(stamps: list[dict[str, Any]], width: float, height: float, x
 
 def photo_export_size(width: float, height: float, ratio: float = 2) -> tuple[int, int]:
     """The exported PNG's size for an on-screen canvas: each side times the pixel ratio, rounded, between 1 and 4096."""
-    return min(max(_photo_half_up(width * ratio), 1), PHOTO_MAX_EDGE), min(max(_photo_half_up(height * ratio), 1), PHOTO_MAX_EDGE)
+    return min(max(_math_round(width * ratio), 1), PHOTO_MAX_EDGE), min(max(_math_round(height * ratio), 1), PHOTO_MAX_EDGE)
 
 
 def photo_contain_rect(image_width: float, image_height: float, width: float, height: float) -> tuple[float, float, float, float]:
@@ -9217,7 +9320,7 @@ def mcp_document(*, theme: str = "modern") -> str:
 # the Dart app displays are their checked-in outputs (tests/fixtures/pattern_assets.json). Each takes a JSON request and returns a JSON result or raises ``ValueError``; nothing is
 # evaluated, nothing is persisted. Python is the reference; ``patterns.js`` equals it for the families that need no Python-only behaviour (see the README for which).
 # Differences from the originals: none of behaviour on any request they accept or refuse with ValueError; where they crashed with a TypeError (an unhashable ``operation``, say) these raise ValueError too.
-# Their command-line wrappers became ``web_ui.py --pattern FAMILY``, reading one JSON request from stdin.
+# Their command-line wrappers became ``pysaiyanweboo.py --pattern FAMILY``, reading one JSON request from stdin.
 PATTERN_MAX_INPUT = 2_000_000
 _PAT_MISSING = object()
 _PAT_TYPES = {"null": lambda x: x is None, "boolean": lambda x: type(x) is bool, "integer": lambda x: type(x) is int, "number": lambda x: type(x) in (int, float),
@@ -13374,7 +13477,7 @@ def patterns_html(bridge: str | None = None) -> str:
     names = ", ".join(stay[:-1]) + " and " + stay[-1]
     note = (f'<p class="ui-muted" data-patterns-bridge-note>{names.capitalize()} run in Python through the local bridge that serves this page.</p>' if bridge else
             f'<p class="ui-muted">{len(PATTERN_TWINS)} families run in this page. {names.capitalize()} stay in Python: the page shows what Python answers to their example '
-            '(<code>python3 web_ui.py --pattern-serve</code> serves this page with a bridge that runs them).</p>')
+            '(<code>python3 pysaiyanweboo.py --pattern-serve</code> serves this page with a bridge that runs them).</p>')
     categories = "".join(f'<option value="{key}">{letter} · {escape(label)}</option>' for key, letter, label in PATTERN_CATEGORIES)
     families = "".join(f'<option value="{name}">{name}</option>' for name in sorted(PATTERN_RUNNERS))
     run_families = "".join(f'<option value="{name}"{" selected" if name == "query" else ""}>{name}</option>' for name in sorted(PATTERN_RUNNERS))
@@ -13401,7 +13504,7 @@ def patterns_document(*, theme: str = "modern", bridge: str | None = None) -> st
 
 
 # --- The pattern bridge: the references over loopback HTTP, for the pages that cannot run them -------------------------------------------------------------------
-# Succeeds python/validation_http.py, the opt-in local HTTP bridge that let a page reach the Python validation producer of patterns 091-099: ``web_ui.py --pattern-serve`` serves the
+# Succeeds python/validation_http.py, the opt-in local HTTP bridge that let a page reach the Python validation producer of patterns 091-099: ``pysaiyanweboo.py --pattern-serve`` serves the
 # patterns page and answers ``POST /pattern/FAMILY`` with what ``--pattern FAMILY`` prints, for every family, so the ones that stay in Python (search, convert, validate, contract and
 # score's tf-idf) run from the page too. It binds 127.0.0.1 only. Kept from the original: the Host header must name the bound loopback address and port (no DNS rebinding); a browser's
 # Origin must be the bridge's own origin (either loopback name) or one that ``--allow-origin`` lists, and a CORS answer repeats that one origin, never ``*``; the body must be JSON
@@ -13888,14 +13991,8 @@ def _stu_need(condition: Any, message: str) -> None:
         raise StudioError(message)
 
 
-def _stu_round(x: float) -> int:
-    """Math.round: halves go up."""
-    r = math.floor(x)
-    return r + 1 if x - r >= 0.5 else r
-
-
 def _stu_num(value: Any, low: float, high: float) -> bool:
-    return type(value) in (int, float) and math.isfinite(value) and low <= value <= high
+    return _js_num(value) and low <= value <= high
 
 
 def _stu_color(value: Any) -> bool:
@@ -14101,11 +14198,11 @@ def studio_heat_color(value: Any, low: Any, high: Any, levels: Any = 0) -> str:
     levels = int(levels)
     t = 0.5 if high == low else max(0, min(1, (value - low) / (high - low)))
     if levels:
-        t = _stu_round(t * (levels - 1)) / (levels - 1)
+        t = _math_round(t * (levels - 1)) / (levels - 1)
     p = t * 4
     i = min(3, math.floor(p))
     a, b = (bytes.fromhex(c[1:]) for c in STUDIO_PALETTE[i:i + 2])
-    return "#" + "".join(f"{_stu_round(x + (y - x) * (p - i)):02X}" for x, y in zip(a, b))
+    return "#" + "".join(f"{_math_round(x + (y - x) * (p - i)):02X}" for x, y in zip(a, b))
 
 
 def studio_matrix(source: Any) -> dict[str, Any]:
@@ -14152,7 +14249,7 @@ def studio_arrow_geometry(w: Any, h: Any, head: Any = 28, placement: Any = "tip"
 def studio_output_size(scene: Any, scale: Any = 1) -> dict[str, int]:
     """Pixels of an export at ``scale`` (0.25 to 8): at most 8192 a side and 16 MP."""
     _stu_need(_stu_num(scale, 0.25, 8), "出力倍率は0.25〜8です")
-    width, height = _stu_round(scene["width"] * scale), _stu_round(scene["height"] * scale)
+    width, height = _math_round(scene["width"] * scale), _math_round(scene["height"] * scale)
     _stu_need(width <= 8192 and height <= 8192 and width * height <= 16777216, "出力は各辺8192px・合計16MP以下にしてください")
     return {"width": width, "height": height}
 
@@ -14236,7 +14333,7 @@ def studio_mosaic_rgba(data: Any, width: Any, height: Any, cell: Any, levels: An
                     sums[1] += raw[n + 1] * a
                     sums[2] += raw[n + 2] * a
             count = (end_x - x) * (end_y - y)
-            rgba = [_stu_round(_stu_round((_stu_round(s / alpha) if alpha else 0) / 255 * steps) / steps * 255) for s in sums] + [_stu_round(alpha / count)]
+            rgba = [_math_round(_math_round((_math_round(s / alpha) if alpha else 0) / 255 * steps) / steps * 255) for s in sums] + [_math_round(alpha / count)]
             pixel = bytes(rgba)
             for j in range(y, end_y):
                 base = (j * width + x) * 4
@@ -15624,11 +15721,17 @@ STUB_SCHEMA = "web-ui-stub/1"
 # stub.js without its import line: it needs setText/prettyJson from ui.js, so an embedded module is ui.js + this.
 EMBEDDED_STUB_JS = _JS["stub.js"].split("\n", 1)[1]
 
+# Lines several modules share, spliced in like _RNG_JS and _SHA_JS: the Python str.strip whitespace, full-width ASCII folding, and a DOM element builder.
+_SPACE_JS = r"""const SPACE="\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
+"""
+_ASCII_JS = r"""const ascii=s=>{let o="";for(const c of s){const n=c.codePointAt(0);o+=n>=0xFF01&&n<=0xFF5E?String.fromCodePoint(n-0xFEE0):n===0x3000?" ":n===0x2212?"-":c}return o};
+"""
+_EL_JS = r"""const el=(tag,props={},...kids)=>{const e=document.createElement(tag);for(const[k,v]of Object.entries(props))if(k==="text")e.textContent=v;else e.setAttribute(k,v);e.append(...kids);return e};
+"""
+
 _JS["coordinates.js"] = r"""/* web-ui coordinates: validate and format a point, read it from a Maps URL, frame a tolerance area, find its XYZ tile. Python (web_ui.parse_coordinate, tolerance_area, ...) is the reference. */
-const SPACE="\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
-const strip=s=>(s.startsWith("﻿")?s.slice(1):s).replace(new RegExp("^["+SPACE+"]+|["+SPACE+"]+$","g"),"");
-const ascii=s=>{let o="";for(const c of s){const n=c.codePointAt(0);o+=n>=0xFF01&&n<=0xFF5E?String.fromCodePoint(n-0xFEE0):n===0x3000?" ":n===0x2212?"-":c}return o};
-const NUMBER=/^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/,WS="[ \\t\\r\\n\\f\\v]",N="(-?[0-9]+(?:\\.[0-9]+)?)";
+""" + _SPACE_JS + r"""const strip=s=>(s.startsWith("﻿")?s.slice(1):s).replace(new RegExp("^["+SPACE+"]+|["+SPACE+"]+$","g"),"");
+""" + _ASCII_JS + r"""const NUMBER=/^[+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/,WS="[ \\t\\r\\n\\f\\v]",N="(-?[0-9]+(?:\\.[0-9]+)?)";
 const PATTERNS=[new RegExp("[?&#]ll="+N+WS+"*,"+WS+"*"+N,"i"),new RegExp("[?&#](?:query|q)="+N+WS+"*,"+WS+"*"+N,"i"),new RegExp("!3d"+N+"!4d"+N),new RegExp("@"+N+WS+"*,"+WS+"*"+N+"(?:,|/|z|\\?|#|$)")];
 export const fixed=(v,n)=>v.toFixed(n);
 export function parseCoordinate(latitude,longitude){const v=[];for(const raw of[latitude,longitude]){const t=strip(ascii(String(raw)));
@@ -15883,8 +15986,7 @@ globalThis.webUiPlayground={COUNTER_MIN,COUNTER_MAX,COUNTER_STEPS,HOLD_DELAY,HOL
 if(typeof document!=="undefined")bindPlayground();
 """
 
-_TEXT_JS = r"""const SPACE="\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
-export const pyStrip=s=>s.replace(new RegExp("^["+SPACE+"]+|["+SPACE+"]+$","g"),"");
+_TEXT_JS = _SPACE_JS + r"""export const pyStrip=s=>s.replace(new RegExp("^["+SPACE+"]+|["+SPACE+"]+$","g"),"");
 """
 _SHA_JS = r"""const SHA_K=new Uint32Array([0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
@@ -16001,8 +16103,7 @@ export function reportRead(text,previous=null,messages=false){const kind=reportK
  out.line=countsLine(out.counts)+" total="+out.total+" ok="+(out.ok?"true":"false");
  if(previous!==null&&pyStrip(previous)){if(kind!=="junit")throw new Error("Comparing with a previous run needs JUnit XML for both.");out.diff=junitDiff(text,previous)}
  return out}
-const el=(tag,props={},...kids)=>{const e=document.createElement(tag);for(const[k,v]of Object.entries(props))if(k==="text")e.textContent=v;else e.setAttribute(k,v);e.append(...kids);return e};
-export function bindReport(root=document){return[...root.querySelectorAll("[data-ui-report]")].map(box=>{
+""" + _EL_JS + r"""export function bindReport(root=document){return[...root.querySelectorAll("[data-ui-report]")].map(box=>{
  const $=s=>box.querySelector(s),input=$("[data-report-input]"),previous=$("[data-report-previous]"),file=$("[data-report-file]"),messages=$("[data-report-messages]"),status=$("[data-report-status]"),line=$("[data-report-line]"),out=$("[data-report-out]"),convert=$("[data-report-convert]");
  let last=null;
  const clear=()=>{line.textContent="";out.replaceChildren();convert.hidden=true;last=null};
@@ -16203,8 +16304,7 @@ export function mcpExchange(routes,request){const method=has(request,"method")?r
 const api={mcpSupportMatrix,rpcFailure,rpcResult,rpcRequest,rpcRequestParse,rpcIsNotification,rpcResponseParse,mcpHeaderNeedsEncoding,mcpHeaderEncode,mcpHeaderDecode,mcpStreamableHeaders,mcpSessionId,pkceChallengeS256,pkcePair,oauthServerMetadata,oauthResourceMetadata,
  bearerInspect,demoBearerToken,mcpMetaVersion,mcpLooksModern,mcpValidateModern,McpFoundation,mcpHeader,mcpOriginAllows,mcpOriginsForPort,McpRoutes,McpClient,mcpInProcess,mcpFoundationTransport,mcpExchange,sha256Hex,mulberry32};
 globalThis.webUiMcp=api;
-const el=(tag,props={},...kids)=>{const e=document.createElement(tag);for(const[k,v]of Object.entries(props))if(k==="text")e.textContent=v;else e.setAttribute(k,v);e.append(...kids);return e};
-const pretty=v=>JSON.stringify(v,null,2);
+""" + _EL_JS + r"""const pretty=v=>JSON.stringify(v,null,2);
 export function bindMcp(root=document){return[...root.querySelectorAll("[data-ui-mcp]")].map(box=>{
  const $=s=>box.querySelector(s),$$=s=>[...box.querySelectorAll(s)];let routes=new McpRoutes(null,{clock:()=>Date.now()/1000}),lastSession="";
  const sessionsNote=$("[data-mcp-sessions]"),refresh=()=>{sessionsNote.textContent=routes.handler.sessions.size+" session(s) open on the in-page server."+(routes.handler.sessions.size?" Last: "+lastSession:"");box.dataset.sessions=String(routes.handler.sessions.size)};
@@ -16850,7 +16950,7 @@ export const PATTERN_RUNNERS={query:patternQuery,native:r=>viaScreens("native",r
 const pyRepr=s=>s.includes("'")&&!s.includes('"')?'"'+s.replace(/\\/g,"\\\\")+'"':"'"+s.replace(/\\/g,"\\\\").replace(/'/g,"\\'")+"'";
 export function patternRun(family,request){
  if(!has(PATTERN_RUNNERS,family)){
-  if(PATTERN_FAMILIES.includes(family))throw new PatternError(family+" runs in Python only: python3 web_ui.py --pattern "+family);
+  if(PATTERN_FAMILIES.includes(family))throw new PatternError(family+" runs in Python only: python3 pysaiyanweboo.py --pattern "+family);
   throw new PatternError("unknown pattern family: "+pyRepr(String(family))+"; one of "+PATTERN_FAMILIES.join(", "))}
  const wrap=e=>e instanceof PatternError?e:(e instanceof TypeError||e instanceof RangeError)?new PatternError("invalid "+family+" request: "+e.message):e;
  try{const out=PATTERN_RUNNERS[family](request);return out instanceof Promise?out.catch(e=>{throw wrap(e)}):out}
@@ -16885,8 +16985,7 @@ export function patternFind(rows,query="",category="",family=""){
  patternWindowInitial,patternWindowStep,patternWindowRender,patternCollectionInitial,patternCollectionStep,patternCollectionRender,patternStructure,patternFuture,patternStream,patternConcurrency,patternEventLoop,patternInteraction,virtualWindow,debounce,patternRun,patternTheme,patternFamily,patternOwner,patternCatalogue,patternFind,
  PATTERN_RUNNERS,PATTERN_TWINS,PATTERN_FAMILIES,PATTERN_EXAMPLES,PATTERN_ORDER_EXAMPLES,PATTERN_TEXT_DOCUMENTS,PATTERN_WINDOW_MODES,PATTERN_COLLECTION_MODES,PATTERN_WINDOW_ITEMS,sha256Hex};
 globalThis.webUiPatterns=api;
-const el=(tag,props={},...kids)=>{const e=document.createElement(tag);for(const[k,v]of Object.entries(props))if(k==="text")e.textContent=v;else e.setAttribute(k,v);e.append(...kids);return e};
-const pretty=v=>JSON.stringify(v,null,2);
+""" + _EL_JS + r"""const pretty=v=>JSON.stringify(v,null,2);
 const PAGE=48;
 export function bindPatterns(root=document){return[...root.querySelectorAll("[data-ui-patterns]")].map(box=>{
  if(box.hasAttribute("data-patterns-ready"))return box;
@@ -16915,12 +17014,12 @@ export function bindPatterns(root=document){return[...root.querySelectorAll("[da
      if(code===200&&json){out.textContent=pretty(data);status.textContent="Run by Python through the local bridge.";box.dataset.run="ok"}
      else if(code===400&&data&&typeof data.error==="string"){out.textContent="";status.textContent="Refused: "+data.error;box.dataset.run="refused"}
      else{out.textContent="";status.textContent="The bridge answered "+code+(data&&typeof data.error==="string"?": "+data.error:"")+".";box.dataset.run="error"}},
-     ()=>{if(ticket!==runs)return;out.textContent="";status.textContent="The Python bridge cannot be reached; start it with: python3 web_ui.py --pattern-serve";box.dataset.run="unreachable"});
+     ()=>{if(ticket!==runs)return;out.textContent="";status.textContent="The Python bridge cannot be reached; start it with: python3 pysaiyanweboo.py --pattern-serve";box.dataset.run="unreachable"});
    return}
   if(pythonOnly){
    box.dataset.engine="python";
    if(pyJson(request)===pyJson(example.request)){out.textContent=pretty(example.result);status.textContent="Computed by Python when this page was made; this page does not run "+family+" itself.";box.dataset.run="ok"}
-   else{out.textContent="";status.textContent=family+" runs in Python only: printf '%s' '"+JSON.stringify(request).replace(/'/g,"'\\''")+"' | python3 web_ui.py --pattern "+family;box.dataset.run="python"}
+   else{out.textContent="";status.textContent=family+" runs in Python only: printf '%s' '"+JSON.stringify(request).replace(/'/g,"'\\''")+"' | python3 pysaiyanweboo.py --pattern "+family;box.dataset.run="python"}
    return}
    box.dataset.engine="browser";
   const ticket=++runs,done=value=>{if(ticket!==runs)return;out.textContent=pretty(value);status.textContent="Run in this page.";box.dataset.run="ok"},
@@ -17089,10 +17188,8 @@ const OPTIONS=new Map(Object.entries({"-X":"method","--request":"method","--url"
 const IGNORED=new Set(["-s","-S","-i","-v","-k","--silent","--show-error","--include","--verbose","--insecure"]),METHODS=new Set(["GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"]);
 const SECRET_NAMES=new Set(["authorization","proxy-authorization","cookie","set-cookie","x-api-key","api-key","x-auth-token","key","sig","sas"]);
 const SECRET_PARTS=["api-key","api_key","token","secret","password","signature","credential","access_key","access-key","sharedaccesssignature"];
-const SPACE="\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
-const strip=s=>s.replace(new RegExp("^["+SPACE+"]+|["+SPACE+"]+$","g"),""),lstrip=s=>s.replace(new RegExp("^["+SPACE+"]+"),"");
-const ascii=s=>{let o="";for(const c of s){const n=c.codePointAt(0);o+=n>=0xFF01&&n<=0xFF5E?String.fromCodePoint(n-0xFEE0):n===0x3000?" ":n===0x2212?"-":c}return o};
-export function curlTokenize(raw){
+""" + _SPACE_JS + r"""const strip=s=>s.replace(new RegExp("^["+SPACE+"]+|["+SPACE+"]+$","g"),""),lstrip=s=>s.replace(new RegExp("^["+SPACE+"]+"),"");
+""" + _ASCII_JS + r"""export function curlTokenize(raw){
  if(typeof raw!=="string")fail("inputType");
  if(!raw.isWellFormed())fail("encoding");
  if(new TextEncoder().encode(raw).length>MAX_BYTES)fail("inputTooLarge");
@@ -17741,7 +17838,6 @@ export class PhotoStudio{constructor(width=760,height=280){this.width=width;this
  undo(){const s=this.history.undo(this.state);if(s===null)return false;this.state=s;if(s.draft_shape!==null)this.pendingEmoji=null;return true}
  redo(){const s=this.history.redo(this.state);if(s===null)return false;this.state=s;if(s.draft_shape!==null)this.pendingEmoji=null;return true}}
 const MIME={png:"image/png",jpeg:"image/jpeg",webp:"image/webp",gif:"image/gif",avif:"image/avif",heic:"image/heic"};
-const fromB64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 /* Decode in the engine. The bytes go in with EXIF orientation set to 1 and the type the bytes show (not the one the file claims), so every engine returns the stored pixels and the page turns them. */
 export function loadImage(bytes,{raw=false}={}){const info=sniff(bytes),blob=new Blob([raw?bytes:neutralizeOrientation(bytes)],{type:MIME[info.kind]||"application/octet-stream"}),url=URL.createObjectURL(blob),image=new Image();
  const release=()=>{image.onload=image.onerror=null;URL.revokeObjectURL(url)};
@@ -17853,8 +17949,8 @@ export function bindPhoto(root=document){return[...root.querySelectorAll("[data-
    shareB.addEventListener("click",async()=>{try{const blob=await exportBlob();await navigator.share({files:[new File([blob],EXPORT_NAME,{type:"image/png"})]})}catch(e){}})}}catch(e){}
  const PROBES=JSON.parse(box.dataset.probes||"[]");
  async function check(){checkOut.textContent="Checking…";const outcomes={};
-  for(const p of PROBES){try{const r=await loadImage(fromB64(p.data));r.release();outcomes[p.id]="supported"}catch(e){outcomes[p.id]="unsupported_by_runtime"}}
-  let applied=null;const exif=PROBES.find(p=>p.id==="jpeg_exif_orientation_6");if(exif){try{const r=await loadImage(fromB64(exif.data),{raw:true});applied=r.width<r.height;r.release()}catch(e){}}
+  for(const p of PROBES){try{const r=await loadImage(fromBase64(p.data));r.release();outcomes[p.id]="supported"}catch(e){outcomes[p.id]="unsupported_by_runtime"}}
+  let applied=null;const exif=PROBES.find(p=>p.id==="jpeg_exif_orientation_6");if(exif){try{const r=await loadImage(fromBase64(exif.data),{raw:true});applied=r.width<r.height;r.release()}catch(e){}}
   const features={};const tryDo=(k,f)=>{try{features[k]=f()}catch(e){features[k]=false}};
   tryDo("pointerEvents",()=>"PointerEvent" in window);tryDo("touchActionNone",()=>CSS.supports("touch-action","none"));tryDo("createImageBitmap",()=>typeof createImageBitmap==="function");
   tryDo("canvasToBlob",()=>typeof HTMLCanvasElement.prototype.toBlob==="function");tryDo("clipboardRead",()=>!!(navigator.clipboard&&navigator.clipboard.read));tryDo("clipboardWrite",()=>!!(navigator.clipboard&&navigator.clipboard.writeText));
@@ -17885,7 +17981,7 @@ def _studio_js_constants() -> str:
 
 
 
-_JS["imagestudio.js"] = "/* web-ui imagestudio: the Ironmate image studio in the page (memory only). Scene checks, SVG, history, workspace files and the layers a click places are the functions of web_ui.py (studio_*) and give the same text; the editor on top is the page's. Python is the reference; this must agree. Differences: text is measured with the installed fonts here (a fixed 0.65 em / 1 em estimate in Python), words and graphemes follow the same rules as Python (Latin, Hangul, kana and Han; the Japanese dictionary of Intl.Segmenter is not used, so every engine gives the same lines), and the clock hands use fdlibm's sin and cos written out here and in Python (V8's of Node 22), not the engine's Math.sin and Math.cos, which differ in the last bit between engines and versions. */\n" + _CLIPBOARD_JS + _studio_js_constants() + r"""export class StudioError extends Error{}
+_JS["imagestudio.js"] = "/* web-ui imagestudio: the Ironmate image studio in the page (memory only). Scene checks, SVG, history, workspace files and the layers a click places are the functions of pysaiyanweboo.py (studio_*) and give the same text; the editor on top is the page's. Python is the reference; this must agree. Differences: text is measured with the installed fonts here (a fixed 0.65 em / 1 em estimate in Python), words and graphemes follow the same rules as Python (Latin, Hangul, kana and Han; the Japanese dictionary of Intl.Segmenter is not used, so every engine gives the same lines), and the clock hands use fdlibm's sin and cos written out here and in Python (V8's of Node 22), not the engine's Math.sin and Math.cos, which differ in the last bit between engines and versions. */\n" + _CLIPBOARD_JS + _studio_js_constants() + r"""export class StudioError extends Error{}
 const fail=message=>{throw new StudioError(message)};
 export const clone=x=>JSON.parse(JSON.stringify(x));
 export const escape=x=>String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"})[c]);
@@ -19165,7 +19261,7 @@ def example_data(name: str) -> Any:
         raise ValueError(f"unknown example: {name} (one of {', '.join(EXAMPLES)})") from None
 
 
-# Sweep result for the layout switch on the front page (python tool/layout_presets.py sweep ... --out candidates.json).
+# Sweep result for the layout switch on the front page (python tools/layout_presets.py sweep ... --out candidates.json).
 _INDEX_LAYOUT_CANDIDATES = {"schema": "web-ui-layout-candidates/1", "presets": {
     name: {"passed": [320, 384, 768, 1280], "failed": []} for name in ("grid8", "compact", "device", "wide")}}
 
@@ -19251,10 +19347,10 @@ def front_document(main: str, rooms: Any, *, title: str, lead: str = "", tags: A
 
 def _index_page() -> str:
     """The front page (index.html): front_document() over the library's own builders and the EXAMPLES specs; nothing in it is written for the page alone.
-    The overworld is the main view; every other example is a room. Needs a checkout (tool/layout_presets.py)."""
+    The overworld is the main view; every other example is a room. Needs a checkout (tools/layout_presets.py)."""
     import importlib
     root = Path(__file__).resolve().parent
-    sys.path.insert(0, str(root / "tool"))
+    sys.path.insert(0, str(root / "tools"))
     try:
         layout_presets = importlib.import_module("layout_presets")
     finally:
@@ -19459,7 +19555,7 @@ def main(argv: list[str] | None = None) -> int:
     bundle.add_argument("--bundle-check", type=Path, metavar="FILE", help="exit 1 if FILE is not what --bundle would write now")
     bundle.add_argument("--brand", type=Path, metavar="FILE", help="with --bundle: a JSON {\"name\": ..., \"tokens\": {\"--ui-bg\": ...}} palette appended as theme_css")
     bundle.add_argument("--extra-css", type=Path, metavar="FILE", help="with --bundle: the consumer's own rules appended after the theme")
-    bundle.add_argument("--layouts", type=Path, metavar="FILE", help="with --bundle: a web-ui-layout-presets/1 JSON (python -S web_ui.py --example page-layouts) made switchable in the sheet")
+    bundle.add_argument("--layouts", type=Path, metavar="FILE", help="with --bundle: a web-ui-layout-presets/1 JSON (python -S pysaiyanweboo.py --example page-layouts) made switchable in the sheet")
     bundle.add_argument("--note", default="", help="with --bundle: one line kept in the header (who generated it)")
     bundle.add_argument("--check-theme", type=Path, metavar="FILE", help="exit 1 listing why the --brand-shaped JSON palette in FILE would not read (see check_theme)")
     parser.add_argument("--asset-base", help="local or pinned HTTPS shared asset directory")

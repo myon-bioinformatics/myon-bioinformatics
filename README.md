@@ -381,7 +381,7 @@ python3 -S tools/build_audit_pages.py
 through the shared `reusable-pages-static.yml` (`build` input) and deploys `site/dist`. The producer
 observes every open PR and Issue of the organization through the vendored `gh_identity.py` (head,
 base, `mergeable`, check runs of the latest head, stacked-PR dependencies where a base is another open
-PR's head), and the page is rendered from that `data.json` with the vendored `web_ui.py` helpers
+PR's head), and the page is rendered from that `data.json` with the vendored `pysaiyanweboo.py` helpers (PySaiyanWeBoo)
 (`stat_tiles`, `data_table`, `view_tabs`, drafts via `records.js`). The browser never calls GitHub.
 
 - Views: 作業キュー / 依存・競合 / 週次差分（前回の公開 `data.json` との差） / 規約ずれ / 🔗 依存・更新（`vendor_fleet_plan.py report` と同じ結果） / 完了

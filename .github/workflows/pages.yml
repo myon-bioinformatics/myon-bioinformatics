@@ -9,7 +9,7 @@ on:
       - tools/unified_operations.py
       - vendor_fleet_plan.py
       - fleet_records.py
-      - vendor/web_ui.py
+      - vendor/pysaiyanweboo.py
       - vendor/gh_identity.py
       - site/**
       - docs/audit-pages.md
