@@ -107,6 +107,40 @@ def view_data(snapshot, evidence, history, operations, previous=None):
         record['inventory_absent'] = record['id'] not in current
         record['fresh'] = record['id'] in current
         normalized.append(record)
+    # Closed migration PRs belong to the same identity and timeline as the audit.
+    # They remain visible without resurrecting absent open PRs in the active plan.
+    migration = snapshot.get('pswb_migration')
+    by_id = {r['id']: r for r in normalized}
+    for row in (migration or {}).get('rows', []):
+        key = f"{row['repository']}#{row['number']}"
+        record = by_id.get(key)
+        if record is None:
+            record = {'id': key, 'repository': row['repository'], 'number': row['number'],
+                      'kind': 'pr', 'title': row.get('title') or 'PSWB旧モジュール移行',
+                      'url': row['url'], 'events': [], 'inventory_absent': True, 'fresh': False}
+            normalized.append(record)
+            by_id[key] = record
+        record['migration'] = row
+        if row.get('complete') is False:
+            continue  # Failed refresh cannot promote partial metadata to current evidence.
+        for field in ('head_sha', 'base_sha', 'main_sha', 'merged', 'merged_at', 'merge_sha', 'draft', 'mergeable'):
+            if field in row:
+                record[field] = row[field]
+        if 'open' in row:
+            record['github_state'] = 'open' if row['open'] else 'closed'
+        record['metadata_checked'] = row['checked_at']
+        events = record['events'] = [dict(e) for e in record['events']]
+        for event in events:
+            if event.get('type') == 'ci':
+                event['historical'] = True
+        for phase, observation in row.get('runs', {}).items():
+            for run in observation.get('runs', []):
+                events.append({'type': 'ci' if phase == 'head' else 'post_merge' if phase == 'merge' else 'main_ci',
+                               'name': run['name'], 'head_sha': run['head_sha'], 'run_id': run['id'],
+                               'attempt': run['run_attempt'], 'workflow_id': run['workflow_id'],
+                               'event': run['event'], 'status': run['status'], 'conclusion': run['conclusion'],
+                               'url': run['html_url'], 'at': None, 'observed_at': row['checked_at'],
+                               'source': 'PSWB migration / exact SHA run observation'})
     active = [r for r in normalized if r.get('kind') == 'pr' and r.get('github_state') == 'open'
               and not r['inventory_absent']]
     graph = {r['id']: set(r.get('depends_on', [])) for r in active}
@@ -132,6 +166,7 @@ def view_data(snapshot, evidence, history, operations, previous=None):
             'pins': snapshot.get('vendor_pins', []), 'conventions': snapshot.get('conventions', []),
             'fleet': snapshot.get('fleet', {}), 'history': history, 'operations': operations,
             'main_workflows': snapshot.get('main_workflows', {'runs': [], 'errors': [], 'scope': '未取得'}),
+            'pswb_migration': migration,
             'plan': {'order': [x for x in order if x in graph], 'cycle': cycle,
                      'missing': missing, 'edges': {k: sorted(v) for k, v in graph.items()}},
             'source': {'parent_main': parent.get('head_sha') or '', 'kind': 'Pages audit build'}}

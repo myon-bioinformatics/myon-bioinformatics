@@ -286,3 +286,19 @@ mainへの包含、固定mainのvendor-consumers.jsonと各main lockのsource/de
 #141のローカル7失敗はPR本文による既知報告として保持し、独立再現・Actions成功とは区別する。
 表示・JSON保存・横スクロールは採用済みPSWBのtable/download_json/scroll_htmlを使用する。
 新規の共通UI、PSWB変更、依存・vendor pin・公開設定変更は不要。
+
+
+## 単一の継続監査入口
+
+`index.html` に既存の統合運用ビューを配置する。`workspace.html`・`evidence.html`・
+`dependencies.html`・`operations.html`・`records.html`・`component-ops/` は同じ入口の
+対応タブへ案内し、独立した一覧を公開しない。既存のhashと端末内の記録は保持する。
+
+PSWB #141の利用側6件・親 #262・#141は、監査と同じrepo/PR番号で結合する。
+閉鎖後も統合工程・台帳・main包含・head/merge/mainのActionsを同じPR行と詳細で確認できる。
+取得失敗は現在の証跡へ昇格させず、統合ブロッカーは完了済みPRでも優先表示する。
+ローカル7失敗は既知報告としてActionsから分離する。
+
+表の横スクロールは採用済みPSWBの`scroll.js`と`pswb-shell.css`を使用する。
+既存の独自スクロールボタンは不要。PSWB API・vendor pin・追加依存・Pages設定は変更しない。
+公開時の既存producerで最新データを取得し、確認版HTMLの固定スナップショットは公開しない。

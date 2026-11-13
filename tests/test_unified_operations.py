@@ -5,6 +5,34 @@ import unittest
 from tools.unified_operations import view_data, write_workspace, collect_main_runs, snapshot_comparison
 
 class UnifiedOperationsTests(unittest.TestCase):
+    def test_closed_migration_joins_same_identity_without_mutating_captured_evidence(self):
+        snap, ev = self.values()
+        ev['records'][1]['events'] = [{'type': 'ci', 'head_sha': 'old', 'conclusion': 'success'}]
+        snap['pswb_migration'] = {'checked_at': 'now', 'rows': [
+            {'repository': 'demo', 'number': 2, 'url': 'https://github.com/demo/demo/pull/2',
+             'checked_at': 'now', 'open': False, 'merged': True, 'head_sha': 'new',
+             'main_sha': 'main', 'state': 'ブロッカー', 'runs': {'head': {'runs': [
+                 {'id': 7, 'name': 'CI', 'head_sha': 'new', 'run_attempt': 2,
+                  'workflow_id': 4, 'event': 'pull_request', 'status': 'completed',
+                  'conclusion': 'failure', 'html_url': 'https://github.com/demo/demo/actions/runs/7'}]}}}]}
+        d = view_data(snap, ev, {'weeks': []}, [])
+        matches = [r for r in d['records'] if r['id'] == 'demo#2']
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]['github_state'], 'closed')
+        self.assertEqual(matches[0]['events'][-1]['attempt'], 2)
+        self.assertTrue(matches[0]['events'][0]['historical'])
+        self.assertNotIn('historical', ev['records'][1]['events'][0])
+        self.assertEqual(d['plan']['order'], [])
+
+    def test_failed_migration_refresh_preserves_metadata_and_marks_incomplete(self):
+        snap, ev = self.values()
+        snap['pswb_migration'] = {'rows': [{'repository': 'demo', 'number': 2,
+            'url': 'https://github.com/demo/demo/pull/2', 'complete': False,
+            'head_sha': 'partial', 'state': '調査中'}]}
+        d = view_data(snap, ev, {'weeks': []}, [])
+        self.assertNotEqual(d['records'][1].get('head_sha'), 'partial')
+        self.assertFalse(d['records'][1]['migration']['complete'])
+
     def test_consecutive_snapshots_separate_absence_counts_and_metadata_noise(self):
         def record(n, **values):
             return dict(id=f'r#{n}', repository='r', number=n, kind='pr',

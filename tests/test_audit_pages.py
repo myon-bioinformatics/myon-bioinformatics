@@ -129,16 +129,19 @@ class PublicationTests(unittest.TestCase):
             for path in ('index.html','app.js','style.css','audit-model.js','pswb-shell.css','pswb-scroll.js','pswb-records.js','data.json','report.html','history.json','pages-source.zip','.nojekyll'):
                 self.assertTrue((out/path).is_file(),path)
             html=(out/'index.html').read_text()
-            self.assertIn('src="audit-model.js"',html)
-            self.assertIn('href="component-ops/"', html)
-            for name in ('index.html', 'app.js', 'evidence.json'):      # component-ops/ now only points to operations.html
-                self.assertEqual((out/'component-ops'/name).read_bytes(), (build.ROOT/'site/component-ops'/name).read_bytes())
+            self.assertIn('統合運用', html)
+            self.assertIn('id="data"', html)
+            self.assertIn('pswb-scroll.js', html)
+            self.assertIn('../index.html#ops', (out/'component-ops/index.html').read_text())
+            for legacy, target in [('workspace.html','queue'), ('evidence.html','queue'), ('dependencies.html','audit'), ('records.html','records')]:
+                self.assertIn('url=index.html#'+target, (out/legacy).read_text())
             self.assertNotIn('src="/',html)
             ui = ci._load_pysaiyanweboo()
             self.assertEqual((out/'pswb-shell.css').read_text(), ''.join(ui.css_source(name) for name in ('tokens.css', 'shell.css', 'records.css', 'scroll.css')))
             for name in ('scroll.js', 'records.js'):
                 self.assertEqual((out/('pswb-' + name)).read_text(), ui.js_source(name))
-            self.assertEqual(html, build.observatory_page(json.loads((out/'data.json').read_text())))
+            self.assertIn('integrated-operations/1', html)
+            self.assertNotIn('Repository Observatory', html)
             self.assertNotIn('renderIntegrations', (out/'app.js').read_text())                               # Python writes that card now
             self.assertIn(f'body[data-ui-theme="{build.THEME}"]', (out/'pswb-shell.css').read_text())      # the page's palette is PSWB's
             style = (out/'style.css').read_text()
@@ -150,7 +153,7 @@ class PublicationTests(unittest.TestCase):
             import zipfile
             with zipfile.ZipFile(out/'pages-source.zip') as archive:
                 self.assertEqual(archive.read('site/ui/pswb-shell.css'), (out/'pswb-shell.css').read_bytes())
-                self.assertEqual(archive.read('site/component-ops/index.html'), (out/'component-ops/index.html').read_bytes())
+                self.assertEqual(archive.read('site/component-ops/index.html'), (build.ROOT/'site/component-ops/index.html').read_bytes())
             self.assertIn('&lt;script&gt;',(out/'report.html').read_text())
             self.assertEqual(json.loads((out/'data.json').read_text())['schema'],'parent-audit/1')
             self.assertEqual(len(json.loads((out/'history.json').read_text())['weeks']),1)
@@ -445,12 +448,12 @@ class GithubEvidencePagesTests(unittest.TestCase):
                 build.build(out)
             for asset in ('evidence.html','evidence.css','evidence.js','evidence-model.js','evidence-data.json'):
                 self.assertTrue((out/asset).is_file(), asset)
-            self.assertIn('evidence.html', (out/'index.html').read_text())
+            self.assertIn('url=index.html#queue', (out/'evidence.html').read_text())
             with zipfile.ZipFile(out/'pages-source.zip') as archive:
                 self.assertIn('tools/build_audit_pages.py', archive.namelist())
                 self.assertIn('site/ui/evidence.html', archive.namelist())
                 self.assertNotIn('site/ui/evidence-data.json', archive.namelist())
             alias = (out/'dependencies.html').read_text()
-            self.assertIn('url=index.html#dependencies', alias)
+            self.assertIn('url=index.html#audit', alias)
             self.assertNotIn('<table', alias)
             self.assertIn("DOMContentLoaded',routeAuditView", (out/'app.js').read_text())
