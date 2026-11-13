@@ -302,3 +302,6 @@ PSWB #141の利用側6件・親 #262・#141は、監査と同じrepo/PR番号で
 表の横スクロールは採用済みPSWBの`scroll.js`と`pswb-shell.css`を使用する。
 既存の独自スクロールボタンは不要。PSWB API・vendor pin・追加依存・Pages設定は変更しない。
 公開時の既存producerで最新データを取得し、確認版HTMLの固定スナップショットは公開しない。
+
+
+REST件数は親側の `collect_repository_counts()` でリポジトリ情報・GET /issues・GET /pullsを独立取得する。両一覧をページ末尾まで読み、PR属性の有無で純Issueを分離する。部分取得は件数を未確認に保ち、合算差はそのまま表示する。追加依存・PSWB変更は不要。
