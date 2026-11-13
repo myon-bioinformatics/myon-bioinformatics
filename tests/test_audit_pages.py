@@ -91,6 +91,8 @@ class PublicationTests(unittest.TestCase):
             def handle_starttag(self, tag, attrs):
                 self.rows.append((tag, dict(attrs)))
         html = build.observatory_page()
+        self.assertIn('rel="icon" href="favicon.ico"', html)
+        self.assertNotIn('href="/favicon', html)
         self.assertIn('<option>調査中</option><option>着手中</option><option>完了</option><option>保留</option><option>ブロッカー</option>', html)
         self.assertIn('<p class="ui-eyebrow">監査</p>', html)
         self.assertIn('PR・Issue・CI・依存関係を確認します。', html)
@@ -157,6 +159,13 @@ class PublicationTests(unittest.TestCase):
             self.assertIn('&lt;script&gt;',(out/'report.html').read_text())
             self.assertEqual(json.loads((out/'data.json').read_text())['schema'],'parent-audit/1')
             self.assertEqual(len(json.loads((out/'history.json').read_text())['weeks']),1)
+            self.assertEqual((out/'favicon.ico').read_bytes(), (build.ROOT/'assets/brand/favicon.ico').read_bytes())
+            self.assertEqual((out/'favicon.png').read_bytes(), (build.ROOT/'assets/brand/favicon.png').read_bytes())
+            self.assertIn('rel="icon" href="favicon.ico"', html)
+            self.assertIn('rel="icon" type="image/png" href="favicon.png"', html)
+            self.assertNotIn('href="/favicon', html)
+            self.assertIn('href="favicon.ico"', (out/'dependencies.html').read_text())
+            self.assertIn('href="../favicon.ico"', (out/'component-ops/index.html').read_text())
 
     def test_fleet_section_is_published_with_the_snapshot_and_never_blocks_it(self):
         with tempfile.TemporaryDirectory() as tmp:

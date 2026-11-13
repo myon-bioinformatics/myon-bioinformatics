@@ -7,6 +7,8 @@ on:
       - ci_status.py
       - tools/build_audit_pages.py
       - tools/unified_operations.py
+      - assets/brand/favicon.ico
+      - assets/brand/favicon.png
       - vendor_fleet_plan.py
       - fleet_records.py
       - vendor/pysaiyanweboo.py
@@ -20,6 +22,8 @@ on:
       - ci_status.py
       - tools/build_audit_pages.py
       - tools/unified_operations.py
+      - assets/brand/favicon.ico
+      - assets/brand/favicon.png
       - vendor_fleet_plan.py
       - fleet_records.py
       - site/**
