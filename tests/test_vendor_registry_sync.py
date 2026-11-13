@@ -75,7 +75,7 @@ def test_retired_sources_are_not_proposed_for_reenrollment():
                 'myon-bioinformatics/myon-bioinformatics' and x['source'] == source]
         assert len(rows) == 1 and rows[0]['action'] == 'skipped'
     assert result['counts']['registered'] == 29
-    assert result['counts']['skipped'] == 19
+    assert result['counts']['skipped'] == 20
     py_launch = [x for x in result['rows'] if x['source'] == 'py_launch.cjs']
     assert len(py_launch) == 1
     assert py_launch[0]['action'] == 'registered'
@@ -141,7 +141,7 @@ def test_njs_launch_is_registered_for_markdown_not_auto_proposed():
     assert njs_launch[0]["action"] == "registered"
     assert njs_launch[0]["destination"] == "vendor/njs_launch.py"
     assert result["counts"]["registered"] == 3
-    assert result["counts"]["skipped"] == 36
+    assert result["counts"]["skipped"] == 37
 
 
 # ═══ 🧪 mcp-toolcall-lab ══════════════════════════════════════════════════════════════════════════════════
@@ -186,7 +186,7 @@ def test_njs_launch_is_registered_for_mcp_toolcall_lab_not_auto_proposed():
     # The old catalog recommendation is not the desired canonical-module contract.
     assert web_ui[0]["destination"] is None
     assert result["counts"]["registered"] == 6
-    assert result["counts"]["skipped"] == 34
+    assert result["counts"]["skipped"] == 35
 
 
 def test_current_planner_registration_matches_immutable_child_lock():
