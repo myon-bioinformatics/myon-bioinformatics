@@ -91,3 +91,17 @@ require('./test_github_evidence.cjs');
 test('legacy work states migrate without changing GitHub status',()=>{for(const [before,after] of Object.entries({'未着手':'調査中','対応中':'着手中','ブロック':'ブロッカー','統合済み':'完了'})){const r=m.normalize({records:[{...observation,state:before,github_state:'open'}]})[0];assert.equal(r.state,after);assert.equal(r.github_state,'open')}});
 
 require('./test_workspace.cjs');
+
+test('unified evidence coverage expires when the PR head moves',()=>{
+ const u=require('../site/ui/unified-model.js'),head='a'.repeat(40),old='b'.repeat(40);
+ const r={kind:'pr',head_sha:head,main_sha:head,metadata_checked:'2026-11-13',comment_coverage:{},events:[],github_state:'open',review_coverage:{head_sha:old},current_collection:{head_sha:old}};
+ assert(u.summarize(r).gaps.includes('レビュー網羅'));
+ assert(u.summarize(r).gaps.includes('run/attempt/job再取得'));
+});
+test('unified CI keeps workflow events distinct',()=>{
+ const u=require('../site/ui/unified-model.js'),head='a'.repeat(40);
+ const s=u.summarize({kind:'pr',head_sha:head,github_state:'open',events:[
+  {type:'ci',head_sha:head,workflow_id:1,event:'push',run_number:2,status:'completed',conclusion:'success'},
+  {type:'ci',head_sha:head,workflow_id:1,event:'schedule',run_number:1,status:'completed',conclusion:'failure'}]});
+ assert.equal(s.effective.length,2);assert(s.flags.includes('CI失敗'));
+});
