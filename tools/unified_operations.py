@@ -7,6 +7,51 @@ from graphlib import TopologicalSorter, CycleError
 from urllib.parse import quote
 
 
+def collect_repository_counts(snapshot, fetch):
+    """Count the REST inventories independently; partial reads stay unknown."""
+    owner = snapshot.get('owner', 'myon-bioinformatics')
+    integrations = {r['repository']: r for r in snapshot.get('integrations', [])}
+    results = []
+    for name in snapshot.get('repositories', []):
+        root = f'/repos/{owner}/{name}'
+        row = {'repository': name, 'open_issues_count': None, 'get_issues': None,
+               'issues': None, 'pull_requests': None, 'complete': False,
+               'checked': dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
+               'sources': []}
+        results.append(row)
+        if not integrations.get(name, {}).get('head_sha'):
+            row['error'] = 'main SHA unavailable'
+            continue
+        try:
+            metadata = fetch(root)
+            inventories = {}
+            for kind in ('issues', 'pulls'):
+                items = []
+                for page in range(1, 101):
+                    path = f'{root}/{kind}?state=open&per_page=100&page={page}'
+                    values = fetch(path)
+                    if not isinstance(values, list):
+                        raise ValueError('invalid REST inventory')
+                    row['sources'].append('https://api.github.com' + path)
+                    items.extend(values)
+                    if len(values) < 100:
+                        break
+                else:
+                    raise ValueError('REST inventory pagination incomplete')
+                if len({v['number'] for v in items}) != len(items):
+                    raise ValueError('REST inventory changed during pagination')
+                inventories[kind] = items
+            issues, pulls = inventories['issues'], inventories['pulls']
+            row.update(open_issues_count=metadata['open_issues_count'], get_issues=len(issues),
+                       issues=sum('pull_request' not in v for v in issues),
+                       prs_in_issues=sum('pull_request' in v for v in issues),
+                       pull_requests=len(pulls), complete=True)
+            row['sources'].insert(0, 'https://api.github.com' + root)
+        except (ValueError, KeyError, RuntimeError, OSError) as exc:
+            row['error'] = type(exc).__name__
+    return results
+
+
 def collect_main_runs(snapshot, fetch):
     """Bounded read-only observations; old SHA and unavailable data stay explicit."""
     results, errors = [], []
@@ -154,7 +199,7 @@ def view_data(snapshot, evidence, history, operations, previous=None):
         order, cycle = list(TopologicalSorter(graph).static_order()), []
     except CycleError as exc:
         order, cycle = [], exc.args[1]
-    counts = [dict(c, fresh=True) for c in evidence.get('repository_counts', [])]
+    counts = [dict(c, fresh=c.get('complete', False)) for c in evidence.get('repository_counts', [])]
     changes = [{'id': c['id'], 'change': key, 'before': value.get('before'), 'after': value.get('after')}
                for c in evidence.get('changes', []) for key, value in c.get('changes', {}).items()]
     parent = next((r for r in snapshot.get('integrations', [])
@@ -190,4 +235,5 @@ def write_workspace(snapshot, evidence, history, stage, source_root, previous=No
     (Path(stage) / 'workspace.html').write_text(content, encoding='utf-8')
     (Path(stage) / 'unified-data.json').write_text(encoded, encoding='utf-8')
     return data
+
 

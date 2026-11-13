@@ -2,9 +2,36 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from tools.unified_operations import view_data, write_workspace, collect_main_runs, snapshot_comparison
+from tools.unified_operations import view_data, write_workspace, collect_main_runs, snapshot_comparison, collect_repository_counts
 
 class UnifiedOperationsTests(unittest.TestCase):
+    def test_rest_counts_paginate_issues_and_pulls_separately(self):
+        snap = {'owner': 'demo', 'repositories': ['r'],
+                'integrations': [{'repository': 'r', 'head_sha': 'main'}]}
+        def fetch(path):
+            if path == '/repos/demo/r':
+                return {'open_issues_count': 102}
+            if '/issues?' in path:
+                return ([{'number': n} for n in range(100)] if path.endswith('page=1')
+                        else [{'number': 100, 'pull_request': {}}, {'number': 101, 'pull_request': {}}])
+            return [{'number': 100}, {'number': 101}]
+        row, = collect_repository_counts(snap, fetch)
+        self.assertEqual((row['open_issues_count'], row['get_issues'], row['issues'], row['pull_requests']),
+                         (102, 102, 100, 2))
+        self.assertTrue(row['complete'])
+        self.assertEqual(len(row['sources']), 4)
+
+    def test_partial_rest_inventory_does_not_promote_counts(self):
+        snap = {'repositories': ['r'], 'integrations': [{'repository': 'r', 'head_sha': 'main'}]}
+        def fetch(path):
+            if '/pulls?' in path:
+                raise OSError('unavailable')
+            return [] if '/issues?' in path else {'open_issues_count': 3}
+        row, = collect_repository_counts(snap, fetch)
+        self.assertFalse(row['complete'])
+        self.assertIsNone(row['issues'])
+        self.assertIsNone(row['pull_requests'])
+
     def test_closed_migration_joins_same_identity_without_mutating_captured_evidence(self):
         snap, ev = self.values()
         ev['records'][1]['events'] = [{'type': 'ci', 'head_sha': 'old', 'conclusion': 'success'}]
@@ -116,4 +143,5 @@ class UnifiedOperationsTests(unittest.TestCase):
             self.assertNotIn('</script><script>',(stage/'workspace.html').read_text())
             self.assertEqual(json.loads((stage/'unified-data.json').read_text())['records'][1]['title'],ev['records'][1]['title'])
 if __name__=='__main__':unittest.main()
+
 
