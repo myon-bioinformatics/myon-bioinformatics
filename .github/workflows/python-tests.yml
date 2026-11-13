@@ -28,8 +28,7 @@ on:
       - "docs/python-ci-policy.md"
       - ".github/workflows/uv-git-sources.yml"
       - "py_launch.cjs"
-      - "node_launch.py"
-      - "tests/test_node_launch_catalog.py"
+      - "njs_launch.py"
       - "tests/fixtures/node-launch-catalog-pin.lock.json"
   push:
     branches: [main]
@@ -59,8 +58,7 @@ on:
       - "docs/python-ci-policy.md"
       - ".github/workflows/uv-git-sources.yml"
       - "py_launch.cjs"
-      - "node_launch.py"
-      - "tests/test_node_launch_catalog.py"
+      - "njs_launch.py"
       - "tests/fixtures/node-launch-catalog-pin.lock.json"
   schedule:
     - cron: "0 14 * * 1"
@@ -147,7 +145,7 @@ jobs:
         run: exit 1
 
   py-launch-catalog-network:
-    name: py_launch catalog pin (network)
+    name: launcher catalog pins (network)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -160,7 +158,7 @@ jobs:
           # Pull requests restore the cache and never write it; only main saves it.
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
-      - name: Verify py_launch vendor-catalog pin against GitHub
+      - name: Verify the py_launch and njs_launch vendor-catalog pins against GitHub
         continue-on-error: ${{ github.event_name == 'pull_request' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -171,43 +169,6 @@ jobs:
           delay=20
           for attempt in $(seq 1 "$attempts"); do
             if uv run pytest -q -m network tests/test_py_launch_catalog.py; then
-              echo "network catalog verification succeeded on attempt ${attempt}"
-              exit 0
-            fi
-            if [ "$attempt" -lt "$attempts" ]; then
-              echo "attempt ${attempt} failed; retrying in ${delay}s..."
-              sleep "$delay"
-              delay=$((delay * 2))
-            fi
-          done
-          echo "network catalog verification failed after ${attempts} attempts"
-          exit 1
-
-  node-launch-catalog-network:
-    name: node_launch catalog pin (network)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version: "latest"
-          python-version: "3.15"
-          enable-cache: true
-          # Pull requests restore the cache and never write it; only main saves it.
-          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          prune-cache: true
-      - name: Verify node_launch vendor-catalog pin against GitHub
-        continue-on-error: ${{ github.event_name == 'pull_request' }}
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          attempts=3
-          delay=20
-          for attempt in $(seq 1 "$attempts"); do
-            if uv run pytest -q -m network tests/test_node_launch_catalog.py; then
               echo "network catalog verification succeeded on attempt ${attempt}"
               exit 0
             fi

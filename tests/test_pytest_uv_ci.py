@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 SETUP_UV = "astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3"
 PYTEST_WORKFLOWS = (
-    "node-launch-tests.yml",
+    "njs-launch-tests.yml",
     "python-tests.yml",
     "vendor-candidate.yml",
     "vendor-consumers-compat.yml",
@@ -64,7 +64,7 @@ def test_parent_lockfile_change_triggers_a_real_ci_check():
 
 
 def test_python39_no_project_compatibility_is_explicitly_outside_parent_lock():
-    node = (WORKFLOWS / "node-launch-tests.yml").read_text(encoding="utf-8")
+    node = (WORKFLOWS / "njs-launch-tests.yml").read_text(encoding="utf-8")
     assert "--python 3.9 --no-project --with pytest==8.4.2" in node
     # uv ignores UV_LOCKED under --no-project, so keep this exception visible.
     policy = (ROOT / "docs" / "python-ci-policy.md").read_text(encoding="utf-8")

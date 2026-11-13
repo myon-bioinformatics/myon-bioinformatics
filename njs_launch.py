@@ -102,7 +102,7 @@ def _reject_windows_batch_wrapper(path: str) -> None:
     lowered = path.lower()
     if lowered.endswith(".cmd") or lowered.endswith(".bat"):
         raise NodeNotFoundError(
-            "node_launch: node batch wrappers (.cmd/.bat) are not supported: " + path
+            "njs_launch: node batch wrappers (.cmd/.bat) are not supported: " + path
         )
 
 
@@ -126,19 +126,19 @@ def _probe_node_once(path: str, probe_timeout: float) -> str:
             check=False,
         )
     except FileNotFoundError as exc:
-        raise NodeNotFoundError("node_launch: node executable not found: " + path) from exc
+        raise NodeNotFoundError("njs_launch: node executable not found: " + path) from exc
     except OSError as exc:
-        raise NodeNotFoundError("node_launch: node version probe failed: " + path) from exc
+        raise NodeNotFoundError("njs_launch: node version probe failed: " + path) from exc
     except subprocess.TimeoutExpired as exc:
-        raise NodeNotFoundError("node_launch: node version probe timed out: " + path) from exc
+        raise NodeNotFoundError("njs_launch: node version probe timed out: " + path) from exc
     output = _decode(completed.stdout) + _decode(completed.stderr)
     match = _NODE_VERSION.search(output)
     if completed.returncode != 0 or match is None:
-        raise NodeNotFoundError("node_launch: node version probe failed: " + path)
+        raise NodeNotFoundError("njs_launch: node version probe failed: " + path)
     major = int(match.group("major"))
     if major < MIN_NODE_MAJOR:
         raise NodeNotFoundError(
-            f"node_launch: node version must be {MIN_NODE_MAJOR} or newer (found {major}): "
+            f"njs_launch: node version must be {MIN_NODE_MAJOR} or newer (found {major}): "
             + path
         )
     _NODE_PROBE_CACHE[path] = path
@@ -173,7 +173,7 @@ def _node_executable(
             return _probe_node_once(discovered, probe_timeout)
         except NodeNotFoundError:
             pass
-    raise NodeNotFoundError("node_launch: node executable not found")
+    raise NodeNotFoundError("njs_launch: node executable not found")
 
 
 def resolve_node(
@@ -240,7 +240,7 @@ def node_or_command(
 
 def _nonnegative_int(name: str, value: int) -> None:
     if not isinstance(value, int) or value < 0:
-        raise ValueError(f"node_launch: {name} must be a nonnegative integer")
+        raise ValueError(f"njs_launch: {name} must be a nonnegative integer")
 
 
 def _input_byte_length(input_data: Optional[Union[str, bytes]]) -> int:
@@ -272,7 +272,7 @@ def _launch_failure_from_returncode(
     if returncode < 0:
         signum = -returncode
         return LaunchError(
-            f"node_launch: Node process terminated by signal {signum}",
+            f"njs_launch: Node process terminated by signal {signum}",
             code="ELAUNCHFAILURE",
             signal=signum,
             stdout=stdout,
@@ -392,9 +392,9 @@ def _stream_communicate(
                 except OSError:
                     pass
 
-    stdout_thread = threading.Thread(target=read_stdout, name="node_launch_stdout", daemon=True)
-    stderr_thread = threading.Thread(target=read_stderr, name="node_launch_stderr", daemon=True)
-    stdin_thread = threading.Thread(target=write_stdin, name="node_launch_stdin", daemon=True)
+    stdout_thread = threading.Thread(target=read_stdout, name="njs_launch_stdout", daemon=True)
+    stderr_thread = threading.Thread(target=read_stderr, name="njs_launch_stderr", daemon=True)
+    stdin_thread = threading.Thread(target=write_stdin, name="njs_launch_stdin", daemon=True)
     stdout_thread.start()
     stderr_thread.start()
     stdin_thread.start()
@@ -424,7 +424,7 @@ def _stream_communicate(
     if stdin_os_error[0] is not None:
         exc = stdin_os_error[0]
         raise LaunchError(
-            f"node_launch: Node process failed: {exc}",
+            f"njs_launch: Node process failed: {exc}",
             code="ELAUNCHFAILURE",
             stdout=stdout,
             stderr=stderr,
@@ -432,7 +432,7 @@ def _stream_communicate(
 
     if timed_out:
         raise LaunchError(
-            "node_launch: Node process timed out",
+            "njs_launch: Node process timed out",
             code="ELAUNCHFAILURE",
             stdout=stdout,
             stderr=stderr,
@@ -440,7 +440,7 @@ def _stream_communicate(
 
     if stdin_code[0] == "ELAUNCHSTDINCLOSED":
         raise LaunchError(
-            "node_launch: Node stdin pipe closed unexpectedly",
+            "njs_launch: Node stdin pipe closed unexpectedly",
             code="ELAUNCHSTDINCLOSED",
             status=returncode,
             stdout=stdout,
@@ -449,7 +449,7 @@ def _stream_communicate(
 
     if exceeded.is_set() or (cap is not None and len(stdout) > cap):
         raise LaunchError(
-            f"node_launch: response exceeds response_max_bytes ({cap})",
+            f"njs_launch: response exceeds response_max_bytes ({cap})",
             code="ERESPONSETOOLARGE",
             status=returncode,
             stdout=stdout,
@@ -494,7 +494,7 @@ def run_argv(
         _nonnegative_int("max_input_bytes", max_input_bytes)
         if input_len > max_input_bytes:
             raise LaunchError(
-                f"node_launch: input exceeds max_input_bytes ({max_input_bytes}; got {input_len} bytes)",
+                f"njs_launch: input exceeds max_input_bytes ({max_input_bytes}; got {input_len} bytes)",
                 code="EINPUTTOOLARGE",
             )
 
@@ -512,7 +512,7 @@ def run_argv(
         )
     except OSError as exc:
         raise LaunchError(
-            f"node_launch: Node process failed: {exc}",
+            f"njs_launch: Node process failed: {exc}",
             code="ELAUNCHFAILURE",
         ) from exc
 
@@ -610,7 +610,7 @@ def main(
             check=False,
         )
     except OSError as error:
-        sys.stderr.write(f"node_launch: {error}\n")
+        sys.stderr.write(f"njs_launch: {error}\n")
         sys.exit(2)
     if completed.returncode != 0:
         _exit_code_for_main(completed.returncode)

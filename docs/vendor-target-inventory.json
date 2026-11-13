@@ -92,7 +92,7 @@
         "vendor_stage.py",
         "vendor_sync.py",
         "py_launch.cjs",
-        "node_launch.py"
+        "njs_launch.py"
       ],
       "status": "catalogued"
     },

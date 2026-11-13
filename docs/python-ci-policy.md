@@ -16,7 +16,7 @@ Those pytest jobs install the `dev` group from `pyproject.toml` and invoke
 `uv run pytest`. The group lists lower bounds only. The parent's `uv.lock` is committed and
 pytest workflows set `UV_LOCKED=1`, so the lock is the explicit source of resolved
 versions and uv fails rather than rewriting it. The Python 3.9
-`node-launch-tests.yml` smoke lane is an explicit exception: it uses
+`njs-launch-tests.yml` smoke lane is an explicit exception: it uses
 `uv run --no-project` because the parent project requires >=3.11. In this
 mode `UV_LOCKED` does not apply, so the lane explicitly selects
 `pytest==8.4.2` (the last compatible major line). Its transitive tools are

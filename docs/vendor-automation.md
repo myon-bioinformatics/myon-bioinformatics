@@ -222,9 +222,9 @@ node vendor/py_launch.cjs --call add tool.py 2 3                # each ARG is JS
 node vendor/py_launch.cjs --call main tool.py '["--format","json"]'
 ```
 
-### Python launcher for vendored Node scripts (`node_launch.py`)
+### Python launcher for vendored Node scripts (`njs_launch.py`)
 
-Parent-owned `node_launch.py` is a single stdlib module (Python 3.9+) that spawns
+Parent-owned `njs_launch.py` (named `node_launch.py` until 2026-11-13; the name now mirrors `py_launch.cjs`: the runtime it starts, then its own extension) is a single stdlib module (Python 3.9+) that spawns
 Node with argv passthrough, optional stdin/stdout capture as bytes, and inherited
 stdio in `main()`. Library callers use `run(target, *args, node=..., input=...,
 timeout=..., max_input_bytes=..., response_max_bytes=..., env=..., env_var=...)`
@@ -238,14 +238,14 @@ are rejected (no `shell=True`). Size caps raise `EINPUTTOOLARGE`,
 
 Add the `vendor-catalog.json` recommendation only after the launcher is on
 default branch (merge commit pin), then enroll with `vendor_sync.py` like any
-other catalog source (`destination`: `vendor/node_launch.py`, plus `blob_sha`
+other catalog source (`destination`: `vendor/njs_launch.py`; locks made before the rename keep `vendor/node_launch.py` at their pinned commit; plus `blob_sha`
 and `sha256` from `inspect_source` or `vendor_catalog.py verify`). Thin
 consumer wrapper:
 
 ```python
-import node_launch
+import njs_launch
 if __name__ == "__main__":
-    node_launch.main(__file__.replace("_wrapper.py", ".mjs"), {"env_var": "MYON_NODE"})
+    njs_launch.main(__file__.replace("_wrapper.py", ".mjs"), {"env_var": "MYON_NODE"})
 ```
 
 `--help` exits before filesystem/network activity. `check` is offline and fails

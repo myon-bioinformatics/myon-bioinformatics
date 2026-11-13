@@ -1,23 +1,21 @@
-name: node_launch tests
+name: njs_launch tests
 
 on:
   pull_request:
     paths:
-      - "node_launch.py"
-      - "tests/test_node_launch.py"
-      - "tests/test_node_launch_cli_args_parity.py"
-      - "tests/fixtures/node_launch/**"
-      - ".github/workflows/node-launch-tests.yml"
+      - "njs_launch.py"
+      - "tests/test_njs_launch.py"
+      - "tests/fixtures/njs_launch/**"
+      - ".github/workflows/njs-launch-tests.yml"
       - "pyproject.toml"
       - "uv.lock"
   push:
     branches: [main]
     paths:
-      - "node_launch.py"
-      - "tests/test_node_launch.py"
-      - "tests/test_node_launch_cli_args_parity.py"
-      - "tests/fixtures/node_launch/**"
-      - ".github/workflows/node-launch-tests.yml"
+      - "njs_launch.py"
+      - "tests/test_njs_launch.py"
+      - "tests/fixtures/njs_launch/**"
+      - ".github/workflows/njs-launch-tests.yml"
       - "pyproject.toml"
       - "uv.lock"
 
@@ -40,8 +38,8 @@ jobs:
           # Pull requests restore the cache and never write it; only main saves it.
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
-      - name: Run node_launch unit tests (Python 3.9)
-        run: uv run --python 3.9 --no-project --with pytest==8.4.2 pytest -q tests/test_node_launch.py tests/test_node_launch_cli_args_parity.py
+      - name: Run njs_launch unit tests (Python 3.9)
+        run: uv run --python 3.9 --no-project --with pytest==8.4.2 pytest -q tests/test_njs_launch.py
 
   node-test:
     runs-on: ${{ matrix.os }}
@@ -64,5 +62,5 @@ jobs:
           # Pull requests restore the cache and never write it; only main saves it.
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
-      - name: Run node_launch unit tests
-        run: uv run pytest -q tests/test_node_launch.py tests/test_node_launch_cli_args_parity.py
+      - name: Run njs_launch unit tests
+        run: uv run pytest -q tests/test_njs_launch.py
