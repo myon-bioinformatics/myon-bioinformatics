@@ -1,5 +1,29 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
+const compaction=require('../site/ui/compaction-review.js');
+test('compaction automatically migrates old storage without mutating its recovery copy',()=>{
+ const old=JSON.stringify([{id:'old',date:'2026-11-14',type:'保留事項',status:'未測定',title:'retain'}]);
+ const store={getItem:k=>k==='compaction-lab-v1'?old:null};
+ const migrated=compaction.loadStored(store);
+ assert.equal(migrated.migrated,true);assert.equal(migrated.records[0].title,'retain');
+ assert.equal(store.getItem('compaction-lab-v1'),old);
+ const current={getItem:k=>k==='compaction-lab-v2'?JSON.stringify({version:2,records:[]}):old};
+ assert.deepEqual(compaction.loadStored(current),{records:[],migrated:false});
+ assert.throws(()=>compaction.loadStored({getItem:()=>'{bad json'}));
+});
+test('compaction measurements keep unavailable/error separate and validate denominators',()=>{
+ const r={id:'measure',date:'2026-11-14T10:28',type:'モデル別結果',execution:'完了',mode:'有効',title:'case',correct:'1',judged:'2'};
+ assert.equal(compaction.validate(r).correct,'1');
+ for(const update of [{correct:'3'},{correct:'1.5'},{execution:'未実行'},{execution:'エラー'},{declines:'3',attempts:'2'},{url:'javascript:alert(1)'},{mode:'不明'}])assert.throws(()=>compaction.validate({...r,...update}));
+});
+test('compaction v1 retains aggregate values as legacy evidence without inventing comparable measurements',()=>{
+ const r=compaction.legacy({id:'old',date:'2026-11-14',type:'モデル別結果',status:'辞退',title:'old',enabled:'8/10',disabled:'9/10',declined:'2/12'});
+ assert.equal(r.mode,'辞退');assert.equal(r.execution,'完了');assert.equal(r.correct,'');
+ assert.match(r.detail,/8\/10/);assert.match(r.detail,/9\/10/);assert.match(r.detail,/2\/12/);
+ const failed=compaction.legacy({id:'error',date:'2026-11-14',type:'回帰',status:'失敗',title:'error'});
+ assert.equal(failed.execution,'エラー');assert.equal(failed.mode,'対象外');
+ assert.throws(()=>compaction.legacy({id:'unsafe',date:'2026-11-14',title:'bad',url:'data:text/html,bad'}));
+});
 const m=require('../site/ui/audit-model.js');
 const url='https://github.com/myon-bioinformatics/Aoi/pull/167';
 const observation={id:'Aoi#167',repository:'Aoi',number:167,kind:'pr',url,title:'<script>',head_sha:'a'.repeat(40),ci:'COMPLETE',review:0,review_complete:true,checks:[],state:''};
