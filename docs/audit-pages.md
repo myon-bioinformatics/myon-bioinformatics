@@ -300,6 +300,12 @@ PSWB #141の利用側6件・親 #262・#141は、監査と同じrepo/PR番号で
 ローカル7失敗は既知報告としてActionsから分離する。
 
 表の横スクロールは採用済みPSWBの`scroll.js`と`pswb-shell.css`を使用する。
+圧縮の継続検証は `compaction.html` に集約し、PSWBの `records.js` でケース検索を行う。
+圧縮固有の条件一致・指標検証・履歴移行は `compaction-review.js` が所有する。
+有効・無効・辞退と実行状態を分離し、異なるモデル・dataset・tokenizer・template・context・runtime・設定は比較しない。
+従来の `compaction-lab-v1` は初回にv2へ移行し、元の保存値を保持する。JSON v1/v2も読込可能。
+履歴的なGGUF数値は既存レビューの報告値であり、再計測ではない。クラス別回帰・辞退を含む分母を明示する。
+lab #213で対応済みの安全性仕様と、未解消のGGUF実行手順・未実測の実MCP経路を分けて表示する。
 既存の独自スクロールボタンは不要。PSWB API・vendor pin・追加依存・Pages設定は変更しない。
 公開時の既存producerで最新データを取得し、確認版HTMLの固定スナップショットは公開しない。
 
