@@ -358,3 +358,21 @@ def test_public_inventory_has_complete_catalog_coverage(monkeypatch):
         if source["enrollment"] == "skipped":
             assert tool["default_enrollment"]["reason"] == source["reason"]
         assert len(tool["commit"]) == 40
+
+
+def test_numpy_subset_recommendation_is_explicit_and_not_a_full_numpy_claim():
+    root = Path(__file__).resolve().parents[1]
+    tools = catalog.validate(json.loads((root / 'vendor-catalog.json').read_text()))['tools']
+    rows = [row for row in tools if row['repository'] == 'myon-bioinformatics/Aoi'
+            and row['source'] == 'shrink/numpy_min.py']
+    assert len(rows) == 1
+    row = rows[0]
+    assert row['default_enrollment'] == {
+        'enrollment': 'skipped', 'reason': 'explicit_consumer_only'}
+    assert set(row['consumers']) == {
+        'myon-bioinformatics/QueRyu', 'myon-bioinformatics/DRAgoWing'}
+    assert all(value == {'enrollment': 'enrolled', 'reason': 'already_locked_by_consumer'}
+               for value in row['consumers'].values())
+    assert '/blob/' + row['commit'] + '/docs/contracts/numpy-min-acceptance-v2.md' in row['reason']
+    assert 'NUMPY_MIN_PURE=1' in row['reason']
+    assert 'not full NumPy' in row['reason']
