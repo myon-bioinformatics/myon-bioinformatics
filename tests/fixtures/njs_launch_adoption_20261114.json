@@ -1,0 +1,216 @@
+{
+  "about": "2026-11-14: the four njs_launch children were audited at their merged main (vendor_sync.py check: no changed paths; vendor_consumers.compare: desired contract matches) and re-observed in child-heads.json. Each adopted lock equals its reviewed target fixture byte for byte. The four retired transitions and the heads they were bound to stay here for the transition-mechanism tests; historical fixtures are unchanged.",
+  "recorded": {
+    "heads": {
+      "myon-bioinformatics/PySaiyanWeBoo": {
+        "optional": {
+          "previous_names": [
+            "myon-bioinformatics/web-ui"
+          ],
+          "repository_created_at": "2026-09-22T23:31:31Z"
+        },
+        "repository_id": 1382466695,
+        "sha": "85a8c3237e804a4740930ecf5cea3275d3bb82b2"
+      },
+      "myon-bioinformatics/markdown": {
+        "optional": {
+          "repository_created_at": "2026-09-17T14:12:39Z"
+        },
+        "repository_id": 1374546518,
+        "sha": "b032d911646d78087c0fbebf81149f05b664c3c6"
+      },
+      "myon-bioinformatics/mcp-toolcall-lab": {
+        "optional": {
+          "repository_created_at": "2026-09-17T13:04:31Z"
+        },
+        "repository_id": 1374450603,
+        "sha": "cd04472040f0db991c5138144c01f56a2b79e44b"
+      },
+      "myon-bioinformatics/xprobe": {
+        "optional": {
+          "repository_created_at": "2026-09-30T03:48:28Z"
+        },
+        "repository_id": 1396932157,
+        "sha": "1ffbb7b984075c683690bbe4e9deb06199cdfe94"
+      }
+    },
+    "transitions": {
+      "schema": "vendor-observation-transitions/1",
+      "transitions": [
+        {
+          "consumer": "myon-bioinformatics/mcp-toolcall-lab",
+          "repository_id": 1374450603,
+          "recorded_sha": "cd04472040f0db991c5138144c01f56a2b79e44b",
+          "lock_sha256": "40496c0e700ff3c4894541bc87dca28c6755b0ed0065cb5a740ec0c0e1583135",
+          "target_consumer_sha256": "b23884644d48d27aa35922a1cecdfebca7297005d0a4ef9c7aa6e7fd7f92948f",
+          "old_entries": [
+            {
+              "repository": "myon-bioinformatics/ascii_artist",
+              "source": "ascii_artist.py",
+              "destination": "vendor/ascii_artist.py",
+              "license": "vendor/ascii_artist-LICENSE"
+            },
+            {
+              "repository": "myon-bioinformatics/myon-bioinformatics",
+              "source": "gh_ops.py",
+              "destination": "vendor/gh_ops.py",
+              "license": "vendor/myon-bioinformatics-LICENSE"
+            },
+            {
+              "repository": "myon-bioinformatics/markdown",
+              "source": "markdown.py",
+              "destination": "vendor/markdown.py",
+              "license": "vendor/markdown-LICENSE"
+            },
+            {
+              "repository": "myon-bioinformatics/gh_identity",
+              "source": "gh_identity.py",
+              "destination": "vendor/gh_identity.py",
+              "license": "vendor/gh_identity-LICENSE"
+            },
+            {
+              "repository": "myon-bioinformatics/myon-bioinformatics",
+              "source": "node_launch.py",
+              "destination": "vendor/node_launch.py"
+            },
+            {
+              "repository": "myon-bioinformatics/PySaiyanWeBoo",
+              "source": "web_ui.py",
+              "destination": "vendor/web_ui.py",
+              "license": "vendor/web-ui-LICENSE"
+            },
+            {
+              "repository": "myon-bioinformatics/myon-bioinformatics",
+              "source": "vendor_fleet_plan.py",
+              "destination": "vendor/vendor_fleet_plan.py"
+            }
+          ],
+          "reason": "Migrate MCP PSWB module to pysaiyanweboo.py while preserving the exact recorded pre-migration lock audit until the merged child observation is refreshed. Also stage njs_launch rename while preserving this same frozen old lock and entries."
+        },
+        {
+          "consumer": "myon-bioinformatics/PySaiyanWeBoo",
+          "repository_id": 1382466695,
+          "recorded_sha": "85a8c3237e804a4740930ecf5cea3275d3bb82b2",
+          "lock_sha256": "339ea2828026f8e8abff1a39489d16a649971a7a5b783121f3834841a03e24b9",
+          "target_consumer_sha256": "d52d79bd113f2abedd9077822cbb75251a91c4037dd615845e65a8bf913f8bc4",
+          "old_entries": [
+            {
+              "repository": "myon-bioinformatics/Ironmate",
+              "source": "LICENSE",
+              "destination": "tool/vendor/LICENSE"
+            },
+            {
+              "repository": "myon-bioinformatics/gh_identity",
+              "source": "gh_identity.py",
+              "destination": "tool/vendor/gh_identity.py",
+              "license": "tool/vendor/gh_identity-LICENSE"
+            },
+            {
+              "repository": "myon-bioinformatics/myon-bioinformatics",
+              "source": "node_launch.py",
+              "destination": "vendor/node_launch.py"
+            },
+            {
+              "repository": "myon-bioinformatics/myon-bioinformatics",
+              "source": "py_launch.cjs",
+              "destination": "vendor/py_launch.cjs"
+            }
+          ],
+          "reason": "Stage canonical njs_launch contract while strictly auditing the exact recorded old observation; refresh only after auditing merged child."
+        },
+        {
+          "consumer": "myon-bioinformatics/markdown",
+          "repository_id": 1374546518,
+          "recorded_sha": "b032d911646d78087c0fbebf81149f05b664c3c6",
+          "lock_sha256": "b7cf187fe8199f8aaa4da87eada1dc93fb9d5f53585cc9d1782d6f1e49f0d49b",
+          "target_consumer_sha256": "027285e41652629fca984e516ff90904ffd6cd699bbff3d52059e1aa09d3eeff",
+          "old_entries": [
+            {
+              "repository": "myon-bioinformatics/mcp-toolcall-lab",
+              "source": "src/mcp_toolcall_lab/github_public_resolver.py",
+              "destination": "vendor/github_public_resolver.py",
+              "license": "vendor/mcp-toolcall-lab-LICENSE"
+            },
+            {
+              "repository": "myon-bioinformatics/Ironmate",
+              "source": "LICENSE",
+              "destination": "vendor/Ironmate-LICENSE"
+            },
+            {
+              "repository": "myon-bioinformatics/myon-bioinformatics",
+              "source": "LICENSE",
+              "destination": "vendor/myon-bioinformatics-LICENSE"
+            },
+            {
+              "repository": "myon-bioinformatics/gh_identity",
+              "source": "gh_identity.py",
+              "destination": "vendor/gh_identity.py",
+              "license": "vendor/gh_identity-LICENSE"
+            },
+            {
+              "repository": "myon-bioinformatics/myon-bioinformatics",
+              "source": "node_launch.py",
+              "destination": "vendor/node_launch.py"
+            }
+          ],
+          "reason": "Stage canonical njs_launch contract while strictly auditing the exact recorded old observation; refresh only after auditing merged child."
+        },
+        {
+          "consumer": "myon-bioinformatics/xprobe",
+          "repository_id": 1396932157,
+          "recorded_sha": "1ffbb7b984075c683690bbe4e9deb06199cdfe94",
+          "lock_sha256": "47492741efd9e35ca04cd4bb3c164e36c491f3d3a6d9efc2ee09305bc8b895d9",
+          "target_consumer_sha256": "c7c2441683a587067811b9cb392337b2dc03b6ef73ba977a102473a961b5d091",
+          "old_entries": [
+            {
+              "repository": "myon-bioinformatics/myon-bioinformatics",
+              "source": "LICENSE",
+              "destination": "vendor/myon-bioinformatics-LICENSE"
+            },
+            {
+              "repository": "myon-bioinformatics/myon-bioinformatics",
+              "source": "node_launch.py",
+              "destination": "vendor/node_launch.py"
+            },
+            {
+              "repository": "myon-bioinformatics/myon-bioinformatics",
+              "source": "py_launch.cjs",
+              "destination": "vendor/py_launch.cjs"
+            }
+          ],
+          "reason": "Stage canonical njs_launch contract while strictly auditing the exact recorded old observation; refresh only after auditing merged child."
+        }
+      ]
+    }
+  },
+  "adopted": {
+    "myon-bioinformatics/mcp-toolcall-lab": {
+      "sha": "25ba1a5436ed3eff0285eb7e43a2d25ac207c0f0",
+      "repository_id": 1374450603,
+      "pull_number": 212,
+      "lock_sha256": "9fc482bfa476095e5343cdd95be6b08ce2b145a57117be9bb2d8566c1bc8a1bf",
+      "lock_fixture": "tests/fixtures/njs-mcp-toolcall-lab-new.lock.json"
+    },
+    "myon-bioinformatics/PySaiyanWeBoo": {
+      "sha": "05aac7ce1ad8fe53b6478849db712fd265fb146b",
+      "repository_id": 1382466695,
+      "pull_number": 145,
+      "lock_sha256": "9f71499bc736bf8260bf03b80bd90c30fdd0df8bbaa9c9920647d6569da96136",
+      "lock_fixture": "tests/fixtures/njs-PySaiyanWeBoo-new.lock.json"
+    },
+    "myon-bioinformatics/markdown": {
+      "sha": "e51f41784e3f1b7a8225452ede0035fc2ff46b0c",
+      "repository_id": 1374546518,
+      "pull_number": 150,
+      "lock_sha256": "1cde7bcd46aa8c30e2f9bb6b4d53d5b92b10124a7664c2c6c949b2203563f3c6",
+      "lock_fixture": "tests/fixtures/njs-markdown-new.lock.json"
+    },
+    "myon-bioinformatics/xprobe": {
+      "sha": "2d518be422d43197d922a48b9a5c29913dfdfdc5",
+      "repository_id": 1396932157,
+      "pull_number": 56,
+      "lock_sha256": "6172c97dc1cb8a872b9f9c321a7182909370d9024c2596d77701b9257df220d9",
+      "lock_fixture": "tests/fixtures/njs-xprobe-new.lock.json"
+    }
+  }
+}

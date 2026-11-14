@@ -75,7 +75,7 @@ def test_retired_sources_are_not_proposed_for_reenrollment():
                 'myon-bioinformatics/myon-bioinformatics' and x['source'] == source]
         assert len(rows) == 1 and rows[0]['action'] == 'skipped'
     assert result['counts']['registered'] == 29
-    assert result['counts']['skipped'] == 20  # +1 while node_launch.py (old name of njs_launch.py) stays catalogued
+    assert result['counts']['skipped'] == 19
     py_launch = [x for x in result['rows'] if x['source'] == 'py_launch.cjs']
     assert len(py_launch) == 1
     assert py_launch[0]['action'] == 'registered'
@@ -97,9 +97,18 @@ def test_web_ui_flow_workspace_lock_is_not_accepted_after_the_move_to_ascii_arti
     assert [(x['repository'], x['source']) for x in result['missing']] == [('myon-bioinformatics/ascii_artist', 'examples/pr-flow.json')]
 
 
+NJS_RECORDED = load('tests/fixtures/njs_launch_adoption_20261114.json')['recorded']   # before the 2026-11-14 re-observation
+
+
+def recorded_heads():
+    heads = load('child-heads.json')
+    heads['heads'].update(copy.deepcopy(NJS_RECORDED['heads']))
+    return heads
+
+
 def recorded_registry(name):
     registry = copy.deepcopy(load('vendor-consumers.json'))
-    transition = next(t for t in load('vendor-observation-transitions.json')['transitions'] if t['consumer'] == name)
+    transition = next(t for t in NJS_RECORDED['transitions']['transitions'] if t['consumer'] == name)
     next(c for c in registry['consumers'] if c['repository'] == name)['entries'] = copy.deepcopy(transition['old_entries'])
     return registry
 
@@ -132,7 +141,7 @@ def test_njs_launch_is_registered_for_markdown_not_auto_proposed():
     assert njs_launch[0]["action"] == "registered"
     assert njs_launch[0]["destination"] == "vendor/njs_launch.py"
     assert result["counts"]["registered"] == 3
-    assert result["counts"]["skipped"] == 37  # +1 while njs_launch.py (old name of njs_launch.py) stays catalogued
+    assert result["counts"]["skipped"] == 36
 
 
 # ═══ 🧪 mcp-toolcall-lab ══════════════════════════════════════════════════════════════════════════════════
@@ -177,7 +186,7 @@ def test_njs_launch_is_registered_for_mcp_toolcall_lab_not_auto_proposed():
     # The old catalog recommendation is not the desired canonical-module contract.
     assert web_ui[0]["destination"] is None
     assert result["counts"]["registered"] == 6
-    assert result["counts"]["skipped"] == 35  # +1 while njs_launch.py (old name of njs_launch.py) stays catalogued
+    assert result["counts"]["skipped"] == 34
 
 
 def test_current_planner_registration_matches_immutable_child_lock():
@@ -188,7 +197,7 @@ def test_current_planner_registration_matches_immutable_child_lock():
     old = load("tests/fixtures/reviewed_mcp_lock_20261109.json")[MCP_TOOLCALL_LAB]
     assert old["sha"] == "31ff99fbe4c13b3feb570ae3ba1fc7cf972f8a16"
     assert snapshot["sha"] == "cd04472040f0db991c5138144c01f56a2b79e44b"
-    heads = load("child-heads.json")["heads"][MCP_TOOLCALL_LAB]
+    heads = recorded_heads()["heads"][MCP_TOOLCALL_LAB]
     assert (heads["sha"], heads["repository_id"]) == (snapshot["sha"], snapshot["repository_id"])
     lock = vendor_sync.validate(snapshot["lock"])
     assert hashlib.sha256(json.dumps(lock, sort_keys=True, separators=(",", ":")).encode()).hexdigest() == snapshot["lock_sha256"]
@@ -197,7 +206,7 @@ def test_current_planner_registration_matches_immutable_child_lock():
     from unittest.mock import patch
     with patch.object(vendor_sync, '_load_recorded_child_lock', return_value=lock):
         registry, reports = vendor_sync._registry_for_recorded_transitions(
-            registry, load('child-heads.json'), load('vendor-observation-transitions.json'), [MCP_TOOLCALL_LAB])
+            registry, recorded_heads(), NJS_RECORDED['transitions'], [MCP_TOOLCALL_LAB])
     assert len(reports) == 1 and reports[0]['recorded_sha'] == snapshot['sha']
     assert vendor_consumers._compare_exact(registry, lock, MCP_TOOLCALL_LAB)["matches"]
     planner = [r for r in lock["files"] if r["destination"] == "vendor/vendor_fleet_plan.py"]
@@ -208,7 +217,8 @@ def test_current_planner_registration_matches_immutable_child_lock():
     result = vendor_fleet_plan.plan(load("vendor-catalog.json"), registry, active_consumers=[MCP_TOOLCALL_LAB])
     registered = {(r["tool_repository"], r["source"], r["destination"]) for r in result["rows"] if r["action"] == "registered"}
     locked = {(r["repository"], r["source"], r["destination"]) for r in lock["files"]}
-    assert len(registered) == result["counts"]["registered"] == 7
+    # 6 of the 7 frozen entries: vendor/node_launch.py's source left the catalog on 2026-11-14.
+    assert len(registered) == result["counts"]["registered"] == 6
     assert registered <= locked
     for destination in ("vendor/vendor_fleet_plan.py", "vendor/web_ui.py"):
         changed = copy.deepcopy(lock)
@@ -290,18 +300,14 @@ def test_xprobe_registry_matches_reviewed_pr33_lock():
     assert not vendor_consumers.compare(registry, changed, XPROBE)["matches"]
 
 
-def test_node_launch_is_registered_for_xprobe_not_auto_proposed():
-    result = vendor_fleet_plan.plan(
-        load_xprobe("vendor-catalog.json"),
-        load_xprobe("vendor-consumers.json"),
-        active_consumers=[XPROBE],
-    )
-    node_launch = [x for x in result["rows"] if x["source"] == "node_launch.py"]
-    assert len(node_launch) == 1
-    assert node_launch[0]["action"] == "registered"
-    assert node_launch[0]["destination"] == "vendor/node_launch.py"
-    assert result["counts"]["registered"] == 1
-    assert result["counts"]["skipped"] == 37  # +1 while node_launch.py (old name of njs_launch.py) stays catalogued
+def test_njs_launch_is_registered_for_xprobe_not_auto_proposed():
+    # The current contract: node_launch.py left the catalog once xprobe adopted njs_launch.py (#56).
+    result = vendor_fleet_plan.plan(load("vendor-catalog.json"), load("vendor-consumers.json"), active_consumers=[XPROBE])
+    njs_launch = [x for x in result["rows"] if x["source"] == "njs_launch.py"]
+    assert len(njs_launch) == 1
+    assert njs_launch[0]["action"] == "registered"
+    assert njs_launch[0]["destination"] == "vendor/njs_launch.py"
+    assert not [x for x in result["rows"] if x["source"] == "node_launch.py"]
 
 
 # ═══ 🦋 flutter_navigation_basic ══════════════════════════════════════════════════════════════════════════

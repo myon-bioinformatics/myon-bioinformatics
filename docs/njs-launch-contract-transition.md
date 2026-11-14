@@ -20,3 +20,21 @@ changes, then audit each actual merged child before refreshing observations and
 retiring active transitions. Do not delete the old catalog row until the registered
 and observed contracts no longer depend on it. Historical fixtures stay unchanged;
 new fixtures distinguish reviewed target locks from actual adopted observations.
+
+## ✅ Done (2026-11-14)
+
+| Child | Re-observed `main` | Adopting PR |
+|---|---|---|
+| mcp-toolcall-lab | `25ba1a5` | #210 (head: #212 merge) |
+| PySaiyanWeBoo | `05aac7c` | #143 (head: #145 merge) |
+| markdown | `e51f417` | #150 |
+| xprobe | `2d518be` | #56 |
+
+- Audit of each merged child: `vendor_sync.py check` reports no changed paths, the desired contract
+  (`vendor_consumers.compare`) matches, and every lock pins `njs_launch.py` at `0d20801` (blob `79521fd`).
+  Each adopted lock equals its reviewed `tests/fixtures/njs-<repo>-new.lock.json` byte for byte.
+- `child-heads.json` records those heads; their four transitions are retired; the old `node_launch.py`
+  catalog row is removed (no registered or observed contract uses it any more).
+- `tests/fixtures/njs_launch_adoption_20261114.json` keeps the retired transitions and the heads they were
+  bound to, so the transition-mechanism tests still run on the exact old observations, and the adopted
+  snapshots for the topology test. Historical fixtures are unchanged.
