@@ -153,3 +153,13 @@ test('approval waiting requires an explicit requirement and comments do not dism
  assert.ok(u.summarize({...r,approval_required:true,events}).approved);
  assert.ok(!u.summarize({...r,approval_required:true,events}).flags.includes('承認待ち'));
 });
+
+test('compaction work state is independent of measurements and old v2 records remain readable',()=>{
+ const r={id:'pending',date:'2026-11-14T10:28',type:'保留事項',execution:'未実行',mode:'対象外',title:'case'};
+ assert.equal(compaction.validate(r).workState,'調査中');
+ assert.equal(compaction.validate({...r,workState:'ブロッカー'}).execution,'未実行');
+ assert.equal(compaction.validate({...r,workState:'完了'}).mode,'対象外');
+ assert.throws(()=>compaction.validate({...r,workState:'unknown'}));
+ const loaded=compaction.loadStored({getItem:k=>k==='compaction-lab-v2'?JSON.stringify({version:2,records:[r]}):null});
+ assert.equal(loaded.records[0].workState,'調査中');
+});

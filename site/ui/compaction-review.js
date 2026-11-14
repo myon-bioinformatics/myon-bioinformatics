@@ -1,7 +1,8 @@
 'use strict';
 const key='compaction-lab-v2', esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const types=['測定ケース','モデル別結果','回帰','保留事項','次アクション'], executions=['未実行','完了','エラー','判定不能'], modes=['対象外','有効','無効','辞退','適用不要'];
-const fields=['date','type','execution','mode','title','caseSet','category','dataset','model','revision','tokenizer','template','context','runtime','config','correct','judged','declines','attempts','tokens','regressions','detail','url'];
+const workStates=['調査中','着手中','完了','保留','ブロッカー'];
+const fields=['date','workState','type','execution','mode','title','caseSet','category','dataset','model','revision','tokenizer','template','context','runtime','config','correct','judged','declines','attempts','tokens','regressions','detail','url'];
 const numbers=['context','correct','judged','declines','attempts','tokens'];
 const comparison=['caseSet','category','dataset','model','revision','tokenizer','template','context','runtime','config'];
 const seeds=[
@@ -19,6 +20,7 @@ function validate(r){
  if(typeof r.id!=='string'||!r.id||r.id.length>200)throw Error('記録IDが不正です');
  const out={id:r.id};
  for(const f of fields){if(r[f]!==undefined&&typeof r[f]!=='string')throw Error(f+' は文字列で指定してください');out[f]=r[f]||'';if(out[f].length>(f==='detail'?8000:1000))throw Error('入力が長すぎます');}
+ out.workState=out.workState||'調査中';if(!workStates.includes(out.workState))throw Error('作業状態が不正です');
  if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(out.date)||Number.isNaN(Date.parse(out.date+'+09:00')))throw Error('日時が不正です');
  if(!out.title.trim()||!types.includes(out.type)||!executions.includes(out.execution)||!modes.includes(out.mode))throw Error('タイトル・種別・状態が不正です');
  if(out.url&&!/^https?:\/\//i.test(out.url))throw Error('証跡はhttp/https URLで指定してください');
@@ -59,7 +61,7 @@ function tab(id){if(!document.getElementById(id)?.classList.contains('view'))id=
 function render(){
  const filter=$('#filter').value, query=$('#search').value.toLowerCase(), order=$('#order').value;
  const arr=[...seeds,...records].filter(r=>(filter==='すべて'||r.type===filter)&&[r.title,r.detail,r.model,r.category,r.caseSet,r.regressions].join(' ').toLowerCase().includes(query)).sort((a,b)=>(order==='desc'?-1:1)*a.date.localeCompare(b.date));
- $('#entries').innerHTML=arr.length?arr.map(r=>`<article class="entry"><small class="muted">${esc(r.date.replace('T',' '))} JST · ${esc(r.type)} · ${esc(r.execution)} · ${esc(r.mode)}</small><h3>${esc(r.title)}</h3><p class="muted">${esc(r.model||'')} ${esc(r.category||'')}</p><p style="white-space:pre-wrap">${esc(r.detail||'')}</p>${r.regressions?`<p>回帰ID: ${esc(r.regressions)}</p>`:''}${href(r.url)} ${r.source?'<span class="tag">読取証跡</span>':`<button data-edit="${esc(r.id)}">編集</button> <button data-delete="${esc(r.id)}">削除</button>`}</article>`).join(''):'<p>一致する記録はありません。</p>';
+ $('#entries').innerHTML=arr.length?arr.map(r=>`<article class="entry"><small class="muted">${esc(r.date.replace('T',' '))} JST · ${esc(r.type)} · ${esc(r.execution)} · ${esc(r.mode)} · 作業:${esc(r.workState||'調査中')}</small><h3>${esc(r.title)}</h3><p class="muted">${esc(r.model||'')} ${esc(r.category||'')}</p><p style="white-space:pre-wrap">${esc(r.detail||'')}</p>${r.regressions?`<p>回帰ID: ${esc(r.regressions)}</p>`:''}${href(r.url)} ${r.source?'<span class="tag">読取証跡</span>':`<button data-edit="${esc(r.id)}">編集</button> <button data-delete="${esc(r.id)}">削除</button>`}</article>`).join(''):'<p>一致する記録はありません。</p>';
  const rows=records.filter(r=>r.type==='モデル別結果'), groups=new Map(), unpaired=[];
  for(const r of rows){if(!comparison.every(f=>r[f]!==''&&r[f]!==undefined)||r.execution!=='完了'||!['有効','無効','辞退'].includes(r.mode)){unpaired.push(r);continue}const k=JSON.stringify(comparison.map(f=>r[f]));if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r)}
  let html='';for(const group of groups.values()){
