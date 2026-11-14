@@ -915,6 +915,22 @@ def _variable_state(client: Client, repo: str, name: str) -> str:
     return "present"
 
 
+def _mutation_error_receipt(base: dict, error: GhOpsError, reason: str, *, flag_key: str) -> dict:
+    """Build a mutation failure/uncertainty receipt without retrying."""
+    uncertain = error.http_status is None or error.http_status >= 500
+    return {
+        **base,
+        "ok": False,
+        "dry_run": False,
+        flag_key: None if uncertain else False,
+        "verified": False,
+        "status": "mutation_uncertain" if uncertain else "mutation_failed",
+        "mutation_status": "uncertain" if uncertain else "failed",
+        "http_status": error.http_status,
+        "reason": reason,
+    }
+
+
 def variable_delete(repo: str, name: str, *, write: bool = False, client: Client | None = None) -> dict:
     """Delete one repository Actions variable, dry-run by default.
 
@@ -940,11 +956,11 @@ def variable_delete(repo: str, name: str, *, write: bool = False, client: Client
     try:
         client.request("DELETE", path, expect=(204,))
     except GhOpsError as error:
-        uncertain = error.http_status is None or error.http_status >= 500
-        return {"ok": False, "dry_run": False, "deleted": None if uncertain else False, "name": name,
-                "status": "mutation_uncertain" if uncertain else "mutation_failed", "verified": False,
-                "mutation_status": "uncertain" if uncertain else "failed", "http_status": error.http_status,
-                "reason": f"DELETE did not return a success receipt; inspect before retrying: {error}"}
+        return _mutation_error_receipt(
+            {"name": name}, error,
+            f"DELETE did not return a success receipt; inspect before retrying: {error}",
+            flag_key="deleted",
+        )
     try:
         after = _variable_state(client, repo, name)
     except GhOpsError as error:
@@ -989,12 +1005,11 @@ def issue_comment_upsert(repo: str, number: int, *, body: str, marker: str, auth
     try:
         client.request("PATCH", path, {"body": body})
     except GhOpsError as error:
-        uncertain = error.http_status is None or error.http_status >= 500
-        return {"ok": False, "dry_run": False, "action": "update", "comment_id": comment_id,
-                "updated": None if uncertain else False, "verified": False,
-                "status": "mutation_uncertain" if uncertain else "mutation_failed",
-                "mutation_status": "uncertain" if uncertain else "failed", "http_status": error.http_status,
-                "reason": f"comment PATCH did not return success; inspect before retrying: {error}"}
+        return _mutation_error_receipt(
+            {"action": "update", "comment_id": comment_id}, error,
+            f"comment PATCH did not return success; inspect before retrying: {error}",
+            flag_key="updated",
+        )
     try:
         observed = client.get(path)
     except GhOpsError as error:
@@ -1024,6 +1039,60 @@ def workflow_dispatch(repo: str, workflow: str, *, ref: str, inputs: dict | None
         return {"ok": True, "dry_run": True, "dispatched": False, "would_post": {"path": path, "body": body}}
     client.request("POST", path, body, expect=(204,))
     return {"ok": True, "dry_run": False, "dispatched": True}
+
+
+def run_rerun(repo: str, run_id: int, *, failed_only: bool = True, expect_head_sha: str | None = None,
+              write: bool = False, client: Client | None = None) -> dict:
+    """Rerun a completed workflow run (failed jobs by default, or all jobs).
+
+    Preconditions: the run must be ``completed``, must not already have
+    ``conclusion == "success"``, and must match ``expect_head_sha`` when
+    supplied. Dry-run by default; ``write=True`` POSTs to GitHub's rerun
+    endpoint without blind retry on uncertain errors.
+    """
+    if isinstance(run_id, bool) or int(run_id) < 1:
+        raise GhOpsError("run_id must be a positive integer")
+    if expect_head_sha is not None:
+        _sha(expect_head_sha)
+    client, repo, run_id = _client(client), _repo(repo), int(run_id)
+    run_path = f"/repos/{repo}/actions/runs/{run_id}"
+    run = client.get(run_path)
+    status = run.get("status")
+    conclusion = run.get("conclusion")
+    head_sha = (run.get("head_sha") or "").lower()
+    endpoint = f"{run_path}/{'rerun-failed-jobs' if failed_only else 'rerun'}"
+    out: dict[str, Any] = {
+        "ok": True,
+        "schema": "gh-ops-run-rerun/1",
+        "repository": repo,
+        "run_id": run_id,
+        "failed_only": bool(failed_only),
+        "head_sha": head_sha,
+        "run_status": status,
+        "run_conclusion": conclusion,
+        "dry_run": not write,
+        "rerun": False,
+    }
+    if status != "completed":
+        return {**out, "ok": False, "status": "not_completed",
+                "reason": f"workflow run status is {status!r}, not 'completed'"}
+    if conclusion == "success":
+        return {**out, "ok": False, "status": "already_succeeded",
+                "reason": "workflow run already succeeded; refusing rerun"}
+    if expect_head_sha is not None and not head_sha.startswith(_sha(expect_head_sha)):
+        return {**out, "ok": False, "status": "head_mismatch",
+                "reason": f"run head SHA {head_sha[:12]} does not match --expect-head-sha {expect_head_sha}"}
+    if not write:
+        return {**out, "status": "planned", "would_post": {"path": endpoint}}
+    try:
+        client.request("POST", endpoint, {}, expect=(201,))
+    except GhOpsError as error:
+        return _mutation_error_receipt(
+            out, error,
+            f"workflow rerun POST did not return success; inspect before retrying: {error}",
+            flag_key="rerun",
+        )
+    return {**out, "dry_run": False, "rerun": True, "status": "requested", "mutation_status": "succeeded"}
 
 
 def pr_body_replace(repo: str, number: int, *, old: str, new: str, write: bool = False,
@@ -1186,11 +1255,9 @@ def pr_edit(repo: str, number: int, *, title: str | None = None, base: str | Non
     try:
         client.request("PATCH", path, fields)
     except GhOpsError as error:
-        uncertain = error.http_status is None or error.http_status >= 500
-        return {**out, "ok": False, "changed": None if uncertain else False,
-                "status": "mutation_uncertain" if uncertain else "mutation_failed",
-                "mutation_status": "uncertain" if uncertain else "failed",
-                "reason": "PR PATCH failed; inspect before retrying", "http_status": error.http_status}
+        receipt = _mutation_error_receipt(out, error, "PR PATCH failed; inspect before retrying", flag_key="changed")
+        receipt.pop("verified", None)
+        return receipt
     out.update(changed=True, mutation_status="succeeded")
     try:
         updated = snapshot(client.get(path))
@@ -1202,6 +1269,88 @@ def pr_edit(repo: str, number: int, *, title: str | None = None, base: str | Non
             "status": "verified" if verified else "verification_mismatch",
             "verification_status": "verified" if verified else "mismatch",
             "reason": "" if verified else "PR fields do not match the requested values after the update"}
+
+
+def pr_create(repo: str, *, head: str, base: str = "main", title: str, body: str = "",
+              draft: bool = False, expect_head_sha: str | None = None,
+              write: bool = False, client: Client | None = None) -> dict:
+    """Create a pull request idempotently after verifying the head branch tip and existing PRs.
+
+    If an open PR for ``(head, base)`` already exists, returns ``status="already_exists"``
+    without issuing a POST. With ``write=True``, verifies the head tip SHA immediately
+    before POST and re-reads the created PR to confirm ``state == "open"``, ``head.sha``,
+    and ``base.ref``.
+    """
+    head = _validate_branch_name(head, field="head")
+    base = _validate_branch_name(base, field="base")
+    if head == base:
+        raise GhOpsError("head and base must be different branches")
+    if not isinstance(title, str) or not title.strip():
+        raise GhOpsError("title must not be empty")
+    if not isinstance(body, str):
+        raise GhOpsError("body must be text")
+    if expect_head_sha is not None:
+        _sha(expect_head_sha)
+    client, repo = _client(client), _repo(repo)
+    head_sha = _git_ref_tip_sha(client, repo, head).lower()
+    out: dict[str, Any] = {
+        "ok": True,
+        "schema": "gh-ops-pr-create/1",
+        "repository": repo,
+        "head": head,
+        "base": base,
+        "head_sha": head_sha,
+        "title": title,
+        "draft": bool(draft),
+        "dry_run": not write,
+        "created": False,
+        "number": None,
+        "url": None,
+    }
+    if expect_head_sha is not None and not head_sha.startswith(_sha(expect_head_sha)):
+        return {**out, "ok": False, "status": "head_mismatch",
+                "reason": f"branch {head!r} tip {head_sha[:12]} does not match --expect-head-sha {expect_head_sha}"}
+    existing = [pr for pr in pr_for_branch(repo, head, state="open", client=client)["pulls"]
+                if pr.get("base") == base]
+    if existing:
+        chosen = existing[0]
+        return {**out, "status": "already_exists", "number": chosen.get("number"), "url": chosen.get("url")}
+    payload: dict[str, Any] = {"head": head, "base": base, "title": title, "body": body}
+    if draft:
+        payload["draft"] = True
+    if not write:
+        return {**out, "status": "planned", "would_post": {"path": f"/repos/{repo}/pulls", "body_chars": len(body)}}
+    fresh_sha = _git_ref_tip_sha(client, repo, head).lower()
+    if fresh_sha != head_sha:
+        return {**out, "ok": False, "status": "stale",
+                "reason": f"branch {head!r} moved from {head_sha[:12]} to {fresh_sha[:12]} before PR creation"}
+    try:
+        created = client.request("POST", f"/repos/{repo}/pulls", payload, expect=(201,)).data
+    except GhOpsError as error:
+        return _mutation_error_receipt(
+            out, error,
+            f"PR POST did not return success; inspect before retrying: {error}",
+            flag_key="created",
+        )
+    number = created.get("number") if isinstance(created, dict) else None
+    url = created.get("html_url") if isinstance(created, dict) else None
+    out.update(dry_run=False, created=True, number=number, url=url, mutation_status="succeeded")
+    if not isinstance(number, int) or number < 1:
+        return {**out, "ok": False, "verified": False, "status": "verification_failed",
+                "reason": "PR POST succeeded without a valid PR number"}
+    try:
+        observed = client.get(f"/repos/{repo}/pulls/{number}")
+    except GhOpsError as error:
+        return {**out, "ok": False, "verified": False, "status": "verification_uncertain",
+                "http_status": error.http_status,
+                "reason": f"PR #{number} created but readback failed; inspect before retrying: {error}"}
+    obs_head_sha = ((observed.get("head") or {}).get("sha") or "").lower()
+    obs_base_ref = (observed.get("base") or {}).get("ref")
+    verified = observed.get("state") == "open" and obs_head_sha == head_sha and obs_base_ref == base
+    return {**out, "ok": verified, "verified": verified, "url": observed.get("html_url") or url,
+            "status": "verified" if verified else "verification_mismatch",
+            "reason": "" if verified else "created PR readback did not match expected open state, head SHA, or base"}
+
 
 
 def _pr_retarget_snapshot(pr: dict) -> dict:
@@ -1483,8 +1632,8 @@ _COMMIT_FILE_BYTES = 10 * 1024 * 1024
 
 
 def _git_blob_sha(data: bytes) -> str:
-    import hashlib
-    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+    return gh_identity.git_blob_sha(data)
+
 
 
 def _commit_files_path(path: Any) -> str:
@@ -2286,26 +2435,12 @@ def _subtree_git(cwd: Any, args: list[str], *, run: Callable[..., Any], timeout:
 
 
 def _subtree_prefix(prefix: Any) -> str:
-    if not isinstance(prefix, str) or not prefix.strip():
-        raise ValueError("prefix required")
-    if any(c in prefix for c in ("\0", "\n", "\r")) or prefix.startswith("-"):
-        raise ValueError("invalid prefix")
-    if os.path.isabs(prefix) or prefix.startswith(("/", "\\")) or re.match(r"[A-Za-z]:", prefix):
-        raise ValueError("prefix must be relative to the repository top level")
-    parts = [part for part in prefix.replace("\\", "/").split("/") if part not in ("", ".")]
-    if not parts or any(part == ".." for part in parts) or parts[0] == ".git":
-        raise ValueError("prefix must stay inside the repository")
-    if any(part.startswith("-") for part in parts):
-        raise ValueError("invalid prefix")
-    return "/".join(parts)
+    return gh_identity._subtree_prefix(prefix)
 
 
 def _subtree_branch(branch: Any) -> str:
-    if (not isinstance(branch, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", branch)
-            or ".." in branch or "//" in branch or branch.endswith(("/", ".", ".lock"))
-            or any(part.startswith(".") for part in branch.split("/"))):
-        raise ValueError("invalid branch")
-    return branch
+    return gh_identity._subtree_branch(branch)
+
 
 
 def _subtree_remote(remote: Any) -> str:
@@ -3190,6 +3325,19 @@ def _render(command: str, result: dict) -> str:
         extra = f" ({result['warning']})" if result.get("warning") else ""
         return (f"{result['status']} {result['repository']}#{result['number']} "
                 f"base {_base_ref_label(result.get('from'))} -> {result['to']}{extra}")
+    if command == "pr-create":
+        number = f" #{result['number']}" if result.get("number") else ""
+        url = f" {result['url']}" if result.get("url") else ""
+        reason = f": {result['reason']}" if result.get("reason") else ""
+        return (f"{'OK' if result['ok'] else 'NG'} pr-create ({result['status']}) "
+                f"{result['repository']}{number} {result['head']} -> {result['base']} "
+                f"head={str(result.get('head_sha') or '')[:12]}{url}{reason}")
+    if command == "run-rerun":
+        scope = "failed-jobs" if result.get("failed_only") else "all-jobs"
+        reason = f": {result['reason']}" if result.get("reason") else ""
+        return (f"{'OK' if result['ok'] else 'NG'} run-rerun ({result['status']}) "
+                f"{result['repository']} run={result['run_id']} {scope} "
+                f"head={str(result.get('head_sha') or '')[:12]}{reason}")
     reason = result.get("reason") or "; ".join(result.get("failures", []))
     status = "OK" if result["ok"] else "NG"
     mode = "dry run" if result.get("dry_run") else "applied"
@@ -3332,6 +3480,14 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p.add_argument("--ref", required=True)
     p.add_argument("--write", action="store_true")
 
+    p = _command_parser(sub, "run-rerun", help="rerun a completed non-successful workflow run (planned unless --write)")
+    p.add_argument("repo"); p.add_argument("run_id", type=int)
+    p.add_argument("--all", action="store_true", dest="rerun_all",
+                   help="rerun all jobs instead of only failed jobs")
+    p.add_argument("--expect-head-sha", metavar="SHA",
+                   help="refuse unless the run's head SHA matches this SHA")
+    p.add_argument("--write", action="store_true")
+
     p = _command_parser(sub, "issue-comment", help="create a top-level PR conversation comment (needs --write)")
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--file", required=True, help="UTF-8 file containing the comment body (one trailing newline ignored)")
@@ -3416,6 +3572,16 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     body_group = p.add_mutually_exclusive_group()
     body_group.add_argument("--body-file", help="full replacement body, UTF-8")
     body_group.add_argument("--append-body-file", help="append UTF-8 text once, preserving existing body")
+    p.add_argument("--write", action="store_true")
+
+    p = _command_parser(sub, "pr-create", help="create a PR idempotently after verifying head branch tip (planned unless --write)")
+    p.add_argument("repo")
+    p.add_argument("--head", required=True, help="head branch name")
+    p.add_argument("--base", default="main", help="base branch name (default: main)")
+    p.add_argument("--title", required=True, help="PR title")
+    p.add_argument("--body-file", help="optional UTF-8 file containing the PR body")
+    p.add_argument("--draft", action="store_true", help="open as draft PR")
+    p.add_argument("--expect-head-sha", metavar="SHA", help="refuse unless the head branch tip matches this SHA")
     p.add_argument("--write", action="store_true")
 
     p = _command_parser(sub, "pr-retarget", help="change a stacked PR's base (planned unless --write)")
@@ -3533,6 +3699,9 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
         return workflow_state(args.repo, args.workflow, client=client)
     if command == "workflow-dispatch":
         return workflow_dispatch(args.repo, args.workflow, ref=args.ref, write=args.write, client=client)
+    if command == "run-rerun":
+        return run_rerun(args.repo, args.run_id, failed_only=not args.rerun_all,
+                         expect_head_sha=args.expect_head_sha, write=args.write, client=client)
     if command == "issue-comment":
         return issue_comment_create(args.repo, args.number, body=_read_text(args.file),
                                     write=args.write, client=client)
@@ -3572,6 +3741,11 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
                        body=_read_body_exact(args.body_file) if args.body_file else None,
                        append_body=_read_body_exact(args.append_body_file) if args.append_body_file else None,
                        write=args.write, client=client)
+    if command == "pr-create":
+        body = _read_body_exact(args.body_file) if args.body_file else ""
+        return pr_create(args.repo, head=args.head, base=args.base, title=args.title, body=body,
+                         draft=args.draft, expect_head_sha=args.expect_head_sha,
+                         write=args.write, client=client)
     if command == "pr-retarget":
         return pr_retarget(args.repo, args.number, args.base, write=args.write,
                            allow_unmerged_commits=args.allow_unmerged_commits,

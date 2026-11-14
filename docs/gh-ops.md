@@ -49,7 +49,7 @@ canonical promotion and compatibility tests.
 
 | Concern | Owner | Examples |
 |--------|--------|----------|
-| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `commit-files --write`, `pr-merge --write`, `pr-retarget --write` |
+| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `commit-files --write`, `pr-create --write`, `pr-merge --write`, `pr-retarget --write`, `run-rerun --write` |
 | Local git writes on an enrolled checkout (explicit paths only) | Parent `gh_ops.py` | `git-commit --message-file msg.txt path/to/file --write` (optional `--push` with `--write`) |
 | Subtree split push from a monorepo to a NEW child branch | Parent `gh_ops.py` | `subtree-push --prefix DIR --remote URL --branch sync/x` (plan), add `--write` to push |
 | GitHub Pages delivery evidence (deploy API + HTTP/bytes/text) | Parent `publish_check.py` | `publish_check.py --site … --repo OWNER/OWNER.github.io` |
@@ -363,3 +363,32 @@ from the fetch URL, and never emits credentials, remote URLs or raw transport
 output. A failed/uncertain push or failed readback exits nonzero. Use shell `&&`
 to proceed to metadata updates only after a verified push; do not pipe away its
 exit status with `tail`.
+
+## Create a pull request idempotently (`pr-create`)
+
+```sh
+python -S gh_ops.py pr-create OWNER/REPO --head feat/x --base main --title "Title" --body-file body.md
+python -S gh_ops.py pr-create OWNER/REPO --head feat/x --base main --title "Title" --body-file body.md --expect-head-sha "$(git rev-parse HEAD)" --write
+```
+
+`pr-create` resolves the head branch tip SHA (`git/ref/heads/<head>`), checks
+optional `--expect-head-sha`, and queries open PRs for `--head`. If an open PR
+targeting `--base` already exists, it returns `status="already_exists"` with that
+PR's number and URL without issuing a POST. With `--write`, it re-reads the head
+branch tip SHA immediately before `POST /repos/OWNER/REPO/pulls` (refusing if the
+branch moved), then reads back `/repos/OWNER/REPO/pulls/NUMBER` to verify
+`state == "open"`, `head.sha`, and `base.ref`.
+
+## Rerun a failed or cancelled workflow run (`run-rerun`)
+
+```sh
+python -S gh_ops.py run-rerun OWNER/REPO 123456789
+python -S gh_ops.py run-rerun OWNER/REPO 123456789 --expect-head-sha "$(git rev-parse HEAD)" --write
+python -S gh_ops.py run-rerun OWNER/REPO 123456789 --all --write
+```
+
+`run-rerun` reads `/repos/OWNER/REPO/actions/runs/RUN_ID`, requires
+`status == "completed"`, refuses runs whose `conclusion == "success"`, and checks
+optional `--expect-head-sha`. By default it targets `rerun-failed-jobs`; `--all`
+switches to `rerun`. Without `--write` it reports `status="planned"`.
+

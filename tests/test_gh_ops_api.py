@@ -1128,3 +1128,116 @@ def test_reviewed_write_files_still_contain_a_write():
 def test_no_unlisted_parent_write_surface():
     extra = [path for path in _write_files() if path not in ALLOW]
     assert not extra, "unlisted GitHub write surface: " + ", ".join(extra)
+
+
+# ═══ · gh ops pr-create and run-rerun ═════════════════════════════════════════════════════════════════════
+
+def test_pr_create_dry_run_already_exists_and_verified_write():
+    sha = "a" * 40
+    ref_path = "/repos/octo/demo/git/ref/heads/feat%2Fx"
+    pulls_path = "/repos/octo/demo/pulls"
+    pr_path = "/repos/octo/demo/pulls/42"
+    pr_obj = {
+        "number": 42,
+        "state": "open",
+        "draft": False,
+        "merged": False,
+        "title": "New feature",
+        "html_url": "https://github.com/octo/demo/pull/42",
+        "head": {"ref": "feat/x", "sha": sha},
+        "base": {"ref": "main"},
+        "updated_at": "2026-04-17T00:00:00Z",
+    }
+    # 1. Dry-run when no open PR exists
+    client, stub = client_for({
+        ("GET", ref_path): reply({"object": {"sha": sha}}),
+        ("GET", pulls_path): reply([]),
+    })
+    plan = gh_ops.pr_create(REPO_gh_ops_pr_edit_body, head="feat/x", base="main", title="New feature", body="Body", client=client)
+    assert plan["ok"] and plan["dry_run"] and plan["status"] == "planned" and plan["head_sha"] == sha
+    assert stub.methods == ["GET", "GET"]
+
+    # 2. Idempotent when open PR already exists for (head, base)
+    client, stub = client_for({
+        ("GET", ref_path): reply({"object": {"sha": sha}}),
+        ("GET", pulls_path): reply([pr_obj]),
+    })
+    exists = gh_ops.pr_create(REPO_gh_ops_pr_edit_body, head="feat/x", base="main", title="New feature", write=True, client=client)
+    assert exists["ok"] and exists["status"] == "already_exists" and exists["number"] == 42 and not exists["created"]
+    assert stub.methods == ["GET", "GET"]
+
+    # 3. Write creates and verifies via readback
+    client, stub = client_for({
+        ("GET", ref_path): [reply({"object": {"sha": sha}}), reply({"object": {"sha": sha}})],
+        ("GET", pulls_path): reply([]),
+        ("POST", pulls_path): reply({"number": 42, "html_url": pr_obj["html_url"]}, status=201),
+        ("GET", pr_path): reply(pr_obj),
+    })
+    created = gh_ops.pr_create(REPO_gh_ops_pr_edit_body, head="feat/x", base="main", title="New feature",
+                               body="Body", expect_head_sha=sha[:12], write=True, client=client)
+    assert created["ok"] and created["created"] and created["verified"] and created["status"] == "verified"
+    assert created["number"] == 42
+    assert stub.methods == ["GET", "GET", "GET", "POST", "GET"]
+
+
+def test_pr_create_refuses_stale_head_or_head_mismatch():
+    sha1 = "a" * 40
+    sha2 = "b" * 40
+    ref_path = "/repos/octo/demo/git/ref/heads/feat%2Fx"
+    pulls_path = "/repos/octo/demo/pulls"
+    client, stub = client_for({
+        ("GET", ref_path): reply({"object": {"sha": sha1}}),
+    })
+    mismatch = gh_ops.pr_create(REPO_gh_ops_pr_edit_body, head="feat/x", title="T", expect_head_sha="cccc", write=True, client=client)
+    assert not mismatch["ok"] and mismatch["status"] == "head_mismatch"
+    assert stub.methods == ["GET"]
+
+    client, stub = client_for({
+        ("GET", ref_path): [reply({"object": {"sha": sha1}}), reply({"object": {"sha": sha2}})],
+        ("GET", pulls_path): reply([]),
+    })
+    stale = gh_ops.pr_create(REPO_gh_ops_pr_edit_body, head="feat/x", title="T", write=True, client=client)
+    assert not stale["ok"] and stale["status"] == "stale"
+    assert stub.methods == ["GET", "GET", "GET"]
+
+
+def test_run_rerun_preconditions_plan_and_write():
+    sha = "c" * 40
+    run_path = "/repos/octo/demo/actions/runs/99"
+    rerun_failed_path = "/repos/octo/demo/actions/runs/99/rerun-failed-jobs"
+    rerun_all_path = "/repos/octo/demo/actions/runs/99/rerun"
+
+    # Refuses non-completed or already successful runs
+    for payload, expected_status in (
+        ({"status": "in_progress", "conclusion": None, "head_sha": sha}, "not_completed"),
+        ({"status": "completed", "conclusion": "success", "head_sha": sha}, "already_succeeded"),
+    ):
+        client, stub = client_for({("GET", run_path): reply(payload)})
+        res = gh_ops.run_rerun(REPO_gh_ops_pr_edit_body, 99, write=True, client=client)
+        assert not res["ok"] and res["status"] == expected_status
+        assert stub.methods == ["GET"]
+
+    # Dry-run plan for failed jobs
+    failed_run = {"status": "completed", "conclusion": "failure", "head_sha": sha}
+    client, stub = client_for({("GET", run_path): reply(failed_run)})
+    plan = gh_ops.run_rerun(REPO_gh_ops_pr_edit_body, 99, expect_head_sha=sha[:8], client=client)
+    assert plan["ok"] and plan["dry_run"] and plan["status"] == "planned"
+    assert plan["would_post"]["path"] == rerun_failed_path
+
+    # Write rerun-failed-jobs and rerun all
+    client, stub = client_for({
+        ("GET", run_path): reply(failed_run),
+        ("POST", rerun_failed_path): reply({}, status=201),
+    })
+    done = gh_ops.run_rerun(REPO_gh_ops_pr_edit_body, 99, write=True, client=client)
+    assert done["ok"] and done["rerun"] and done["status"] == "requested"
+    assert stub.methods == ["GET", "POST"]
+
+    client, stub = client_for({
+        ("GET", run_path): reply(failed_run),
+        ("POST", rerun_all_path): reply({}, status=201),
+    })
+    done_all = gh_ops.run_rerun(REPO_gh_ops_pr_edit_body, 99, failed_only=False, write=True, client=client)
+    assert done_all["ok"] and done_all["rerun"] and not done_all["failed_only"]
+    assert stub.methods == ["GET", "POST"]
+
