@@ -305,3 +305,16 @@ PSWB #141の利用側6件・親 #262・#141は、監査と同じrepo/PR番号で
 
 
 REST件数は親側の `collect_repository_counts()` でリポジトリ情報・GET /issues・GET /pullsを独立取得する。両一覧をページ末尾まで読み、PR属性の有無で純Issueを分離する。部分取得は件数を未確認に保ち、合算差はそのまま表示する。追加依存・PSWB変更は不要。
+
+現行PR/Issueと移行8件のコメント・レビュー・現headのrun/attempt/jobも読み取り専用で再取得する。
+各集合は最大1000件、Actionsはworkflow/eventごとに最新run・最新attemptを採用する。
+取得失敗・途中のhead/state移動は網羅済みにしない。過去attempt・必須チェック規則・ログ本文は別確認。
+承認待ちは承認必須が明示されたPRだけに表示し、承認証跡なしと区別する。
+生成カタログは観測した親mainの内容を取得し、利用側での採用・再生成とは分けて表示する。
+追加のPSWB API・依存・公開設定変更は不要。
+
+## olnm・TalkCompressの利用導線
+
+既存の `index.html#ops` に統合する。olnmのカードIDは維持し、計算・uv tool install / uvx・更新・削除を同じカードで表示する。ErrorRoadRunnerへの接続案は未検証として残す。TalkCompressは代表CLIと期待値、過去の検証記録と今回の確認範囲を分けて表示する。カードのコピー対象は最短例だけで、削除等の任意操作は詳細内へ分ける。
+
+親READMEは短い入口、子READMEと既存olnm Pagesは詳細の正とする。標準ライブラリによる基本実行と開発・ブラウザ・tokenizer依存を区別する。PSWBの採用済みCSS・スクロール・状態・保存UIをそのまま再利用し、vendor/lock・Node 26・setup-uv・公開構成は変更しない。

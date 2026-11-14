@@ -385,6 +385,18 @@ class PswbMigrationTests(unittest.TestCase):
                 value = build.pswb_migration(s, fetch)
                 self.assertEqual({r['state'] for r in value['rows']}, {'調査中'})
 
+    def test_later_success_supersedes_an_older_failure_for_the_same_workflow_event(self):
+        snap, original, _ = self.fixture()
+        def fetch(path):
+            value = original(path)
+            if '/actions/runs?' in path:
+                run = value['workflow_runs'][0]
+                return {'total_count': 2, 'workflow_runs': [dict(run, id=2), dict(run, conclusion='failure')]}
+            return value
+        result = build.pswb_migration(snap, fetch)
+        self.assertEqual({r['state'] for r in result['rows']}, {'完了'})
+        self.assertTrue(all(len(r['runs']['head']['runs']) == 1 for r in result['rows']))
+
 
 if __name__ == '__main__':
     unittest.main()
