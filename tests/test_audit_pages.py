@@ -128,7 +128,7 @@ class PublicationTests(unittest.TestCase):
                 build.build(out)
             self.assertTrue(audit.call_args.kwargs['strict'])
             self.assertFalse((out/'scroll-controls.js').exists())
-            for path in ('index.html','app.js','style.css','audit-model.js','pswb-shell.css','pswb-scroll.js','pswb-records.js','data.json','report.html','history.json','pages-source.zip','.nojekyll'):
+            for path in ('index.html','compaction.html','compaction.js','app.js','style.css','audit-model.js','pswb-shell.css','pswb-scroll.js','pswb-records.js','data.json','report.html','history.json','pages-source.zip','.nojekyll'):
                 self.assertTrue((out/path).is_file(),path)
             html=(out/'index.html').read_text()
             self.assertIn('統合運用', html)

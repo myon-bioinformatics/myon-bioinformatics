@@ -123,3 +123,48 @@ test('approval waiting requires an explicit requirement and comments do not dism
  assert.ok(u.summarize({...r,approval_required:true,events}).approved);
  assert.ok(!u.summarize({...r,approval_required:true,events}).flags.includes('承認待ち'));
 });
+
+function compactionContext(saved={}) {
+ const fs=require('node:fs'),vm=require('node:vm'),nodes=new Map();
+ const get=s=>{if(!nodes.has(s))nodes.set(s,{value:'',innerHTML:'',textContent:'',dispatchEvent(){}});return nodes.get(s);};
+ const ctx=vm.createContext({document:{querySelector:get},localStorage:{getItem:k=>saved[k]??null},Intl,Date,Event:class{}});
+ vm.runInContext(fs.readFileSync(require('node:path').join(__dirname,'../site/ui/compaction.js'),'utf8'),ctx);
+ return {run:code=>vm.runInContext(code,ctx),nodes};
+}
+test('compaction keeps legacy records without treating old ratios as current measurements',()=>{
+ const legacy={id:'old',date:'2026-11-14',title:'constraint',type:'モデル別結果',status:'有効',enabled:'8/10',disabled:'9/10',declined:'2/12',detail:'keep',url:'https://example.test/evidence'};
+ const c=compactionContext({'compaction-lab-v1':JSON.stringify([legacy])});
+ assert.equal(c.run('records.length'),1);
+ assert.equal(c.run('records[0].legacyEnabled'),'8/10');
+ assert.equal(c.run('records[0].legacyDisabled'),'9/10');
+ assert.equal(c.run('records[0].legacyDeclined'),'2/12');
+ assert.equal(c.run('records[0].regression'),'keep');
+ assert.equal(c.run('records[0].source'),legacy.url);
+ assert.equal(c.run('records[0].correct'),'');
+ assert.match(c.run('pairReport(records)'),/比較可能.*ありません/);
+ assert.equal(c.run('validate(records[0])'),true);
+ const current=compactionContext({'compaction-lab-v1':JSON.stringify([legacy]),'compaction-lab-v2':'[]'});
+ assert.equal(current.run('records.length'),0); // no resurrecting deleted v2 rows
+});
+test('compaction excludes unmeasured and disabled runs from numerical claims',()=>{
+ const c=compactionContext();
+ c.run("var sample=normalize({id:'x',name:'case',date:'2026-11-14',mode:'未実測'})");
+ assert.equal(c.run('validate(sample)'),true);
+ assert.equal(c.run("validate({...sample,correct:'0'})"),false);
+ assert.equal(c.run("validate({...sample,mode:'有効',execution:'エラー',correct:'0',total:'1'})"),false);
+ assert.equal(c.run("validate({...sample,mode:'有効',execution:'完了',correct:'3',total:'2'})"),false);
+ assert.equal(c.run("validate({...sample,mode:'無効',execution:'完了',declined:'0',attempted:'1'})"),false);
+ assert.equal(c.run("validate({...sample,name:{bad:1}})"),false);
+ assert.equal(c.run("pct('','1')"),'—');
+ assert.match(c.run("pct('0','1')"),/0\.0%/);
+ assert.equal(c.run("link('javascript:alert(1)')"),'');
+ assert.equal(c.run("esc('<script>')"),'&lt;script&gt;');
+});
+test('compaction only compares paired cases with complete matching conditions',()=>{
+ const c=compactionContext();
+ c.run("var same=Object.fromEntries(identity.map(k=>[k,'fixed']));var off={...normalize({id:'off',date:'2026-11-14',name:'case',mode:'無効'}),...same,execution:'完了',correct:'1',total:'1'};var on={...off,id:'on',mode:'有効',correct:'0'}");
+ assert.match(c.run('pairReport([on,off])'),/回帰候補/);
+ assert.doesNotMatch(c.run("pairReport([{...on,tokenizer:'other'},off])"),/正解数差/);
+ assert.doesNotMatch(c.run("pairReport([{...on,caseId:''},off])"),/正解数差/);
+ assert.doesNotMatch(c.run("pairReport([{...on,total:'2'},off])"),/正解数差/);
+});
