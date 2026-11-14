@@ -29,11 +29,17 @@ function validate(r){
  if(out.execution!=='完了'&&['correct','judged','declines','attempts','tokens'].some(f=>out[f]!==''))throw Error('測定値は実行完了の記録に入力してください');
  return out;
 }
+function legacyRate(value){
+ const text=String(value||'未測定'), m=text.match(/^\s*(\d+)\s*\/\s*(\d+)\s*$/);
+ if(!m)return text;
+ const a=Number(m[1]),b=Number(m[2]);
+ return text+(a>b?' (不正な件数)':b===0?' (分母ゼロ)':` (${(100*a/b).toFixed(2)}%)`);
+}
 function legacy(r){
  if(!r||typeof r.date!=='string'||typeof r.title!=='string')throw Error('v1記録が不正です');
  const status=r.status, mode=modes.includes(status)?status:'対象外';
  const execution=['有効','無効','辞退','完了'].includes(status)?'完了':status==='失敗'?'エラー':status==='判定不能'?'判定不能':'未実行';
- return validate({id:r.id||('legacy-'+Math.random().toString(36).slice(2)),date:r.date.includes('T')?r.date.slice(0,16):r.date+'T00:00',type:types.includes(r.type)?r.type:'保留事項',execution,mode,title:r.title,model:r.model||'',category:r.category||'',url:r.url||'',detail:(r.detail||'')+'\n[v1移行・比較条件の再確認待ち] 有効:'+String(r.enabled||'未測定')+' / 無効:'+String(r.disabled||'未測定')+' / 辞退:'+String(r.declined||'未測定')});
+ return validate({id:r.id||('legacy-'+Math.random().toString(36).slice(2)),date:r.date.includes('T')?r.date.slice(0,16):r.date+'T00:00',type:types.includes(r.type)?r.type:'保留事項',execution,mode,title:r.title,model:r.model||'',category:r.category||'',url:r.url||'',detail:(r.detail||'')+'\n[v1移行・比較条件の再確認待ち] 有効:'+legacyRate(r.enabled)+' / 無効:'+legacyRate(r.disabled)+' / 辞退:'+legacyRate(r.declined)});
 }
 function loadStored(storage){
  const raw=storage.getItem(key);
@@ -41,14 +47,14 @@ function loadStored(storage){
  const old=JSON.parse(storage.getItem('compaction-lab-v1')||'[]');if(!Array.isArray(old))throw Error('invalid legacy records');
  return {records:old.map(legacy),migrated:old.length>0};
 }
-if(typeof module!=='undefined')module.exports={validate,legacy,loadStored};
+if(typeof module!=='undefined')module.exports={validate,legacy,loadStored,legacyRate};
 if(typeof document!=='undefined'){
 const $=s=>document.querySelector(s), form=$('#form');
 let migrated=false;
 try{({records,migrated}=loadStored(localStorage));}catch{storageMessage='保存記録を読めません。空の作業記録で開始しました。JSONから復元できます。'}
 function persist(){try{localStorage.setItem(key,JSON.stringify({version:2,records}));return true}catch{$('#message').textContent='ブラウザ保存に失敗。記録は画面内に保持しています。JSONを書き出してください。';return false}}
 function href(url,label='証跡 ↗'){return url&&/^https?:\/\//i.test(url)?`<a href="${esc(url)}" target="_blank" rel="noopener">${esc(label)}</a>`:''}
-function pct(a,b){return a!==''&&b!==''&&a!==undefined&&b!==undefined&&+b>0?`${esc(a)}/${esc(b)} (${(100*+a/+b).toFixed(2)}%)`:'未測定'}
+function pct(a,b){return a!==''&&b!==''&&a!==undefined&&b!==undefined?`${esc(a)}/${esc(b)} (${+b>0?(100*+a/+b).toFixed(2)+'%':'分母ゼロ'})`:'未測定'}
 function tab(id){if(!document.getElementById(id)?.classList.contains('view'))id='overview';document.querySelectorAll('.view').forEach(v=>v.classList.toggle('hide',v.id!==id));document.querySelectorAll('[data-view]').forEach(b=>{const selected=b.dataset.view===id;b.setAttribute('aria-selected',String(selected));b.tabIndex=selected?0:-1});history.replaceState(null,'','#'+id)}
 function render(){
  const filter=$('#filter').value, query=$('#search').value.toLowerCase(), order=$('#order').value;

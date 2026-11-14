@@ -1,6 +1,12 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const compaction=require('../site/ui/compaction-review.js');
+test('compaction keeps #284 rate display on legacy counts while zero denominators stay unavailable',()=>{
+ assert.equal(compaction.legacyRate('8/10'),'8/10 (80.00%)');
+ assert.equal(compaction.legacyRate('0/0'),'0/0 (分母ゼロ)');
+ assert.equal(compaction.legacyRate('9/8'),'9/8 (不正な件数)');
+ assert.equal(compaction.legacyRate(''),'未測定');
+});
 test('compaction automatically migrates old storage without mutating its recovery copy',()=>{
  const old=JSON.stringify([{id:'old',date:'2026-11-14',type:'保留事項',status:'未測定',title:'retain'}]);
  const store={getItem:k=>k==='compaction-lab-v1'?old:null};
