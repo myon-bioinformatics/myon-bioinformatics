@@ -138,6 +138,8 @@ test('compaction keeps legacy records without treating old ratios as current mea
  assert.equal(c.run('records[0].legacyEnabled'),'8/10');
  assert.equal(c.run('records[0].legacyDisabled'),'9/10');
  assert.equal(c.run('records[0].legacyDeclined'),'2/12');
+ assert.match(c.run("legacyRatio('8/10')"),/80\.0%/);
+ assert.doesNotMatch(c.run("legacyRatio('0/0')"),/%/);
  assert.equal(c.run('records[0].regression'),'keep');
  assert.equal(c.run('records[0].source'),legacy.url);
  assert.equal(c.run('records[0].correct'),'');
