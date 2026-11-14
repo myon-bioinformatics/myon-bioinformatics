@@ -392,3 +392,51 @@ python -S gh_ops.py run-rerun OWNER/REPO 123456789 --all --write
 optional `--expect-head-sha`. By default it targets `rerun-failed-jobs`; `--all`
 switches to `rerun`. Without `--write` it reports `status="planned"`.
 
+## Cancel a queued or in-progress workflow run (`run-cancel`)
+
+```sh
+python -S gh_ops.py run-cancel OWNER/REPO 123456789
+python -S gh_ops.py run-cancel OWNER/REPO 123456789 --expect-head-sha "$(git rev-parse HEAD)" --write
+```
+
+`run-cancel` reads `/repos/OWNER/REPO/actions/runs/RUN_ID` and checks optional
+`--expect-head-sha`. If the run is already `completed`, it returns `ok=True` and
+`status="already_completed"` without issuing a POST. Otherwise it plans or POSTs
+`/repos/OWNER/REPO/actions/runs/RUN_ID/cancel` (`202 Accepted`).
+
+## Submit a pull request review (`pr-review`) and toggle draft state (`pr-ready`)
+
+```sh
+python -S gh_ops.py pr-review OWNER/REPO 42 --event APPROVE --expect-head-sha "$(git rev-parse HEAD)" --write
+python -S gh_ops.py pr-review OWNER/REPO 42 --event REQUEST_CHANGES --body-file review.md --write
+python -S gh_ops.py pr-ready OWNER/REPO 42 --write
+python -S gh_ops.py pr-ready OWNER/REPO 42 --draft --write
+```
+
+- `pr-review` pins `commit_id` to the PR's current `head.sha` (re-verified right
+  before POST), requires a non-empty `--body-file` for `REQUEST_CHANGES` and
+  `COMMENT`, and reads back `/repos/OWNER/REPO/pulls/NUMBER/reviews/REVIEW_ID`
+  to confirm the resulting review state (`APPROVED`, `CHANGES_REQUESTED`, or
+  `COMMENTED`) and `commit_id`.
+- `pr-ready` transitions an open PR between draft and ready-for-review via
+  GitHub GraphQL (`markPullRequestReadyForReview` / `convertPullRequestToDraft`)
+  and verifies the resulting `draft` boolean via REST readback. If the PR is
+  already in the requested state, it returns `status="already_satisfied"` with
+  no mutation.
+
+## Create and edit repository Issues (`issue-create`, `issue-edit`)
+
+```sh
+python -S gh_ops.py issue-create OWNER/REPO --title "Bug report" --body-file issue.md --label bug --write
+python -S gh_ops.py issue-edit OWNER/REPO 88 --append-body-file note.md --state closed --state-reason completed --write
+```
+
+- `issue-create` verifies that every `--label` already exists in the repository
+  via `GET /repos/OWNER/REPO/labels/NAME` before POSTing, so a typo never creates
+  a new label implicitly (`status="rejected_missing_labels"`). After creation it
+  reads back `/repos/OWNER/REPO/issues/NUMBER` to verify `state == "open"` and
+  `title`.
+- `issue-edit` rejects pull requests (`"pull_request" in issue`), shares
+  `_apply_append_body` with `pr-edit` for idempotent `--append-body-file`
+  updates, supports `--state` (`open`/`closed`) and `--state-reason`
+  (`completed`/`not_planned`/`reopened`), and verifies updated fields on readback.

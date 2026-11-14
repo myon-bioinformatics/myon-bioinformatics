@@ -1241,3 +1241,147 @@ def test_run_rerun_preconditions_plan_and_write():
     assert done_all["ok"] and done_all["rerun"] and not done_all["failed_only"]
     assert stub.methods == ["GET", "POST"]
 
+
+def test_run_cancel_preconditions_plan_and_write():
+    sha = "d" * 40
+    run_path = "/repos/octo/demo/actions/runs/77"
+    cancel_path = "/repos/octo/demo/actions/runs/77/cancel"
+
+    # Already completed is idempotent (ok=True, status="already_completed", no POST)
+    client, stub = client_for({
+        ("GET", run_path): reply({"status": "completed", "conclusion": "failure", "head_sha": sha}),
+    })
+    already = gh_ops.run_cancel(REPO_gh_ops_pr_edit_body, 77, write=True, client=client)
+    assert already["ok"] and already["status"] == "already_completed" and not already["cancelled"]
+    assert stub.methods == ["GET"]
+
+    # Head mismatch refused
+    client, stub = client_for({
+        ("GET", run_path): reply({"status": "in_progress", "conclusion": None, "head_sha": sha}),
+    })
+    mismatch = gh_ops.run_cancel(REPO_gh_ops_pr_edit_body, 77, expect_head_sha="aaaa", write=True, client=client)
+    assert not mismatch["ok"] and mismatch["status"] == "head_mismatch"
+    assert stub.methods == ["GET"]
+
+    # Plan and write on in_progress run
+    in_prog = {"status": "in_progress", "conclusion": None, "head_sha": sha}
+    client, stub = client_for({("GET", run_path): reply(in_prog)})
+    plan = gh_ops.run_cancel(REPO_gh_ops_pr_edit_body, 77, expect_head_sha=sha[:8], client=client)
+    assert plan["ok"] and plan["dry_run"] and plan["status"] == "planned"
+    assert plan["would_post"]["path"] == cancel_path
+
+    client, stub = client_for({
+        ("GET", run_path): reply(in_prog),
+        ("POST", cancel_path): reply({}, status=202),
+    })
+    done = gh_ops.run_cancel(REPO_gh_ops_pr_edit_body, 77, write=True, client=client)
+    assert done["ok"] and done["cancelled"] and done["status"] == "requested"
+    assert stub.methods == ["GET", "POST"]
+
+
+def test_pr_review_plan_write_and_guards():
+    sha = "e" * 40
+    pr_path = "/repos/octo/demo/pulls/15"
+    reviews_path = "/repos/octo/demo/pulls/15/reviews"
+    review_item_path = "/repos/octo/demo/pulls/15/reviews/501"
+    open_pr = {"state": "open", "head": {"sha": sha}}
+
+    with pytest.raises(gh_ops.GhOpsError, match="requires a non-empty body"):
+        gh_ops.pr_review(REPO_gh_ops_pr_edit_body, 15, event="REQUEST_CHANGES", body="   ")
+
+    # Dry-run plan
+    client, stub = client_for({("GET", pr_path): reply(open_pr)})
+    plan = gh_ops.pr_review(REPO_gh_ops_pr_edit_body, 15, event="approve", expect_head_sha=sha[:8], client=client)
+    assert plan["ok"] and plan["dry_run"] and plan["status"] == "planned" and plan["event"] == "APPROVE"
+    assert stub.methods == ["GET"]
+
+    # Stale head before POST refused
+    client, stub = client_for({
+        ("GET", pr_path): [reply(open_pr), reply({"state": "open", "head": {"sha": "f" * 40}})],
+    })
+    stale = gh_ops.pr_review(REPO_gh_ops_pr_edit_body, 15, event="APPROVE", write=True, client=client)
+    assert not stale["ok"] and stale["status"] == "stale"
+    assert stub.methods == ["GET", "GET"]
+
+    # Write submits review and verifies via readback
+    client, stub = client_for({
+        ("GET", pr_path): [reply(open_pr), reply(open_pr)],
+        ("POST", reviews_path): reply({"id": 501, "html_url": "https://github.com/octo/demo/pull/15#pullrequestreview-501"}, status=200),
+        ("GET", review_item_path): reply({"id": 501, "state": "APPROVED", "commit_id": sha, "html_url": "https://github.com/octo/demo/pull/15#pullrequestreview-501"}),
+    })
+    submitted = gh_ops.pr_review(REPO_gh_ops_pr_edit_body, 15, event="APPROVE", body="LGTM", write=True, client=client)
+    assert submitted["ok"] and submitted["submitted"] and submitted["verified"] and submitted["status"] == "verified"
+    assert stub.methods == ["GET", "GET", "POST", "GET"]
+
+
+def test_pr_ready_plan_write_and_already_satisfied():
+    sha = "1" * 40
+    pr_path = "/repos/octo/demo/pulls/20"
+    draft_pr = {"state": "open", "draft": True, "node_id": "PR_kwDO123", "head": {"sha": sha}, "html_url": "https://github.com/octo/demo/pull/20"}
+    ready_pr = {**draft_pr, "draft": False}
+
+    # Already ready
+    client, stub = client_for({("GET", pr_path): reply(ready_pr)})
+    already = gh_ops.pr_ready(REPO_gh_ops_pr_edit_body, 20, write=True, client=client)
+    assert already["ok"] and already["status"] == "already_satisfied" and not already["changed"]
+    assert stub.methods == ["GET"]
+
+    # Write transitions draft -> ready via GraphQL and verifies via REST
+    client, stub = client_for({
+        ("GET", pr_path): [reply(draft_pr), reply(ready_pr)],
+        ("POST", "/graphql"): reply({"data": {"markPullRequestReadyForReview": {"pullRequest": {"isDraft": False}}}}, status=200),
+    })
+    done = gh_ops.pr_ready(REPO_gh_ops_pr_edit_body, 20, expect_head_sha=sha[:8], write=True, client=client)
+    assert done["ok"] and done["changed"] and done["verified"] and done["status"] == "verified"
+    assert stub.methods == ["GET", "POST", "GET"]
+
+
+def test_issue_create_validates_labels_and_verifies_readback():
+    issues_path = "/repos/octo/demo/issues"
+    issue_item_path = "/repos/octo/demo/issues/88"
+    bug_label_path = "/repos/octo/demo/labels/bug"
+    missing_label_path = "/repos/octo/demo/labels/nonexistent"
+
+    # Rejects missing label without POSTing
+    client, stub = client_for({
+        ("GET", missing_label_path): reply({"message": "Not Found"}, status=404),
+    })
+    rejected = gh_ops.issue_create(REPO_gh_ops_pr_edit_body, title="Bug report", labels=("nonexistent",), write=True, client=client)
+    assert not rejected["ok"] and rejected["status"] == "rejected_missing_labels"
+    assert rejected["missing_labels"] == ["nonexistent"]
+    assert stub.methods == ["GET"]
+
+    # Creates and verifies when label exists
+    created_obj = {"number": 88, "state": "open", "title": "Bug report", "html_url": "https://github.com/octo/demo/issues/88"}
+    client, stub = client_for({
+        ("GET", bug_label_path): reply({"name": "bug"}),
+        ("POST", issues_path): reply(created_obj, status=201),
+        ("GET", issue_item_path): reply(created_obj),
+    })
+    res = gh_ops.issue_create(REPO_gh_ops_pr_edit_body, title="Bug report", body="Details", labels=("bug",), write=True, client=client)
+    assert res["ok"] and res["created"] and res["verified"] and res["number"] == 88
+    assert stub.methods == ["GET", "POST", "GET"]
+
+
+def test_issue_edit_rejects_prs_and_appends_body():
+    issue_path = "/repos/octo/demo/issues/88"
+
+    # Rejects editing a PR via issue_edit
+    client, stub = client_for({
+        ("GET", issue_path): reply({"number": 88, "title": "PR", "state": "open", "body": "x", "pull_request": {}}),
+    })
+    with pytest.raises(gh_ops.GhOpsError, match="is a pull request, not an issue"):
+        gh_ops.issue_edit(REPO_gh_ops_pr_edit_body, 88, title="New", write=True, client=client)
+
+    # Appends body and closes with state_reason
+    initial = {"number": 88, "title": "Bug", "state": "open", "state_reason": None, "body": "First section."}
+    updated = {"number": 88, "title": "Bug", "state": "closed", "state_reason": "completed", "body": "First section.\n\nResolved in #90."}
+    client, stub = client_for({
+        ("GET", issue_path): [reply(initial), reply(initial), reply(updated)],
+        ("PATCH", issue_path): reply(updated),
+    })
+    res = gh_ops.issue_edit(REPO_gh_ops_pr_edit_body, 88, state="closed", state_reason="completed",
+                            append_body="Resolved in #90.\n", write=True, client=client)
+    assert res["ok"] and res["changed"] and res["verified"] and res["status"] == "verified"
+    assert stub.methods == ["GET", "GET", "PATCH", "GET"]
+

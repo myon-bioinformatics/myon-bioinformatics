@@ -1095,6 +1095,53 @@ def run_rerun(repo: str, run_id: int, *, failed_only: bool = True, expect_head_s
     return {**out, "dry_run": False, "rerun": True, "status": "requested", "mutation_status": "succeeded"}
 
 
+def run_cancel(repo: str, run_id: int, *, expect_head_sha: str | None = None,
+               write: bool = False, client: Client | None = None) -> dict:
+    """Cancel an in-progress or queued workflow run, dry-run by default.
+
+    If the run is already ``completed``, returns ``ok=True, status="already_completed"``
+    idempotently without issuing a POST.
+    """
+    if isinstance(run_id, bool) or int(run_id) < 1:
+        raise GhOpsError("run_id must be a positive integer")
+    if expect_head_sha is not None:
+        _sha(expect_head_sha)
+    client, repo, run_id = _client(client), _repo(repo), int(run_id)
+    run_path = f"/repos/{repo}/actions/runs/{run_id}"
+    run = client.get(run_path)
+    status = run.get("status")
+    conclusion = run.get("conclusion")
+    head_sha = (run.get("head_sha") or "").lower()
+    endpoint = f"{run_path}/cancel"
+    out: dict[str, Any] = {
+        "ok": True,
+        "schema": "gh-ops-run-cancel/1",
+        "repository": repo,
+        "run_id": run_id,
+        "head_sha": head_sha,
+        "run_status": status,
+        "run_conclusion": conclusion,
+        "dry_run": not write,
+        "cancelled": False,
+    }
+    if expect_head_sha is not None and not head_sha.startswith(_sha(expect_head_sha)):
+        return {**out, "ok": False, "status": "head_mismatch",
+                "reason": f"run head SHA {head_sha[:12]} does not match --expect-head-sha {expect_head_sha}"}
+    if status == "completed":
+        return {**out, "status": "already_completed", "reason": "workflow run is already completed"}
+    if not write:
+        return {**out, "status": "planned", "would_post": {"path": endpoint}}
+    try:
+        client.request("POST", endpoint, {}, expect=(202,))
+    except GhOpsError as error:
+        return _mutation_error_receipt(
+            out, error,
+            f"workflow cancel POST did not return success; inspect before retrying: {error}",
+            flag_key="cancelled",
+        )
+    return {**out, "dry_run": False, "cancelled": True, "status": "requested", "mutation_status": "succeeded"}
+
+
 def pr_body_replace(repo: str, number: int, *, old: str, new: str, write: bool = False,
                     client: Client | None = None) -> dict:
     """Replace one anchor in a PR body, only when it occurs exactly once."""
@@ -1152,6 +1199,7 @@ def pr_body_set(repo: str, number: int, *, new: str, write: bool = False, client
 
 
 _PR_EDIT_STATES = ("open", "closed")
+_ISSUE_STATE_REASONS = ("completed", "not_planned", "reopened")
 
 
 def _skip_one_break(text: str, index: int, step: int) -> int:
@@ -1205,6 +1253,11 @@ def _block_already_appended(body: str, block: str) -> bool:
         start = found + 1
 
 
+def _apply_append_body(old: str, append_body: str) -> str:
+    block = append_body.strip("\r\n")
+    return old if _block_already_appended(old, block) else (old.rstrip() + "\n\n" if old.strip() else "") + block
+
+
 def pr_edit(repo: str, number: int, *, title: str | None = None, base: str | None = None,
             state: str | None = None, body: str | None = None, append_body: str | None = None,
             write: bool = False, client: Client | None = None) -> dict:
@@ -1238,9 +1291,7 @@ def pr_edit(repo: str, number: int, *, title: str | None = None, base: str | Non
 
     current = snapshot(pr)
     if append_body is not None:
-        block = append_body.strip("\r\n")
-        old = current["body"]
-        fields["body"] = old if _block_already_appended(old, block) else (old.rstrip() + "\n\n" if old.strip() else "") + block
+        fields["body"] = _apply_append_body(current["body"], append_body)
     report = {key: {"from": current[key], "to": value} for key, value in fields.items()}
     out = {"ok": True, "dry_run": not write, "changed": False, "fields": report,
            "mutation_status": "not_attempted", "verification_status": "not_attempted"}
@@ -1350,6 +1401,338 @@ def pr_create(repo: str, *, head: str, base: str = "main", title: str, body: str
     return {**out, "ok": verified, "verified": verified, "url": observed.get("html_url") or url,
             "status": "verified" if verified else "verification_mismatch",
             "reason": "" if verified else "created PR readback did not match expected open state, head SHA, or base"}
+
+
+_REVIEW_EVENT_STATES = {
+    "APPROVE": "APPROVED",
+    "REQUEST_CHANGES": "CHANGES_REQUESTED",
+    "COMMENT": "COMMENTED",
+}
+
+
+def pr_review(repo: str, number: int, *, event: str, body: str = "",
+              expect_head_sha: str | None = None, write: bool = False,
+              client: Client | None = None) -> dict:
+    """Submit a pull request review (APPROVE, REQUEST_CHANGES, or COMMENT) pinned to head_sha.
+
+    Dry-run by default. ``REQUEST_CHANGES`` and ``COMMENT`` require a non-empty
+    body. With ``write=True``, re-reads the PR immediately before POST to confirm
+    ``head_sha`` has not moved, then reads back the created review to verify its
+    state and ``commit_id``.
+    """
+    if isinstance(number, bool) or int(number) < 1:
+        raise GhOpsError("PR number must be a positive integer")
+    norm_event = (event or "").strip().upper().replace("-", "_")
+    if norm_event not in _REVIEW_EVENT_STATES:
+        raise GhOpsError("review event must be APPROVE, REQUEST_CHANGES, or COMMENT")
+    if not isinstance(body, str):
+        raise GhOpsError("body must be text")
+    if norm_event in ("REQUEST_CHANGES", "COMMENT") and not body.strip():
+        raise GhOpsError(f"{norm_event} review requires a non-empty body")
+    if expect_head_sha is not None:
+        _sha(expect_head_sha)
+    client, repo, number = _client(client), _repo(repo), int(number)
+    pr_path = f"/repos/{repo}/pulls/{number}"
+    pr = client.get(pr_path)
+    state = pr.get("state")
+    head_sha = ((pr.get("head") or {}).get("sha") or "").lower()
+    if len(head_sha) != 40 or not _SHA_RE.fullmatch(head_sha):
+        raise GhOpsError("PR response missing valid 40-hex head SHA")
+    reviews_path = f"{pr_path}/reviews"
+    out: dict[str, Any] = {
+        "ok": True,
+        "schema": "gh-ops-pr-review/1",
+        "repository": repo,
+        "number": number,
+        "event": norm_event,
+        "head_sha": head_sha,
+        "dry_run": not write,
+        "submitted": False,
+        "review_id": None,
+        "url": None,
+    }
+    if state != "open":
+        return {**out, "ok": False, "status": "not_open",
+                "reason": f"PR is {state!r}, not 'open'"}
+    if expect_head_sha is not None and not head_sha.startswith(_sha(expect_head_sha)):
+        return {**out, "ok": False, "status": "head_mismatch",
+                "reason": f"PR head SHA {head_sha[:12]} does not match --expect-head-sha {expect_head_sha}"}
+    payload: dict[str, Any] = {"event": norm_event, "commit_id": head_sha}
+    if body:
+        payload["body"] = body
+    if not write:
+        return {**out, "status": "planned",
+                "would_post": {"path": reviews_path, "event": norm_event, "commit_id": head_sha, "body_chars": len(body)}}
+    fresh = client.get(pr_path)
+    fresh_sha = ((fresh.get("head") or {}).get("sha") or "").lower()
+    if fresh.get("state") != "open" or fresh_sha != head_sha:
+        return {**out, "ok": False, "status": "stale",
+                "reason": f"PR #{number} state or head SHA changed before review submission"}
+    try:
+        created = client.request("POST", reviews_path, payload, expect=(200, 201)).data
+    except GhOpsError as error:
+        return _mutation_error_receipt(
+            out, error,
+            f"PR review POST did not return success; inspect before retrying: {error}",
+            flag_key="submitted",
+        )
+    review_id = created.get("id") if isinstance(created, dict) else None
+    url = created.get("html_url") if isinstance(created, dict) else None
+    out.update(dry_run=False, submitted=True, review_id=review_id, url=url, mutation_status="succeeded")
+    if not isinstance(review_id, int) or review_id < 1:
+        return {**out, "ok": False, "verified": False, "status": "verification_failed",
+                "reason": "PR review POST succeeded without a valid review id"}
+    try:
+        observed = client.get(f"{reviews_path}/{review_id}")
+    except GhOpsError as error:
+        return {**out, "ok": False, "verified": False, "status": "verification_uncertain",
+                "http_status": error.http_status,
+                "reason": f"PR review {review_id} submitted but readback failed; inspect before retrying: {error}"}
+    expected_state = _REVIEW_EVENT_STATES[norm_event]
+    obs_commit = (observed.get("commit_id") or "").lower()
+    verified = observed.get("state") == expected_state and obs_commit == head_sha
+    return {**out, "ok": verified, "verified": verified, "url": observed.get("html_url") or url,
+            "status": "verified" if verified else "verification_mismatch",
+            "reason": "" if verified else "review readback state or commit_id did not match requested review"}
+
+
+def pr_ready(repo: str, number: int, *, draft: bool = False,
+             expect_head_sha: str | None = None, write: bool = False,
+             client: Client | None = None) -> dict:
+    """Mark an open pull request ready for review (or convert to draft when ``draft=True``).
+
+    Dry-run by default. Uses GitHub's GraphQL ``markPullRequestReadyForReview`` /
+    ``convertPullRequestToDraft`` mutation and verifies the resulting ``draft``
+    state via REST readback.
+    """
+    if isinstance(number, bool) or int(number) < 1:
+        raise GhOpsError("PR number must be a positive integer")
+    if expect_head_sha is not None:
+        _sha(expect_head_sha)
+    client, repo, number = _client(client), _repo(repo), int(number)
+    pr_path = f"/repos/{repo}/pulls/{number}"
+    pr = client.get(pr_path)
+    state = pr.get("state")
+    current_draft = bool(pr.get("draft"))
+    head_sha = ((pr.get("head") or {}).get("sha") or "").lower()
+    node_id = pr.get("node_id")
+    target_draft = bool(draft)
+    mutation_name = "convertPullRequestToDraft" if target_draft else "markPullRequestReadyForReview"
+    out: dict[str, Any] = {
+        "ok": True,
+        "schema": "gh-ops-pr-ready/1",
+        "repository": repo,
+        "number": number,
+        "head_sha": head_sha,
+        "from_draft": current_draft,
+        "to_draft": target_draft,
+        "dry_run": not write,
+        "changed": False,
+        "url": pr.get("html_url"),
+    }
+    if state != "open":
+        return {**out, "ok": False, "status": "not_open",
+                "reason": f"PR is {state!r}, not 'open'"}
+    if expect_head_sha is not None and not head_sha.startswith(_sha(expect_head_sha)):
+        return {**out, "ok": False, "status": "head_mismatch",
+                "reason": f"PR head SHA {head_sha[:12]} does not match --expect-head-sha {expect_head_sha}"}
+    if current_draft == target_draft:
+        return {**out, "status": "already_satisfied",
+                "reason": "PR is already a draft" if target_draft else "PR is already ready for review"}
+    if not isinstance(node_id, str) or not node_id:
+        raise GhOpsError("PR response missing node_id required for GraphQL mutation")
+    if not write:
+        return {**out, "status": "planned",
+                "would_mutate": {"mutation": mutation_name, "pullRequestId": node_id}}
+    query = f"mutation($id:ID!){{{mutation_name}(input:{{pullRequestId:$id}}){{pullRequest{{isDraft}}}}}}"
+    try:
+        gql = client.request("POST", "/graphql", {"query": query, "variables": {"id": node_id}}, expect=(200,)).data
+    except GhOpsError as error:
+        return _mutation_error_receipt(
+            out, error,
+            f"{mutation_name} mutation did not return success; inspect before retrying: {error}",
+            flag_key="changed",
+        )
+    if isinstance(gql, dict) and gql.get("errors"):
+        return {**out, "ok": False, "dry_run": False, "changed": False, "verified": False,
+                "status": "mutation_failed", "mutation_status": "failed",
+                "reason": f"GraphQL {mutation_name} returned errors"}
+    out.update(dry_run=False, changed=True, mutation_status="succeeded")
+    try:
+        observed = client.get(pr_path)
+    except GhOpsError as error:
+        return {**out, "ok": False, "verified": False, "status": "verification_uncertain",
+                "http_status": error.http_status,
+                "reason": f"PR #{number} mutated but readback failed; inspect before retrying: {error}"}
+    verified = observed.get("state") == "open" and bool(observed.get("draft")) == target_draft
+    return {**out, "ok": verified, "verified": verified,
+            "status": "verified" if verified else "verification_mismatch",
+            "reason": "" if verified else "PR readback draft state did not match requested state"}
+
+
+def _validate_labels(labels: tuple[str, ...] | list[str]) -> list[str]:
+    out: list[str] = []
+    for name in labels or ():
+        if not isinstance(name, str) or not name.strip() or len(name) > 100 or any(c in name for c in "\r\n\x00"):
+            raise GhOpsError(f"invalid label name: {name!r}")
+        if name not in out:
+            out.append(name)
+    return out
+
+
+def issue_create(repo: str, *, title: str, body: str = "", labels: tuple[str, ...] | list[str] = (),
+                 write: bool = False, client: Client | None = None) -> dict:
+    """Create a repository Issue after validating any requested labels already exist.
+
+    Dry-run by default. Never creates new repository labels implicitly; missing
+    labels return ``status="rejected_missing_labels"``. With ``write=True``,
+    POSTs to ``/repos/{repo}/issues`` and reads back the created Issue to verify.
+    """
+    if not isinstance(title, str) or not title.strip():
+        raise GhOpsError("title must not be empty")
+    if not isinstance(body, str):
+        raise GhOpsError("body must be text")
+    clean_labels = _validate_labels(labels)
+    client, repo = _client(client), _repo(repo)
+    missing: list[str] = []
+    for name in clean_labels:
+        try:
+            client.get(f"/repos/{repo}/labels/{urllib.parse.quote(name, safe='')}")
+        except GhOpsError as error:
+            if error.http_status != 404:
+                raise
+            missing.append(name)
+    out: dict[str, Any] = {
+        "ok": True,
+        "schema": "gh-ops-issue-create/1",
+        "repository": repo,
+        "title": title,
+        "labels": clean_labels,
+        "missing_labels": missing,
+        "dry_run": not write,
+        "created": False,
+        "number": None,
+        "url": None,
+    }
+    if missing:
+        return {**out, "ok": False, "status": "rejected_missing_labels",
+                "reason": f"labels do not exist in {repo}: {', '.join(missing)}"}
+    payload: dict[str, Any] = {"title": title, "body": body}
+    if clean_labels:
+        payload["labels"] = clean_labels
+    if not write:
+        return {**out, "status": "planned",
+                "would_post": {"path": f"/repos/{repo}/issues", "body_chars": len(body), "labels": clean_labels}}
+    try:
+        created = client.request("POST", f"/repos/{repo}/issues", payload, expect=(201,)).data
+    except GhOpsError as error:
+        return _mutation_error_receipt(
+            out, error,
+            f"Issue POST did not return success; inspect before retrying: {error}",
+            flag_key="created",
+        )
+    number = created.get("number") if isinstance(created, dict) else None
+    url = created.get("html_url") if isinstance(created, dict) else None
+    out.update(dry_run=False, created=True, number=number, url=url, mutation_status="succeeded")
+    if not isinstance(number, int) or number < 1:
+        return {**out, "ok": False, "verified": False, "status": "verification_failed",
+                "reason": "Issue POST succeeded without a valid issue number"}
+    try:
+        observed = client.get(f"/repos/{repo}/issues/{number}")
+    except GhOpsError as error:
+        return {**out, "ok": False, "verified": False, "status": "verification_uncertain",
+                "http_status": error.http_status,
+                "reason": f"Issue #{number} created but readback failed; inspect before retrying: {error}"}
+    verified = (
+        isinstance(observed, dict)
+        and "pull_request" not in observed
+        and observed.get("state") == "open"
+        and observed.get("title") == title
+    )
+    return {**out, "ok": verified, "verified": verified, "url": observed.get("html_url") or url,
+            "status": "verified" if verified else "verification_mismatch",
+            "reason": "" if verified else "created Issue readback did not match expected open state or title"}
+
+
+def issue_edit(repo: str, number: int, *, title: str | None = None, state: str | None = None,
+               state_reason: str | None = None, body: str | None = None, append_body: str | None = None,
+               write: bool = False, client: Client | None = None) -> dict:
+    """Edit Issue metadata (title, state, state_reason, body/append_body), rejecting PRs.
+
+    Shares ``_apply_append_body`` with :func:`pr_edit`, re-reads before append
+    PATCH to detect concurrent changes, and verifies updated fields on readback.
+    """
+    if isinstance(number, bool) or int(number) < 1:
+        raise GhOpsError("Issue number must be a positive integer")
+    fields = {key: value for key, value in (
+        ("title", title), ("state", state), ("state_reason", state_reason), ("body", body),
+    ) if value is not None}
+    if body is not None and append_body is not None:
+        raise GhOpsError("--body-file and --append-body-file are mutually exclusive")
+    if not fields and append_body is None:
+        raise GhOpsError("pass at least one of --title, --state, --state-reason, --body-file, --append-body-file")
+    if state is not None and state not in _PR_EDIT_STATES:
+        raise GhOpsError(f"--state must be one of {', '.join(_PR_EDIT_STATES)}")
+    if state_reason is not None and state_reason not in _ISSUE_STATE_REASONS:
+        raise GhOpsError(f"--state-reason must be one of {', '.join(_ISSUE_STATE_REASONS)}")
+    if title is not None and (not isinstance(title, str) or not title.strip()):
+        raise GhOpsError("title must not be empty")
+    if body is not None and not isinstance(body, str):
+        raise GhOpsError("body must be text")
+    if append_body is not None and (not isinstance(append_body, str) or not append_body.strip()):
+        raise GhOpsError("append body must not be empty")
+    client, repo, number = _client(client), _repo(repo), int(number)
+    path = f"/repos/{repo}/issues/{number}"
+    issue = client.get(path)
+    if "pull_request" in issue:
+        raise GhOpsError(f"{repo}#{number} is a pull request, not an issue; use pr-edit")
+
+    def snapshot(item: dict) -> dict:
+        return {"title": item.get("title"), "state": item.get("state"),
+                "state_reason": item.get("state_reason"), "body": item.get("body") or ""}
+
+    current = snapshot(issue)
+    if append_body is not None:
+        fields["body"] = _apply_append_body(current["body"], append_body)
+    report = {key: {"from": current[key], "to": value} for key, value in fields.items()}
+    out: dict[str, Any] = {
+        "ok": True,
+        "schema": "gh-ops-issue-edit/1",
+        "repository": repo,
+        "number": number,
+        "dry_run": not write,
+        "changed": False,
+        "fields": report,
+        "mutation_status": "not_attempted",
+        "verification_status": "not_attempted",
+    }
+    if all(current[key] == value for key, value in fields.items()):
+        return {**out, "status": "already_satisfied", "reason": "unchanged"}
+    if not write:
+        return {**out, "status": "planned"}
+    if append_body is not None:
+        fresh = client.get(path)
+        if snapshot(fresh) != current:
+            return {**out, "ok": False, "status": "stale",
+                    "reason": "Issue changed before append; inspect and re-plan"}
+    try:
+        client.request("PATCH", path, fields)
+    except GhOpsError as error:
+        receipt = _mutation_error_receipt(out, error, "Issue PATCH failed; inspect before retrying", flag_key="changed")
+        receipt.pop("verified", None)
+        return receipt
+    out.update(changed=True, mutation_status="succeeded")
+    try:
+        updated = snapshot(client.get(path))
+    except GhOpsError:
+        return {**out, "ok": False, "verified": False, "status": "verification_failed",
+                "verification_status": "failed",
+                "reason": "Issue updated but readback failed; inspect before retrying"}
+    verified = all(updated[key] == value for key, value in fields.items())
+    return {**out, "ok": verified, "verified": verified,
+            "status": "verified" if verified else "verification_mismatch",
+            "verification_status": "verified" if verified else "mismatch",
+            "reason": "" if verified else "Issue fields do not match the requested values after the update"}
 
 
 
@@ -3338,6 +3721,33 @@ def _render(command: str, result: dict) -> str:
         return (f"{'OK' if result['ok'] else 'NG'} run-rerun ({result['status']}) "
                 f"{result['repository']} run={result['run_id']} {scope} "
                 f"head={str(result.get('head_sha') or '')[:12]}{reason}")
+    if command == "run-cancel":
+        reason = f": {result['reason']}" if result.get("reason") else ""
+        return (f"{'OK' if result['ok'] else 'NG'} run-cancel ({result['status']}) "
+                f"{result['repository']} run={result['run_id']} "
+                f"head={str(result.get('head_sha') or '')[:12]}{reason}")
+    if command == "pr-review":
+        url = f" {result['url']}" if result.get("url") else ""
+        reason = f": {result['reason']}" if result.get("reason") else ""
+        return (f"{'OK' if result['ok'] else 'NG'} pr-review ({result['status']}) "
+                f"{result['repository']}#{result['number']} {result['event']} "
+                f"head={str(result.get('head_sha') or '')[:12]}{url}{reason}")
+    if command == "pr-ready":
+        target = "draft" if result.get("to_draft") else "ready"
+        reason = f": {result['reason']}" if result.get("reason") else ""
+        return (f"{'OK' if result['ok'] else 'NG'} pr-ready ({result['status']}) "
+                f"{result['repository']}#{result['number']} -> {target} "
+                f"head={str(result.get('head_sha') or '')[:12]}{reason}")
+    if command == "issue-create":
+        number = f" #{result['number']}" if result.get("number") else ""
+        url = f" {result['url']}" if result.get("url") else ""
+        reason = f": {result['reason']}" if result.get("reason") else ""
+        return (f"{'OK' if result['ok'] else 'NG'} issue-create ({result['status']}) "
+                f"{result['repository']}{number}{url}{reason}")
+    if command == "issue-edit":
+        reason = f": {result['reason']}" if result.get("reason") else ""
+        return (f"{'OK' if result['ok'] else 'NG'} issue-edit ({result['status']}) "
+                f"{result['repository']}#{result['number']}{reason}")
     reason = result.get("reason") or "; ".join(result.get("failures", []))
     status = "OK" if result["ok"] else "NG"
     mode = "dry run" if result.get("dry_run") else "applied"
@@ -3488,6 +3898,12 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
                    help="refuse unless the run's head SHA matches this SHA")
     p.add_argument("--write", action="store_true")
 
+    p = _command_parser(sub, "run-cancel", help="cancel a queued or in-progress workflow run (planned unless --write)")
+    p.add_argument("repo"); p.add_argument("run_id", type=int)
+    p.add_argument("--expect-head-sha", metavar="SHA",
+                   help="refuse unless the run's head SHA matches this SHA")
+    p.add_argument("--write", action="store_true")
+
     p = _command_parser(sub, "issue-comment", help="create a top-level PR conversation comment (needs --write)")
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--file", required=True, help="UTF-8 file containing the comment body (one trailing newline ignored)")
@@ -3582,6 +3998,38 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p.add_argument("--body-file", help="optional UTF-8 file containing the PR body")
     p.add_argument("--draft", action="store_true", help="open as draft PR")
     p.add_argument("--expect-head-sha", metavar="SHA", help="refuse unless the head branch tip matches this SHA")
+    p.add_argument("--write", action="store_true")
+
+    p = _command_parser(sub, "pr-review", help="submit a PR review pinned to head_sha (planned unless --write)")
+    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("--event", required=True, choices=("APPROVE", "REQUEST_CHANGES", "COMMENT", "approve", "request-changes", "comment"),
+                   help="review action")
+    p.add_argument("--body-file", help="UTF-8 file with review comment body (required for REQUEST_CHANGES and COMMENT)")
+    p.add_argument("--expect-head-sha", metavar="SHA", help="refuse unless the PR head SHA matches this SHA")
+    p.add_argument("--write", action="store_true")
+
+    p = _command_parser(sub, "pr-ready", help="mark a draft PR ready for review, or convert to draft with --draft (planned unless --write)")
+    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("--draft", action="store_true", help="convert an open PR to draft instead of marking ready")
+    p.add_argument("--expect-head-sha", metavar="SHA", help="refuse unless the PR head SHA matches this SHA")
+    p.add_argument("--write", action="store_true")
+
+    p = _command_parser(sub, "issue-create", help="create a repository Issue after verifying labels exist (planned unless --write)")
+    p.add_argument("repo")
+    p.add_argument("--title", required=True, help="Issue title")
+    p.add_argument("--body-file", help="optional UTF-8 file containing the Issue body")
+    p.add_argument("--label", action="append", default=[], dest="labels", metavar="NAME",
+                   help="existing repository label to attach (repeatable)")
+    p.add_argument("--write", action="store_true")
+
+    p = _command_parser(sub, "issue-edit", help="edit Issue title/state/state_reason/body (planned unless --write)")
+    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("--title")
+    p.add_argument("--state", choices=_PR_EDIT_STATES)
+    p.add_argument("--state-reason", choices=_ISSUE_STATE_REASONS)
+    ibody_group = p.add_mutually_exclusive_group()
+    ibody_group.add_argument("--body-file", help="full replacement body, UTF-8")
+    ibody_group.add_argument("--append-body-file", help="append UTF-8 text once, preserving existing body")
     p.add_argument("--write", action="store_true")
 
     p = _command_parser(sub, "pr-retarget", help="change a stacked PR's base (planned unless --write)")
@@ -3702,6 +4150,9 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
     if command == "run-rerun":
         return run_rerun(args.repo, args.run_id, failed_only=not args.rerun_all,
                          expect_head_sha=args.expect_head_sha, write=args.write, client=client)
+    if command == "run-cancel":
+        return run_cancel(args.repo, args.run_id, expect_head_sha=args.expect_head_sha,
+                          write=args.write, client=client)
     if command == "issue-comment":
         return issue_comment_create(args.repo, args.number, body=_read_text(args.file),
                                     write=args.write, client=client)
@@ -3746,6 +4197,23 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
         return pr_create(args.repo, head=args.head, base=args.base, title=args.title, body=body,
                          draft=args.draft, expect_head_sha=args.expect_head_sha,
                          write=args.write, client=client)
+    if command == "pr-review":
+        body = _read_body_exact(args.body_file) if args.body_file else ""
+        return pr_review(args.repo, args.number, event=args.event, body=body,
+                         expect_head_sha=args.expect_head_sha, write=args.write, client=client)
+    if command == "pr-ready":
+        return pr_ready(args.repo, args.number, draft=args.draft,
+                        expect_head_sha=args.expect_head_sha, write=args.write, client=client)
+    if command == "issue-create":
+        body = _read_body_exact(args.body_file) if args.body_file else ""
+        return issue_create(args.repo, title=args.title, body=body, labels=tuple(args.labels),
+                            write=args.write, client=client)
+    if command == "issue-edit":
+        return issue_edit(args.repo, args.number, title=args.title, state=args.state,
+                          state_reason=args.state_reason,
+                          body=_read_body_exact(args.body_file) if args.body_file else None,
+                          append_body=_read_body_exact(args.append_body_file) if args.append_body_file else None,
+                          write=args.write, client=client)
     if command == "pr-retarget":
         return pr_retarget(args.repo, args.number, args.base, write=args.write,
                            allow_unmerged_commits=args.allow_unmerged_commits,
