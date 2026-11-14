@@ -324,3 +324,12 @@ REST件数は親側の `collect_repository_counts()` でリポジトリ情報・
 既存の `index.html#ops` に統合する。olnmのカードIDは維持し、計算・uv tool install / uvx・更新・削除を同じカードで表示する。ErrorRoadRunnerへの接続案は未検証として残す。TalkCompressは代表CLIと期待値、過去の検証記録と今回の確認範囲を分けて表示する。カードのコピー対象は最短例だけで、削除等の任意操作は詳細内へ分ける。
 
 親READMEは短い入口、子READMEと既存olnm Pagesは詳細の正とする。標準ライブラリによる基本実行と開発・ブラウザ・tokenizer依存を区別する。PSWBの採用済みCSS・スクロール・状態・保存UIをそのまま再利用し、vendor/lock・Node 26・setup-uv・公開構成は変更しない。
+
+## Aoi研究監査
+
+`index.html#research` は既存ワークスペースの追加タブ。`site/ui/research-audit.json` の保存済み観測を、一般監査のビルド時刻と分けて表示する。登録状態・理由・構造化根拠、E/P契約、JSONL/表示/cache整合、成立率/判例不変、Q5原文/span・undetermined・理由コード・三経路・cache迂回をケース単位で確認する。
+
+- PR #42のDraft・未マージ・main未導入は2026-10-16時点の履歴。後継#46のマージと現mainの祖先包含は別イベント。
+- CI成功はケース専用実行や研究の独立確認を意味しない。保存済み監査mainとビルドmainが異なる場合は再検証を表示する。
+- 5状態・検索・表・横スクロール・JSON書出しは既存UIを再利用。PSWB追加API・依存追加は不要。研究データは一般PR一覧の件数へ加算しない。
+- 更新時は一次資料と対象SHAを固定しJSONのケース/共通証跡を更新する。Pagesの一般監査ビルドはケース実験を自動再実行しない。

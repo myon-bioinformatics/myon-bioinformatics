@@ -588,6 +588,41 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "tools/uv_tool_build.py",
           "destination": "vendor/uv_tool_build.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "tools/stdlib_min/numpy_min.py",
+          "destination": "shrink/numpy_min.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "tools/stdlib_min/numpy_linalg_min.py",
+          "destination": "shrink/numpy_linalg_min.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "tools/stdlib_min/polars_min.py",
+          "destination": "shrink/polars_min.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "tools/stdlib_min/biopython_min.py",
+          "destination": "pkgmin/biopython_min.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "tools/stdlib_min/requests_min.py",
+          "destination": "pkgmin/requests_min.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "tools/stdlib_min/tqdm_min.py",
+          "destination": "pkgmin/tqdm_min.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "tools/stdlib_min/httpx_min.py",
+          "destination": "mindeps/httpx_min.py"
         }
       ]
     },

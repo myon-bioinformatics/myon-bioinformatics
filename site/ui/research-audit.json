@@ -1,0 +1,1811 @@
+{
+  "schema": "aoi-research-audit/1",
+  "observed_at": "2026-11-14T07:57:03.841Z",
+  "head_sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+  "main_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+  "sources": {
+    "issue30": {
+      "title": "Issue #30 / 開発台帳",
+      "url": "https://github.com/myon-bioinformatics/Aoi/issues/30",
+      "sha": null,
+      "result": "研究登録監査は未完了。未解釈入力の10/16実装・検証記録を保持。当時のmain未導入記述は現在の導入状態と別管理。"
+    },
+    "pr42": {
+      "title": "PR #42 / 実装・検証head",
+      "url": "https://github.com/myon-bioinformatics/Aoi/pull/42",
+      "sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+      "result": "現在closed・Draft・未マージ。後継#46へ履歴統合。"
+    },
+    "validation": {
+      "title": "10/16 修正・検証記録",
+      "url": "https://github.com/myon-bioinformatics/Aoi/pull/42#issuecomment-6215611968",
+      "sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+      "result": "本文報告：947 passed / 28 skipped / 23 subtests。新規41、192問比較、5,000入力のspan検証。今回再実行なし。"
+    },
+    "ci42": {
+      "title": "CI 38901455408",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/38901455408",
+      "sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+      "result": "同一head / success（今回API再取得）。Python 3.11〜3.15は検証記録に記載。"
+    },
+    "links42": {
+      "title": "Links 38901454777",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/38901454777",
+      "sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+      "result": "同一head / success（今回API再取得）。"
+    },
+    "pr46": {
+      "title": "後継 PR #46",
+      "url": "https://github.com/myon-bioinformatics/Aoi/pull/46",
+      "sha": "c37c7bd3b5eac16ef24d7e7b95d936aed755eee5",
+      "result": "2026-10-17T02:39:49Z merged。merge SHA 0ea4814c84cffc6162c7f997feccf54bc15baab4"
+    },
+    "ancestry": {
+      "title": "#42 head → 現main / compare",
+      "url": "https://github.com/myon-bioinformatics/Aoi/compare/b0d668b20dbd8c29b80596a13a5fb2d90e97015b...9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "result": "ahead / behind_by=0 / merge-base=#42 head。現在mainに履歴包含。"
+    },
+    "mainCode": {
+      "title": "現main ask.py",
+      "url": "https://github.com/myon-bioinformatics/Aoi/blob/9d88aa6c72678bc8d999c922af38d8b238cd7f44/queryu/ask/ask.py",
+      "sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "result": "raw_text / unread_spans / undetermined / 理由コードの実装あり。registration_status()は既存日本語ラベル関数。構造化登録監査の完了証拠にはしない。"
+    },
+    "mainChecks": {
+      "title": "現main checks",
+      "url": "https://github.com/myon-bioinformatics/Aoi/commit/9d88aa6c72678bc8d999c922af38d8b238cd7f44/checks",
+      "sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "result": "127個別checks取得。pytest Python 3.11〜3.15 success。intake/labelやskippedは別check。Q5専用実行結果・実ログの再採取は未実施。"
+    }
+  },
+  "cases": [
+    {
+      "id": "E10",
+      "title": "E10 登録メタデータ監査",
+      "state": "調査中",
+      "registration_status": "unknown",
+      "reason": "登録根拠・計画commitの独立照合が未完了。posthoc:falseや項目欠落から事前登録を推定しない。",
+      "registration_evidence": [],
+      "independently_confirmed": null,
+      "contract": "E/P共通: posthoc | preregistered | unknown。reasonと構造化evidence[{note_id, plan_path, commit, ref, url}]を分離。現在値unknownは監査上の暫定値であり実JSONLを変更しない。",
+      "consistency": "未検証：JSONL → 直接表示 → 実体のあるknown生成/再利用 → 回答cache。登録ファイル・表示moduleのhash変更もcache keyへ含める。",
+      "invariance": "未検証：n / hold / 成立率 / 判例集合を変更前後で比較。メタデータ変更を正式判定の再解釈にしない。",
+      "source_ids": [
+        "issue30",
+        "mainCode"
+      ],
+      "gaps": [
+        "計画・研究ノートの一次根拠",
+        "構造化evidence未取得",
+        "結果ref・JSONL/表示/cacheの比較",
+        "成立率・判例の不変証跡"
+      ],
+      "next": "計画commit・研究ノート・結果refを固定して照合",
+      "steps": [
+        "E10の計画・研究ノート（E25はR72/R73）を固定commitで取得。結果閲覧前の記録か確認。",
+        "registration_status / registration_reason / registration_evidenceを別項目として照合。独立確認は別軸。",
+        "同じ結果SHAでJSONL・表示・known実体・回答cacheを比較。空のknownを成功扱いしない。",
+        "登録メタデータだけ変えた場合のcache失効とn/hold/判例集合の不変を確認。"
+      ],
+      "history": [
+        {
+          "at": "2026-10-14",
+          "state": "調査中",
+          "summary": "登録根拠・計画commitの独立照合が未完了。posthoc:falseや項目欠落から事前登録を推定しない。",
+          "scope": "Issue #30に移管。closeは修正完了を意味しない。",
+          "head_sha": null,
+          "main_sha": "7084f4bd8463dc8b4732f020ff96c431c7172bf8"
+        },
+        {
+          "at": "2026-11-14T07:57:03.841Z",
+          "state": "調査中",
+          "summary": "構造化登録監査の完了証拠は未取得。unknownで保持。",
+          "scope": "今回の監査観測。数値・原本・結果refの再評価なし。",
+          "head_sha": null,
+          "main_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44"
+        }
+      ]
+    },
+    {
+      "id": "E12",
+      "title": "E12 登録メタデータ監査",
+      "state": "調査中",
+      "registration_status": "unknown",
+      "reason": "登録根拠・計画commitの独立照合が未完了。posthoc:falseや項目欠落から事前登録を推定しない。",
+      "registration_evidence": [],
+      "independently_confirmed": null,
+      "contract": "E/P共通: posthoc | preregistered | unknown。reasonと構造化evidence[{note_id, plan_path, commit, ref, url}]を分離。現在値unknownは監査上の暫定値であり実JSONLを変更しない。",
+      "consistency": "未検証：JSONL → 直接表示 → 実体のあるknown生成/再利用 → 回答cache。登録ファイル・表示moduleのhash変更もcache keyへ含める。",
+      "invariance": "未検証：n / hold / 成立率 / 判例集合を変更前後で比較。メタデータ変更を正式判定の再解釈にしない。",
+      "source_ids": [
+        "issue30",
+        "mainCode"
+      ],
+      "gaps": [
+        "計画・研究ノートの一次根拠",
+        "構造化evidence未取得",
+        "結果ref・JSONL/表示/cacheの比較",
+        "成立率・判例の不変証跡"
+      ],
+      "next": "計画commit・研究ノート・結果refを固定して照合",
+      "steps": [
+        "E12の計画・研究ノート（E25はR72/R73）を固定commitで取得。結果閲覧前の記録か確認。",
+        "registration_status / registration_reason / registration_evidenceを別項目として照合。独立確認は別軸。",
+        "同じ結果SHAでJSONL・表示・known実体・回答cacheを比較。空のknownを成功扱いしない。",
+        "登録メタデータだけ変えた場合のcache失効とn/hold/判例集合の不変を確認。"
+      ],
+      "history": [
+        {
+          "at": "2026-10-14",
+          "state": "調査中",
+          "summary": "登録根拠・計画commitの独立照合が未完了。posthoc:falseや項目欠落から事前登録を推定しない。",
+          "scope": "Issue #30に移管。closeは修正完了を意味しない。",
+          "head_sha": null,
+          "main_sha": "7084f4bd8463dc8b4732f020ff96c431c7172bf8"
+        },
+        {
+          "at": "2026-11-14T07:57:03.841Z",
+          "state": "調査中",
+          "summary": "構造化登録監査の完了証拠は未取得。unknownで保持。",
+          "scope": "今回の監査観測。数値・原本・結果refの再評価なし。",
+          "head_sha": null,
+          "main_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44"
+        }
+      ]
+    },
+    {
+      "id": "E14",
+      "title": "E14 登録メタデータ監査",
+      "state": "調査中",
+      "registration_status": "unknown",
+      "reason": "登録根拠・計画commitの独立照合が未完了。posthoc:falseや項目欠落から事前登録を推定しない。",
+      "registration_evidence": [],
+      "independently_confirmed": null,
+      "contract": "E/P共通: posthoc | preregistered | unknown。reasonと構造化evidence[{note_id, plan_path, commit, ref, url}]を分離。現在値unknownは監査上の暫定値であり実JSONLを変更しない。",
+      "consistency": "未検証：JSONL → 直接表示 → 実体のあるknown生成/再利用 → 回答cache。登録ファイル・表示moduleのhash変更もcache keyへ含める。",
+      "invariance": "未検証：n / hold / 成立率 / 判例集合を変更前後で比較。メタデータ変更を正式判定の再解釈にしない。",
+      "source_ids": [
+        "issue30",
+        "mainCode"
+      ],
+      "gaps": [
+        "計画・研究ノートの一次根拠",
+        "構造化evidence未取得",
+        "結果ref・JSONL/表示/cacheの比較",
+        "成立率・判例の不変証跡"
+      ],
+      "next": "計画commit・研究ノート・結果refを固定して照合",
+      "steps": [
+        "E14の計画・研究ノート（E25はR72/R73）を固定commitで取得。結果閲覧前の記録か確認。",
+        "registration_status / registration_reason / registration_evidenceを別項目として照合。独立確認は別軸。",
+        "同じ結果SHAでJSONL・表示・known実体・回答cacheを比較。空のknownを成功扱いしない。",
+        "登録メタデータだけ変えた場合のcache失効とn/hold/判例集合の不変を確認。"
+      ],
+      "history": [
+        {
+          "at": "2026-10-14",
+          "state": "調査中",
+          "summary": "登録根拠・計画commitの独立照合が未完了。posthoc:falseや項目欠落から事前登録を推定しない。",
+          "scope": "Issue #30に移管。closeは修正完了を意味しない。",
+          "head_sha": null,
+          "main_sha": "7084f4bd8463dc8b4732f020ff96c431c7172bf8"
+        },
+        {
+          "at": "2026-11-14T07:57:03.841Z",
+          "state": "調査中",
+          "summary": "構造化登録監査の完了証拠は未取得。unknownで保持。",
+          "scope": "今回の監査観測。数値・原本・結果refの再評価なし。",
+          "head_sha": null,
+          "main_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44"
+        }
+      ]
+    },
+    {
+      "id": "E20",
+      "title": "E20 登録メタデータ監査",
+      "state": "調査中",
+      "registration_status": "unknown",
+      "reason": "登録根拠・計画commitの独立照合が未完了。posthoc:falseや項目欠落から事前登録を推定しない。",
+      "registration_evidence": [],
+      "independently_confirmed": null,
+      "contract": "E/P共通: posthoc | preregistered | unknown。reasonと構造化evidence[{note_id, plan_path, commit, ref, url}]を分離。現在値unknownは監査上の暫定値であり実JSONLを変更しない。",
+      "consistency": "未検証：JSONL → 直接表示 → 実体のあるknown生成/再利用 → 回答cache。登録ファイル・表示moduleのhash変更もcache keyへ含める。",
+      "invariance": "未検証：n / hold / 成立率 / 判例集合を変更前後で比較。メタデータ変更を正式判定の再解釈にしない。",
+      "source_ids": [
+        "issue30",
+        "mainCode"
+      ],
+      "gaps": [
+        "計画・研究ノートの一次根拠",
+        "構造化evidence未取得",
+        "結果ref・JSONL/表示/cacheの比較",
+        "成立率・判例の不変証跡"
+      ],
+      "next": "計画commit・研究ノート・結果refを固定して照合",
+      "steps": [
+        "E20の計画・研究ノート（E25はR72/R73）を固定commitで取得。結果閲覧前の記録か確認。",
+        "registration_status / registration_reason / registration_evidenceを別項目として照合。独立確認は別軸。",
+        "同じ結果SHAでJSONL・表示・known実体・回答cacheを比較。空のknownを成功扱いしない。",
+        "登録メタデータだけ変えた場合のcache失効とn/hold/判例集合の不変を確認。"
+      ],
+      "history": [
+        {
+          "at": "2026-10-14",
+          "state": "調査中",
+          "summary": "登録根拠・計画commitの独立照合が未完了。posthoc:falseや項目欠落から事前登録を推定しない。",
+          "scope": "Issue #30に移管。closeは修正完了を意味しない。",
+          "head_sha": null,
+          "main_sha": "7084f4bd8463dc8b4732f020ff96c431c7172bf8"
+        },
+        {
+          "at": "2026-11-14T07:57:03.841Z",
+          "state": "調査中",
+          "summary": "構造化登録監査の完了証拠は未取得。unknownで保持。",
+          "scope": "今回の監査観測。数値・原本・結果refの再評価なし。",
+          "head_sha": null,
+          "main_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44"
+        }
+      ]
+    },
+    {
+      "id": "E25",
+      "title": "E25 登録メタデータ監査",
+      "state": "調査中",
+      "registration_status": "unknown",
+      "reason": "R72/R73と結果JSONL posthoc:falseの不整合が旧台帳で報告。今回、計画原本・結果refを再照合していない。",
+      "registration_evidence": [],
+      "independently_confirmed": null,
+      "contract": "E/P共通: posthoc | preregistered | unknown。reasonと構造化evidence[{note_id, plan_path, commit, ref, url}]を分離。現在値unknownは監査上の暫定値であり実JSONLを変更しない。",
+      "consistency": "未検証：JSONL → 直接表示 → 実体のあるknown生成/再利用 → 回答cache。登録ファイル・表示moduleのhash変更もcache keyへ含める。",
+      "invariance": "未検証：n / hold / 成立率 / 判例集合を変更前後で比較。メタデータ変更を正式判定の再解釈にしない。",
+      "source_ids": [
+        "issue30",
+        "mainCode"
+      ],
+      "gaps": [
+        "計画・研究ノートの一次根拠",
+        "構造化evidence未取得",
+        "結果ref・JSONL/表示/cacheの比較",
+        "成立率・判例の不変証跡"
+      ],
+      "next": "計画commit・研究ノート・結果refを固定して照合",
+      "steps": [
+        "E25の計画・研究ノート（E25はR72/R73）を固定commitで取得。結果閲覧前の記録か確認。",
+        "registration_status / registration_reason / registration_evidenceを別項目として照合。独立確認は別軸。",
+        "同じ結果SHAでJSONL・表示・known実体・回答cacheを比較。空のknownを成功扱いしない。",
+        "登録メタデータだけ変えた場合のcache失効とn/hold/判例集合の不変を確認。"
+      ],
+      "history": [
+        {
+          "at": "2026-10-14",
+          "state": "調査中",
+          "summary": "R72/R73と結果JSONL posthoc:falseの不整合が旧台帳で報告。今回、計画原本・結果refを再照合していない。",
+          "scope": "Issue #30に移管。closeは修正完了を意味しない。",
+          "head_sha": null,
+          "main_sha": "7084f4bd8463dc8b4732f020ff96c431c7172bf8"
+        },
+        {
+          "at": "2026-11-14T07:57:03.841Z",
+          "state": "調査中",
+          "summary": "構造化登録監査の完了証拠は未取得。unknownで保持。",
+          "scope": "今回の監査観測。数値・原本・結果refの再評価なし。",
+          "head_sha": null,
+          "main_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44"
+        }
+      ]
+    },
+    {
+      "id": "P117",
+      "title": "P117 登録メタデータ監査",
+      "state": "調査中",
+      "registration_status": "unknown",
+      "reason": "登録根拠・計画commitの独立照合が未完了。posthoc:falseや項目欠落から事前登録を推定しない。",
+      "registration_evidence": [],
+      "independently_confirmed": null,
+      "contract": "E/P共通: posthoc | preregistered | unknown。reasonと構造化evidence[{note_id, plan_path, commit, ref, url}]を分離。現在値unknownは監査上の暫定値であり実JSONLを変更しない。",
+      "consistency": "未検証：JSONL → 直接表示 → 実体のあるknown生成/再利用 → 回答cache。登録ファイル・表示moduleのhash変更もcache keyへ含める。",
+      "invariance": "未検証：n / hold / 成立率 / 判例集合を変更前後で比較。メタデータ変更を正式判定の再解釈にしない。",
+      "source_ids": [
+        "issue30",
+        "mainCode"
+      ],
+      "gaps": [
+        "計画・研究ノートの一次根拠",
+        "構造化evidence未取得",
+        "結果ref・JSONL/表示/cacheの比較",
+        "成立率・判例の不変証跡"
+      ],
+      "next": "計画commit・研究ノート・結果refを固定して照合",
+      "steps": [
+        "P117の計画・研究ノート（E25はR72/R73）を固定commitで取得。結果閲覧前の記録か確認。",
+        "registration_status / registration_reason / registration_evidenceを別項目として照合。独立確認は別軸。",
+        "同じ結果SHAでJSONL・表示・known実体・回答cacheを比較。空のknownを成功扱いしない。",
+        "登録メタデータだけ変えた場合のcache失効とn/hold/判例集合の不変を確認。"
+      ],
+      "history": [
+        {
+          "at": "2026-10-14",
+          "state": "調査中",
+          "summary": "登録根拠・計画commitの独立照合が未完了。posthoc:falseや項目欠落から事前登録を推定しない。",
+          "scope": "Issue #30に移管。closeは修正完了を意味しない。",
+          "head_sha": null,
+          "main_sha": "7084f4bd8463dc8b4732f020ff96c431c7172bf8"
+        },
+        {
+          "at": "2026-11-14T07:57:03.841Z",
+          "state": "調査中",
+          "summary": "構造化登録監査の完了証拠は未取得。unknownで保持。",
+          "scope": "今回の監査観測。数値・原本・結果refの再評価なし。",
+          "head_sha": null,
+          "main_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44"
+        }
+      ]
+    },
+    {
+      "id": "Q5",
+      "title": "未解釈入力・原文/span保持",
+      "state": "調査中",
+      "parse_status": "undetermined",
+      "reason": "実装・旧head検証は完了。現main動作とCLI/ログ/受領記録の再照合が残る。",
+      "input_contract": {
+        "raw_text": "P121 は 2026 年で確かめられた？",
+        "unread_spans": [
+          {
+            "start": 7,
+            "end": 20,
+            "raw_text": "2026 年で確かめられた"
+          }
+        ],
+        "span単位": "Python Unicode code point / 0始まり / endを含まない。/ask 接頭辞を除いた入力。UTF-16 offsetとして扱わない。",
+        "parse_status": "undetermined",
+        "理由コード": [
+          "unrecognized_ask",
+          "unsupported_text"
+        ],
+        "answer": "判定不能",
+        "rows": [],
+        "target": "P121（P121/2026暫定結果へ対応付けない）",
+        "CLI・ログ・受領記録": "10/16同一head検証記録で一致。現mainの実CLI JSON / ログJSONL / 保存済み受領記録は今回再採取なし。",
+        "cache迂回": "10/16検証：known生成/参照と回答cache read/writeを迂回。同一fallback Queryを事前保存しても汚染しない。現main専用再実行待ち。",
+        "候補提示": "候補は回答ではない。閾値0でもanswer / Query.targetへ昇格しない。",
+        "成立率・判例不変": "旧head記録で命題定義・正式評価器・保存判定・整数得点変更なし。現在mainとの差分同値検証は未実施。"
+      },
+      "source_ids": [
+        "issue30",
+        "pr42",
+        "validation",
+        "ci42",
+        "links42",
+        "pr46",
+        "ancestry",
+        "mainCode",
+        "mainChecks"
+      ],
+      "gaps": [
+        "現main Q5専用実行",
+        "実CLI・ログ・受領記録の比較",
+        "現main cache迂回の証跡"
+      ],
+      "next": "現mainを固定してQ5・三経路・cache迂回を再検証",
+      "steps": [
+        "現main 9d88aa6c72678bc8d999c922af38d8b238cd7f44を固定して実行環境・入力・結果ref/hashを記録。",
+        "Q5のcode point slice [7,20)と原文・undetermined・rows=[]を確認。",
+        "CLI JSON・JSONLログ・受領記録のraw_text/unread_spans/parse_diagnosticsを照合。",
+        "同一fallback Queryのknown/cacheを用意しても生成/参照/read/writeを迂回することを確認。",
+        "Q1〜Q4・既存3件とUnicode境界を比較。候補を答えに昇格しない。"
+      ],
+      "history": [
+        {
+          "at": "2026-10-16T12:35:58Z",
+          "state": "完了",
+          "summary": "PR #42で実装・同一head検証済み。Draft・未マージ・main未導入。",
+          "scope": "実装・旧head検証の完了。main導入や研究登録監査の完了を意味しない。",
+          "head_sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+          "main_sha": "22838d87ddf4b9b8b6298c8ef070b722fa4edd86"
+        },
+        {
+          "at": "2026-10-17T02:39:49Z",
+          "state": "完了",
+          "summary": "後継#46がマージ。#42自体はclosed・未マージ。",
+          "scope": "導入経路の記録。今回#42 headが現mainに包含されることをAPIで確認。",
+          "head_sha": "c37c7bd3b5eac16ef24d7e7b95d936aed755eee5",
+          "main_sha": "0ea4814c84cffc6162c7f997feccf54bc15baab4"
+        },
+        {
+          "at": "2026-11-14T07:57:03.841Z",
+          "state": "調査中",
+          "summary": "現mainに原文/span保持コードあり。現mainでのQ5実行・三経路照合は再検証待ち。",
+          "scope": "現mainソース確認・CI取得と、ケース専用の動作実測を区別。",
+          "head_sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+          "main_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44"
+        }
+      ]
+    },
+    {
+      "id": "Q1",
+      "title": "Q1 parse回帰",
+      "state": "調査中",
+      "parse_status": "原入力・Queryの現main照合待ち",
+      "reason": "10/16検証記録では既存parse不変。現mainのケース別再実行は今回未実施。",
+      "input_contract": {
+        "原入力": "今回未取得。受付Issue #9の固定ケースを取得して比較する。",
+        "旧head検証": "検証記録：Q1〜Q4/既存3件、192問のQuery・受付可否が一致。",
+        "現main": "関連pytestは成功。個別ケースのログ・受領記録による再確認は未実施。",
+        "cache・表示": "Query・回答経路・機械値・理由コード・説明を分けて比較。"
+      },
+      "source_ids": [
+        "validation",
+        "ci42",
+        "mainChecks"
+      ],
+      "gaps": [
+        "原入力と期待Queryの固定記録",
+        "現mainケース別実行結果"
+      ],
+      "next": "Issue #9の原入力・期待Queryを固定して現mainと照合",
+      "steps": [
+        "受付Issue #9から原入力・期待Query・受領記録を取得し対象SHAへ関連付ける。",
+        "現mainのCLI・ログ・受領記録でQueryと受付可否・回答経路を照合する。"
+      ],
+      "history": [
+        {
+          "at": "2026-10-16T12:35:58Z",
+          "state": "完了",
+          "summary": "PR #42で実装・同一head検証済み。Draft・未マージ・main未導入。",
+          "scope": "実装・旧head検証の完了。main導入や研究登録監査の完了を意味しない。",
+          "head_sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+          "main_sha": "22838d87ddf4b9b8b6298c8ef070b722fa4edd86"
+        },
+        {
+          "at": "2026-11-14T07:57:03.841Z",
+          "state": "調査中",
+          "summary": "旧head回帰記録は維持。現mainケース別証跡は不足。",
+          "scope": "一般CI成功を個別受入完了としない。",
+          "head_sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+          "main_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44"
+        }
+      ]
+    },
+    {
+      "id": "Q2",
+      "title": "Q2 parse回帰",
+      "state": "調査中",
+      "parse_status": "原入力・Queryの現main照合待ち",
+      "reason": "10/16検証記録では既存parse不変。現mainのケース別再実行は今回未実施。",
+      "input_contract": {
+        "原入力": "今回未取得。受付Issue #9の固定ケースを取得して比較する。",
+        "旧head検証": "検証記録：Q1〜Q4/既存3件、192問のQuery・受付可否が一致。",
+        "現main": "関連pytestは成功。個別ケースのログ・受領記録による再確認は未実施。",
+        "cache・表示": "Query・回答経路・機械値・理由コード・説明を分けて比較。"
+      },
+      "source_ids": [
+        "validation",
+        "ci42",
+        "mainChecks"
+      ],
+      "gaps": [
+        "原入力と期待Queryの固定記録",
+        "現mainケース別実行結果"
+      ],
+      "next": "Issue #9の原入力・期待Queryを固定して現mainと照合",
+      "steps": [
+        "受付Issue #9から原入力・期待Query・受領記録を取得し対象SHAへ関連付ける。",
+        "現mainのCLI・ログ・受領記録でQueryと受付可否・回答経路を照合する。"
+      ],
+      "history": [
+        {
+          "at": "2026-10-16T12:35:58Z",
+          "state": "完了",
+          "summary": "PR #42で実装・同一head検証済み。Draft・未マージ・main未導入。",
+          "scope": "実装・旧head検証の完了。main導入や研究登録監査の完了を意味しない。",
+          "head_sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+          "main_sha": "22838d87ddf4b9b8b6298c8ef070b722fa4edd86"
+        },
+        {
+          "at": "2026-11-14T07:57:03.841Z",
+          "state": "調査中",
+          "summary": "旧head回帰記録は維持。現mainケース別証跡は不足。",
+          "scope": "一般CI成功を個別受入完了としない。",
+          "head_sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+          "main_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44"
+        }
+      ]
+    },
+    {
+      "id": "Q3",
+      "title": "Q3 parse回帰",
+      "state": "調査中",
+      "parse_status": "原入力・Queryの現main照合待ち",
+      "reason": "10/16検証記録では既存parse不変。現mainのケース別再実行は今回未実施。",
+      "input_contract": {
+        "原入力": "今回未取得。受付Issue #9の固定ケースを取得して比較する。",
+        "旧head検証": "検証記録：Q1〜Q4/既存3件、192問のQuery・受付可否が一致。",
+        "現main": "関連pytestは成功。個別ケースのログ・受領記録による再確認は未実施。",
+        "cache・表示": "Query・回答経路・機械値・理由コード・説明を分けて比較。"
+      },
+      "source_ids": [
+        "validation",
+        "ci42",
+        "mainChecks"
+      ],
+      "gaps": [
+        "原入力と期待Queryの固定記録",
+        "現mainケース別実行結果"
+      ],
+      "next": "Issue #9の原入力・期待Queryを固定して現mainと照合",
+      "steps": [
+        "受付Issue #9から原入力・期待Query・受領記録を取得し対象SHAへ関連付ける。",
+        "現mainのCLI・ログ・受領記録でQueryと受付可否・回答経路を照合する。"
+      ],
+      "history": [
+        {
+          "at": "2026-10-16T12:35:58Z",
+          "state": "完了",
+          "summary": "PR #42で実装・同一head検証済み。Draft・未マージ・main未導入。",
+          "scope": "実装・旧head検証の完了。main導入や研究登録監査の完了を意味しない。",
+          "head_sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+          "main_sha": "22838d87ddf4b9b8b6298c8ef070b722fa4edd86"
+        },
+        {
+          "at": "2026-11-14T07:57:03.841Z",
+          "state": "調査中",
+          "summary": "旧head回帰記録は維持。現mainケース別証跡は不足。",
+          "scope": "一般CI成功を個別受入完了としない。",
+          "head_sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+          "main_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44"
+        }
+      ]
+    },
+    {
+      "id": "Q4",
+      "title": "Q4 parse回帰",
+      "state": "調査中",
+      "parse_status": "原入力・Queryの現main照合待ち",
+      "reason": "10/16検証記録では既存parse不変。現mainのケース別再実行は今回未実施。",
+      "input_contract": {
+        "原入力": "今回未取得。受付Issue #9の固定ケースを取得して比較する。",
+        "旧head検証": "検証記録：Q1〜Q4/既存3件、192問のQuery・受付可否が一致。",
+        "現main": "関連pytestは成功。個別ケースのログ・受領記録による再確認は未実施。",
+        "cache・表示": "Query・回答経路・機械値・理由コード・説明を分けて比較。"
+      },
+      "source_ids": [
+        "validation",
+        "ci42",
+        "mainChecks"
+      ],
+      "gaps": [
+        "原入力と期待Queryの固定記録",
+        "現mainケース別実行結果"
+      ],
+      "next": "Issue #9の原入力・期待Queryを固定して現mainと照合",
+      "steps": [
+        "受付Issue #9から原入力・期待Query・受領記録を取得し対象SHAへ関連付ける。",
+        "現mainのCLI・ログ・受領記録でQueryと受付可否・回答経路を照合する。"
+      ],
+      "history": [
+        {
+          "at": "2026-10-16T12:35:58Z",
+          "state": "完了",
+          "summary": "PR #42で実装・同一head検証済み。Draft・未マージ・main未導入。",
+          "scope": "実装・旧head検証の完了。main導入や研究登録監査の完了を意味しない。",
+          "head_sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+          "main_sha": "22838d87ddf4b9b8b6298c8ef070b722fa4edd86"
+        },
+        {
+          "at": "2026-11-14T07:57:03.841Z",
+          "state": "調査中",
+          "summary": "旧head回帰記録は維持。現mainケース別証跡は不足。",
+          "scope": "一般CI成功を個別受入完了としない。",
+          "head_sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+          "main_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44"
+        }
+      ]
+    },
+    {
+      "id": "既存3件",
+      "title": "既存3件 parse回帰",
+      "state": "調査中",
+      "parse_status": "原入力・Queryの現main照合待ち",
+      "reason": "10/16検証記録では既存parse不変。現mainのケース別再実行は今回未実施。",
+      "input_contract": {
+        "原入力": "今回未取得。受付Issue #9の固定ケースを取得して比較する。",
+        "旧head検証": "検証記録：Q1〜Q4/既存3件、192問のQuery・受付可否が一致。",
+        "現main": "関連pytestは成功。個別ケースのログ・受領記録による再確認は未実施。",
+        "cache・表示": "Query・回答経路・機械値・理由コード・説明を分けて比較。"
+      },
+      "source_ids": [
+        "validation",
+        "ci42",
+        "mainChecks"
+      ],
+      "gaps": [
+        "原入力と期待Queryの固定記録",
+        "現mainケース別実行結果"
+      ],
+      "next": "Issue #9の原入力・期待Queryを固定して現mainと照合",
+      "steps": [
+        "受付Issue #9から原入力・期待Query・受領記録を取得し対象SHAへ関連付ける。",
+        "現mainのCLI・ログ・受領記録でQueryと受付可否・回答経路を照合する。"
+      ],
+      "history": [
+        {
+          "at": "2026-10-16T12:35:58Z",
+          "state": "完了",
+          "summary": "PR #42で実装・同一head検証済み。Draft・未マージ・main未導入。",
+          "scope": "実装・旧head検証の完了。main導入や研究登録監査の完了を意味しない。",
+          "head_sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+          "main_sha": "22838d87ddf4b9b8b6298c8ef070b722fa4edd86"
+        },
+        {
+          "at": "2026-11-14T07:57:03.841Z",
+          "state": "調査中",
+          "summary": "旧head回帰記録は維持。現mainケース別証跡は不足。",
+          "scope": "一般CI成功を個別受入完了としない。",
+          "head_sha": "b0d668b20dbd8c29b80596a13a5fb2d90e97015b",
+          "main_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44"
+        }
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43573122120/job/132381552993",
+      "started_at": "2026-11-14T07:52:35Z",
+      "completed_at": "2026-11-14T07:52:53Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43571998807/job/132378183913",
+      "started_at": "2026-11-14T07:37:56Z",
+      "completed_at": "2026-11-14T07:38:13Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43570861744/job/132374724107",
+      "started_at": "2026-11-14T07:23:17Z",
+      "completed_at": "2026-11-14T07:23:36Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43570026643/job/132372177169",
+      "started_at": "2026-11-14T07:12:57Z",
+      "completed_at": "2026-11-14T07:13:15Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43569463252/job/132370447618",
+      "started_at": "2026-11-14T07:05:53Z",
+      "completed_at": "2026-11-14T07:05:52Z"
+    },
+    {
+      "name": "Action use style and release hashes",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43569435601/job/132370362954",
+      "started_at": "2026-11-14T07:05:34Z",
+      "completed_at": "2026-11-14T07:05:49Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43568470574/job/132367406652",
+      "started_at": "2026-11-14T06:53:03Z",
+      "completed_at": "2026-11-14T06:53:24Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43567941976/job/132365824694",
+      "started_at": "2026-11-14T06:46:18Z",
+      "completed_at": "2026-11-14T06:46:10Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43567724135/job/132365113354",
+      "started_at": "2026-11-14T06:43:25Z",
+      "completed_at": "2026-11-14T06:43:24Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43567388810/job/132364087336",
+      "started_at": "2026-11-14T06:39:16Z",
+      "completed_at": "2026-11-14T06:39:36Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43566724250/job/132362077151",
+      "started_at": "2026-11-14T06:31:07Z",
+      "completed_at": "2026-11-14T06:31:26Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43566661730/job/132361892118",
+      "started_at": "2026-11-14T06:30:25Z",
+      "completed_at": "2026-11-14T06:31:31Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43566599091/job/132361734612",
+      "started_at": "2026-11-14T06:29:47Z",
+      "completed_at": "2026-11-14T06:29:41Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43566514862/job/132361474285",
+      "started_at": "2026-11-14T06:28:44Z",
+      "completed_at": "2026-11-14T06:28:37Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43566431242/job/132361232214",
+      "started_at": "2026-11-14T06:27:44Z",
+      "completed_at": "2026-11-14T06:27:34Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43566438573/job/132361215529",
+      "started_at": "2026-11-14T06:27:40Z",
+      "completed_at": "2026-11-14T06:27:40Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43566413284/job/132361189681",
+      "started_at": "2026-11-14T06:27:34Z",
+      "completed_at": "2026-11-14T06:27:33Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43565771464/job/132359179551",
+      "started_at": "2026-11-14T06:19:32Z",
+      "completed_at": "2026-11-14T06:19:48Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43564176638/job/132354277877",
+      "started_at": "2026-11-14T06:00:15Z",
+      "completed_at": "2026-11-14T06:01:25Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43563646022/job/132352611142",
+      "started_at": "2026-11-14T05:53:07Z",
+      "completed_at": "2026-11-14T05:53:25Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43563635709/job/132352577599",
+      "started_at": "2026-11-14T05:52:58Z",
+      "completed_at": "2026-11-14T05:53:56Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43562448125/job/132348897930",
+      "started_at": "2026-11-14T05:37:43Z",
+      "completed_at": "2026-11-14T05:37:59Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43562433873/job/132348853158",
+      "started_at": "2026-11-14T05:37:30Z",
+      "completed_at": "2026-11-14T05:37:29Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43562388077/job/132348710620",
+      "started_at": "2026-11-14T05:36:55Z",
+      "completed_at": "2026-11-14T05:36:55Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43562309814/job/132348603402",
+      "started_at": "2026-11-14T05:36:29Z",
+      "completed_at": "2026-11-14T05:36:22Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43562136552/job/132347942641",
+      "started_at": "2026-11-14T05:33:50Z",
+      "completed_at": "2026-11-14T05:33:49Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43562078777/job/132347766193",
+      "started_at": "2026-11-14T05:33:08Z",
+      "completed_at": "2026-11-14T05:33:07Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43561997764/job/132347681436",
+      "started_at": "2026-11-14T05:32:47Z",
+      "completed_at": "2026-11-14T05:32:47Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43561300298/job/132345345990",
+      "started_at": "2026-11-14T05:23:28Z",
+      "completed_at": "2026-11-14T05:23:44Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43561004193/job/132344440986",
+      "started_at": "2026-11-14T05:19:56Z",
+      "completed_at": "2026-11-14T05:20:43Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43560734855/job/132343601410",
+      "started_at": "2026-11-14T05:16:32Z",
+      "completed_at": "2026-11-14T05:16:32Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43560413435/job/132342602200",
+      "started_at": "2026-11-14T05:12:40Z",
+      "completed_at": "2026-11-14T05:12:54Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43560081233/job/132341587020",
+      "started_at": "2026-11-14T05:08:42Z",
+      "completed_at": "2026-11-14T05:08:42Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43559773375/job/132340634859",
+      "started_at": "2026-11-14T05:05:03Z",
+      "completed_at": "2026-11-14T05:05:03Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43559743793/job/132340585301",
+      "started_at": "2026-11-14T05:04:52Z",
+      "completed_at": "2026-11-14T05:04:41Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43559616456/job/132340362466",
+      "started_at": "2026-11-14T05:03:59Z",
+      "completed_at": "2026-11-14T05:03:51Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43559591009/job/132340088440",
+      "started_at": "2026-11-14T05:03:03Z",
+      "completed_at": "2026-11-14T05:03:50Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43559470331/job/132339726225",
+      "started_at": "2026-11-14T05:02:03Z",
+      "completed_at": "2026-11-14T05:02:55Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43558907228/job/132337947210",
+      "started_at": "2026-11-14T04:54:12Z",
+      "completed_at": "2026-11-14T04:54:11Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43558898000/job/132337919657",
+      "started_at": "2026-11-14T04:54:05Z",
+      "completed_at": "2026-11-14T04:54:04Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43558802713/job/132337641989",
+      "started_at": "2026-11-14T04:52:57Z",
+      "completed_at": "2026-11-14T04:52:50Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43558792338/job/132337639498",
+      "started_at": "2026-11-14T04:52:56Z",
+      "completed_at": "2026-11-14T04:52:48Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43558790175/job/132337575455",
+      "started_at": "2026-11-14T04:52:54Z",
+      "completed_at": "2026-11-14T04:53:09Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43557610220/job/132333895492",
+      "started_at": "2026-11-14T04:37:56Z",
+      "completed_at": "2026-11-14T04:38:12Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43556456025/job/132330285070",
+      "started_at": "2026-11-14T04:24:00Z",
+      "completed_at": "2026-11-14T04:24:15Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43556286111/job/132329756447",
+      "started_at": "2026-11-14T04:21:59Z",
+      "completed_at": "2026-11-14T04:21:59Z"
+    },
+    {
+      "name": "Shared tool hashes",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43556256946/job/132329664492",
+      "started_at": "2026-11-14T04:21:40Z",
+      "completed_at": "2026-11-14T04:21:54Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43555606269/job/132327651230",
+      "started_at": "2026-11-14T04:14:07Z",
+      "completed_at": "2026-11-14T04:14:26Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43553880467/job/132322224841",
+      "started_at": "2026-11-14T03:53:10Z",
+      "completed_at": "2026-11-14T03:53:32Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43553593457/job/132321340036",
+      "started_at": "2026-11-14T03:49:43Z",
+      "completed_at": "2026-11-14T03:50:25Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43553543348/job/132321160330",
+      "started_at": "2026-11-14T03:49:01Z",
+      "completed_at": "2026-11-14T03:49:40Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43553494240/job/132321007402",
+      "started_at": "2026-11-14T03:48:24Z",
+      "completed_at": "2026-11-14T03:48:54Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43552626110/job/132318275596",
+      "started_at": "2026-11-14T03:37:55Z",
+      "completed_at": "2026-11-14T03:38:11Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43552332125/job/132317371144",
+      "started_at": "2026-11-14T03:34:29Z",
+      "completed_at": "2026-11-14T03:34:28Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43552304611/job/132317286050",
+      "started_at": "2026-11-14T03:34:09Z",
+      "completed_at": "2026-11-14T03:34:09Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43552244921/job/132317098199",
+      "started_at": "2026-11-14T03:33:26Z",
+      "completed_at": "2026-11-14T03:33:26Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43552238277/job/132317078142",
+      "started_at": "2026-11-14T03:33:22Z",
+      "completed_at": "2026-11-14T03:33:21Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43552230875/job/132317055749",
+      "started_at": "2026-11-14T03:33:17Z",
+      "completed_at": "2026-11-14T03:33:17Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43552220511/job/132317029151",
+      "started_at": "2026-11-14T03:33:11Z",
+      "completed_at": "2026-11-14T03:33:11Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551863054/job/132315933862",
+      "started_at": "2026-11-14T03:29:08Z",
+      "completed_at": "2026-11-14T03:29:07Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551853650/job/132315904071",
+      "started_at": "2026-11-14T03:29:01Z",
+      "completed_at": "2026-11-14T03:29:01Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551767368/job/132315693080",
+      "started_at": "2026-11-14T03:28:13Z",
+      "completed_at": "2026-11-14T03:28:06Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551739150/job/132315549392",
+      "started_at": "2026-11-14T03:27:41Z",
+      "completed_at": "2026-11-14T03:27:35Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551742165/job/132315532415",
+      "started_at": "2026-11-14T03:27:42Z",
+      "completed_at": "2026-11-14T03:28:05Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551725597/job/132315510519",
+      "started_at": "2026-11-14T03:27:32Z",
+      "completed_at": "2026-11-14T03:27:24Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551733575/job/132315503319",
+      "started_at": "2026-11-14T03:27:31Z",
+      "completed_at": "2026-11-14T03:27:31Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551733104/job/132315502286",
+      "started_at": "2026-11-14T03:27:31Z",
+      "completed_at": "2026-11-14T03:27:30Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551731113/job/132315495143",
+      "started_at": "2026-11-14T03:27:29Z",
+      "completed_at": "2026-11-14T03:27:29Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551730219/job/132315492550",
+      "started_at": "2026-11-14T03:27:28Z",
+      "completed_at": "2026-11-14T03:27:28Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551706804/job/132315472619",
+      "started_at": "2026-11-14T03:27:24Z",
+      "completed_at": "2026-11-14T03:27:23Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551615713/job/132315120926",
+      "started_at": "2026-11-14T03:26:10Z",
+      "completed_at": "2026-11-14T03:27:07Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551576171/job/132315061777",
+      "started_at": "2026-11-14T03:25:54Z",
+      "completed_at": "2026-11-14T03:25:53Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551533079/job/132314858017",
+      "started_at": "2026-11-14T03:25:18Z",
+      "completed_at": "2026-11-14T03:25:53Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551528956/job/132314848333",
+      "started_at": "2026-11-14T03:25:07Z",
+      "completed_at": "2026-11-14T03:25:06Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551507024/job/132314779971",
+      "started_at": "2026-11-14T03:24:54Z",
+      "completed_at": "2026-11-14T03:25:14Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43551437377/job/132314560847",
+      "started_at": "2026-11-14T03:24:04Z",
+      "completed_at": "2026-11-14T03:24:04Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43550754644/job/132312405785",
+      "started_at": "2026-11-14T03:16:22Z",
+      "completed_at": "2026-11-14T03:16:21Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43550609443/job/132311965170",
+      "started_at": "2026-11-14T03:14:50Z",
+      "completed_at": "2026-11-14T03:15:09Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549856330/job/132309547502",
+      "started_at": "2026-11-14T03:06:20Z",
+      "completed_at": "2026-11-14T03:06:19Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549835472/job/132309480166",
+      "started_at": "2026-11-14T03:06:06Z",
+      "completed_at": "2026-11-14T03:06:05Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549822766/job/132309438950",
+      "started_at": "2026-11-14T03:05:57Z",
+      "completed_at": "2026-11-14T03:05:56Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549728240/job/132309145683",
+      "started_at": "2026-11-14T03:04:56Z",
+      "completed_at": "2026-11-14T03:04:56Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549727971/job/132309143911",
+      "started_at": "2026-11-14T03:04:56Z",
+      "completed_at": "2026-11-14T03:04:56Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549727391/job/132309142988",
+      "started_at": "2026-11-14T03:04:56Z",
+      "completed_at": "2026-11-14T03:04:55Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549725921/job/132309138169",
+      "started_at": "2026-11-14T03:04:55Z",
+      "completed_at": "2026-11-14T03:04:54Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549722630/job/132309128952",
+      "started_at": "2026-11-14T03:04:53Z",
+      "completed_at": "2026-11-14T03:04:52Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549705967/job/132309121172",
+      "started_at": "2026-11-14T03:04:51Z",
+      "completed_at": "2026-11-14T03:04:41Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549718442/job/132309115019",
+      "started_at": "2026-11-14T03:04:50Z",
+      "completed_at": "2026-11-14T03:04:49Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549717688/job/132309111926",
+      "started_at": "2026-11-14T03:04:49Z",
+      "completed_at": "2026-11-14T03:04:49Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549697144/job/132309089894",
+      "started_at": "2026-11-14T03:04:44Z",
+      "completed_at": "2026-11-14T03:04:34Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549707600/job/132309080921",
+      "started_at": "2026-11-14T03:04:42Z",
+      "completed_at": "2026-11-14T03:04:42Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549706608/job/132309077431",
+      "started_at": "2026-11-14T03:04:42Z",
+      "completed_at": "2026-11-14T03:04:41Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549703908/job/132309068917",
+      "started_at": "2026-11-14T03:04:40Z",
+      "completed_at": "2026-11-14T03:04:39Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549696716/job/132309044738",
+      "started_at": "2026-11-14T03:04:34Z",
+      "completed_at": "2026-11-14T03:04:34Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549694914/job/132309040047",
+      "started_at": "2026-11-14T03:04:33Z",
+      "completed_at": "2026-11-14T03:04:33Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549670215/job/132308980325",
+      "started_at": "2026-11-14T03:04:21Z",
+      "completed_at": "2026-11-14T03:04:20Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549569008/job/132308639998",
+      "started_at": "2026-11-14T03:03:08Z",
+      "completed_at": "2026-11-14T03:03:08Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549399933/job/132308152353",
+      "started_at": "2026-11-14T03:01:26Z",
+      "completed_at": "2026-11-14T03:01:16Z"
+    },
+    {
+      "name": "failure-identity / collect",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132307984070",
+      "started_at": "2026-11-14T03:00:55Z",
+      "completed_at": "2026-11-14T03:01:11Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43549173373/job/132307407199",
+      "started_at": "2026-11-14T02:58:45Z",
+      "completed_at": "2026-11-14T02:58:45Z"
+    },
+    {
+      "name": "intake",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43548696039/job/132305881091",
+      "started_at": "2026-11-14T02:53:01Z",
+      "completed_at": "2026-11-14T02:53:19Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43548167853/job/132304226535",
+      "started_at": "2026-11-14T02:46:55Z",
+      "completed_at": "2026-11-14T02:46:54Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43548023307/job/132303817732",
+      "started_at": "2026-11-14T02:45:27Z",
+      "completed_at": "2026-11-14T02:45:18Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43548019776/job/132303761823",
+      "started_at": "2026-11-14T02:45:16Z",
+      "completed_at": "2026-11-14T02:45:16Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43548004244/job/132303745888",
+      "started_at": "2026-11-14T02:45:13Z",
+      "completed_at": "2026-11-14T02:45:06Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43548003588/job/132303713319",
+      "started_at": "2026-11-14T02:45:06Z",
+      "completed_at": "2026-11-14T02:45:05Z"
+    },
+    {
+      "name": "label",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547999574/job/132303701887",
+      "started_at": "2026-11-14T02:45:03Z",
+      "completed_at": "2026-11-14T02:45:03Z"
+    },
+    {
+      "name": "actionlint",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "skipped",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132303664126",
+      "started_at": "2026-11-14T02:44:55Z",
+      "completed_at": "2026-11-14T02:44:55Z"
+    },
+    {
+      "name": "pytest (Python 3.12)",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132303662768",
+      "started_at": "2026-11-14T02:45:04Z",
+      "completed_at": "2026-11-14T02:56:55Z"
+    },
+    {
+      "name": "pytest (Python 3.13)",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132303662726",
+      "started_at": "2026-11-14T02:45:01Z",
+      "completed_at": "2026-11-14T03:00:53Z"
+    },
+    {
+      "name": "pytest (Python 3.15)",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132303662706",
+      "started_at": "2026-11-14T02:44:57Z",
+      "completed_at": "2026-11-14T02:58:10Z"
+    },
+    {
+      "name": "pytest (Python 3.11)",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132303662704",
+      "started_at": "2026-11-14T02:45:02Z",
+      "completed_at": "2026-11-14T02:55:33Z"
+    },
+    {
+      "name": "pytest (Python 3.14)",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132303662681",
+      "started_at": "2026-11-14T02:44:56Z",
+      "completed_at": "2026-11-14T02:57:20Z"
+    },
+    {
+      "name": "Offline Chrome export (Python 3.15)",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132303662636",
+      "started_at": "2026-11-14T02:44:58Z",
+      "completed_at": "2026-11-14T02:45:48Z"
+    },
+    {
+      "name": "Offline research digest (real c001 inputs)",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132303662634",
+      "started_at": "2026-11-14T02:44:57Z",
+      "completed_at": "2026-11-14T02:45:09Z"
+    },
+    {
+      "name": "Offline lab integration (Python 3.15)",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132303662621",
+      "started_at": "2026-11-14T02:44:57Z",
+      "completed_at": "2026-11-14T02:45:15Z"
+    },
+    {
+      "name": "update-uv-graph",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547975671/job/132303627050",
+      "started_at": "2026-11-14T02:44:49Z",
+      "completed_at": "2026-11-14T02:45:40Z"
+    },
+    {
+      "name": "Change detection / changes",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132303609903",
+      "started_at": "2026-11-14T02:44:45Z",
+      "completed_at": "2026-11-14T02:44:55Z"
+    },
+    {
+      "name": "Child heads (subtree children)",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132303609836",
+      "started_at": "2026-11-14T02:44:45Z",
+      "completed_at": "2026-11-14T02:44:56Z"
+    },
+    {
+      "name": "Vendor lock",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132303609779",
+      "started_at": "2026-11-14T02:44:46Z",
+      "completed_at": "2026-11-14T02:45:04Z"
+    },
+    {
+      "name": "Vendor dispatch",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547971059/job/132303609476",
+      "started_at": "2026-11-14T02:44:45Z",
+      "completed_at": "2026-11-14T02:45:01Z"
+    },
+    {
+      "name": "Markdown links (local + checked-out commit)",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547970642/job/132303607897",
+      "started_at": "2026-11-14T02:44:45Z",
+      "completed_at": "2026-11-14T02:46:51Z"
+    },
+    {
+      "name": "Provenance and related pytest (Python 3.14.8)",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547970600/job/132303607750",
+      "started_at": "2026-11-14T02:44:45Z",
+      "completed_at": "2026-11-14T02:45:13Z"
+    },
+    {
+      "name": "build",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547970580/job/132303607731",
+      "started_at": "2026-11-14T02:44:45Z",
+      "completed_at": "2026-11-14T02:45:03Z"
+    },
+    {
+      "name": "Shared tool hashes",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547970606/job/132303607696",
+      "started_at": "2026-11-14T02:44:45Z",
+      "completed_at": "2026-11-14T02:45:00Z"
+    },
+    {
+      "name": "Action use style and release hashes",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547970588/job/132303607624",
+      "started_at": "2026-11-14T02:44:45Z",
+      "completed_at": "2026-11-14T02:45:02Z"
+    },
+    {
+      "name": "regenerate",
+      "head_sha": "9d88aa6c72678bc8d999c922af38d8b238cd7f44",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/myon-bioinformatics/Aoi/actions/runs/43547970625/job/132303607570",
+      "started_at": "2026-11-14T02:44:45Z",
+      "completed_at": "2026-11-14T02:45:12Z"
+    }
+  ],
+  "statuses": [
+    "調査中",
+    "着手中",
+    "完了",
+    "保留",
+    "ブロッカー"
+  ],
+  "external_changes": 0,
+  "merges": 0,
+  "scope": "保存済み研究監査スナップショット。ビルドの一般監査・現main取得と別時刻。ケース専用の自動再実行なし。",
+  "pswb_reuse": {
+    "main_sha": "9409afad48eb388f0c6353299b504b05c1897262",
+    "blob_sha": "0ad781a7364d02d80c7199020f26039d6e95219b",
+    "additional_api_needed": false
+  }
+}
