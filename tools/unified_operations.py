@@ -51,6 +51,95 @@ def collect_repository_counts(snapshot, fetch):
             row['error'] = type(exc).__name__
     return results
 
+def _pages(fetch, path, key=None):
+    """Bounded REST pagination. A partial observation must not appear complete."""
+    rows = []
+    for page in range(1, 11):
+        value = fetch(path + ('&' if '?' in path else '?') + f'per_page=100&page={page}')
+        items = value[key] if key else value
+        if not isinstance(items, list):
+            raise ValueError('invalid collection')
+        rows.extend(items)
+        if len(items) < 100:
+            if key and value.get('total_count', len(rows)) != len(rows):
+                raise ValueError('partial collection')
+            return rows
+    raise ValueError('collection exceeds 1000 items')
+
+
+
+def refresh_evidence(evidence, snapshot, fetch):
+    """Refresh current records and the named migration; preserve older SHA evidence."""
+    active = {r['id'] for r in snapshot['records']}
+    migration = {f"{r['repository']}#{r['number']}": r for r in (snapshot.get('pswb_migration') or {}).get('rows', [])}
+    records = {r['id']: r for r in evidence['records']}
+    for ident, row in migration.items():
+        if row.get('complete') is False:
+            continue
+        records.setdefault(ident, dict(id=ident, repository=row['repository'], number=row['number'],
+                                       kind='pr', url=row['url'], title=row.get('title'), events=[]))
+        records[ident].update(head_sha=row.get('head_sha'), main_sha=row.get('main_sha'),
+                             github_state='open' if row.get('open') else 'closed', merged=row.get('merged'),
+                             metadata_checked=row.get('checked_at'))
+    for ident, record in records.items():
+        if ident not in active and ident not in migration:
+            continue
+        if migration.get(ident, {}).get('complete') is False:
+            continue
+        root = f"/repos/{snapshot['owner']}/{record['repository']}"
+        number, at = record['number'], dt.datetime.now(dt.timezone.utc).isoformat()
+        try:
+            comments = _pages(fetch, f'{root}/issues/{number}/comments')
+            events = [{'type': 'comment', 'id': c['id'], 'actor': c['user']['login'], 'at': c['updated_at'],
+                       'text': c.get('body'), 'url': c['html_url'], 'source': 'Pages current REST comments'} for c in comments]
+            coverage = {'checked_at': at, 'complete': True, 'count': len(comments)}
+            if record['kind'] == 'pr':
+                reviews = _pages(fetch, f'{root}/pulls/{number}/reviews')
+                inline = _pages(fetch, f'{root}/pulls/{number}/comments')
+                events += [{'type': 'review', 'id': r['id'], 'actor': r['user']['login'], 'at': r['submitted_at'],
+                            'review_sha': r['commit_id'], 'state': r['state'], 'text': r.get('body'),
+                            'url': r['html_url'], 'source': 'Pages current REST reviews'} for r in reviews]
+                events += [{'type': 'comment', 'id': c['id'], 'head_sha': c['commit_id'], 'actor': c['user']['login'],
+                            'at': c['updated_at'], 'text': c.get('body'), 'url': c['html_url'],
+                            'source': 'Pages current REST inline comments'} for c in inline]
+                runs = _pages(fetch, f"{root}/actions/runs?head_sha={record['head_sha']}", 'workflow_runs')
+                latest = {}
+                for run in runs:
+                    key = (run['workflow_id'], run['event'])
+                    if key not in latest or (run['id'], run['run_attempt']) > (latest[key]['id'], latest[key]['run_attempt']):
+                        latest[key] = run
+                for run in latest.values():
+                    events.append({'type': 'ci', 'name': run['name'], 'head_sha': run['head_sha'], 'run_id': run['id'],
+                                   'attempt': run['run_attempt'], 'workflow_id': run['workflow_id'], 'event': run['event'],
+                                   'status': run['status'], 'conclusion': run['conclusion'], 'at': run['updated_at'],
+                                   'url': run['html_url'], 'source': 'Pages current REST workflow runs'})
+                    for job in _pages(fetch, f"{root}/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs", 'jobs'):
+                        events.append({'type': 'job', 'name': job['name'], 'head_sha': run['head_sha'], 'run_id': run['id'],
+                                       'attempt': run['run_attempt'], 'job_id': job['id'], 'status': job['status'],
+                                       'conclusion': job['conclusion'], 'at': job.get('completed_at') or job.get('started_at'),
+                                       'url': job['html_url'], 'source': 'Pages current REST attempt jobs'})
+                final = fetch(f'{root}/pulls/{number}')
+                if final['head']['sha'] != record['head_sha'] or final['state'] != record.get('github_state', 'open'):
+                    raise ValueError('head/state moved')
+                record['review_coverage'] = dict(coverage, count=len(reviews), head_sha=record['head_sha'])
+                record['current_collection'] = {'head_sha': record['head_sha'], 'checked_at': at,
+                                                'attempt_scope': '現headのworkflow/event最新run・最新attempt',
+                                                'jobs_scope': '取得attemptのjobs全ページ（最大1000件）'}
+            # Replace the current comment/review set. Keep historical execution evidence.
+            for event in record['events']:
+                if event['type'] in ('ci', 'job'):
+                    event['historical'] = True
+            record['events'] = [e for e in record['events'] if e['type'] not in ('comment', 'review')] + events
+            record['comment_coverage'] = coverage
+            record.pop('collection_error', None)
+        except (ValueError, KeyError, RuntimeError, OSError, TypeError) as exc:
+            record['collection_error'] = type(exc).__name__
+            record.pop('current_collection', None)
+            record.pop('comment_coverage', None)
+            record.pop('review_coverage', None)
+    evidence['records'] = list(records.values())
+    return evidence
+
 
 def collect_main_runs(snapshot, fetch):
     """Bounded read-only observations; old SHA and unavailable data stay explicit."""
@@ -176,10 +265,13 @@ def view_data(snapshot, evidence, history, operations, previous=None):
         record['metadata_checked'] = row['checked_at']
         events = record['events'] = [dict(e) for e in record['events']]
         for event in events:
-            if event.get('type') == 'ci':
+            if event.get('type') == 'ci' and event.get('source') != 'Pages current REST workflow runs':
                 event['historical'] = True
         for phase, observation in row.get('runs', {}).items():
             for run in observation.get('runs', []):
+                if phase == 'head' and any(e.get('type') == 'ci' and not e.get('historical') and
+                                          e.get('run_id') == run['id'] and e.get('attempt') == run['run_attempt'] for e in events):
+                    continue
                 events.append({'type': 'ci' if phase == 'head' else 'post_merge' if phase == 'merge' else 'main_ci',
                                'name': run['name'], 'head_sha': run['head_sha'], 'run_id': run['id'],
                                'attempt': run['run_attempt'], 'workflow_id': run['workflow_id'],
@@ -212,6 +304,7 @@ def view_data(snapshot, evidence, history, operations, previous=None):
             'fleet': snapshot.get('fleet', {}), 'history': history, 'operations': operations,
             'main_workflows': snapshot.get('main_workflows', {'runs': [], 'errors': [], 'scope': '未取得'}),
             'pswb_migration': migration,
+            'catalog': snapshot.get('catalog_observation', {'status': '未取得'}),
             'plan': {'order': [x for x in order if x in graph], 'cycle': cycle,
                      'missing': missing, 'edges': {k: sorted(v) for k, v in graph.items()}},
             'source': {'parent_main': parent.get('head_sha') or '', 'kind': 'Pages audit build'}}

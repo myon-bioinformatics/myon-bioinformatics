@@ -233,6 +233,12 @@ Python toolkit for converting documents and images: a Markdown-to-PPTX pipeline,
 
 `pptx` `markdown` `image`
 
+### [TalkCompress](https://github.com/myon-bioinformatics/TalkCompress)
+
+Experiments in short expressions that keep their meaning for a given reader: which shared knowledge or rules make them understandable. Measures characters, UTF-8 bytes and LLM tokens across shared machine-to-machine rulebooks, human-readable shorthand and multilingual layers.
+
+`llm` `compression` `tokenizer` `multilingual`
+
 <details>
 <summary>🔎 More repos</summary>
 
@@ -254,7 +260,6 @@ Python toolkit for converting documents and images: a Markdown-to-PPTX pipeline,
 * [python3nmap_GUI_for_Beginners](https://github.com/myon-bioinformatics/python3nmap_GUI_for_Beginners)
 * [Qiita_API_Template](https://github.com/myon-bioinformatics/Qiita_API_Template)
 * [scapy_GUI_for_Beginners](https://github.com/myon-bioinformatics/scapy_GUI_for_Beginners)
-* [TalkCompress](https://github.com/myon-bioinformatics/TalkCompress)
 * [video_to_image_gui](https://github.com/myon-bioinformatics/video_to_image_gui)
 * [video2audio_gui](https://github.com/myon-bioinformatics/video2audio_gui)
 * [vlm_ocr_jp_gui](https://github.com/myon-bioinformatics/vlm_ocr_jp_gui)
@@ -288,6 +293,56 @@ Python toolkit for converting documents and images: a Markdown-to-PPTX pipeline,
 <!-- FOOTER:END -->
 
 ---
+
+<!-- QUICKSTART:START -->
+## CLI quick start
+
+Python 3.11+ を基本とし、JavaScript を使う入口は Node 26。Python は uv で管理する。CI は `setup-uv` の `version: latest` を使用し、Python の準備も同じ step にまとめる。基本実行は標準ライブラリ中心で、テスト・ブラウザ・実トークン計測の依存は必要時に追加する。
+
+| プロジェクト | 役割 | 前提 | 期待出力・失敗時の確認 |
+| --- | --- | --- | --- |
+| [olnm](https://github.com/myon-bioinformatics/OneLinearNumerousMemo#readme) | シェル作業・計算・標準ライブラリツールの共通入口 | Linux / WSL の bash・zsh、Python 3.11+、uv。Git ソース取得には Git と通信 | `42`。見つからなければ `uv tool list` / `uv tool update-shell`。引用符なしの乗算は `mul` を使う |
+| [TalkCompress](https://github.com/myon-bioinformatics/TalkCompress#readme) | 共有規則に応じた表現の短縮と品質評価 | Python 3.11+、uv、clone 済みのリポジトリ | 下の例は `ASAP`。失敗時は cwd・入力・`uv sync --locked` を確認。実トークン計測は tokenizer の取得・キャッシュ、描画は browser group を確認 |
+
+### olnm
+
+```sh
+uv tool install 'git+https://github.com/myon-bioinformatics/OneLinearNumerousMemo.git@main'
+olnm calc 6 mul 7
+```
+
+登録せず実行する場合：
+
+```sh
+uvx --from 'git+https://github.com/myon-bioinformatics/OneLinearNumerousMemo.git@main' olnm calc 6 mul 7
+```
+
+どちらも `42`。`main` は更新されるため、再現時は `@main` を確認済みの完全SHAに置き換える。Node は `--engine node` を使う場合だけ必要。`calc 6 * 7` はシェルが `*` を展開するため、`mul` / `pow` / `lpar` / `rpar` を使う。CLI登録だけでは裸の `calc` は使えない。
+
+```sh
+eval "$(command olnm init bash)"
+calc 6 mul 7
+```
+
+zsh は `init zsh`。更新は `uv tool upgrade one-linear-numerous-memo`、削除は `uv tool uninstall one-linear-numerous-memo`。ローカルcloneから導入した場合は、そのcloneで `git pull --ff-only` → `uv tool install --force .`。固定SHAは再指定して導入する。更新後は init を再読み込みし、削除時は rc の init 行も除く。`~/.olnm` のデータは残る。
+
+親の [Pages 実行手順](https://myon-bioinformatics.github.io/myon-bioinformatics/#ops)で前提・期待出力・確認記録を一覧表示する。詳細な導入・uv add・環境別の分岐は [既存の利用・検証ガイド](https://myon-bioinformatics.github.io/OneLinearNumerousMemo/)へ。
+
+### TalkCompress
+
+```sh
+git clone https://github.com/myon-bioinformatics/TalkCompress.git
+cd TalkCompress
+uv sync --locked
+uv run --locked python DensityFacadeRoute/density_facade_route.py --layer 3 --text "as soon as possible"
+uv run --locked python -m pytest -q
+```
+
+共通入口は DensityFacadeRoute。最初の実行例の期待値は `ASAP`。2026-11-13に、Python 3.12の標準ライブラリだけでolnmの `42` とこの `ASAP` を確認した。全テストの再実行結果とは分ける。文字数・UTF-8バイト数・実トークン数と、意味保持・原文復元は別に評価する。`uv sync` は開発依存を導入するが、基本ランタイムの必須Python依存はない。
+
+READMEの2026-11-07の検証記録は91成功・1失敗、証跡GIFは7成功。失敗は tiktoken の語彙取得で、最新headの成功件数ではない。最新結果は [Actions](https://github.com/myon-bioinformatics/TalkCompress/actions)の対象SHA・run・attemptとJUnitで確認する。SVG・LLM・各層の手順と限界は [子README](https://github.com/myon-bioinformatics/TalkCompress#readme)を正とする。
+<!-- QUICKSTART:END -->
+
 
 ## Shared GitHub operations
 
