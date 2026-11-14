@@ -317,9 +317,15 @@ def write_workspace(snapshot, evidence, history, stage, source_root, previous=No
         return  # Older fixture/checkout: existing workspace remains intact.
     operations = json.loads((ui / 'operations-data.json').read_text(encoding='utf-8'))
     data = view_data(snapshot, evidence, history, operations, previous)
+    research = ui / 'research-audit.json'
+    if research.exists():
+        data['research'] = json.loads(research.read_text(encoding='utf-8'))
     content = template.read_text(encoding='utf-8')
     for token, name in [('CSS', 'unified.css'), ('MODEL', 'unified-model.js'), ('APP', 'unified-app.js')]:
         text = (ui / name).read_text(encoding='utf-8')
+        if token == 'APP':
+            research_script = ui / 'research-audit.js'
+            content = content.replace('/*__RESEARCH__*/', research_script.read_text(encoding='utf-8') if research_script.exists() else '')
         if token == 'MODEL':
             text = (ui / 'shared-ui.js').read_text(encoding='utf-8') + '\n' + text
         content = content.replace('/*__' + token + '__*/', text)

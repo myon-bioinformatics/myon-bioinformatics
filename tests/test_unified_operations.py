@@ -174,11 +174,15 @@ class UnifiedOperationsTests(unittest.TestCase):
         snap,ev=self.values();ev['records'][1]['title']='</script><script>alert(1)</script>'
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);ui=root/'site/ui';ui.mkdir(parents=True);stage=root/'out';stage.mkdir()
-            (ui/'unified.template.html').write_text('<script type="application/json">/*__DATA__*/</script>')
+            (ui/'unified.template.html').write_text('<script type="application/json">/*__DATA__*/</script><script>/*__RESEARCH__*/</script>')
+            (ui/'research-audit.json').write_text(json.dumps({'note': '</script><script>alert(2)</script>'}))
+            (ui/'research-audit.js').write_text('/* research module */')
             (ui/'operations-data.json').write_text('[]')
             for n in ('shared-ui.js','unified.css','unified-model.js','unified-app.js'):(ui/n).write_text('')
             write_workspace(snap,ev,{'weeks':[]},stage,root)
-            self.assertNotIn('</script><script>',(stage/'workspace.html').read_text())
+            self.assertNotIn('</script><script>alert', (stage/'workspace.html').read_text())
+            self.assertIn('/* research module */', (stage/'workspace.html').read_text())
+            self.assertEqual(json.loads((stage/'unified-data.json').read_text())['research']['note'], '</script><script>alert(2)</script>')
             self.assertEqual(json.loads((stage/'unified-data.json').read_text())['records'][1]['title'],ev['records'][1]['title'])
 if __name__=='__main__':unittest.main()
 
