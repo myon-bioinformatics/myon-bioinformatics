@@ -1208,5 +1208,23 @@ def test_python_runtime_artifacts_are_ignored():
     assert result.stdout.splitlines() == paths
 
 
+def test_stdlib_min_stand_ins_import_only_the_standard_library():
+    """tools/stdlib_min/ is what consumers lock instead of the third-party package, so it must run with nothing installed."""
+    files = sorted((ROOT / "tools" / "stdlib_min").glob("*_min.py"))
+    assert files
+    for file in files:
+        names = set()
+        for node in ast.walk(ast.parse(file.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                names |= {alias.name.split(".")[0] for alias in node.names}
+            elif isinstance(node, ast.ImportFrom):
+                assert node.level == 0, (file.name, "relative import")
+                names.add((node.module or "").split(".")[0])
+        assert names <= set(sys.stdlib_module_names) | {"__future__"}, (file.name, sorted(names - set(sys.stdlib_module_names)))
+        result = subprocess.run([sys.executable, "-S", "-I", "-c", "import runpy, sys; runpy.run_path(sys.argv[1], run_name='stdlib_min_check')", str(file)],
+                                capture_output=True, text=True, check=False, timeout=60)
+        assert result.returncode == 0, (file.name, result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
