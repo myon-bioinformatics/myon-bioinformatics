@@ -44,6 +44,14 @@ includes TalkCompress. Sources were checked out from their default branches;
 the short revisions below identify the snapshots and are not vendor pins or
 a live CI registry.
 
+The file names in the table are those of each snapshot, so every command still
+runs at its listed revision. From 2026-11-15 the repositories merge their test
+files by purpose, and a listed file may no longer exist on a default branch
+(for example nvd_nist_known_vulns #64 folds `test_nvd_client.py` into
+`tests/test_nvd_nist_known_vulns.py`). On a newer checkout, list the current files with
+`git ls-files 'tests/test_*.py'` and pass the one that holds the
+`unittest.TestCase` classes to `-p`; the counts below are not re-measured.
+
 On Linux / CPython 3.12.14, 21 focused commands across 18 repositories completed
 with exit 0, totaling 435 reported test cases, including skips
 (Aoi/subtree checks may overlap).

@@ -115,12 +115,54 @@ test('overlap only compares known file inventories in the same repository',()=>{
  assert.match(context.revalidation({revalidated_at:'today',head:'a'}),/未取得/);
 });
 
-require('./test_github_evidence.cjs');
+// --- GitHub evidence model (site/ui/evidence-model.js): top-level checks ---
+{
+const assert=require('node:assert/strict');const {summarize,validate}=require('../site/ui/evidence-model.js');
+const head='a'.repeat(40),old='b'.repeat(40),base={kind:'pr',head_sha:head,github_state:'open',events:[]};
+assert.equal(summarize({...base,events:[{type:'manual_report',conclusion:'success',head_sha:head}]}).ci,'未確認');
+assert.equal(summarize({...base,events:[{type:'ci',conclusion:'success',status:'completed',head_sha:old}]}).ci,'未確認');
+assert.equal(summarize({...base,events:[{type:'review',state:'APPROVED',review_sha:old}]}).approved,false);
+assert.equal(summarize({...base,expected_sha:old}).expected,false);
+assert.equal(summarize({...base,events:[{type:'ci',name:'copilot reviewer',conclusion:'failure',head_sha:head}]}).bot.length,1);
+assert.equal(summarize({...base,events:[{type:'supersession_claim',text:'superseded'}]}).open,true);
+assert.ok(summarize({...base,merged:true,merge_commit_sha:old,events:[{type:'post_merge',head_sha:old,conclusion:'failure'}]}).gaps.includes('マージ後確認なし'));
+assert.throws(()=>validate({schema:'github-evidence/1',records:[{id:'a',repository:'r',number:1,events:[]},{id:'a',repository:'r',number:1,events:[]}]}));
+validate(JSON.parse(require('node:zlib').gunzipSync(require('node:fs').readFileSync(require('node:path').join(__dirname,'../site/evidence/observations.json.gz')))));assert.equal(summarize({...base,events:[{type:'ci',name:'CI',run_id:1,attempt:1,head_sha:head,status:'completed',conclusion:'failure'},{type:'ci',name:'CI',run_id:1,attempt:2,head_sha:head,status:'completed',conclusion:'success'}]}).failed.length,0);console.log('10 evidence checks passed');
+
+assert.equal(summarize({...base,events:[{type:'ci',run_id:1,attempt:1,head_sha:head,conclusion:'failure',status:'completed',superseded:true},{type:'ci',run_id:2,attempt:1,head_sha:head,conclusion:'success',status:'completed'}]}).failed.length,0);
+assert.equal(summarize({...base,events:[{type:'review',actor:'reviewer',at:'2026-11-11',state:'APPROVED',review_sha:head},{type:'review',actor:'reviewer',at:'2026-11-12',state:'DISMISSED',review_sha:head}]}).approved,false);
+assert.equal(summarize({...base,mergeable:false}).priority,0);
+console.log('3 supersession / dismissed review / conflict checks passed');
+
+assert.equal(summarize({...base,events:[{type:'ci',head_sha:head,status:'completed',conclusion:'failure',historical:true}]}).failed.length,0);
+}
 
 
 test('legacy work states migrate without changing GitHub status',()=>{for(const [before,after] of Object.entries({'未着手':'調査中','対応中':'着手中','ブロック':'ブロッカー','統合済み':'完了'})){const r=m.normalize({records:[{...observation,state:before,github_state:'open'}]})[0];assert.equal(r.state,after);assert.equal(r.github_state,'open')}});
 
-require('./test_workspace.cjs');
+// --- workspace store and pages (site/ui/workspace.js) ---
+{
+const {test}=require('node:test');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+test('workspace states and completion share one store',()=>{
+ const data=new Map(),context={window:{},localStorage:{getItem:k=>data.get(k),setItem:(k,v)=>data.set(k,v)}};
+ vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'../site/ui/workspace.js'),'utf8'),context);
+ const W=context.window.Workspace;
+ for(const s of W.states){W.update('ops:test',s,'next');assert.equal(W.read().records['ops:test'].state,s)}
+ assert.throws(()=>W.update('ops:test','作業中','next'));
+ assert.equal(W.read().records['ops:test'].completion.note,'next');
+});
+test('workspace pages keep local assets and source pins',()=>{
+ const root=path.join(__dirname,'../site/ui');
+ for(const file of ['workspace.html','operations.html','records.html'])for(const m of fs.readFileSync(path.join(root,file),'utf8').matchAll(/(?:src|href)="([^"#]+)"/g)){
+  if(m[1]==='index.html#dependencies'||/^(https?:|mailto:)/.test(m[1]))continue;
+  assert.ok(fs.existsSync(path.resolve(root,m[1].split('#')[0])),`${file}: ${m[1]}`);
+ }
+ const ops=JSON.parse(fs.readFileSync(path.join(root,'operations-data.json')));
+ assert.equal(new Set(ops.map(x=>x.id)).size,ops.length);
+ assert.ok(ops.every(x=>typeof x.execution==='string'&&x.execution.length>0&&/^[a-f0-9]{40}$/.test(x.source_sha)));
+});
+}
 
 test('unified evidence coverage expires when the PR head moves',()=>{
  const u=require('../site/ui/unified-model.js'),head='a'.repeat(40),old='b'.repeat(40);
