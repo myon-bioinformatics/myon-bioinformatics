@@ -1,6 +1,6 @@
 """polars の最小版。scripts/shrink_polars.py が生成した。手で直さない。
 
-入口: dragowing/overlap.py:load_overlap, pythdragoras/propositions.py:_cond
+入口: dragowing/overlap.py:load_overlap, pythdragoras/core/propositions.py:_cond
 使う名前: DataFrame, Expr, col, lit, read_ndjson
 AST では見えないので式と表にまとめて入れてある: DataFrame.height, DataFrame.columns, DataFrame.__getitem__, DataFrame.select, DataFrame.explode, DataFrame.filter, DataFrame.join, DataFrame.iter_rows, Series.to_list, Expr.__lt__, Expr.__le__, Expr.__gt__, Expr.__ge__, Expr.__eq__, Expr.__ne__, Expr.__and__, Expr.is_not_null
 """
