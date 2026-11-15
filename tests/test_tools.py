@@ -654,8 +654,12 @@ def test_fleet_check_node_gate_skips_locally_and_fails_in_ci(tmp_path, monkeypat
         fleet_check.node.cache_clear()
 
 
-def test_fleet_check_node_parity_runs_the_same_python(tmp_path):
+def test_fleet_check_node_parity_runs_the_same_python(tmp_path, monkeypatch):
+    # The parent's pytest jobs have no Node 26; the CI gate is for children's parity jobs.
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    fleet_check.node.cache_clear()
     if fleet_check.node() is None:
+        fleet_check.node.cache_clear()
         pytest.skip("Node 26+ not available (set NODE)")
     (tmp_path / "vendor").mkdir()
     shutil.copy(ROOT / "py_launch.cjs", tmp_path / "vendor/py_launch.cjs")
