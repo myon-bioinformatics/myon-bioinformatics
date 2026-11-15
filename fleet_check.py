@@ -22,12 +22,14 @@ def repo_root(start) -> Path:
     return next(p for p in (start, *start.parents) if (p / ".github/workflows").is_dir())
 
 
-def check_lock(root, lock="vendor.lock.json", commits=None) -> dict:
+def check_lock(root, lock="vendor.lock.json", commits=None, sources=None) -> dict:
     """Verify every vendor-lock/1 row against its placed bytes; return rows by destination.
 
     Each row needs a full-SHA ``ref`` equal to ``commit`` and bytes matching
     ``blob_sha`` and ``sha256``. ``commits`` maps chosen destinations to the
-    accepted upstream commit they must stay on.
+    accepted upstream commit they must stay on. ``sources`` maps destinations
+    to their ``(repository, source)``; a repository named there has no other
+    locked row, so listing every row pins the whole lock's provenance.
     """
     root = Path(root)
     data = json.loads((root / lock).read_text(encoding="utf-8"))
@@ -42,6 +44,11 @@ def check_lock(root, lock="vendor.lock.json", commits=None) -> dict:
         rows[where] = row
     for where, commit in (commits or {}).items():
         assert rows[where]["commit"] == commit, where
+    for where, origin in (sources or {}).items():
+        assert where in rows and (rows[where]["repository"], rows[where]["source"]) == tuple(origin), where
+    named = {origin[0] for origin in (sources or {}).values()}
+    extra = sorted(where for where, row in rows.items() if row.get("repository") in named and where not in sources)
+    assert not extra, f"unlisted rows from a listed repository: {extra}"
     return rows
 
 

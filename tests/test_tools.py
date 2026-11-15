@@ -571,7 +571,7 @@ def _lock_row(root: Path, where: str, data: bytes, commit: str = "a" * 40) -> di
     (root / where).parent.mkdir(parents=True, exist_ok=True)
     (root / where).write_bytes(data)
     blob = __import__("hashlib").sha1(b"blob %d\0" % len(data) + data).hexdigest()
-    return {"destination": where, "ref": commit, "commit": commit, "blob_sha": blob,
+    return {"destination": where, "repository": "o/" + Path(where).suffix[1:], "source": Path(where).name, "ref": commit, "commit": commit, "blob_sha": blob,
             "sha256": __import__("hashlib").sha256(data).hexdigest()}
 
 
@@ -583,6 +583,18 @@ def test_fleet_check_lock_verifies_bytes_and_accepted_commits(tmp_path):
     assert sorted(found) == ["python/vendor/a.py", "vendor/b.cjs"]
     with pytest.raises(AssertionError, match="vendor/b.cjs"):
         fleet_check.check_lock(tmp_path, "python/vendor.lock.json", {"vendor/b.cjs": "c" * 40})
+    # provenance: listed destinations match, and a listed repository has no unlisted row
+    rows.append(_lock_row(tmp_path, "vendor/c.cjs", b"//c\n"))
+    (tmp_path / "python/vendor.lock.json").write_text(json.dumps({"schema": "vendor-lock/1", "files": rows}))
+    cjs = {"vendor/b.cjs": ("o/cjs", "b.cjs"), "vendor/c.cjs": ["o/cjs", "c.cjs"]}
+    for sources in ({}, {"python/vendor/a.py": ("o/py", "a.py")}, cjs, {**cjs, "python/vendor/a.py": ("o/py", "a.py")}):
+        assert len(fleet_check.check_lock(tmp_path, "python/vendor.lock.json", sources=sources)) == 3
+    for sources, message in (({"vendor/b.cjs": ("o/cjs", "b.cjs")}, r"unlisted rows from a listed repository: \['vendor/c.cjs'\]"),
+                             ({**cjs, "vendor/b.cjs": ("o/cjs", "other.cjs")}, "vendor/b.cjs"),
+                             ({**cjs, "vendor/b.cjs": ("o/other", "b.cjs")}, "vendor/b.cjs"),
+                             ({**cjs, "vendor/d.cjs": ("o/cjs", "d.cjs")}, "vendor/d.cjs")):
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.check_lock(tmp_path, "python/vendor.lock.json", sources=sources)
     (tmp_path / "python/vendor/a.py").write_bytes(b"print(2)\n")
     with pytest.raises(AssertionError, match="python/vendor/a.py"):
         fleet_check.check_lock(tmp_path, "python/vendor.lock.json")
