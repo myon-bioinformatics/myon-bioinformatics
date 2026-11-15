@@ -1,4 +1,4 @@
-"""Parent tools: repo patches, evidence guards, CLI ergonomics, git helpers, preflight, publish_check, py_matrix, pytest_brief, hygiene."""
+"""Parent tools: repo patches, evidence guards, CLI ergonomics, fleet checks, git helpers, preflight, publish_check, py_matrix, pytest_brief, hygiene."""
 from __future__ import annotations
 
 import ast
@@ -559,6 +559,113 @@ with tempfile.TemporaryDirectory() as tmp:
                     self.assertEqual(result.returncode, 0 if mutation == 'none' else 1, result.stderr)
                     self.assertEqual(result.stdout, 'valid package accepted\n' if mutation == 'none' else '')
                     if mutation != 'none': self.assertIn('AssertionError', result.stderr)
+
+
+# ═══ · fleet check ═══════════════════════════════════════════════════════════════════════════════════════
+# Shared child contract checks (vendored as vendor/fleet_check.py); real files and subprocesses, no network.
+
+import fleet_check
+
+
+def _lock_row(root: Path, where: str, data: bytes, commit: str = "a" * 40) -> dict:
+    (root / where).parent.mkdir(parents=True, exist_ok=True)
+    (root / where).write_bytes(data)
+    blob = __import__("hashlib").sha1(b"blob %d\0" % len(data) + data).hexdigest()
+    return {"destination": where, "ref": commit, "commit": commit, "blob_sha": blob,
+            "sha256": __import__("hashlib").sha256(data).hexdigest()}
+
+
+def test_fleet_check_lock_verifies_bytes_and_accepted_commits(tmp_path):
+    rows = [_lock_row(tmp_path, "python/vendor/a.py", b"print(1)\n"), _lock_row(tmp_path, "vendor/b.cjs", b"//\n", "b" * 40)]
+    (tmp_path / "python").mkdir(exist_ok=True)
+    (tmp_path / "python/vendor.lock.json").write_text(json.dumps({"schema": "vendor-lock/1", "files": rows}))
+    found = fleet_check.check_lock(tmp_path, "python/vendor.lock.json", {"vendor/b.cjs": "b" * 40})
+    assert sorted(found) == ["python/vendor/a.py", "vendor/b.cjs"]
+    with pytest.raises(AssertionError, match="vendor/b.cjs"):
+        fleet_check.check_lock(tmp_path, "python/vendor.lock.json", {"vendor/b.cjs": "c" * 40})
+    (tmp_path / "python/vendor/a.py").write_bytes(b"print(2)\n")
+    with pytest.raises(AssertionError, match="python/vendor/a.py"):
+        fleet_check.check_lock(tmp_path, "python/vendor.lock.json")
+    rows[0]["ref"] = "main"
+    (tmp_path / "python/vendor.lock.json").write_text(json.dumps({"schema": "vendor-lock/1", "files": rows}))
+    with pytest.raises(AssertionError, match="python/vendor/a.py"):
+        fleet_check.check_lock(tmp_path, "python/vendor.lock.json")
+
+
+def test_fleet_check_parent_refs_keep_mutable_and_missing_refs(tmp_path):
+    flows = tmp_path / ".github/workflows"
+    flows.mkdir(parents=True)
+    parent = fleet_check.PARENT
+    (flows / "ci.yml").write_text(f"""jobs:
+  a:
+    uses: {parent}/.github/workflows/x.yml@{'1' * 40}
+  b:
+    uses: '{parent}/.github/workflows/y.yml@main'
+  c:
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: {parent}
+          ref: '{'2' * 40}'
+      - uses: actions/checkout@v7
+        with:
+          repository: "{parent}"
+      - uses: actions/checkout@v7
+        with:
+          repository: {parent}
+          ref: ${{{{ steps.parent.outputs.sha }}}}
+          path: .vendor-sync-tools
+""", encoding="utf-8")
+    assert fleet_check.parent_refs(tmp_path) == ["1" * 40, "main", "2" * 40, None, "${{ steps.parent.outputs.sha }}"]
+    assert fleet_check.parent_refs(tmp_path, skip=(".vendor-sync-tools",)) == ["1" * 40, "main", "2" * 40, None]
+    assert fleet_check.repo_root(flows / "ci.yml") == tmp_path.resolve()
+
+
+def test_fleet_check_workflow_job_and_run_main(tmp_path):
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+    (tmp_path / ".github/workflows/ci.yml").write_text("jobs:\n  test:\n    runs-on: x\n  lint:\n    runs-on: y\n")
+    assert fleet_check.workflow_job(tmp_path, "test") == "    runs-on: x\n"
+    with pytest.raises(AssertionError, match="missing job build"):
+        fleet_check.workflow_job(tmp_path, "build")
+    (tmp_path / "bench.py").write_text(
+        "import sys\ndef answer():\n    return 42\n"
+        "def main():\n    if answer() != 42:\n        sys.exit('result mismatch')\n"
+        "    print({'optimize': sys.flags.optimize, 'nosite': sys.flags.no_site})\n")
+    for optimized in (False, True):
+        ok = fleet_check.run_main(tmp_path, "bench.py", optimized=optimized)
+        assert (ok.returncode, ok.stdout) == (0, f"{{'optimize': {int(optimized)}, 'nosite': 1}}\n"), ok.stderr
+        bad = fleet_check.run_main(tmp_path, "bench.py", "g['answer'] = lambda: 0", optimized=optimized)
+        assert (bad.returncode, bad.stdout) == (1, "") and "result mismatch" in bad.stderr
+
+
+def test_fleet_check_node_gate_skips_locally_and_fails_in_ci(tmp_path, monkeypatch):
+    monkeypatch.setenv("NODE", str(tmp_path / "no-such-node"))
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    fleet_check.node.cache_clear()
+    try:
+        assert fleet_check.node() is None
+        with pytest.raises(AssertionError, match="Node 26"):
+            fleet_check.node_parity(tmp_path, "tool.py", "TOOL_PYTHON")
+        monkeypatch.setenv("GITHUB_ACTIONS", "true")
+        fleet_check.node.cache_clear()
+        with pytest.raises(AssertionError, match="required in CI"):
+            fleet_check.node()
+    finally:
+        fleet_check.node.cache_clear()
+
+
+def test_fleet_check_node_parity_runs_the_same_python(tmp_path):
+    if fleet_check.node() is None:
+        pytest.skip("Node 26+ not available (set NODE)")
+    (tmp_path / "vendor").mkdir()
+    shutil.copy(ROOT / "py_launch.cjs", tmp_path / "vendor/py_launch.cjs")
+    (tmp_path / "tool.py").write_text(
+        "import json, sys\nprint(json.dumps({'argv': sys.argv[1:], 'stdin': sys.stdin.read(), 'nosite': sys.flags.no_site}))\n"
+        "sys.exit(3)\n", encoding="utf-8")
+    via_node, via_python = fleet_check.node_parity(tmp_path, "tool.py", "TOOL_PYTHON", "a b", "--x=ü", input="こんにちは\n")
+    assert via_node == via_python
+    assert via_python[0] == 3
+    assert json.loads(via_python[1]) == {"argv": ["a b", "--x=ü"], "stdin": "こんにちは\n", "nosite": 1}
 
 
 # ═══ · git commit ════════════════════════════════════════════════════════════════════════════════════════
