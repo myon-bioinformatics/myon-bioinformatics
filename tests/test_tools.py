@@ -624,6 +624,48 @@ def test_fleet_check_parent_refs_keep_mutable_and_missing_refs(tmp_path):
     assert fleet_check.repo_root(flows / "ci.yml") == tmp_path.resolve()
 
 
+def test_fleet_check_actions_need_full_shas_and_version_comments(tmp_path):
+    flows = tmp_path / ".github/workflows"
+    flows.mkdir(parents=True)
+    parent, sha, other = fleet_check.PARENT, "1" * 40, "2" * 40
+    good = f"""jobs:
+  a:
+    uses: {parent}/.github/workflows/x.yml@{sha}
+  b:
+    steps:
+      - uses: actions/checkout@{sha} # v7.0.1
+      - name: quoted
+        uses: "actions/cache/save@{other}"  # v6
+      - uses: ./.github/actions/local
+      - uses: docker://alpine:3
+"""
+    (flows / "ci.yml").write_text(good, encoding="utf-8")
+    rows = [(f"{parent}/.github/workflows/x.yml", sha, None), ("actions/checkout", sha, "v7.0.1"), ("actions/cache/save", other, "v6")]
+    assert fleet_check.check_actions(tmp_path) == rows
+    pins = {"actions/checkout": sha, "actions/cache/save": other + " # v6"}
+    assert fleet_check.check_actions(tmp_path, pins) == rows
+    for wrong, message in (({**pins, "actions/checkout": other}, "actions/checkout@1+ # v7.0.1: not the reviewed pin"),
+                           ({"actions/checkout": sha}, "cache/save.*not the reviewed pin"),
+                           ({**pins, "actions/cache/save": other + " # v7"}, "cache/save.*not the reviewed pin")):
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.check_actions(tmp_path, wrong)
+    for broken, message in (
+        (good.replace(f"checkout@{sha} # v7.0.1", "checkout@v7"), "not a full SHA"),
+        (good.replace(f"checkout@{sha} # v7.0.1", f"checkout@{sha[:7]} # v7.0.1"), "not a full SHA"),
+        (good.replace(f"x.yml@{sha}", "x.yml@main"), "not a full SHA"),
+        (good.replace(" # v7.0.1", ""), "other.yaml: - uses: actions/checkout@1+: no version comment"),
+        (good.replace(" # v7.0.1", " # latest"), "no version comment"),
+        # only the parent's reusable workflows pass on the SHA alone
+        (good.replace(parent + "/.github", "myon-bioinformatics/Aoi/.github"), "Aoi/.github/workflows/x.yml@1+: no version comment"),
+        (good.replace(parent + "/.github/workflows/x.yml", parent + "/actions/x"), "no version comment"),
+    ):
+        assert broken != good
+        (flows / "other.yaml").write_text(broken, encoding="utf-8")
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.check_actions(tmp_path)
+        assert fleet_check.check_actions(tmp_path, workflow="ci.yml") == rows
+
+
 def test_fleet_check_workflow_job_and_run_main(tmp_path):
     (tmp_path / ".github/workflows").mkdir(parents=True)
     (tmp_path / ".github/workflows/ci.yml").write_text("jobs:\n  test:\n    runs-on: x\n  lint:\n    runs-on: y\n")

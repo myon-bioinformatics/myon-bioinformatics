@@ -12,7 +12,7 @@ from __future__ import annotations
 import functools, hashlib, json, os, re, shutil, signal, subprocess, sys, tempfile
 from pathlib import Path
 
-__all__ = ["check_lock", "launcher_contract", "node", "node_parity", "parent_refs", "repo_root", "run_main", "workflow_job"]
+__all__ = ["check_actions", "check_lock", "launcher_contract", "node", "node_parity", "parent_refs", "repo_root", "run_main", "workflow_job"]
 PARENT = "myon-bioinformatics/myon-bioinformatics"
 
 
@@ -74,6 +74,33 @@ def parent_refs(root, skip=(), only=()) -> list:
             if keys.get("path") not in skip and (not only or keys.get("path") in only):
                 refs.append(keys.get("ref"))
     return refs
+
+
+def check_actions(root, pins=None, workflow="*.y*ml") -> list:
+    """Verify every ``uses: owner/repo[/path]@ref`` of the workflows; return ``(action, sha, version)`` rows.
+
+    Each ref is a full 40-hex SHA followed by a ``# vN[.N[.N]]`` version
+    comment; only the parent's reusable workflows (no release tags) pass on
+    the SHA alone, with version ``None``. ``pins`` maps every action in use to
+    its reviewed ``"<sha>"`` or ``"<sha> # <version>"``. Local ``./`` and
+    ``docker://`` steps are not refs to pin and are left out.
+    """
+    rows = []
+    for path in sorted((Path(root) / ".github/workflows").glob(workflow)):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            use = re.fullmatch(r"\s*(?:-\s+)?uses:\s*['\"]?([^\s'\"#]+)['\"]?\s*(?:#\s*(.*?))?\s*", line)
+            if not use or use[1].startswith(("./", "docker://")):
+                continue
+            where = f"{path.name}: {line.strip()}"
+            action, _, ref = use[1].partition("@")
+            assert re.fullmatch(r"[0-9a-f]{40}", ref), f"{where}: not a full SHA"
+            version = use[2] if re.fullmatch(r"v\d+(?:\.\d+){0,2}", use[2] or "") else None
+            if not action.startswith(PARENT + "/.github/workflows/"):
+                assert version, f"{where}: no version comment"
+                if pins is not None:
+                    assert pins.get(action) in (ref, f"{ref} # {version}"), f"{where}: not the reviewed pin"
+            rows.append((action, ref, version))
+    return rows
 
 
 def workflow_job(root, job, workflow="ci.yml", node_floor=None) -> str:
