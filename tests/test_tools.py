@@ -847,6 +847,12 @@ def test_fleet_check_launcher_contract_holds_for_the_parent_launcher(tmp_path, m
          r"'run', \{'noSite': True\}"),
         ("terminated by signal ${signal}`);\n      wrapped.code", "terminated by signal ${signal} (forwarded)`);\n      wrapped.code",
          r"'SIGINT', 'SIGTERM', '', 0, 2, b'', b'[^']*\(forwarded\)"),
+        # item by item from BrowserTestKit's py_launch.test.cjs: Node bounds, JSON ENOINTERPRETER, interpreter prefix
+        ('    err.code = "ENODEVERSION";', '    err.code = "EOLDNODE";', "assertNodeVersion bounds or interpreter prefix"),
+        ('${result.error.message}`, {\n          code: "ENOINTERPRETER",', '${result.error.message}`, {\n          code: "ENOENT",', "no-such-python"),
+        ("    ...pythonArgv(\"-c\", [VERSION_PROBE], Boolean(opts.noSite), Boolean(opts.isolated)),",
+         "    ...pythonArgv(\"-c\", [VERSION_PROBE], Boolean(opts.noSite), Boolean(opts.isolated)).reverse(),",
+         "assertNodeVersion bounds or interpreter prefix"),
         # SIGTERM no longer forwarded: it ends the launcher and orphans the Python child
         ('  process.on("SIGTERM", forwardSignal);\n', "", r"'SIGINT', 'SIGTERM', '', 0, -15, b'', b''"),
         # a second stderr line after the JSON error

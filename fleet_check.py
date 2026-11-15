@@ -220,7 +220,11 @@ def node_parity(root, tool, env_var, *args, input=None, timeout=120) -> tuple:
 def launcher_contract(root, env_var="FLEET_PYTHON", timeout=60) -> None:
     """Check the child's own ``vendor/py_launch.cjs`` bytes against the launcher contract.
 
-    A missing interpreter exits 2 with empty stdout; argv, stdin and exit codes
+    A missing interpreter exits 2 with empty stdout (as one JSON
+    ``ENOINTERPRETER`` line under ``PY_LAUNCH_ERROR_FORMAT=json`` or
+    ``jsonErrors``); ``assertNodeVersion`` accepts Node 26 and newer without an
+    upper bound and rejects older with ``ENODEVERSION``; a candidate's
+    interpreter prefix stays before the probe's ``-S -I``; argv, stdin and exit codes
     pass through unchanged under ``-S``; ``-S`` also covers interpreter
     discovery (no ``sitecustomize``), and the library ``resolvePython``, ``run``
     and ``main`` honor ``noSite`` and ``isolated`` independently against a hostile
@@ -248,11 +252,30 @@ def launcher_contract(root, env_var="FLEET_PYTHON", timeout=60) -> None:
         tool.write_text("print('ok')\n", encoding="utf-8")
         missing = run(extra={env_var: str(tmp / "no-such-python")})
         assert (missing.returncode, missing.stdout) == (2, ""), missing
+        library, script = json.dumps(str(tmp / "vendor/py_launch.cjs")), json.dumps(str(tool))
+        absent = json.dumps({"python": str(tmp / "no-such-python"), "jsonErrors": True})
+        for missing in (run(extra={env_var: str(tmp / "no-such-python"), "PY_LAUNCH_ERROR_FORMAT": "json"}),
+                        subprocess.run([exe, "-e", f"require({library}).main({script}, {absent});"], env=env, capture_output=True,
+                                       text=True, encoding="utf-8", errors="replace", timeout=timeout)):
+            assert (missing.returncode, missing.stdout, missing.stderr.count("\n")) == (2, "", 1), missing
+            error = json.loads(missing.stderr)
+            assert (error["ok"], error["code"], error["exit_code"]) == (False, "ENOINTERPRETER", 2) and "Python 3.9+" in error["hint"], missing
+        (tmp / "probe.cjs").write_text('require("node:assert/strict").deepEqual(process.argv.slice(2, -1), ["-S", "-I", "-c"]); '
+                                       'console.log("3.12");\n', encoding="utf-8")
+        library_checks = (
+            f"const assert = require('node:assert/strict'), launcher = require({library});"
+            "for (const version of ['26.0.0', '99.0.0']) launcher.assertNodeVersion(version);"
+            "assert.throws(() => launcher.assertNodeVersion('24.0.0'), (e) => e.code === 'ENODEVERSION' && /Node 26\\+/.test(e.message));"
+            f"const found = launcher.resolvePython({{candidates: [{{cmd: process.execPath, prefix: [{json.dumps(str(tmp / 'probe.cjs'))}]}}], "
+            "noSite: true, isolated: true});"
+            "assert.equal(found.cmd, process.execPath);")
+        checked = subprocess.run([exe, "-e", library_checks], env=env, capture_output=True, text=True, encoding="utf-8",
+                                 errors="replace", timeout=timeout)
+        assert checked.returncode == 0, ("assertNodeVersion bounds or interpreter prefix", checked.stderr)
         marker = tmp / "site-hook-ran"
         (tmp / "sitecustomize.py").write_text(f"open({str(marker)!r}, 'w').close()\nraise SystemExit(42)\n", encoding="utf-8")
         probe = run(extra={"PYTHONPATH": str(tmp)})
         assert (probe.returncode, probe.stdout) == (0, "ok\n") and not marker.exists(), "-S must cover interpreter discovery too"
-        library, script = json.dumps(str(tmp / "vendor/py_launch.cjs")), json.dumps(str(tool))
         for flags in ({}, {"noSite": True}, {"isolated": True}, {"noSite": True, "isolated": True}):
             options = json.dumps({"python": sys.executable, **flags})
             for name, call in (("resolvePython", f"launcher.resolvePython({options}); console.log('ok');"),
