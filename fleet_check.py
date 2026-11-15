@@ -3,16 +3,16 @@
 
 Vendored as ``vendor/fleet_check.py``. Each child calls these from one
 ``tests/test_fleet.py`` instead of keeping per-repository copies of the same
-lock, parent pin, workflow, benchmark and Node parity tests. Checks raise
+lock, parent pin, workflow, benchmark, Node parity and launcher tests. Checks raise
 ``AssertionError`` naming the offending row; the helpers return plain data so
 the child keeps only its own expectations (pins, cases, messages).
 """
 from __future__ import annotations
 
-import functools, hashlib, json, os, re, shutil, subprocess, sys
+import functools, hashlib, json, os, re, shutil, signal, subprocess, sys, tempfile
 from pathlib import Path
 
-__all__ = ["check_lock", "node", "node_parity", "parent_refs", "repo_root", "run_main", "workflow_job"]
+__all__ = ["check_lock", "launcher_contract", "node", "node_parity", "parent_refs", "repo_root", "run_main", "workflow_job"]
 PARENT = "myon-bioinformatics/myon-bioinformatics"
 
 
@@ -97,11 +97,12 @@ def run_main(root, script, patch="", *, optimized=False, timeout=60) -> subproce
 
 
 @functools.lru_cache(maxsize=None)
-def node(minimum=26):
+def node(minimum=26, ci_jobs=("test",)):
     """``$NODE`` or ``node`` on PATH when it runs version ``minimum``+, else ``None``.
 
-    Under GitHub Actions a missing or old Node is an ``AssertionError``, so CI
-    runs the parity checks instead of skipping them.
+    In a GitHub Actions job named in ``ci_jobs`` (``GITHUB_JOB``) a missing or
+    old Node is an ``AssertionError``, so the job that provisions Node runs the
+    parity checks instead of skipping them; other jobs (portability, stdlib) skip.
     """
     found = os.environ.get("NODE") or shutil.which("node")
     version = ""
@@ -113,7 +114,8 @@ def node(minimum=26):
     match = re.match(r"v(\d+)", version.strip())
     if match and int(match[1]) >= minimum:
         return found
-    assert os.environ.get("GITHUB_ACTIONS") != "true", f"Node {minimum}+ is required in CI"
+    in_job = os.environ.get("GITHUB_ACTIONS") == "true" and os.environ.get("GITHUB_JOB") in ci_jobs
+    assert not in_job, f"Node {minimum}+ is required in CI job {os.environ.get('GITHUB_JOB')}"
     return None
 
 
@@ -137,3 +139,81 @@ def node_parity(root, tool, env_var, *args, input=None, timeout=120) -> tuple:
                               encoding="utf-8", errors="replace", timeout=timeout)
         results.append((done.returncode, done.stdout, done.stderr))
     return tuple(results)
+
+
+def launcher_contract(root, env_var="FLEET_PYTHON", timeout=60) -> None:
+    """Check the child's own ``vendor/py_launch.cjs`` bytes against the launcher contract.
+
+    A missing interpreter exits 2 with empty stdout; argv, stdin and exit codes
+    pass through unchanged under ``-S``; ``-S`` also covers interpreter
+    discovery (no ``sitecustomize``), and the library ``resolvePython`` honors
+    ``noSite`` and ``isolated`` independently; on POSIX, repeated signals are forwarded
+    until the child exits, ending in exit 2 with a text or JSON ``ESIGNAL`` error.
+    """
+    exe = node()
+    assert exe, "Node 26+ is not available (set NODE)"
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        (tmp / "vendor").mkdir()
+        shutil.copy(Path(root) / "vendor/py_launch.cjs", tmp / "vendor/py_launch.cjs")
+        tool = tmp / "tool.py"
+        argv = [exe, str(tmp / "vendor/py_launch.cjs"), "--env-var", env_var, "--", str(tool)]
+        env = {**os.environ, env_var: sys.executable, "PYTHONIOENCODING": "utf-8"}
+        env.pop("PY_LAUNCH_ERROR_FORMAT", None)
+
+        def run(*args, extra=None, **kw):
+            return subprocess.run([*argv, *args], env={**env, **(extra or {})}, capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace", timeout=timeout, **kw)
+
+        tool.write_text("print('ok')\n", encoding="utf-8")
+        missing = run(extra={env_var: str(tmp / "no-such-python")})
+        assert (missing.returncode, missing.stdout) == (2, ""), missing
+        marker = tmp / "site-hook-ran"
+        (tmp / "sitecustomize.py").write_text(f"open({str(marker)!r}, 'w').close()\n", encoding="utf-8")
+        probe = run(extra={"PYTHONPATH": str(tmp)})
+        assert probe.returncode == 0 and not marker.exists(), "-S must cover interpreter discovery too"
+        library = json.dumps(str(tmp / "vendor/py_launch.cjs"))
+        for no_site in (False, True):
+            for isolated in (False, True):
+                marker.unlink(missing_ok=True)
+                options = json.dumps({"python": sys.executable, "noSite": no_site, "isolated": isolated})
+                found = subprocess.run([exe, "-e", f"require({library}).resolvePython({options});"],
+                                       env={**env, "PYTHONPATH": str(tmp)}, capture_output=True, timeout=timeout)
+                assert found.returncode == 0, found.stderr
+                assert marker.exists() == (not (no_site or isolated)), ("resolvePython", no_site, isolated)
+        for code in (0, 1, 3, 7):
+            tool.write_text("import json, sys\nsys.stdout.write(json.dumps({'argv': sys.argv[1:], "
+                            "'stdin': sys.stdin.read(), 'nosite': sys.flags.no_site}))\n"
+                            f"sys.exit({code})\n", encoding="utf-8")
+            done = run("a b", "--x=\u00fc", input="\u3053\u3093\u306b\u3061\u306f\n")
+            assert done.returncode == code, done
+            assert json.loads(done.stdout) == {"argv": ["a b", "--x=\u00fc"], "stdin": "\u3053\u3093\u306b\u3061\u306f\n",
+                                               "nosite": 1}, done
+        if os.name == "nt":
+            return
+        import selectors
+        tool.write_text("import signal, time\nsignal.signal(signal.SIGINT, lambda *_: print('ACK', flush=True))\n"
+                        "print('READY', flush=True)\nwhile True: time.sleep(60)\n", encoding="utf-8")
+        for fmt in ("", "json"):
+            child = subprocess.Popen(argv, env={**env, "PY_LAUNCH_ERROR_FORMAT": fmt}, stdin=subprocess.DEVNULL,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+            try:
+                with selectors.DefaultSelector() as selector:
+                    selector.register(child.stdout, selectors.EVENT_READ)
+                    for expected, sent in ((b"READY\n", signal.SIGINT), (b"ACK\n", signal.SIGINT), (b"ACK\n", signal.SIGTERM)):
+                        assert selector.select(timeout=5), "child did not acknowledge forwarded signal"
+                        assert child.stdout.readline() == expected
+                        child.send_signal(sent)
+                stdout, stderr = child.communicate(timeout=5)
+                assert (child.returncode, stdout) == (2, b""), stderr
+                if fmt:
+                    error = json.loads(stderr)
+                    assert (error["code"], error["exit_code"]) == ("ESIGNAL", 2) and "SIGTERM" in error["message"]
+                else:
+                    assert b"terminated by signal SIGTERM" in stderr
+            finally:
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                child.communicate(timeout=5)

@@ -226,7 +226,7 @@ node vendor/py_launch.cjs --call main tool.py '["--format","json"]'
 
 Parent-owned `fleet_check.py` (stdlib, Python 3.9+) replaces the per-child copies of
 `test_vendor_lock.py`, `test_canonical_node_sources.py`, `test_parent_workflow_pins.py`,
-`test_ci_python_setup.py`, the benchmark `-O` guards and the `*_node_entry.py` parity tests.
+`test_ci_python_setup.py`, the benchmark `-O` guards and the `*_node_entry.py` parity and launcher tests.
 A child vendors it as `vendor/fleet_check.py` and keeps one `tests/test_fleet.py`:
 
 ```python
@@ -246,11 +246,11 @@ def test_parent_pins():
 | `parent_refs(root, skip)` | every `uses: PARENT/…@ref` and parent checkout `ref:` (mutable refs kept, `None` when missing); checkouts at a `skip` path left out |
 | `workflow_job(root, job, workflow)` | one top-level job's body, for order checks such as setup before the first `python` |
 | `run_main(root, script, patch, optimized)` | `main()` in a fresh `python -S` (`-O` too); `patch` runs first with `g` = main's globals |
-| `node()` / `node_parity(root, tool, env_var, *args, input)` | Node 26+ or `None` (an `AssertionError` under GitHub Actions); `(rc, stdout, stderr)` via `vendor/py_launch.cjs` and via `python -S` |
+| `launcher_contract(root, env_var)` | the child's own `vendor/py_launch.cjs` bytes: missing interpreter → exit 2, argv/stdin/exit passthrough under `-S`, no `sitecustomize` during discovery, `resolvePython` honors `noSite`/`isolated`, POSIX signal forwarding (text and JSON `ESIGNAL`) |
+| `node()` / `node_parity(root, tool, env_var, *args, input)` | Node 26+ or `None` (an `AssertionError` in the GitHub Actions job named in `ci_jobs`, default `test`); `(rc, stdout, stderr)` via `vendor/py_launch.cjs` and via `python -S` |
 
-The launcher's own behavior (missing interpreter, argv/stdin/exit passthrough, signals) is tested
-here in the parent; a child's locked `py_launch.cjs` bytes are the same file, so children keep only
-their tool's parity cases. Enroll the catalog row after this module is on the default branch, like
+Children lock older `py_launch.cjs` bytes than the parent worktree, so each child runs
+`launcher_contract` against its own vendored copy instead of keeping the per-child launcher tests. Enroll the catalog row after this module is on the default branch, like
 `njs_launch.py` below.
 
 ### Python launcher for vendored Node scripts (`njs_launch.py`)

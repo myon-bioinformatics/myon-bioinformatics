@@ -647,9 +647,14 @@ def test_fleet_check_node_gate_skips_locally_and_fails_in_ci(tmp_path, monkeypat
         with pytest.raises(AssertionError, match="Node 26"):
             fleet_check.node_parity(tmp_path, "tool.py", "TOOL_PYTHON")
         monkeypatch.setenv("GITHUB_ACTIONS", "true")
+        monkeypatch.setenv("GITHUB_JOB", "portability")
         fleet_check.node.cache_clear()
-        with pytest.raises(AssertionError, match="required in CI"):
+        assert fleet_check.node() is None
+        monkeypatch.setenv("GITHUB_JOB", "test")
+        fleet_check.node.cache_clear()
+        with pytest.raises(AssertionError, match="required in CI job test"):
             fleet_check.node()
+        assert fleet_check.node(ci_jobs=("node-parity",)) is None
     finally:
         fleet_check.node.cache_clear()
 
@@ -671,6 +676,19 @@ def test_fleet_check_node_parity_runs_the_same_python(tmp_path, monkeypatch):
     assert via_python[0] == 3
     assert json.loads(via_python[1]) == {"argv": ["a b", "--x=ü"], "stdin": "こんにちは\n", "nosite": 1}
 
+
+def test_fleet_check_launcher_contract_holds_for_the_parent_launcher(tmp_path, monkeypatch):
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    fleet_check.node.cache_clear()
+    if fleet_check.node() is None:
+        fleet_check.node.cache_clear()
+        pytest.skip("Node 26+ not available (set NODE)")
+    (tmp_path / "vendor").mkdir()
+    shutil.copy(ROOT / "py_launch.cjs", tmp_path / "vendor/py_launch.cjs")
+    fleet_check.launcher_contract(tmp_path)
+    (tmp_path / "vendor/py_launch.cjs").write_text("process.exit(0)\n", encoding="utf-8")
+    with pytest.raises(AssertionError):
+        fleet_check.launcher_contract(tmp_path)
 
 # ═══ · git commit ════════════════════════════════════════════════════════════════════════════════════════
 
