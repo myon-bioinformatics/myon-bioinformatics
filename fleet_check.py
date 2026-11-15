@@ -45,19 +45,21 @@ def check_lock(root, lock="vendor.lock.json", commits=None) -> dict:
     return rows
 
 
-def parent_refs(root, skip=()) -> list:
+def parent_refs(root, skip=(), only=()) -> list:
     """Every ref a workflow uses to reach the parent repository.
 
     Collects ``uses: PARENT/…@ref`` (mutable and short refs included) and the
     ``ref:`` of each ``repository: PARENT`` checkout (``None`` when missing).
     Checkouts whose ``path:`` is in ``skip`` (such as ``.vendor-sync-tools``,
-    resolved separately) are left out.
+    resolved separately) are left out. With ``only``, just the refs of the
+    checkouts at those paths are returned (no ``uses:`` refs).
     """
     name = re.escape(PARENT)
     refs = []
     for path in sorted((Path(root) / ".github/workflows").glob("*.y*ml")):
         text = path.read_text(encoding="utf-8")
-        refs += re.findall(r"uses:\s*['\"]?" + name + r"/[^\s@'\"]+@([^\s'\"]+)", text)
+        if not only:
+            refs += re.findall(r"uses:\s*['\"]?" + name + r"/[^\s@'\"]+@([^\s'\"]+)", text)
         lines = text.splitlines()
         for i, line in enumerate(lines):
             if not re.fullmatch(r"\s+(?:-\s+)?repository:\s*['\"]?" + name + r"['\"]?\s*", line):
@@ -69,16 +71,29 @@ def parent_refs(root, skip=()) -> list:
                 match = re.fullmatch(r"\s+(ref|path):\s*['\"]?(.*?)['\"]?\s*", item)
                 if match:
                     keys.setdefault(match[1], match[2])
-            if keys.get("path") not in skip:
+            if keys.get("path") not in skip and (not only or keys.get("path") in only):
                 refs.append(keys.get("ref"))
     return refs
 
 
-def workflow_job(root, job, workflow="ci.yml") -> str:
-    """Body of one top-level job of ``.github/workflows/<workflow>``."""
+def workflow_job(root, job, workflow="ci.yml", node_floor=None) -> str:
+    """Body of one top-level job of ``.github/workflows/<workflow>``.
+
+    With ``node_floor`` the job must set up that Node major and carry the bash
+    guard ``if [[ "$node_major" -lt FLOOR ]]; then … fi``; the guard is run in
+    ``bash`` around the floor and must reject every older major only.
+    """
     text = (Path(root) / ".github/workflows" / workflow).read_text(encoding="utf-8")
     match = re.search(r"(?ms)^  " + re.escape(job) + r":\n(.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)", text)
     assert match, f"{workflow}: missing job {job}"
+    if node_floor is not None:
+        where = f"{workflow}: job {job}"
+        assert re.search(r"(?m)^\s*node-version:\s*['\"]?%d['\"]?\s*$" % node_floor, match[1]), f"{where}: no setup of Node {node_floor}"
+        guard = re.search(r'(?ms)^([ \t]*)if \[\[ "\$node_major" -lt (\d+) \]\]; then\n.*?^\1fi$', match[1])
+        assert guard and int(guard[2]) == node_floor, f"{where}: no node_major guard at {node_floor}"
+        for major in range(node_floor - 2, node_floor + 2):
+            done = subprocess.run(["bash", "-c", f"node_major={major}\n{guard[0]}"], capture_output=True, text=True, timeout=30)
+            assert done.returncode == (major < node_floor), (where, major, done.stdout, done.stderr)
     return match[1]
 
 
@@ -103,6 +118,7 @@ def node(minimum=26, ci_jobs=("test",)):
     In a GitHub Actions job named in ``ci_jobs`` (``GITHUB_JOB``) a missing or
     old Node is an ``AssertionError``, so the job that provisions Node runs the
     parity checks instead of skipping them; other jobs (portability, stdlib) skip.
+    ``ci_jobs=None`` requires Node in every GitHub Actions job.
     """
     found = os.environ.get("NODE") or shutil.which("node")
     version = ""
@@ -114,7 +130,7 @@ def node(minimum=26, ci_jobs=("test",)):
     match = re.match(r"v(\d+)", version.strip())
     if match and int(match[1]) >= minimum:
         return found
-    in_job = os.environ.get("GITHUB_ACTIONS") == "true" and os.environ.get("GITHUB_JOB") in ci_jobs
+    in_job = os.environ.get("GITHUB_ACTIONS") == "true" and (ci_jobs is None or os.environ.get("GITHUB_JOB") in ci_jobs)
     assert not in_job, f"Node {minimum}+ is required in CI job {os.environ.get('GITHUB_JOB')}"
     return None
 
@@ -146,9 +162,13 @@ def launcher_contract(root, env_var="FLEET_PYTHON", timeout=60) -> None:
 
     A missing interpreter exits 2 with empty stdout; argv, stdin and exit codes
     pass through unchanged under ``-S``; ``-S`` also covers interpreter
-    discovery (no ``sitecustomize``), and the library ``resolvePython`` honors
-    ``noSite`` and ``isolated`` independently; on POSIX, repeated signals are forwarded
-    until the child exits, ending in exit 2 with a text or JSON ``ESIGNAL`` error.
+    discovery (no ``sitecustomize``), and the library ``resolvePython``, ``run``
+    and ``main`` honor ``noSite`` and ``isolated`` independently against a hostile
+    ``sitecustomize`` (unprotected, the interpreter is "not suitable"); on POSIX,
+    SIGINT and SIGTERM are forwarded in either order, directly or after repeated
+    acknowledged signals, until the child exits: exit 2, empty stdout and exactly
+    one stderr line (text or JSON ``ESIGNAL``, ``ok: false``) ending in
+    ``terminated by signal NAME``.
     """
     exe = node()
     assert exe, "Node 26+ is not available (set NODE)"
@@ -169,18 +189,24 @@ def launcher_contract(root, env_var="FLEET_PYTHON", timeout=60) -> None:
         missing = run(extra={env_var: str(tmp / "no-such-python")})
         assert (missing.returncode, missing.stdout) == (2, ""), missing
         marker = tmp / "site-hook-ran"
-        (tmp / "sitecustomize.py").write_text(f"open({str(marker)!r}, 'w').close()\n", encoding="utf-8")
+        (tmp / "sitecustomize.py").write_text(f"open({str(marker)!r}, 'w').close()\nraise SystemExit(42)\n", encoding="utf-8")
         probe = run(extra={"PYTHONPATH": str(tmp)})
-        assert probe.returncode == 0 and not marker.exists(), "-S must cover interpreter discovery too"
-        library = json.dumps(str(tmp / "vendor/py_launch.cjs"))
-        for no_site in (False, True):
-            for isolated in (False, True):
+        assert (probe.returncode, probe.stdout) == (0, "ok\n") and not marker.exists(), "-S must cover interpreter discovery too"
+        library, script = json.dumps(str(tmp / "vendor/py_launch.cjs")), json.dumps(str(tool))
+        for flags in ({}, {"noSite": True}, {"isolated": True}, {"noSite": True, "isolated": True}):
+            options = json.dumps({"python": sys.executable, **flags})
+            for name, call in (("resolvePython", f"launcher.resolvePython({options}); console.log('ok');"),
+                               ("run", f"process.stdout.write(launcher.run({script}, [], {options}).stdout);"),
+                               ("main", f"launcher.main({script}, {options});")):
                 marker.unlink(missing_ok=True)
-                options = json.dumps({"python": sys.executable, "noSite": no_site, "isolated": isolated})
-                found = subprocess.run([exe, "-e", f"require({library}).resolvePython({options});"],
-                                       env={**env, "PYTHONPATH": str(tmp)}, capture_output=True, timeout=timeout)
-                assert found.returncode == 0, found.stderr
-                assert marker.exists() == (not (no_site or isolated)), ("resolvePython", no_site, isolated)
+                found = subprocess.run([exe, "-e", f"const launcher = require({library}); {call}"], cwd=tmp,
+                                       env={**env, "PYTHONPATH": str(tmp)}, capture_output=True, text=True,
+                                       encoding="utf-8", errors="replace", timeout=timeout)
+                seen = (name, flags, found.returncode, found.stdout, found.stderr)
+                if flags:
+                    assert not marker.exists() and seen[2:] == (0, "ok\n", ""), seen
+                else:  # control: the hostile hook is reachable, and an unprotected probe refuses the interpreter
+                    assert marker.exists() and found.returncode != 0 and "not suitable" in found.stderr, seen
         for code in (0, 1, 3, 7):
             tool.write_text("import json, sys\nsys.stdout.write(json.dumps({'argv': sys.argv[1:], "
                             "'stdin': sys.stdin.read(), 'nosite': sys.flags.no_site}))\n"
@@ -192,28 +218,38 @@ def launcher_contract(root, env_var="FLEET_PYTHON", timeout=60) -> None:
         if os.name == "nt":
             return
         import selectors
-        tool.write_text("import signal, time\nsignal.signal(signal.SIGINT, lambda *_: print('ACK', flush=True))\n"
-                        "print('READY', flush=True)\nwhile True: time.sleep(60)\n", encoding="utf-8")
-        for fmt in ("", "json"):
-            child = subprocess.Popen(argv, env={**env, "PY_LAUNCH_ERROR_FORMAT": fmt}, stdin=subprocess.DEVNULL,
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
-            try:
-                with selectors.DefaultSelector() as selector:
-                    selector.register(child.stdout, selectors.EVENT_READ)
-                    for expected, sent in ((b"READY\n", signal.SIGINT), (b"ACK\n", signal.SIGINT), (b"ACK\n", signal.SIGTERM)):
-                        assert selector.select(timeout=5), "child did not acknowledge forwarded signal"
-                        assert child.stdout.readline() == expected
-                        child.send_signal(sent)
-                stdout, stderr = child.communicate(timeout=5)
-                assert (child.returncode, stdout) == (2, b""), stderr
-                if fmt:
-                    error = json.loads(stderr)
-                    assert (error["code"], error["exit_code"]) == ("ESIGNAL", 2) and "SIGTERM" in error["message"]
-                else:
-                    assert b"terminated by signal SIGTERM" in stderr
-            finally:
+        for ignored, last in (("SIGINT", "SIGTERM"), ("SIGTERM", "SIGINT")):
+            tool.write_text(f"import signal, time\nsignal.signal(signal.{ignored}, lambda *_: print('ACK', flush=True))\n"
+                            f"signal.signal(signal.{last}, signal.SIG_DFL)\n"
+                            # short sleeps: a signal landing just before a long sleep would be handled only after it
+                            "print('READY', flush=True)\nwhile True: time.sleep(0.05)\n", encoding="utf-8")
+            for fmt, repeats in (("", 0), ("", 2), ("json", 0), ("json", 2)):
+                child = subprocess.Popen(argv, env={**env, "PY_LAUNCH_ERROR_FORMAT": fmt}, stdin=subprocess.DEVNULL,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
                 try:
-                    os.killpg(child.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                child.communicate(timeout=5)
+                    with selectors.DefaultSelector() as selector:
+                        selector.register(child.stdout, selectors.EVENT_READ)
+                        # Only the launcher PID is signalled, never the Python child or its group.
+                        for step in range(repeats + 1):
+                            assert selector.select(timeout=5), "child did not acknowledge forwarded signal"
+                            assert child.stdout.readline() == (b"ACK\n" if step else b"READY\n") and child.poll() is None
+                            child.send_signal(getattr(signal, last if step == repeats else ignored))
+                    try:
+                        stdout, stderr = child.communicate(timeout=5)
+                    except subprocess.TimeoutExpired:  # the launcher went away and left its Python child holding the pipes
+                        os.killpg(child.pid, signal.SIGKILL)
+                        stdout, stderr = child.communicate(timeout=5)
+                    seen = (ignored, last, fmt, repeats, child.returncode, stdout, stderr)
+                    assert (child.returncode, stdout) == (2, b"") and stderr.count(b"\n") == 1, seen
+                    message = stderr.decode("utf-8").strip()
+                    if fmt:
+                        error = json.loads(stderr)
+                        assert (error["ok"], error["code"], error["exit_code"]) == (False, "ESIGNAL", 2), seen
+                        message = error["message"]
+                    assert message.endswith(f"terminated by signal {last}"), seen
+                finally:
+                    try:
+                        os.killpg(child.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    child.communicate(timeout=5)

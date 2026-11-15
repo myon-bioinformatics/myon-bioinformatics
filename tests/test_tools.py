@@ -618,6 +618,9 @@ def test_fleet_check_parent_refs_keep_mutable_and_missing_refs(tmp_path):
 """, encoding="utf-8")
     assert fleet_check.parent_refs(tmp_path) == ["1" * 40, "main", "2" * 40, None, "${{ steps.parent.outputs.sha }}"]
     assert fleet_check.parent_refs(tmp_path, skip=(".vendor-sync-tools",)) == ["1" * 40, "main", "2" * 40, None]
+    assert fleet_check.parent_refs(tmp_path, only=(".vendor-sync-tools",)) == ["${{ steps.parent.outputs.sha }}"]
+    assert fleet_check.parent_refs(tmp_path, only=(None, ".vendor-sync-tools"), skip=(".vendor-sync-tools",)) == ["2" * 40, None]
+    assert fleet_check.parent_refs(tmp_path, only=(".no-such-path",)) == []
     assert fleet_check.repo_root(flows / "ci.yml") == tmp_path.resolve()
 
 
@@ -638,6 +641,35 @@ def test_fleet_check_workflow_job_and_run_main(tmp_path):
         assert (bad.returncode, bad.stdout) == (1, "") and "result mismatch" in bad.stderr
 
 
+@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
+def test_fleet_check_workflow_job_runs_the_node_floor_guard(tmp_path):
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+    good = ("jobs:\n  lint:\n    runs-on: y\n  vendor-dispatch:\n    steps:\n      - uses: actions/setup-node@v7\n        with:\n"
+            "          node-version: \"26\"\n      - run: |\n          set -euo pipefail\n"
+            "          node_major=$(node -p \"process.versions.node.split('.')[0]\")\n"
+            "          if [[ \"$node_major\" -lt 26 ]]; then\n            echo \"node ${node_major} is older than 26\" >&2\n"
+            "            exit 1\n          fi\n          python - <<'PY'\n          if True:\n              pass\n          PY\n"
+            "  test:\n    runs-on: x\n")
+    path = tmp_path / ".github/workflows/ci.yml"
+    path.write_text(good, encoding="utf-8")
+    body = fleet_check.workflow_job(tmp_path, "vendor-dispatch", node_floor=26)
+    assert body == fleet_check.workflow_job(tmp_path, "vendor-dispatch") and "node_major" in body
+    for broken, message in (
+        (good.replace("            exit 1\n", ""), r"vendor-dispatch', 24"),             # the guard only warns
+        (good.replace("-lt 26", "-lt 24"), "no node_major guard at 26"),                 # the guard's floor drifted
+        (good.replace('node-version: "26"', "node-version: '24'"), "no setup of Node 26"),
+        (good.replace('if [[ "$node_major" -lt 26 ]]', 'if [[ "$node_major" -gt 26 ]]'), "no node_major guard at 26"),
+        (good.replace("-lt 26 ]]; then", "-lt 26 ]] && false; then"), "no node_major guard at 26"),
+    ):
+        assert broken != good
+        path.write_text(broken, encoding="utf-8")
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.workflow_job(tmp_path, "vendor-dispatch", node_floor=26)
+        assert "runs-on: x" in fleet_check.workflow_job(tmp_path, "test")
+    with pytest.raises(AssertionError, match="no setup of Node 26"):
+        fleet_check.workflow_job(tmp_path, "test", node_floor=26)
+
+
 def test_fleet_check_node_gate_skips_locally_and_fails_in_ci(tmp_path, monkeypatch):
     monkeypatch.setenv("NODE", str(tmp_path / "no-such-node"))
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
@@ -655,6 +687,14 @@ def test_fleet_check_node_gate_skips_locally_and_fails_in_ci(tmp_path, monkeypat
         with pytest.raises(AssertionError, match="required in CI job test"):
             fleet_check.node()
         assert fleet_check.node(ci_jobs=("node-parity",)) is None
+        with pytest.raises(AssertionError, match="required in CI job test"):
+            fleet_check.node(ci_jobs=None)
+        monkeypatch.setenv("GITHUB_JOB", "portability")
+        with pytest.raises(AssertionError, match="required in CI job portability"):
+            fleet_check.node(ci_jobs=None)
+        monkeypatch.delenv("GITHUB_ACTIONS")
+        fleet_check.node.cache_clear()
+        assert fleet_check.node(ci_jobs=None) is None
     finally:
         fleet_check.node.cache_clear()
 
@@ -686,9 +726,25 @@ def test_fleet_check_launcher_contract_holds_for_the_parent_launcher(tmp_path, m
     (tmp_path / "vendor").mkdir()
     shutil.copy(ROOT / "py_launch.cjs", tmp_path / "vendor/py_launch.cjs")
     fleet_check.launcher_contract(tmp_path)
-    (tmp_path / "vendor/py_launch.cjs").write_text("process.exit(0)\n", encoding="utf-8")
-    with pytest.raises(AssertionError):
-        fleet_check.launcher_contract(tmp_path)
+    source = (ROOT / "py_launch.cjs").read_text(encoding="utf-8")
+    for old, new, message in (
+        (source, "process.exit(0)\n", ""),
+        # library run() drops the discovery flags: only the hostile sitecustomize check sees it
+        ("  const resolved = resolvePython(options);", "  const resolved = resolvePython({ python: options.python });",
+         r"'run', \{'noSite': True\}"),
+        ("terminated by signal ${signal}`);\n      wrapped.code", "terminated by signal ${signal} (forwarded)`);\n      wrapped.code",
+         r"'SIGINT', 'SIGTERM', '', 0, 2, b'', b'[^']*\(forwarded\)"),
+        # SIGTERM no longer forwarded: it ends the launcher and orphans the Python child
+        ('  process.on("SIGTERM", forwardSignal);\n', "", r"'SIGINT', 'SIGTERM', '', 0, -15, b'', b''"),
+        # a second stderr line after the JSON error
+        ('      wrapped.hint = launcherHint({ code: "ESIGNAL" });\n      writeLauncherError(wrapped, opts);\n',
+         '      wrapped.hint = launcherHint({ code: "ESIGNAL" });\n      writeLauncherError(wrapped, opts);\n      console.error("extra");\n',
+         r"'SIGINT', 'SIGTERM', '', 0, 2, b'', b'[^']*extra"),
+    ):
+        assert source.count(old) == 1, old
+        (tmp_path / "vendor/py_launch.cjs").write_text(source.replace(old, new), encoding="utf-8")
+        with pytest.raises(AssertionError, match=message or None):
+            fleet_check.launcher_contract(tmp_path)
 
 # ═══ · git commit ════════════════════════════════════════════════════════════════════════════════════════
 

@@ -243,11 +243,11 @@ def test_parent_pins():
 | Function | Returns / checks |
 | --- | --- |
 | `check_lock(root, lock, commits)` | vendor-lock/1 rows: full-SHA `ref == commit`, placed bytes match `blob_sha` and `sha256`; `commits` pins chosen destinations |
-| `parent_refs(root, skip)` | every `uses: PARENT/…@ref` and parent checkout `ref:` (mutable refs kept, `None` when missing); checkouts at a `skip` path left out |
-| `workflow_job(root, job, workflow)` | one top-level job's body, for order checks such as setup before the first `python` |
+| `parent_refs(root, skip, only)` | every `uses: PARENT/…@ref` and parent checkout `ref:` (mutable refs kept, `None` when missing); checkouts at a `skip` path left out; `only` returns just the refs of the checkouts at those paths |
+| `workflow_job(root, job, workflow, node_floor)` | one top-level job's body, for order checks such as setup before the first `python`; with `node_floor=26` the job must set up Node 26 and its bash guard `if [[ "$node_major" -lt 26 ]]; then … fi` is run in `bash` for 24–27 and must reject only the older majors |
 | `run_main(root, script, patch, optimized)` | `main()` in a fresh `python -S` (`-O` too); `patch` runs first with `g` = main's globals |
-| `launcher_contract(root, env_var)` | the child's own `vendor/py_launch.cjs` bytes: missing interpreter → exit 2, argv/stdin/exit passthrough under `-S`, no `sitecustomize` during discovery, `resolvePython` honors `noSite`/`isolated`, POSIX signal forwarding (text and JSON `ESIGNAL`) |
-| `node()` / `node_parity(root, tool, env_var, *args, input)` | Node 26+ or `None` (an `AssertionError` in the GitHub Actions job named in `ci_jobs`, default `test`); `(rc, stdout, stderr)` via `vendor/py_launch.cjs` and via `python -S` |
+| `launcher_contract(root, env_var)` | the child's own `vendor/py_launch.cjs` bytes: missing interpreter → exit 2, argv/stdin/exit passthrough under `-S`, no `sitecustomize` during discovery, library `resolvePython`/`run`/`main` honor `noSite`/`isolated` independently against a hostile `sitecustomize` (unprotected: "not suitable"), POSIX forwarding of SIGINT and SIGTERM in both orders, direct and after repeated acknowledged signals: exit 2, empty stdout, exactly one stderr line (text, or JSON `ESIGNAL` with `ok: false`) ending in `terminated by signal NAME` |
+| `node()` / `node_parity(root, tool, env_var, *args, input)` | Node 26+ or `None` (an `AssertionError` in the GitHub Actions job named in `ci_jobs`, default `test`; `ci_jobs=None` means every GitHub Actions job); `(rc, stdout, stderr)` via `vendor/py_launch.cjs` and via `python -S` |
 
 Children lock older `py_launch.cjs` bytes than the parent worktree, so each child runs
 `launcher_contract` against its own vendored copy instead of keeping the per-child launcher tests. Enroll the catalog row after this module is on the default branch, like
