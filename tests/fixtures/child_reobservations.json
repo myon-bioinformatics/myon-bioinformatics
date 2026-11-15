@@ -2,7 +2,7 @@
   "about": [
     "2026-11-14: the four njs_launch children were audited at their merged main (vendor_sync.py check: no changed paths; vendor_consumers.compare: desired contract matches) and re-observed in child-heads.json. Each adopted lock equals its reviewed target fixture byte for byte. The four retired transitions and the heads they were bound to stay here for the transition-mechanism tests; historical fixtures are unchanged.",
     "2026-11-15: Ironmate (flow contract from ascii_artist, Ironmate #223 / parent #259) was audited at its merged main ce252bc (vendor_sync.py check: no changed paths; vendor_consumers.compare: desired contract matches; repository id unchanged) and re-observed in child-heads.json. Its adopted lock equals tests/fixtures/ironmate-flow-ascii-artist.lock.json byte for byte. The retired transition and the head it was bound to stay here; historical fixtures are unchanged.",
-    "2026-11-15: six fleet_check adopters (yourself #68, nvd_nist_known_vulns #61, ascii_artist #79, cli_args #53, gh_identity #119, search_seq_including_spaces #70; parent #292/#294) were audited at their merged main (vendor_sync.py check: no changed paths; vendor_consumers.compare: matches with the fleet_check.py entries) and re-observed in child-heads.json. Their adopted locks are inline here (lock) rather than separate fixture files. Three adopters stay at their recorded heads for now: flutter_navigation_basic (#248), whose reviewed locked CI workflow non-dart.yml changed in other PRs since its recorded head; xprobe (#58), whose registry row is the target of a retired njs_launch transition that these tests still exercise, and Err-o-RoadRunner (#69), whose live lock also holds an unregistered Aoi vendor/uv_tool_build.py row."
+    "2026-11-15: six fleet_check adopters (yourself #68/#69, nvd_nist_known_vulns #61/#62, ascii_artist #79/#80, cli_args #53/#54, gh_identity #119/#121, search_seq_including_spaces #70/#71; parent #292/#294; the second PR re-pins the first-parent merge 6c29503) were audited at their merged main (vendor_sync.py check: no changed paths; vendor_consumers.compare: matches with the fleet_check.py entries) and re-observed in child-heads.json. Their adopted locks are inline here (lock) rather than separate fixture files. Three adopters stay at their recorded heads for now: flutter_navigation_basic (#248), whose reviewed locked CI workflow non-dart.yml changed in other PRs since its recorded head; xprobe (#58), whose registry row is the target of a retired njs_launch transition that these tests still exercise, and Err-o-RoadRunner (#69), whose live lock also holds an unregistered Aoi vendor/uv_tool_build.py row."
   ],
   "recorded": {
     "heads": {
@@ -588,10 +588,10 @@
       "lock_fixture": "tests/fixtures/ironmate-flow-ascii-artist.lock.json"
     },
     "myon-bioinformatics/yourself": {
-      "sha": "ebe0318cf821fb7032ab8860c22b8a121e3f28d3",
+      "sha": "ef52363fa3df8bfe7aca961f2c156fcb798de112",
       "repository_id": 1396932771,
-      "pull_number": 68,
-      "lock_sha256": "39ecb6351b29efdf239b8f03cbae7297dff8ef955db4076dc821cc6b2daee468",
+      "pull_number": 69,
+      "lock_sha256": "74ac5cf06787ec6b3f7ebab650517cf18ee2a3ddc63e9e35b42cde7b53923cda",
       "lock": {
         "schema": "vendor-lock/1",
         "files": [
@@ -660,8 +660,8 @@
           },
           {
             "repository": "myon-bioinformatics/myon-bioinformatics",
-            "ref": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
-            "commit": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
+            "ref": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
+            "commit": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
             "source": "fleet_check.py",
             "destination": "vendor/fleet_check.py",
             "blob_sha": "5b6b732ff2c4fa966a64b6ab07e4da8d563038cf",
@@ -671,10 +671,10 @@
       }
     },
     "myon-bioinformatics/nvd_nist_known_vulns": {
-      "sha": "7f880934889da304ec70171e0c9491392baf0a7c",
+      "sha": "238043dfe0e41486ebcbffcf522e4674820bf847",
       "repository_id": 806334345,
-      "pull_number": 61,
-      "lock_sha256": "e7eeb88ba0ed351b8df7115bfcf27670da57b453219b5f15fafa5abc138c57c2",
+      "pull_number": 62,
+      "lock_sha256": "22f381197ab9604c2fc1488b03ff0b15177fe6e6beb639b01d3abc39156f020f",
       "lock": {
         "schema": "vendor-lock/1",
         "files": [
@@ -734,8 +734,8 @@
           },
           {
             "repository": "myon-bioinformatics/myon-bioinformatics",
-            "ref": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
-            "commit": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
+            "ref": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
+            "commit": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
             "source": "fleet_check.py",
             "destination": "vendor/fleet_check.py",
             "blob_sha": "5b6b732ff2c4fa966a64b6ab07e4da8d563038cf",
@@ -745,10 +745,10 @@
       }
     },
     "myon-bioinformatics/ascii_artist": {
-      "sha": "501b09c00d2ef619ac4aa92a3a136b6e78181c29",
+      "sha": "8e7e9f5cbc4dd9289e88bfacddfe556ef1f6ccb0",
       "repository_id": 1381699282,
-      "pull_number": 79,
-      "lock_sha256": "faaae5c55257ccd0cba6282fd4b6072d1a7d0538936b35bc1b6f05395cd8273e",
+      "pull_number": 80,
+      "lock_sha256": "ee5a9903bc5d15d78d05a4bdf83ca5dc1e8743a8f53022a135e875085793dd68",
       "lock": {
         "schema": "vendor-lock/1",
         "files": [
@@ -808,8 +808,8 @@
           },
           {
             "repository": "myon-bioinformatics/myon-bioinformatics",
-            "ref": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
-            "commit": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
+            "ref": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
+            "commit": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
             "source": "fleet_check.py",
             "destination": "vendor/fleet_check.py",
             "blob_sha": "5b6b732ff2c4fa966a64b6ab07e4da8d563038cf",
@@ -819,10 +819,10 @@
       }
     },
     "myon-bioinformatics/cli_args": {
-      "sha": "834310f3bf844467d65e37f3ae744e9108de6d02",
+      "sha": "d9c2238877f2aa8bac0f3b759edd5daf9903249c",
       "repository_id": 1398355104,
-      "pull_number": 53,
-      "lock_sha256": "3219aa23ae7b69da678df85200e9f4015549c638cba8ded9f4f35dee30acf5ae",
+      "pull_number": 54,
+      "lock_sha256": "48d816bed52c46f347d746d34ab55a2ef56ed0e06e70d77c80f32dc077e07880",
       "lock": {
         "schema": "vendor-lock/1",
         "files": [
@@ -846,8 +846,8 @@
           },
           {
             "repository": "myon-bioinformatics/myon-bioinformatics",
-            "ref": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
-            "commit": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
+            "ref": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
+            "commit": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
             "source": "fleet_check.py",
             "destination": "vendor/fleet_check.py",
             "blob_sha": "5b6b732ff2c4fa966a64b6ab07e4da8d563038cf",
@@ -857,10 +857,10 @@
       }
     },
     "myon-bioinformatics/gh_identity": {
-      "sha": "a11fcac300712f80409c1030c872fe3850715c25",
+      "sha": "260b4762acdf38efdfe145a3b879821163a5eb85",
       "repository_id": 1408200646,
-      "pull_number": 119,
-      "lock_sha256": "3219aa23ae7b69da678df85200e9f4015549c638cba8ded9f4f35dee30acf5ae",
+      "pull_number": 121,
+      "lock_sha256": "48d816bed52c46f347d746d34ab55a2ef56ed0e06e70d77c80f32dc077e07880",
       "lock": {
         "schema": "vendor-lock/1",
         "files": [
@@ -884,8 +884,8 @@
           },
           {
             "repository": "myon-bioinformatics/myon-bioinformatics",
-            "ref": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
-            "commit": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
+            "ref": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
+            "commit": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
             "source": "fleet_check.py",
             "destination": "vendor/fleet_check.py",
             "blob_sha": "5b6b732ff2c4fa966a64b6ab07e4da8d563038cf",
@@ -895,10 +895,10 @@
       }
     },
     "myon-bioinformatics/search_seq_including_spaces": {
-      "sha": "74043b3dc2962104be3d3ca4f67de1cdf9baea14",
+      "sha": "21be049a84e866d6a810613e2629a34886faa8cb",
       "repository_id": 537015703,
-      "pull_number": 70,
-      "lock_sha256": "968095e16ae463b9941d62f823e8c1aab3e1d14d3cb2b74ad6d24cf7d283e0d8",
+      "pull_number": 71,
+      "lock_sha256": "d6cc6a6741017f3f43daccdd68d112c45e140c27ac8804d7760484a42fcfe593",
       "lock": {
         "schema": "vendor-lock/1",
         "files": [
@@ -931,8 +931,8 @@
           },
           {
             "repository": "myon-bioinformatics/myon-bioinformatics",
-            "ref": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
-            "commit": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
+            "ref": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
+            "commit": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
             "source": "fleet_check.py",
             "destination": "vendor/fleet_check.py",
             "blob_sha": "5b6b732ff2c4fa966a64b6ab07e4da8d563038cf",
@@ -940,8 +940,8 @@
           },
           {
             "repository": "myon-bioinformatics/myon-bioinformatics",
-            "ref": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
-            "commit": "45ed741f7e1f60179934cee6fa1e16a887f97cb0",
+            "ref": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
+            "commit": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1",
             "source": "LICENSE",
             "destination": "vendor/myon-bioinformatics-LICENSE",
             "blob_sha": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
