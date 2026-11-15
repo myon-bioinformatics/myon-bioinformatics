@@ -165,7 +165,7 @@ def collect_main_runs(snapshot, fetch):
                        'name': run['name'], 'head_sha': run['head_sha'], 'main_sha': integration['head_sha'],
                        'current_main': stable and run['head_sha'] == integration['head_sha'],
                        'main_stable': stable, 'conclusion': run['conclusion'], 'status': run['status'],
-                       'url': run['html_url'], 'at': run['updated_at'], 'event': run['event'],
+                       'url': run['html_url'], 'at': run['updated_at'], 'event': run['event'], 'workflow_id': run['workflow_id'],
                        'checked': dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
                        'bot': any(s in (run.get('actor', {}).get('login', '')+' '+run['name']).lower()
                                   for s in ('dependabot', 'copilot')), 'jobs': []}
@@ -307,7 +307,9 @@ def ontology_export(snapshot, records, dependencies):
         if files is None:
             gaps.append({'reason': '現headに対応する変更ファイル未取得'})
         row = {'repository': repo, 'number': r['number'], 'title': r.get('title'), 'url': r.get('url'),
-               'state': state, 'merged': r.get('merged'), 'mergeable': r.get('mergeable'), 'draft': r.get('draft'),
+               'state': state, 'github_state': r.get('github_state'), 'merged': r.get('merged'),
+               'merged_at': r.get('merged_at'), 'merge_commit_sha': r.get('merge_sha') or r.get('merge_commit_sha'),
+               'head_ref': r.get('head_ref'), 'mergeable': r.get('mergeable'), 'draft': r.get('draft'),
                'head_sha': sha(r.get('head_sha')), 'base_sha': sha(r.get('base_sha')), 'base': r.get('base_ref'),
                'main_sha': sha(mains.get(r['repository'])), 'contained_in_main': r.get('contained_in_main'),
                'files': files, 'dependencies': deps, 'runs': list(runs.values()),
@@ -322,7 +324,31 @@ def ontology_export(snapshot, records, dependencies):
                 row['pins'].append({'repository': p['source_repository'], 'sha': p['commit'],
                                     'path': p.get('destination'), 'source': p})
         result.append(row)
-    return {'schema': 'integration-audit/3', 'captured_at': snapshot['generated_at'], 'records': result,
+    inventory = []
+    workflows = snapshot.get('main_workflows', {}).get('runs', [])
+    names = set(snapshot.get('repositories', [])) | {r['repository'] for r in snapshot.get('integrations', [])}
+    for name in sorted(names):
+        main = sha(mains.get(name))
+        runs = []
+        for w in workflows:
+            if w['repository'] != name or not w.get('current_main') or not main or w.get('head_sha') != main:
+                continue
+            runs.append({'id': w['run_id'], 'run_attempt': w.get('attempt'), 'head_sha': sha(w.get('head_sha')),
+                         'name': w.get('name'), 'workflow_id': w.get('workflow_id'), 'event': w.get('event'),
+                         'status': w.get('status'), 'conclusion': w.get('conclusion'), 'html_url': w.get('url'),
+                         'jobs': [dict(id=j['id'], name=j.get('name'), conclusion=j.get('conclusion'),
+                                       html_url=j.get('url')) for j in w.get('jobs', [])]})
+        pins = [dict(repository=p['source_repository'], commit=p['commit'], destination=p.get('destination'))
+                for p in snapshot.get('vendor_pins', []) if p.get('repository') == name and sha(p.get('commit'))
+                and isinstance(p.get('source_repository'), str) and p['source_repository'].count('/') == 1]
+        inventory.append({'repo': name if '/' in name else owner + '/' + name,
+                          'main': main, 'main_runs': runs, 'pin_records': pins,
+                          'issues': [dict(number=r['number'], title=r.get('title'), url=r.get('url'))
+                                     for r in records if r['id'] in current and r.get('kind') == 'issue' and r['repository'] == name],
+                          'state': 'ブロッカー' if any(w['conclusion'] in ('failure','timed_out','action_required','startup_failure') for w in runs) else '調査中',
+                          'source_url': 'https://github.com/' + (name if '/' in name else owner + '/' + name),
+                          'gaps': ['main runは既存の取得範囲。jobは取得済みのみ。artifacts・required checks・コピー内容は未検証']})
+    return {'schema': 'integration-audit/3', 'captured_at': snapshot['generated_at'], 'records': result, 'inventory': inventory,
             'coverage': {'source': 'existing parent audit/evidence observations',
                          'mutations': False, 'completion_scope': 'no inferred completion',
                          'uninterpreted': 'source_record retains original fields; absence is not closure'}}
@@ -439,6 +465,7 @@ def write_workspace(snapshot, evidence, history, stage, source_root, previous=No
     (Path(stage) / 'ontautology-snapshot.json').write_text(
         json.dumps(data['aoi_integration'], ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     return data
+
 
 
 
