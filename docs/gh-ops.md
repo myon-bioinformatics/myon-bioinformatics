@@ -49,7 +49,7 @@ canonical promotion and compatibility tests.
 
 | Concern | Owner | Examples |
 |--------|--------|----------|
-| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `commit-files --write`, `pr-merge --write`, `pr-retarget --write` |
+| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `commit-files --write`, `pr-create --write`, `pr-merge --write`, `pr-retarget --write`, `run-rerun --write` |
 | Local git writes on an enrolled checkout (explicit paths only) | Parent `gh_ops.py` | `git-commit --message-file msg.txt path/to/file --write` (optional `--push` with `--write`) |
 | Subtree split push from a monorepo to a NEW child branch | Parent `gh_ops.py` | `subtree-push --prefix DIR --remote URL --branch sync/x` (plan), add `--write` to push |
 | GitHub Pages delivery evidence (deploy API + HTTP/bytes/text) | Parent `publish_check.py` | `publish_check.py --site … --repo OWNER/OWNER.github.io` |
@@ -363,3 +363,80 @@ from the fetch URL, and never emits credentials, remote URLs or raw transport
 output. A failed/uncertain push or failed readback exits nonzero. Use shell `&&`
 to proceed to metadata updates only after a verified push; do not pipe away its
 exit status with `tail`.
+
+## Create a pull request idempotently (`pr-create`)
+
+```sh
+python -S gh_ops.py pr-create OWNER/REPO --head feat/x --base main --title "Title" --body-file body.md
+python -S gh_ops.py pr-create OWNER/REPO --head feat/x --base main --title "Title" --body-file body.md --expect-head-sha "$(git rev-parse HEAD)" --write
+```
+
+`pr-create` resolves the head branch tip SHA (`git/ref/heads/<head>`), checks
+optional `--expect-head-sha`, and queries open PRs for `--head`. If an open PR
+targeting `--base` already exists, it returns `status="already_exists"` with that
+PR's number and URL without issuing a POST. With `--write`, it re-reads the head
+branch tip SHA immediately before `POST /repos/OWNER/REPO/pulls` (refusing if the
+branch moved), then reads back `/repos/OWNER/REPO/pulls/NUMBER` to verify
+`state == "open"`, `head.sha`, and `base.ref`.
+
+## Rerun a failed or cancelled workflow run (`run-rerun`)
+
+```sh
+python -S gh_ops.py run-rerun OWNER/REPO 123456789
+python -S gh_ops.py run-rerun OWNER/REPO 123456789 --expect-head-sha "$(git rev-parse HEAD)" --write
+python -S gh_ops.py run-rerun OWNER/REPO 123456789 --all --write
+```
+
+`run-rerun` reads `/repos/OWNER/REPO/actions/runs/RUN_ID`, requires
+`status == "completed"`, refuses runs whose `conclusion == "success"`, and checks
+optional `--expect-head-sha`. By default it targets `rerun-failed-jobs`; `--all`
+switches to `rerun`. Without `--write` it reports `status="planned"`.
+
+## Cancel a queued or in-progress workflow run (`run-cancel`)
+
+```sh
+python -S gh_ops.py run-cancel OWNER/REPO 123456789
+python -S gh_ops.py run-cancel OWNER/REPO 123456789 --expect-head-sha "$(git rev-parse HEAD)" --write
+```
+
+`run-cancel` reads `/repos/OWNER/REPO/actions/runs/RUN_ID` and checks optional
+`--expect-head-sha`. If the run is already `completed`, it returns `ok=True` and
+`status="already_completed"` without issuing a POST. Otherwise it plans or POSTs
+`/repos/OWNER/REPO/actions/runs/RUN_ID/cancel` (`202 Accepted`).
+
+## Submit a pull request review (`pr-review`) and toggle draft state (`pr-ready`)
+
+```sh
+python -S gh_ops.py pr-review OWNER/REPO 42 --event APPROVE --expect-head-sha "$(git rev-parse HEAD)" --write
+python -S gh_ops.py pr-review OWNER/REPO 42 --event REQUEST_CHANGES --body-file review.md --write
+python -S gh_ops.py pr-ready OWNER/REPO 42 --write
+python -S gh_ops.py pr-ready OWNER/REPO 42 --draft --write
+```
+
+- `pr-review` pins `commit_id` to the PR's current `head.sha` (re-verified right
+  before POST), requires a non-empty `--body-file` for `REQUEST_CHANGES` and
+  `COMMENT`, and reads back `/repos/OWNER/REPO/pulls/NUMBER/reviews/REVIEW_ID`
+  to confirm the resulting review state (`APPROVED`, `CHANGES_REQUESTED`, or
+  `COMMENTED`) and `commit_id`.
+- `pr-ready` transitions an open PR between draft and ready-for-review via
+  GitHub GraphQL (`markPullRequestReadyForReview` / `convertPullRequestToDraft`)
+  and verifies the resulting `draft` boolean via REST readback. If the PR is
+  already in the requested state, it returns `status="already_satisfied"` with
+  no mutation.
+
+## Create and edit repository Issues (`issue-create`, `issue-edit`)
+
+```sh
+python -S gh_ops.py issue-create OWNER/REPO --title "Bug report" --body-file issue.md --label bug --write
+python -S gh_ops.py issue-edit OWNER/REPO 88 --append-body-file note.md --state closed --state-reason completed --write
+```
+
+- `issue-create` verifies that every `--label` already exists in the repository
+  via `GET /repos/OWNER/REPO/labels/NAME` before POSTing, so a typo never creates
+  a new label implicitly (`status="rejected_missing_labels"`). After creation it
+  reads back `/repos/OWNER/REPO/issues/NUMBER` to verify `state == "open"` and
+  `title`.
+- `issue-edit` rejects pull requests (`"pull_request" in issue`), shares
+  `_apply_append_body` with `pr-edit` for idempotent `--append-body-file`
+  updates, supports `--state` (`open`/`closed`) and `--state-reason`
+  (`completed`/`not_planned`/`reopened`), and verifies updated fields on readback.

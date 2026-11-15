@@ -100,6 +100,12 @@ LATEST_FIXTURES = json.loads(
     (ROOT / 'tests/fixtures/reviewed_mcp_lock_20261109.json').read_text())
 LATEST_FIXTURES.update(json.loads(
     (ROOT / 'tests/fixtures/reviewed_mcp_planner_lock_20261109.json').read_text()))
+LATEST_FIXTURES.update(json.loads(
+    (ROOT / 'tests/fixtures/reviewed_aoi_lock_20261114.json').read_text()))
+# Preserve the registry, heads and transitions of the PSWB migration together.
+# Later enrollments must not redefine what those historical locks adopted.
+PSWB_OBSERVATION_CONTEXT = json.loads(
+    (ROOT / 'tests/fixtures/pswb_consumer_observation_context_20261113.json').read_text())
 # Children audited at their merged main and re-observed after a contract transition: the four njs_launch children
 # (2026-11-14) and Ironmate's flow contract from ascii_artist (2026-11-15). Their adopted locks equal the reviewed
 # target fixtures; the retired transitions stay in the same fixture (recorded_before_reobservation).
@@ -284,6 +290,17 @@ def test_rename_rollout_is_exact_without_identity_fallback():
     for name, fixture in ROLLOUT_FIXTURES.items():
         if name in REOBSERVED['adopted']:
             continue  # re-observed later; test_observed_lock_topology_and_immutable_revision checks the newer snapshot
+        if name == 'myon-bioinformatics/Aoi':
+            # Check this rollout against its original observation; the newer
+            # stdlib enrollment has its own exact SHA/digest/topology check above.
+            assert fixture['sha'] == PSWB_OBSERVATION_CONTEXT['heads']['heads'][name]['sha']
+            historical = copy.deepcopy(PSWB_OBSERVATION_CONTEXT['registry'])
+            row = next(c for c in historical['consumers'] if c['repository'] == name)
+            row['entries'] = copy.deepcopy(next(t for t in PSWB_OBSERVATION_CONTEXT['transitions']['transitions']
+                                               if t['consumer'] == name)['old_entries'])
+            assert vendor_consumers._compare_exact(historical, fixture['lock'], name)['matches']
+            assert all(row['ref'] == row['commit'] for row in fixture['lock']['files'])
+            continue
         assert fixture["sha"] == heads["heads"][name]["sha"]
         assert vendor_consumers._compare_exact(before_replacements(registry, name, fixture["lock"]), fixture["lock"], name)["matches"]
         assert all(row["ref"] == row["commit"] for row in fixture["lock"]["files"])
@@ -1059,6 +1076,24 @@ def test_mcp_prior_pswb_transition_keeps_same_frozen_lock():
 # ═══ · pswb consumer migration ═══════════════════════════════════════════════════════════════════════════
 # Canonical PSWB consumers keep old observations strict and new locks exact.
 
+def test_current_transitions_and_aoi_observation_are_consistent():
+    registry = json.loads((ROOT / 'vendor-consumers.json').read_text())
+    heads = json.loads((ROOT / 'child-heads.json').read_text())
+    transitions = json.loads((ROOT / 'vendor-observation-transitions.json').read_text())
+    for row in transitions['transitions']:
+        assert sync._transition_digest(consumers.get_consumer(registry, row['consumer'])) == row['target_consumer_sha256']
+    name = 'myon-bioinformatics/Aoi'
+    assert name not in {row['consumer'] for row in transitions['transitions']}
+    snapshot = LATEST_FIXTURES[name]
+    assert heads['heads'][name]['sha'] == snapshot['sha']
+    assert heads['heads'][name]['repository_id'] == snapshot['repository_id']
+    assert sync._transition_digest(snapshot['lock']) == snapshot['lock_sha256']
+    with patch.object(sync, '_load_recorded_child_lock', side_effect=AssertionError('retired observation read')):
+        resolved, reports = sync._registry_for_recorded_transitions(registry, heads, transitions, [name])
+    assert reports == []
+    assert consumers._compare_exact(resolved, snapshot['lock'], name)['matches']
+
+
 load_pswb_consumer_migration = lambda path: json.loads((ROOT / path).read_text())
 PSWB_CONSUMER_MIGRATION_NEW = load_pswb_consumer_migration('tests/fixtures/pswb_consumer_migration_20261113.json')
 OLD = load_pswb_consumer_migration('tests/fixtures/pswb_consumer_old_locks_20261113.json')
@@ -1068,7 +1103,9 @@ OLD = load_pswb_consumer_migration('tests/fixtures/pswb_consumer_old_locks_20261
 def test_merged_lock_matches_its_historical_topology(name):
     snapshot = PSWB_CONSUMER_MIGRATION_NEW[name]
     assert sync._transition_digest(snapshot['lock']) == snapshot['lock_sha256']
-    registry = load_pswb_consumer_migration('vendor-consumers.json')
+    registry = (copy.deepcopy(PSWB_OBSERVATION_CONTEXT['registry'])
+                if name in PSWB_OBSERVATION_CONTEXT['heads']['heads']
+                else load_pswb_consumer_migration('vendor-consumers.json'))
     if name == 'myon-bioinformatics/mcp-toolcall-lab':
         # This frozen snapshot records the PSWB migration before the separate
         # launcher rename. Preserve its evidence, not a claim of current adoption.
@@ -1090,9 +1127,9 @@ def test_merged_lock_matches_its_historical_topology(name):
 
 @pytest.mark.parametrize('name', OLD)
 def test_only_exact_historical_observation_uses_old_contract(name):
-    registry = load_pswb_consumer_migration('vendor-consumers.json')
-    heads = load_pswb_consumer_migration('child-heads.json')
-    transitions = load_pswb_consumer_migration('vendor-observation-transitions.json')
+    registry = copy.deepcopy(PSWB_OBSERVATION_CONTEXT['registry'])
+    heads = copy.deepcopy(PSWB_OBSERVATION_CONTEXT['heads'])
+    transitions = copy.deepcopy(PSWB_OBSERVATION_CONTEXT['transitions'])
     with patch.object(sync, '_load_recorded_child_lock', return_value=OLD[name]):
         old_registry, reports = sync._registry_for_recorded_transitions(registry, heads, transitions, [name])
     assert len(reports) == 1
