@@ -110,7 +110,7 @@ PSWB_OBSERVATION_CONTEXT = json.loads(
 # (2026-11-14) and Ironmate's flow contract from ascii_artist (2026-11-15). Their adopted locks equal the reviewed
 # target fixtures; the retired transitions stay in the same fixture (recorded_before_reobservation).
 REOBSERVED = json.loads((ROOT / 'tests/fixtures/child_reobservations.json').read_text())
-LATEST_FIXTURES.update({name: {**row, 'lock': json.loads((ROOT / row['lock_fixture']).read_text())}
+LATEST_FIXTURES.update({name: {**row, 'lock': row.get('lock') or json.loads((ROOT / row['lock_fixture']).read_text())}
                         for name, row in REOBSERVED['adopted'].items()})
 REFRESHED_FIXTURES.update(LATEST_FIXTURES)
 
@@ -130,6 +130,11 @@ POST_BASELINE_ENROLLMENTS = {
     # The parent audit dashboard (ci_status.py --audit --html) renders through the vendored pysaiyanweboo.py.
     "myon-bioinformatics/myon-bioinformatics": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
     "myon-bioinformatics/mcp-toolcall-lab": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
+    # Shared child checks (parent #292/#294); the adopters are re-observed in child_reobservations.json.
+    **{f"myon-bioinformatics/{name}": {"vendor/fleet_check.py"} for name in (
+        "yourself", "nvd_nist_known_vulns", "ascii_artist", "cli_args", "gh_identity")},
+    "myon-bioinformatics/search_seq_including_spaces": {"vendor/fleet_check.py", "vendor/myon-bioinformatics-LICENSE"},
+    "myon-bioinformatics/flutter_navigation_basic": {"python/vendor/fleet_check.py"},
 }
 
 
@@ -272,10 +277,11 @@ def test_ironmate_adoption_preserves_previous_snapshot_and_checks_new_entries():
 def test_flutter_python_ci_adoption_preserves_the_adopted_vendor_lock():
     name = "myon-bioinformatics/flutter_navigation_basic"
     old = FIXTURES[name]
-    current = REFRESHED_FIXTURES[name]
+    # The reviewed adoption snapshot; the later fleet_check re-observation (#248) moves REFRESHED_FIXTURES.
+    current = json.loads((ROOT / "tests/fixtures/flutter_adopted_vendor_235.json").read_text())
     assert old["sha"] == "075e08530e6c02b9f0b2194922f244ff047ab23f"
     assert current["lock"] == old["lock"]
-    heads = json.loads((ROOT / "child-heads.json").read_text())
+    heads, _ = recorded_before_reobservation()
     assert heads["heads"][name]["pull_number"] == ROLLOUT_FIXTURES[name]["pull_number"] == 241
 
 

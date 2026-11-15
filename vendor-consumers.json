@@ -51,6 +51,11 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "py_launch.cjs",
           "destination": "vendor/py_launch.cjs"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "fleet_check.py",
+          "destination": "vendor/fleet_check.py"
         }
       ]
     },
@@ -80,6 +85,11 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "py_launch.cjs",
           "destination": "vendor/py_launch.cjs"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "fleet_check.py",
+          "destination": "vendor/fleet_check.py"
         }
       ]
     },
@@ -132,6 +142,11 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "py_launch.cjs",
           "destination": "vendor/py_launch.cjs"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "fleet_check.py",
+          "destination": "vendor/fleet_check.py"
         }
       ]
     },
@@ -539,6 +554,11 @@
           "repository": "myon-bioinformatics/Ironmate",
           "source": "pillow_min.py",
           "destination": "python/vendor/pillow_min/pillow_min.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "fleet_check.py",
+          "destination": "python/vendor/fleet_check.py"
         }
       ],
       "locked_ci": {
@@ -561,6 +581,12 @@
           "repository": "myon-bioinformatics/xprobe",
           "source": "scripts/xprobe_pytest.py",
           "destination": "vendor/xprobe_pytest.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "fleet_check.py",
+          "destination": "vendor/fleet_check.py",
+          "license": "vendor/myon-bioinformatics-LICENSE"
         }
       ]
     },
@@ -698,6 +724,11 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "py_launch.cjs",
           "destination": "vendor/py_launch.cjs"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "fleet_check.py",
+          "destination": "vendor/fleet_check.py"
         }
       ]
     },
@@ -715,6 +746,11 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "py_launch.cjs",
           "destination": "vendor/py_launch.cjs"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "fleet_check.py",
+          "destination": "vendor/fleet_check.py"
         }
       ]
     },

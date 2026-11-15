@@ -26,6 +26,9 @@ def load(path):
 
 def test_cli_args_registry_matches_reviewed_pr28_lock():
     registry = load("vendor-consumers.json")
+    # PR #28 predates the shared fleet_check.py entry (cli_args #53, re-observed in child_reobservations.json).
+    row = next(c for c in registry["consumers"] if c["repository"] == CLI_ARGS)
+    row["entries"] = [e for e in row["entries"] if e["source"] != "fleet_check.py"]
     lock = load("tests/fixtures/cli-args-pr28.lock.json")
     assert len(lock["files"]) == 2
     assert vendor_consumers.compare(registry, lock, CLI_ARGS)["matches"]
@@ -45,7 +48,9 @@ def test_py_launch_is_registered_for_cli_args_not_auto_proposed():
     assert len(py_launch) == 1
     assert py_launch[0]["action"] == "registered"
     assert py_launch[0]["destination"] == "vendor/py_launch.cjs"
-    assert result["counts"]["registered"] == 1
+    fleet = [x for x in result["rows"] if x["source"] == "fleet_check.py"]
+    assert [(x["action"], x["destination"]) for x in fleet] == [("registered", "vendor/fleet_check.py")]
+    assert result["counts"]["registered"] == 2
 
 
 # ═══ 🪡 Ironmate ══════════════════════════════════════════════════════════════════════════════════════════
@@ -437,7 +442,7 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
         registry = json.loads((ROOT / "vendor-consumers.json").read_text())
         heads = json.loads((ROOT / "child-heads.json").read_text())
         workflow_fixture = "tests/fixtures/flutter_non_dart_ci_python_241.yml"
-        expected_sha = "2797b004499b14c9d530857566e80c0a1dadfd8e"
+        expected_sha = "b17422b5aed1fc1eeefce2a999346a8da65124e6"  # re-observed after #248 (fleet_check); the workflow is unchanged
     else:
         registry = load_flutter("vendor-consumers.json")
         heads = load_flutter("child-heads.json")
