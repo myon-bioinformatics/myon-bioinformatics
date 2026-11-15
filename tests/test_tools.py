@@ -672,6 +672,19 @@ def test_fleet_check_node_parity_runs_the_same_python(tmp_path, monkeypatch):
     assert json.loads(via_python[1]) == {"argv": ["a b", "--x=ü"], "stdin": "こんにちは\n", "nosite": 1}
 
 
+def test_fleet_check_launcher_contract_holds_for_the_parent_launcher(tmp_path, monkeypatch):
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    fleet_check.node.cache_clear()
+    if fleet_check.node() is None:
+        fleet_check.node.cache_clear()
+        pytest.skip("Node 26+ not available (set NODE)")
+    (tmp_path / "vendor").mkdir()
+    shutil.copy(ROOT / "py_launch.cjs", tmp_path / "vendor/py_launch.cjs")
+    fleet_check.launcher_contract(tmp_path)
+    (tmp_path / "vendor/py_launch.cjs").write_text("process.exit(0)\n", encoding="utf-8")
+    with pytest.raises(AssertionError):
+        fleet_check.launcher_contract(tmp_path)
+
 # ═══ · git commit ════════════════════════════════════════════════════════════════════════════════════════
 
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
