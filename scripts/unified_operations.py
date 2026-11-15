@@ -231,6 +231,27 @@ def snapshot_comparison(snapshot, previous):
     return result
 
 
+def collect_transfer_registry(snapshot, fetch):
+    """Read OTL's ledger at the observed public main SHA; keep archived-source references."""
+    import base64
+    import re
+    source = next((r for r in snapshot.get('integrations', [])
+                   if r['repository'] == 'OnTautoLogy' and r.get('branch') == 'main'), {})
+    ref = source.get('head_sha')
+    result = {'status': '未取得', 'source_repository': 'myon-bioinformatics/OnTautoLogy',
+              'source_sha': ref, 'path': 'examples/flutter-absorption.json'}
+    if not isinstance(ref, str) or not re.fullmatch('[0-9a-f]{40}', ref):
+        return dict(result, error='observed OTL main SHA unavailable')
+    try:
+        value = fetch(f"/repos/myon-bioinformatics/OnTautoLogy/contents/{result['path']}?ref={ref}")
+        document = json.loads(base64.b64decode(value['content']))
+        if document.get('schema') != 'integration-audit/3' or not isinstance(document.get('transfers'), list):
+            raise ValueError('invalid OTL transfer ledger')
+        return dict(result, status='取得済み', source_blob=value.get('sha'), document=document)
+    except (ValueError, KeyError, RuntimeError, OSError, TypeError) as exc:
+        return dict(result, error=type(exc).__name__)
+
+
 def ontology_export(snapshot, records, dependencies):
     """Existing observations -> OnTautoLogy integration-audit/3, without network or graph code.
 
@@ -348,7 +369,12 @@ def ontology_export(snapshot, records, dependencies):
                           'state': 'ブロッカー' if any(w['conclusion'] in ('failure','timed_out','action_required','startup_failure') for w in runs) else '調査中',
                           'source_url': 'https://github.com/' + (name if '/' in name else owner + '/' + name),
                           'gaps': ['main runは既存の取得範囲。jobは取得済みのみ。artifacts・required checks・コピー内容は未検証']})
+    registry = snapshot.get('transfer_registry', {})
+    ledger = registry.get('document', {}) if registry.get('status') == '取得済み' else {}
     return {'schema': 'integration-audit/3', 'captured_at': snapshot['generated_at'], 'records': result, 'inventory': inventory,
+            'transfers': ledger.get('transfers', []),
+            'transfer_scope': dict(ledger.get('transfer_scope', {}), registry_status=registry.get('status', '未取得'),
+                                   registry_sha=registry.get('source_sha'), recorded_at=ledger.get('captured_at')),
             'coverage': {'source': 'existing parent audit/evidence observations',
                          'mutations': False, 'completion_scope': 'no inferred completion',
                          'uninterpreted': 'source_record retains original fields; absence is not closure'}}
@@ -433,6 +459,7 @@ def view_data(snapshot, evidence, history, operations, previous=None):
             'fleet': snapshot.get('fleet', {}), 'history': history, 'operations': operations,
             'main_workflows': snapshot.get('main_workflows', {'runs': [], 'errors': [], 'scope': '未取得'}),
             'pswb_migration': migration,
+            'transfer_registry': snapshot.get('transfer_registry', {'status':'未取得'}),
             'catalog': snapshot.get('catalog_observation', {'status': '未取得'}),
             'plan': plan,
             'aoi_integration': ontology_export(snapshot, normalized, plan['edges']),
