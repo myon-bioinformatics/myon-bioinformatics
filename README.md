@@ -436,7 +436,7 @@ and the boundary with the full pytest suite.
 Generated, not hand-written: `.github/workflows/pages.yml` (push to `main`, daily 06:17 JST, or manual) runs
 
 ```bash
-python3 -S tools/build_audit_pages.py
+python3 -S scripts/build_audit_pages.py
 ```
 
 through the shared `reusable-pages-static.yml` (`build` input) and deploys `site/dist`. The producer

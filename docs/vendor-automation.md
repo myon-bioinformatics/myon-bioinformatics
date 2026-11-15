@@ -808,7 +808,7 @@ CI keeps the two kinds apart. `vendor-fleet-plan.yml` (pull request / push of th
 records or the planner) runs the offline graph of the parent's records with
 `--check` and the synthetic-repository tests under `python -S -m unittest`; the
 planner's pytest coverage stays in `python-tests.yml`. The latest-source audit is
-part of the daily Pages build (`pages.yml`): `tools/build_audit_pages.py` adds the
+part of the daily Pages build (`pages.yml`): `scripts/build_audit_pages.py` adds the
 report for the public inventory to `data.json`, shown as **🔗 依存・更新** in
 `report.html` and per repository in the workbench. A failed analysis is published
 as unavailable and never blocks the PR audit. Clones are anonymous; no token,

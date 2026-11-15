@@ -4,7 +4,7 @@ For an explicitly requested coordinated change, use Git's existing mbox format
 and `git am --3way`. Do not add a GHI write command, a second vendor lock schema,
 a scheduled updater, or an automatic promotion workflow.
 
-`scripts/apply_repo_patches.py` is a stdlib-only local orchestrator. Supply each
+`tools/apply_repo_patches.py` is a stdlib-only local orchestrator. Supply each
 reviewed checkout/mailbox pair explicitly. It does not discover repositories
 from the vendor registry: registration is not authorization to modify a repo,
 and archived or out-of-scope consumers must not be pulled into a rollout.
@@ -20,7 +20,7 @@ is not universally applicable to unrelated repositories.
 git format-patch --stdout --full-index --binary BASE..HEAD > ../consumer.mbox
 
 # From the parent checkout; repeat --target for the explicit approved set.
-python -S scripts/apply_repo_patches.py \
+python -S tools/apply_repo_patches.py \
   --branch chore/shared-pins-20261014 \
   --worktree-root ../rollout-worktrees \
   --target ../checkouts/cli_args ../patches/cli_args.mbox \
