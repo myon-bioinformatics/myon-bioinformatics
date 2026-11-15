@@ -520,7 +520,7 @@ def write_github_evidence(snapshot, stage, *, source_root, observe_details=False
     captured = json.loads(gzip.decompress(source.read_bytes())) if source.exists() else None
     result = github_evidence(snapshot, captured)
     if observe_details:
-        from tools.unified_operations import refresh_evidence
+        from scripts.unified_operations import refresh_evidence
         result = refresh_evidence(result, snapshot, ci.get)
     (Path(stage) / 'evidence-data.json').write_text(
         json.dumps(result, ensure_ascii=False, separators=(',', ':')) + '\n', encoding='utf-8')
@@ -567,7 +567,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         produce = fleet if getattr(fleet, 'takes_snapshot', False) else (lambda names, before, snapshot=None: fleet(names, before))
         snapshot['fleet'], fleet_graph = split_fleet(produce(names, (before or {}).get('fleet'), snapshot=snapshot))
     snapshot['pswb_migration'] = pswb_migration(snapshot, ci.get)
-    from tools.unified_operations import collect_main_runs, collect_repository_counts
+    from scripts.unified_operations import collect_main_runs, collect_repository_counts
     snapshot['repository_counts'] = collect_repository_counts(snapshot, ci.get)
 
     if observe_details:
@@ -600,7 +600,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
             if asset.is_file():
                 shutil.copyfile(asset, stage / asset.name)
         evidence = write_github_evidence(snapshot, stage, source_root=source_root, observe_details=observe_details)
-        from tools.unified_operations import write_workspace
+        from scripts.unified_operations import write_workspace
         workspace = write_workspace(snapshot, evidence, history, stage, source_root, previous=before)
         # Publish the standalone operations guide alongside the audit workspace.
         operations = source_root / 'site/component-ops'
@@ -646,10 +646,10 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
                         archive.write(path, path.relative_to(source_root))
             for name in ('pswb-shell.css', 'pswb-scroll.js', 'pswb-records.js'):
                 archive.write(stage / name, 'site/ui/' + name)
-            archive.write(source_root / 'tools/build_audit_pages.py', 'tools/build_audit_pages.py')
-            unified = source_root / 'tools/unified_operations.py'
+            archive.write(source_root / 'scripts/build_audit_pages.py', 'scripts/build_audit_pages.py')
+            unified = source_root / 'scripts/unified_operations.py'
             if unified.exists():
-                archive.write(unified, 'tools/unified_operations.py')
+                archive.write(unified, 'scripts/unified_operations.py')
             archive.write(source_root / 'docs/audit-pages.md', 'docs/audit-pages.md')
             captured = source_root / 'site/evidence/observations.json.gz'
             if captured.exists():

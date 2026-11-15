@@ -106,19 +106,21 @@ LATEST_FIXTURES.update(json.loads(
 # Later enrollments must not redefine what those historical locks adopted.
 PSWB_OBSERVATION_CONTEXT = json.loads(
     (ROOT / 'tests/fixtures/pswb_consumer_observation_context_20261113.json').read_text())
-# 2026-11-14: the four njs_launch children, audited at their merged main and re-observed. Their adopted locks equal
-# the reviewed njs-<repo>-new.lock.json targets; the retired transitions stay in the same fixture (recorded_before_njs_adoption).
-NJS_ADOPTION = json.loads((ROOT / 'tests/fixtures/njs_launch_adoption_20261114.json').read_text())
+# Children audited at their merged main and re-observed after a contract transition: the four njs_launch children
+# (2026-11-14) and Ironmate's flow contract from ascii_artist (2026-11-15). Their adopted locks equal the reviewed
+# target fixtures; the retired transitions stay in the same fixture (recorded_before_reobservation).
+REOBSERVED = json.loads((ROOT / 'tests/fixtures/child_reobservations.json').read_text())
 LATEST_FIXTURES.update({name: {**row, 'lock': json.loads((ROOT / row['lock_fixture']).read_text())}
-                        for name, row in NJS_ADOPTION['adopted'].items()})
+                        for name, row in REOBSERVED['adopted'].items()})
 REFRESHED_FIXTURES.update(LATEST_FIXTURES)
 
 
-def recorded_before_njs_adoption():
-    """child-heads.json and the observation transitions as they stood before that re-observation."""
+def recorded_before_reobservation():
+    """child-heads.json and the observation transitions as they stood before those re-observations."""
     heads = json.loads((ROOT / 'child-heads.json').read_text())
-    heads['heads'].update(copy.deepcopy(NJS_ADOPTION['recorded']['heads']))
-    return heads, copy.deepcopy(NJS_ADOPTION['recorded']['transitions'])
+    heads['heads'].update(copy.deepcopy(REOBSERVED['recorded']['heads']))
+    return heads, copy.deepcopy(REOBSERVED['recorded']['transitions'])
+
 
 # Registry entries enrolled after the 2026-10-29 observation. The parent registry
 # must land before the child lock (the child CI reads the live registry), so these
@@ -139,18 +141,6 @@ POST_BASELINE_REPLACEMENTS = {
     "myon-bioinformatics/mcp-toolcall-lab": {
         "retired": [{"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "web_ui.py", "destination": "vendor/web_ui.py", "license": "vendor/web-ui-LICENSE"}],
         "added": [{"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "pysaiyanweboo.py", "destination": "vendor/pysaiyanweboo.py", "license": "vendor/pysaiyanweboo-LICENSE"}],
-    },
-    # web-ui handed its card-flow code to ascii_artist: Ironmate takes the module and the sample from there.
-    "myon-bioinformatics/Ironmate": {
-        "retired": [
-            {"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "tool/flow_diagram.py", "destination": "vendor/web_ui_flow.py", "license": "vendor/web-ui-LICENSE"},
-            {"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "examples/pr-flow.json", "destination": "examples/flow.json"},
-            {"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "tool/flow_diagram.py", "destination": "vendor/web_ui/tool/flow_diagram.py"},
-            {"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "tool/flow_patch.py", "destination": "vendor/web_ui/tool/flow_patch.py"},
-            {"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "js/flow.cjs", "destination": "vendor/web_ui/js/flow.cjs"},
-            {"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "js/flow-patch.cjs", "destination": "vendor/web_ui/js/flow-patch.cjs"},
-        ],
-        "added": [{"repository": "myon-bioinformatics/ascii_artist", "source": "examples/pr-flow.json", "destination": "examples/flow.json"}],
     },
 }
 
@@ -259,7 +249,8 @@ def test_observation_does_not_enroll_new_repositories():
 def test_ironmate_adoption_preserves_previous_snapshot_and_checks_new_entries():
     name = "myon-bioinformatics/Ironmate"
     old = FIXTURES[name]
-    current = REFRESHED_FIXTURES[name]
+    # The 2026-10-31 snapshot itself (REFRESHED_FIXTURES now holds the 2026-11-15 re-observation).
+    current = json.loads((ROOT / "tests/fixtures/ironmate_adopted_vendor_20261031.json").read_text())
     assert old["sha"] == "7adcb80de69a701a252a6a5abc7407be3f8132f5"
     assert current["sha"] == "8f4b9e3e2b12a2a32c47daa37da0a5bc3ee7dcd3"
     assert len(old["lock"]["files"]) == 59
@@ -270,7 +261,10 @@ def test_ironmate_adoption_preserves_previous_snapshot_and_checks_new_entries():
     assert all(row["repository"] == "myon-bioinformatics/Aoi" and
                row["ref"] == row["commit"] == "9cfa841818de56a22048c8c6196f10f698118122"
                for row in added)
-    registry = before_replacements(baseline_registry(json.loads((ROOT / "vendor-consumers.json").read_text())), name, current["lock"])
+    # Held to the contract its retired transition recorded (the registry now asks for the ascii_artist flow).
+    registry = json.loads((ROOT / "vendor-consumers.json").read_text())
+    transition = next(t for t in REOBSERVED["recorded"]["transitions"]["transitions"] if t["consumer"] == name)
+    next(c for c in registry["consumers"] if c["repository"] == name)["entries"] = transition["old_entries"]
     assert vendor_consumers.compare(registry, current["lock"], name)["matches"]
     assert not vendor_consumers.compare(registry, old["lock"], name)["matches"]
 
@@ -294,7 +288,7 @@ def test_rename_rollout_is_exact_without_identity_fallback():
             "myon-bioinformatics.github.io", "PySaiyanWeBoo", "BrowserTestKit")
     }
     for name, fixture in ROLLOUT_FIXTURES.items():
-        if name in NJS_ADOPTION['adopted']:
+        if name in REOBSERVED['adopted']:
             continue  # re-observed later; test_observed_lock_topology_and_immutable_revision checks the newer snapshot
         if name == 'myon-bioinformatics/Aoi':
             # Check this rollout against its original observation; the newer
@@ -423,8 +417,8 @@ NAME = 'myon-bioinformatics/Ironmate'
 
 def inputs():
     load = lambda p: json.loads((ROOT / p).read_text())
-    return (load('vendor-consumers.json'), load('child-heads.json'),
-            load('vendor-observation-transitions.json'), load('tests/fixtures/ironmate-observation-transition-old.lock.json'))
+    heads, transitions = recorded_before_reobservation()   # the transition itself is retired; its mechanism still is tested
+    return (load('vendor-consumers.json'), heads, transitions, load('tests/fixtures/ironmate-observation-transition-old.lock.json'))
 
 def resolve(registry, heads, manifest, lock, selected=None):
     with patch.object(sync, '_load_recorded_child_lock', return_value=lock):
@@ -951,7 +945,7 @@ MCP_PSWB_OBSERVATION_TRANSITION_NAME = 'myon-bioinformatics/mcp-toolcall-lab'
 
 def inputs_mcp_pswb_observation_transition():
     load = lambda p: json.loads((ROOT / p).read_text())
-    heads, transitions = recorded_before_njs_adoption()   # the transition itself is retired; its mechanism still is tested
+    heads, transitions = recorded_before_reobservation()   # the transition itself is retired; its mechanism still is tested
     return (load('vendor-consumers.json'), heads, transitions, load('tests/fixtures/mcp-pswb-observation-old.lock.json'))
 
 def resolve_mcp_pswb_observation_transition(registry, heads, manifest, lock, selected=None):
@@ -1043,7 +1037,7 @@ def load(p): return json.loads((ROOT/p).read_text())
 @pytest.mark.parametrize('repo',REPOS)
 def test_exact_old_and_desired_new_contracts(repo):
  name='myon-bioinformatics/'+repo
- r=load('vendor-consumers.json'); h,t=recorded_before_njs_adoption()
+ r=load('vendor-consumers.json'); h,t=recorded_before_reobservation()
  old=load('tests/fixtures/njs-'+repo+'-old.lock.json');new=load('tests/fixtures/njs-'+repo+'-new.lock.json');before=copy.deepcopy(r)
  assert c.compare(r,new,name)['matches']
  assert not c.compare(r,old,name)['matches']
@@ -1071,7 +1065,7 @@ def test_pswb_cleanup_predates_launcher_migration():
     assert [e for e in base['files'] if e['source']!='node_launch.py']==[e for e in new['files'] if e['source']!='njs_launch.py']
 
 def test_mcp_prior_pswb_transition_keeps_same_frozen_lock():
-    row=next(t for t in NJS_ADOPTION['recorded']['transitions']['transitions'] if t['consumer'].endswith('/mcp-toolcall-lab'))
+    row=next(t for t in REOBSERVED['recorded']['transitions']['transitions'] if t['consumer'].endswith('/mcp-toolcall-lab'))
     assert row['recorded_sha']=='cd04472040f0db991c5138144c01f56a2b79e44b'
     assert row['lock_sha256']=='40496c0e700ff3c4894541bc87dca28c6755b0ed0065cb5a740ec0c0e1583135'
     old=load('tests/fixtures/njs-mcp-toolcall-lab-old.lock.json')

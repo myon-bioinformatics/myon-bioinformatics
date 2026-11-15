@@ -4,7 +4,7 @@
 
 ## 配置と自動更新
 
-`.github/workflows/pages.yml` は関連ファイルのmain push、毎日06:17 JST、workflow_dispatchで検証後に `python3 -S tools/build_audit_pages.py` を実行し、共通Pages workflowから `site/dist` を公開します。スケジュールはGitHub側で遅延する場合があります。初回はリポジトリの Settings → Pages → Source を **GitHub Actions** に設定します。GITHUB_TOKENでのPages初期有効化はGitHub側で許可されないため、管理設定を自動的に変更する処理やPATの追加は行いません。
+`.github/workflows/pages.yml` は関連ファイルのmain push、毎日06:17 JST、workflow_dispatchで検証後に `python3 -S scripts/build_audit_pages.py` を実行し、共通Pages workflowから `site/dist` を公開します。スケジュールはGitHub側で遅延する場合があります。初回はリポジトリの Settings → Pages → Source を **GitHub Actions** に設定します。GITHUB_TOKENでのPages初期有効化はGitHub側で許可されないため、管理設定を自動的に変更する処理やPATの追加は行いません。
 
 PRではPython標準unittestとNode 26の組込みテストを実行します。同一リポジトリのPRのみ、公開2リポジトリ（cli_args,xprobe）の実データで読み取り専用のビルドを追加検証します。PRからPages公開は行いません。実行時はUbuntu 24.04標準のPython 3.11以上を使用し、追加のpip/npm依存は不要です。公開jobにのみpages/id-token権限を与え、データ収集に使うGH_TOKENはGITHUB_TOKENを環境変数で渡します。GitHubトークンをブラウザへ送信しません。
 
@@ -18,7 +18,7 @@ PRではPython標準unittestとNode 26の組込みテストを実行します。
 
 ![依存・更新ビューと作業画面の列（2026-11-09 の実データ、Chromium）](audit-dashboard-fleet.gif)
 
-`index.html` は `tools/build_audit_pages.py` の `observatory_page()` がビルド時に組み立てる操作画面（手書きの `site/ui/index.html` は無し。ナビ・操作・絞り込みの一覧は同ファイルの `VIEWS` / `ACTIONS` / `FILTERS` に1回だけ書く）で、「統合後の確認」の表は同じく Python の `integration_summary()` がビルド時に書き（読む人の作業記録に依らない観測値なので JS では描かない）、配色は `<body data-ui-theme>` が指す PySaiyanWeBoo のトークンテーマ（既定 `green`、`style.css` は `--ui-*` を読むだけ）、`report.html` は共通web_uiヘルパーによる生成レポートです。すべて相対参照なのでプロジェクトPagesのサブパスでも動作します。公開成果物のルートには `assets/brand` の `favicon.ico` と `favicon.png` をコピーし、HTML から相対パスで参照します（ルート絶対パス `/favicon.ico` はポートフォリオホストを指すため使いません）。最新head、観測日時、CI失敗のcheck名とURLを表示します。再読込ボタンは公開済みJSONを読むもので、GitHub Actionsの新規実行を起動するものではありません。
+`index.html` は `scripts/build_audit_pages.py` の `observatory_page()` がビルド時に組み立てる操作画面（手書きの `site/ui/index.html` は無し。ナビ・操作・絞り込みの一覧は同ファイルの `VIEWS` / `ACTIONS` / `FILTERS` に1回だけ書く）で、「統合後の確認」の表は同じく Python の `integration_summary()` がビルド時に書き（読む人の作業記録に依らない観測値なので JS では描かない）、配色は `<body data-ui-theme>` が指す PySaiyanWeBoo のトークンテーマ（既定 `green`、`style.css` は `--ui-*` を読むだけ）、`report.html` は共通web_uiヘルパーによる生成レポートです。すべて相対参照なのでプロジェクトPagesのサブパスでも動作します。公開成果物のルートには `assets/brand` の `favicon.ico` と `favicon.png` をコピーし、HTML から相対パスで参照します（ルート絶対パス `/favicon.ico` はポートフォリオホストを指すため使いません）。最新head、観測日時、CI失敗のcheck名とURLを表示します。再読込ボタンは公開済みJSONを読むもので、GitHub Actionsの新規実行を起動するものではありません。
 
 ## 共通スクロール操作
 
@@ -61,7 +61,7 @@ python3 -S -m unittest discover -s tests -p test_audit_pages.py
 node --test tests/test_audit_model.cjs
 node --check site/ui/app.js
 # GH_TOKENを環境変数に設定した上で実データを検証する場合
-python3 -S tools/build_audit_pages.py --repos cli_args,xprobe --previous '' --previous-history ''
+python3 -S scripts/build_audit_pages.py --repos cli_args,xprobe --previous '' --previous-history ''
 # 依存・更新だけ（GitHub APIもトークンも不要）
 python3 -S vendor_fleet_plan.py report --fetch --format markdown
 ```
@@ -190,7 +190,7 @@ head/main SHA、run/attempt/job、supersessionの記載、closureを同じ対象
 依存・競合・統合順序は既存画面を再利用する。検索、条件別フィルタ、時系列、比較、
 確認順序、5状態の作業記録、次アクション、完了記録、週次差分、JSON保存・読込に対応する。
 
-Pagesビルドは `tools/build_audit_pages.py` の証跡生成処理 で公開時の `parent-audit/1` と
+Pagesビルドは `scripts/build_audit_pages.py` の証跡生成処理 で公開時の `parent-audit/1` と
 `site/evidence/observations.json.gz`（公開リポジトリから取得済みの証跡）を結合する。
 保存済み証跡の最新取得範囲はPSWB #134。全リポジトリのコメント・レビューや全attemptを
 再取得する機能ではない。現在の公開在庫に含まれないリポジトリは出力しない。

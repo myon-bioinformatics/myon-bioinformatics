@@ -222,6 +222,37 @@ node vendor/py_launch.cjs --call add tool.py 2 3                # each ARG is JS
 node vendor/py_launch.cjs --call main tool.py '["--format","json"]'
 ```
 
+### Shared child contract checks (`fleet_check.py`)
+
+Parent-owned `fleet_check.py` (stdlib, Python 3.9+) replaces the per-child copies of
+`test_vendor_lock.py`, `test_canonical_node_sources.py`, `test_parent_workflow_pins.py`,
+`test_ci_python_setup.py`, the benchmark `-O` guards and the `*_node_entry.py` parity tests.
+A child vendors it as `vendor/fleet_check.py` and keeps one `tests/test_fleet.py`:
+
+```python
+from vendor import fleet_check as fleet
+ROOT = fleet.repo_root(__file__)
+
+def test_vendor_lock():
+    fleet.check_lock(ROOT, commits={"vendor/py_launch.cjs": "384f5dd…"})
+
+def test_parent_pins():
+    assert set(fleet.parent_refs(ROOT, skip=(".vendor-sync-tools",))) == {PARENT_WORKFLOW_PIN}
+```
+
+| Function | Returns / checks |
+| --- | --- |
+| `check_lock(root, lock, commits)` | vendor-lock/1 rows: full-SHA `ref == commit`, placed bytes match `blob_sha` and `sha256`; `commits` pins chosen destinations |
+| `parent_refs(root, skip)` | every `uses: PARENT/…@ref` and parent checkout `ref:` (mutable refs kept, `None` when missing); checkouts at a `skip` path left out |
+| `workflow_job(root, job, workflow)` | one top-level job's body, for order checks such as setup before the first `python` |
+| `run_main(root, script, patch, optimized)` | `main()` in a fresh `python -S` (`-O` too); `patch` runs first with `g` = main's globals |
+| `node()` / `node_parity(root, tool, env_var, *args, input)` | Node 26+ or `None` (an `AssertionError` under GitHub Actions); `(rc, stdout, stderr)` via `vendor/py_launch.cjs` and via `python -S` |
+
+The launcher's own behavior (missing interpreter, argv/stdin/exit passthrough, signals) is tested
+here in the parent; a child's locked `py_launch.cjs` bytes are the same file, so children keep only
+their tool's parity cases. Enroll the catalog row after this module is on the default branch, like
+`njs_launch.py` below.
+
 ### Python launcher for vendored Node scripts (`njs_launch.py`)
 
 Parent-owned `njs_launch.py` (named `node_launch.py` until 2026-11-13; the name now mirrors `py_launch.cjs`: the runtime it starts, then its own extension) is a single stdlib module (Python 3.9+) that spawns
@@ -808,7 +839,7 @@ CI keeps the two kinds apart. `vendor-fleet-plan.yml` (pull request / push of th
 records or the planner) runs the offline graph of the parent's records with
 `--check` and the synthetic-repository tests under `python -S -m unittest`; the
 planner's pytest coverage stays in `python-tests.yml`. The latest-source audit is
-part of the daily Pages build (`pages.yml`): `tools/build_audit_pages.py` adds the
+part of the daily Pages build (`pages.yml`): `scripts/build_audit_pages.py` adds the
 report for the public inventory to `data.json`, shown as **🔗 依存・更新** in
 `report.html` and per repository in the workbench. A failed analysis is published
 as unavailable and never blocks the PR audit. Clones are anonymous; no token,

@@ -97,7 +97,7 @@ def test_web_ui_flow_workspace_lock_is_not_accepted_after_the_move_to_ascii_arti
     assert [(x['repository'], x['source']) for x in result['missing']] == [('myon-bioinformatics/ascii_artist', 'examples/pr-flow.json')]
 
 
-NJS_RECORDED = load('tests/fixtures/njs_launch_adoption_20261114.json')['recorded']   # before the 2026-11-14 re-observation
+NJS_RECORDED = load('tests/fixtures/child_reobservations.json')['recorded']   # before the re-observations (njs_launch: 2026-11-14)
 
 
 def recorded_heads():

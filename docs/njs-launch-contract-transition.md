@@ -35,6 +35,6 @@ new fixtures distinguish reviewed target locks from actual adopted observations.
   Each adopted lock equals its reviewed `tests/fixtures/njs-<repo>-new.lock.json` byte for byte.
 - `child-heads.json` records those heads; their four transitions are retired; the old `node_launch.py`
   catalog row is removed (no registered or observed contract uses it any more).
-- `tests/fixtures/njs_launch_adoption_20261114.json` keeps the retired transitions and the heads they were
+- `tests/fixtures/child_reobservations.json` keeps the retired transitions and the heads they were
   bound to, so the transition-mechanism tests still run on the exact old observations, and the adopted
   snapshots for the topology test. Historical fixtures are unchanged.
