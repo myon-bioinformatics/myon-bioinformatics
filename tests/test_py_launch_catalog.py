@@ -13,7 +13,7 @@ LAUNCHERS = pytest.mark.parametrize("pin", [
     {"source": "py_launch.cjs", "worktree": "py_launch.cjs", "commit": "1116d5c4f55d25af4d21cfe9b3c88f49d3a476fa",
      "fixture": "py-launch-catalog-pin.lock.json",
      "pin_blob": "006817bc813187fa45abc3e8954fde27a2b73caa", "pin_sha256": "a78fe656cde285a83501b9b19d97b9ebde6f9637919b3adb95c50eb254154536",
-     "worktree_blob": "c858a1f71e1d75a1fbbefbd762fd7038287880aa", "worktree_sha256": "c0e1333d34bcb95aec94cc78b2ee2ad9d01abe4e556c81c99094e2c8faf0feaa"},
+     "worktree_blob": "caf5ef6d42bd572e9cfde84ee570e3036edc4726", "worktree_sha256": "fcdf3bcba98709d8138e75231af3fb468707d531df4e70a142441e0052e77e85"},
     {"source": "njs_launch.py", "worktree": "njs_launch.py", "commit": "0d20801e2e372a72426ce85cee7ac04d701e71b5",
      "fixture": "njs-launch-catalog-pin.lock.json",
      "pin_blob": "79521fdd4d77f4a0ae91ca4a1791f4ad46a0d574", "pin_sha256": "2499b0c407388c7977e8c8aab51467e882080566b0aab03019cb7bb8d263672f",

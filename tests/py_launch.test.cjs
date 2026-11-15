@@ -333,6 +333,13 @@ describe("py_launch.call (function / class by name, no __main__)", () => {
     });
   });
 
+  it("reads non-ASCII arguments as UTF-8, also under isolated (-I) where PYTHONUTF8 is ignored", () => {
+    const name = "日本語 & é 🌱";
+    for (const extra of [{}, { isolated: true }]) {
+      assert.equal(call(CALLEE, "greet", [name], { ...opts, ...extra }).name, name);
+    }
+  });
+
   it("keeps print output out of the JSON result (it goes to stderr)", () => {
     const raw = callRaw(CALLEE, "greet", ["bo"], opts);
     assert.equal(JSON.parse(raw.stdout.toString("utf8")).name, "bo");
