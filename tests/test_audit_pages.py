@@ -9,7 +9,7 @@ import urllib.error
 from unittest.mock import patch
 
 import ci_status as ci
-from tools import build_audit_pages as build
+from scripts import build_audit_pages as build
 
 
 def snapshot(at='2026-11-08T00:00:00+00:00'):
@@ -424,7 +424,7 @@ class GithubEvidencePagesTests(unittest.TestCase):
         self.assertNotIn('metadata_checked', result['changes'][0]['changes'])
 
     def test_current_head_invalidates_captured_ci_without_inventing_closure(self):
-        from tools.build_audit_pages import github_evidence as project
+        from scripts.build_audit_pages import github_evidence as project
         current = snapshot()
         current['records'][0].update(head_sha='b'*40, ci_head='b'*40,
                                      metadata_checked=current['generated_at'], github_state='open',
@@ -448,7 +448,7 @@ class GithubEvidencePagesTests(unittest.TestCase):
         self.assertFalse(captured['records'][0]['events'][0].get('historical', False))
 
     def test_post_merge_requires_exact_successful_commit_and_main_is_independent(self):
-        from tools.build_audit_pages import github_evidence as project
+        from scripts.build_audit_pages import github_evidence as project
         for sha, ci, branch, expected in [('m'*40,'COMPLETE','main',True),
                                            ('n'*40,'COMPLETE','main',False),
                                            ('m'*40,'FAILED','main',False),
@@ -473,7 +473,7 @@ class GithubEvidencePagesTests(unittest.TestCase):
                 self.assertTrue((out/asset).is_file(), asset)
             self.assertIn('url=index.html#queue', (out/'evidence.html').read_text())
             with zipfile.ZipFile(out/'pages-source.zip') as archive:
-                self.assertIn('tools/build_audit_pages.py', archive.namelist())
+                self.assertIn('scripts/build_audit_pages.py', archive.namelist())
                 self.assertIn('site/ui/evidence.html', archive.namelist())
                 self.assertNotIn('site/ui/evidence-data.json', archive.namelist())
             alias = (out/'dependencies.html').read_text()

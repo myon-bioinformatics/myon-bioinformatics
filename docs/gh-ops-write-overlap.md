@@ -39,7 +39,7 @@ identity module. Flutter and Ironmate catalog enrollment for it is already
 `skipped` with reason `retired_after_gh_identity_migration`. It stays as the
 compatibility shim described in `docs/git-inspector.md`.
 
-`scripts/apply_repo_patches.py` applies local mailboxes with `git am` and
+`tools/apply_repo_patches.py` applies local mailboxes with `git am` and
 refuses fetch, push, and pull-request creation. Org search finds only this
 parent copy and `tests/test_tools.py`.
 

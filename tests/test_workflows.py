@@ -534,7 +534,7 @@ def test_cli_excludes_stops_at_first_parent_pin_segment() -> None:
 #
 # Never execute the installer entry point or download/install real software.
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts/claude_env_setup.sh"
+SCRIPT = Path(__file__).resolve().parents[1] / "tools/claude_env_setup.sh"
 
 
 def fixture(tmp_path):

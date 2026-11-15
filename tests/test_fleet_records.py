@@ -408,7 +408,7 @@ class ShapesCyclesLimits(unittest.TestCase):
 
 class Compatibility(EvidenceFixture):
     def test_partial_corpus_collision_reaches_audit_and_retains_coverage(self):
-        from tools.build_audit_pages import split_fleet
+        from scripts.build_audit_pages import split_fleet
         class EmptyFleet:
             def files(self, *_args):
                 return []

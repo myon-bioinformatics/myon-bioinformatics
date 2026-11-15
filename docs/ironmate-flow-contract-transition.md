@@ -1,5 +1,12 @@
 # Ironmate flow contract transition
 
+> ✅ Done 2026-11-15. Ironmate main `ce252bc` passed `vendor_sync.py check` (no changed paths) and
+> `vendor_consumers.compare` against the desired registry with the same repository id, and its lock
+> equals `tests/fixtures/ironmate-flow-ascii-artist.lock.json` byte for byte. `child-heads.json` records
+> `ce252bc`; the transition entry and the `POST_BASELINE_REPLACEMENTS` row are gone. The retired
+> transition and the head it was bound to stay in `tests/fixtures/child_reobservations.json`, which
+> the transition-mechanism tests read.
+
 Ironmate #223 moves the existing PSWB flow implementation to the already merged
 ascii_artist implementation. Parent #259 changes the desired enrollment contract.
 The parent's recorded Ironmate observation still points to commit

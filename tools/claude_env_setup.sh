@@ -13,7 +13,7 @@
 # ログは /tmp/claude-env-setup.log。source しただけでは実行しない。
 #
 # 新しいセッションでも効かせる: Claude Code の環境設定の「セットアップスクリプト」欄に次の 1 行を貼る
-#   curl -fsSL https://raw.githubusercontent.com/myon-bioinformatics/myon-bioinformatics/main/scripts/claude_env_setup.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/myon-bioinformatics/myon-bioinformatics/main/tools/claude_env_setup.sh | bash
 # （更新はこのファイルを直すだけでよい。Node の LTS が変わったら NODE_MAJOR だけ変える）
 set -u
 NODE_MAJOR=${NODE_MAJOR:-26}           # LTS 系列。次の LTS が出たらここだけ変える
