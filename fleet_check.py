@@ -97,11 +97,12 @@ def run_main(root, script, patch="", *, optimized=False, timeout=60) -> subproce
 
 
 @functools.lru_cache(maxsize=None)
-def node(minimum=26):
+def node(minimum=26, ci_jobs=("test",)):
     """``$NODE`` or ``node`` on PATH when it runs version ``minimum``+, else ``None``.
 
-    Under GitHub Actions a missing or old Node is an ``AssertionError``, so CI
-    runs the parity checks instead of skipping them.
+    In a GitHub Actions job named in ``ci_jobs`` (``GITHUB_JOB``) a missing or
+    old Node is an ``AssertionError``, so the job that provisions Node runs the
+    parity checks instead of skipping them; other jobs (portability, stdlib) skip.
     """
     found = os.environ.get("NODE") or shutil.which("node")
     version = ""
@@ -113,7 +114,8 @@ def node(minimum=26):
     match = re.match(r"v(\d+)", version.strip())
     if match and int(match[1]) >= minimum:
         return found
-    assert os.environ.get("GITHUB_ACTIONS") != "true", f"Node {minimum}+ is required in CI"
+    in_job = os.environ.get("GITHUB_ACTIONS") == "true" and os.environ.get("GITHUB_JOB") in ci_jobs
+    assert not in_job, f"Node {minimum}+ is required in CI job {os.environ.get('GITHUB_JOB')}"
     return None
 
 

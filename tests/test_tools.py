@@ -647,9 +647,14 @@ def test_fleet_check_node_gate_skips_locally_and_fails_in_ci(tmp_path, monkeypat
         with pytest.raises(AssertionError, match="Node 26"):
             fleet_check.node_parity(tmp_path, "tool.py", "TOOL_PYTHON")
         monkeypatch.setenv("GITHUB_ACTIONS", "true")
+        monkeypatch.setenv("GITHUB_JOB", "portability")
         fleet_check.node.cache_clear()
-        with pytest.raises(AssertionError, match="required in CI"):
+        assert fleet_check.node() is None
+        monkeypatch.setenv("GITHUB_JOB", "test")
+        fleet_check.node.cache_clear()
+        with pytest.raises(AssertionError, match="required in CI job test"):
             fleet_check.node()
+        assert fleet_check.node(ci_jobs=("node-parity",)) is None
     finally:
         fleet_check.node.cache_clear()
 
