@@ -349,3 +349,14 @@ python -S ontautology.py plan graph.json
 run ID/attempt/SHAはrun観測自身の値。check-run IDをActions runへ変換せず、jobのrun/attempt/SHAが一致する時だけ結合する。現headとfiles_headが一致する変更パスのみ出力する。未知属性はsource_recordへ残す。required checks・生成物バイト・main包含などの不足はgapsに保持し、SHAの不一致だけでmain未導入としない。ブラウザの手入力完了は輸出しない。`same_as`/`supersedes` は設計語彙であり、自動推論・既存スキーマの改名はしない。
 
 統合画面の依存順は、親の `ci_status.dependency_plan` に集約する。循環・その下流・欠損依存はblockedへ残し、独立成分は順序を出す。depends_onとchanged_filesは同じビルドの監査観測から証跡レコードへ結合し、取得済みの設定依存を落とさない。完了・前回差分は既存の記録ビューを使用する。PSWBには汎用部品の不足がないため変更しない。
+
+
+### 最小JSON入口の受入検証
+
+OnTautoLogy #5のstdin対応後は、`python -S ontautology.py audit -` にUTF-8 JSONを渡せる。`plan -`も同じ入力方式。標準入力は1コマンドに1回だけで、引数のない自動ネットワーク取得は行わない。Pythonからは `audit([snapshot])` / `plan(graph)` を直接呼ぶ。
+
+Nodeから呼ぶ場合は標準 `child_process.spawnSync` にPython実行ファイルと `['-S', 'ontautology.py', 'audit', '-']` を引数配列で渡す。`input`は保存したスナップショットのバイト、`shell`は使わず、`timeout`・`maxBuffer`を設定し、起動エラーと終了コードを保持する。0は回答、1は入力エラー、2は循環・欠損等の要確認で、2でもstdoutの回答を捨てない。
+
+受入ケースは、通常の依存順、循環＋下流＋独立成分、未観測の依存先、日本語を含むJSON、不正JSON。Python直接とNode経由で同じ入力・出力・終了コードを比較する。順序と循環の表現は入力配列の並びやPython hash seedに左右されないことを確認する。GraphQL/Rustは実装・性能測定済みと表示しない。GraphQLは取得側、Rustは同じJSON契約の背後で将来差し替える計算層。
+
+親に未マージのOnTautoLogyコードを複製しない。#5がmainへ入った後に取り込み元SHAを固定して再検証する。画面の追加ページ・PSWBの追加APIは不要。
