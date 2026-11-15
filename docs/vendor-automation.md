@@ -246,7 +246,7 @@ def test_parent_pins():
 | `parent_refs(root, skip)` | every `uses: PARENT/…@ref` and parent checkout `ref:` (mutable refs kept, `None` when missing); checkouts at a `skip` path left out |
 | `workflow_job(root, job, workflow)` | one top-level job's body, for order checks such as setup before the first `python` |
 | `run_main(root, script, patch, optimized)` | `main()` in a fresh `python -S` (`-O` too); `patch` runs first with `g` = main's globals |
-| `launcher_contract(root, env_var)` | the child's own `vendor/py_launch.cjs` bytes: missing interpreter → exit 2, argv/stdin/exit passthrough under `-S`, no `sitecustomize` during discovery, POSIX signal forwarding (text and JSON `ESIGNAL`) |
+| `launcher_contract(root, env_var)` | the child's own `vendor/py_launch.cjs` bytes: missing interpreter → exit 2, argv/stdin/exit passthrough under `-S`, no `sitecustomize` during discovery, `resolvePython` honors `noSite`/`isolated`, POSIX signal forwarding (text and JSON `ESIGNAL`) |
 | `node()` / `node_parity(root, tool, env_var, *args, input)` | Node 26+ or `None` (an `AssertionError` in the GitHub Actions job named in `ci_jobs`, default `test`); `(rc, stdout, stderr)` via `vendor/py_launch.cjs` and via `python -S` |
 
 Children lock older `py_launch.cjs` bytes than the parent worktree, so each child runs

@@ -146,7 +146,8 @@ def launcher_contract(root, env_var="FLEET_PYTHON", timeout=60) -> None:
 
     A missing interpreter exits 2 with empty stdout; argv, stdin and exit codes
     pass through unchanged under ``-S``; ``-S`` also covers interpreter
-    discovery (no ``sitecustomize``); on POSIX, repeated signals are forwarded
+    discovery (no ``sitecustomize``), and the library ``resolvePython`` honors
+    ``noSite`` and ``isolated`` independently; on POSIX, repeated signals are forwarded
     until the child exits, ending in exit 2 with a text or JSON ``ESIGNAL`` error.
     """
     exe = node()
@@ -171,6 +172,15 @@ def launcher_contract(root, env_var="FLEET_PYTHON", timeout=60) -> None:
         (tmp / "sitecustomize.py").write_text(f"open({str(marker)!r}, 'w').close()\n", encoding="utf-8")
         probe = run(extra={"PYTHONPATH": str(tmp)})
         assert probe.returncode == 0 and not marker.exists(), "-S must cover interpreter discovery too"
+        library = json.dumps(str(tmp / "vendor/py_launch.cjs"))
+        for no_site in (False, True):
+            for isolated in (False, True):
+                marker.unlink(missing_ok=True)
+                options = json.dumps({"python": sys.executable, "noSite": no_site, "isolated": isolated})
+                found = subprocess.run([exe, "-e", f"require({library}).resolvePython({options});"],
+                                       env={**env, "PYTHONPATH": str(tmp)}, capture_output=True, timeout=timeout)
+                assert found.returncode == 0, found.stderr
+                assert marker.exists() == (not (no_site or isolated)), ("resolvePython", no_site, isolated)
         for code in (0, 1, 3, 7):
             tool.write_text("import json, sys\nsys.stdout.write(json.dumps({'argv': sys.argv[1:], "
                             "'stdin': sys.stdin.read(), 'nosite': sys.flags.no_site}))\n"
