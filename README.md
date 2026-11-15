@@ -257,6 +257,7 @@ Experiments in short expressions that keep their meaning for a given reader: whi
 * [niconicoSearchAPI_Template](https://github.com/myon-bioinformatics/niconicoSearchAPI_Template)
 * [oci-cost-analysis](https://github.com/myon-bioinformatics/oci-cost-analysis)
 * [OneLinearNumerousMemo](https://github.com/myon-bioinformatics/OneLinearNumerousMemo)
+* [OnTautoLogy](https://github.com/myon-bioinformatics/OnTautoLogy)
 * [python3nmap_GUI_for_Beginners](https://github.com/myon-bioinformatics/python3nmap_GUI_for_Beginners)
 * [Qiita_API_Template](https://github.com/myon-bioinformatics/Qiita_API_Template)
 * [scapy_GUI_for_Beginners](https://github.com/myon-bioinformatics/scapy_GUI_for_Beginners)
