@@ -258,5 +258,43 @@ class OntologyExportTests(unittest.TestCase):
 
     def test_design_is_in_existing_audit_view_and_download_is_same_observation(self):
         app = (Path(__file__).resolve().parents[1] / 'site/ui/unified-app.js').read_text()
-        self.assertIn('return html+ontologyDesign()', app)
+        self.assertIn('return html+convergenceBoard()+ontologyDesign()', app)
         self.assertIn("download('ontautology-snapshot.json',data.aoi_integration)", app)
+
+
+
+class ConvergenceInventoryTests(unittest.TestCase):
+    def data(self):
+        snapshot={'owner':'myon-bioinformatics','generated_at':'2026-11-15T00:00:00Z',
+                  'repositories':['Demo'],'records':[],
+                  'integrations':[{'repository':'Demo','branch':'main','head_sha':'a'*40}],
+                  'main_workflows':{'runs':[dict(repository='Demo',run_id=1,attempt=2,name='CI',
+                                                current_main=True,head_sha='a'*40,conclusion='failure',
+                                                status='completed',jobs=[dict(id=2,name='test',conclusion='failure')])]}}
+        return snapshot
+
+    def test_zero_open_pr_still_exports_exact_main_and_run_attempt_job(self):
+        from scripts.unified_operations import ontology_export
+        snap=self.data();result=ontology_export(snap,[],{})
+        self.assertEqual(result['records'],[])
+        repo,=result['inventory'];self.assertEqual(repo['repo'],'myon-bioinformatics/Demo')
+        self.assertEqual(repo['main'],'a'*40);self.assertEqual(repo['state'],'ブロッカー')
+        run,=repo['main_runs'];self.assertEqual((run['id'],run['run_attempt'],run['jobs'][0]['id']),(1,2,2))
+        self.assertTrue(any('未検証' in reason for reason in repo['gaps']))
+
+    def test_old_or_moving_main_run_is_not_attached_to_current_inventory(self):
+        from scripts.unified_operations import ontology_export
+        for update in ({'head_sha':'b'*40},{'current_main':False}):
+            snap=self.data();snap['main_workflows']['runs'][0].update(update)
+            repo,=ontology_export(snap,[],{})['inventory']
+            self.assertEqual(repo['main_runs'],[])
+            self.assertEqual(repo['state'],'調査中')
+
+    def test_only_observed_pins_and_pure_issues_are_exported(self):
+        from scripts.unified_operations import ontology_export
+        snap=self.data();snap['records']=[{'id':'Demo#i3'}]
+        snap['vendor_pins']=[dict(repository='Demo',source_repository='other/source',commit='c'*40,destination='vendor/source.py')]
+        issues=[dict(id='Demo#i3',repository='Demo',kind='issue',number=3,title='Issue',url='https://github.com/myon-bioinformatics/Demo/issues/3')]
+        repo,=ontology_export(snap,issues,{})['inventory']
+        self.assertEqual(len(repo['issues']),1);self.assertEqual(repo['pin_records'][0]['commit'],'c'*40)
+        self.assertNotIn('artifacts',repo['main_runs'][0])
