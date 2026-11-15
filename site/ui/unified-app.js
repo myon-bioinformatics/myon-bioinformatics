@@ -58,20 +58,29 @@ function migrationDetail(r){const m=r.migration;if(!m)return '';return '<section
 function convergenceBoard(){
  const snap=data.aoi_integration;
  if(!snap)return '<h2>収束ボード</h2><p>OnTautoLogy連携JSONは未取得です。</p>';
- const prs=snap.records||[],inventory=snap.inventory||[],open=prs.filter(r=>r.github_state==='open'),bad=new Set(['failure','timed_out','startup_failure','action_required']);
+ const membership=M.openMembership(snap),prs=snap.records||[],inventory=snap.inventory||[],open=membership.open,bad=new Set(['failure','timed_out','startup_failure','action_required']);
  const files=new Map;
  for(const r of open)for(const f of r.files||[]){const key=r.repository+'\0'+f;files.set(key,[...(files.get(key)||[]),r.repository+'#'+r.number])}
  const duplicates=r=>(r.files||[]).filter(f=>(files.get(r.repository+'\0'+f)||[]).length>1);
  const priority=r=>Number(r.mergeable===false)*16+Number(r.runs.some(w=>bad.has(w.conclusion)))*8+Number(r.base&&r.base!=='main')*4+Number(duplicates(r).length>0)*2+Number(r.gaps.length>0);
  const ranked=[...open].sort((a,b)=>priority(b)-priority(a)||a.repository.localeCompare(b.repository)||a.number-b.number);
- const focus=[...inventory.map(r=>({id:'repo:'+r.repo,label:r.repo+' / main',row:r})),...prs.map(r=>({id:'pr:'+r.repository+'#'+r.number,label:r.repository+' #'+r.number,row:r}))];
+ const focus=[...(snap.transfers||[]).map(r=>({id:'transfer:'+r.id,label:r.title,row:r})),...inventory.map(r=>({id:'repo:'+r.repo,label:r.repo+' / main',row:r})),...prs.map(r=>({id:'pr:'+r.repository+'#'+r.number,label:r.repository+' #'+r.number,row:r}))];
  const selected=focus.find(r=>r.id===convergenceFocus)||focus.find(r=>r.row.state==='ブロッカー')||focus[0];
- let html='<h2>収束ボード / OnTautoLogy</h2><p>'+badge('open PR '+open.length)+' '+badge('対象repo '+inventory.length)+' / '+E(observed(snap.captured_at))+'</p><p class="small">同じ監査JSONの関係を表示。GitHubへの変更なし。mainの失敗は優先確認、完了・差分は記録タブ。required checks・生成物の内容・コピー一致は未確定です。</p>';
- html+=table(['PR / head','状態 / 優先項目','統合先 / 依存','修正・再実行候補'],ranked.map(r=>{const failed=r.runs.filter(w=>bad.has(w.conclusion)),dup=duplicates(r);return '<tr><td>'+link(r.url,r.repository+' #'+r.number)+'<span class="sha">'+E(r.head_sha)+'</span></td><td>'+badge(r.state)+'<br>'+[r.mergeable===false?'mergeable=false':'',failed.length?'CI失敗':'',dup.length?'変更パス重複候補 '+dup.length:'',r.gaps.length?'証跡不足 '+r.gaps.length:''].filter(Boolean).map(E).join('<br>')+'</td><td>'+E(r.base)+'<br>'+E((r.dependencies||[]).join(', ')||'記録済み依存なし')+(r.base&&r.base!=='main'?'<br>統合先と前提PRを確認':'')+'</td><td>'+E(failed.length?'失敗jobの入力・ログを確認し、修正後に同じ対象SHAで再実行':'レビュー・固定SHA・生成物を確認')+'<details><summary>不足・重複候補</summary><pre>'+E(JSON.stringify({gaps:r.gaps,duplicate_paths:dup},null,2))+'</pre></details></td></tr>'}).join(''));
- html+='<p>循環: '+E(data.plan.cycle.length?data.plan.cycle.join(' → '):open.length?'記録された依存では検出なし':'対象なし')+' / 順序計算不能 '+E((data.plan.blocked||[]).join(', ')||'なし')+'</p>';
+ let html=absorptionBoard()+'<h2>収束ボード / OnTautoLogy</h2><p>'+badge('open PR '+(membership.count??'未確認'))+' '+badge('対象repo '+inventory.length)+' / '+E(observed(snap.captured_at))+'</p><p class="small">同じ監査JSONの関係を表示。GitHubへの変更なし。mainの失敗は優先確認、完了・差分は記録タブ。required checks・生成物の内容・コピー一致は未確定です。</p>';
+ html+=table(['PR / head','状態 / 優先項目','統合先 / 依存','修正・再実行候補'],ranked.map(r=>{const failed=r.runs.filter(w=>bad.has(w.conclusion)),dup=duplicates(r);return '<tr><td>'+link(r.url,r.repository+' #'+r.number)+'<span class="sha">'+E(r.head_sha)+'</span></td><td>'+badge(r.state)+'<br>'+[r.mergeable===false?'mergeable=false':'',failed.length?'CI失敗':'',dup.length?'変更パス重複候補 '+dup.length:'',r.detail_missing?'証跡未取得':r.gaps.length?'証跡不足 '+r.gaps.length:''].filter(Boolean).map(E).join('<br>')+'</td><td>'+E(r.base)+'<br>'+E((r.dependencies||[]).join(', ')||'記録済み依存なし')+(r.base&&r.base!=='main'?'<br>統合先と前提PRを確認':'')+'</td><td>'+E(failed.length?'失敗jobの入力・ログを確認し、修正後に同じ対象SHAで再実行':'レビュー・固定SHA・生成物を確認')+'<details><summary>不足・重複候補</summary><pre>'+E(JSON.stringify({gaps:r.gaps,duplicate_paths:dup},null,2))+'</pre></details></td></tr>'}).join(''));
+ html+='<p>循環: '+E(data.plan.cycle.length?data.plan.cycle.join(' → '):membership.count===null||open.some(r=>r.detail_missing)?'依存評価は未確認':open.length?'記録された依存では検出なし':'対象なし')+' / 順序計算不能 '+E((data.plan.blocked||[]).join(', ')||'なし')+'</p>';
  if(!selected)return html+'<p>グラフ対象の観測なし。</p>';
  const r=selected.row,facts=[],add=(type,relation,label,url)=>facts.push({type,relation,label,url});
- if(selected.id.startsWith('repo:')){
+ if(selected.id.startsWith('transfer:')){
+  add('Commit','hasHead',r.source.sha);
+  for(const p of r.source.paths)add('File','migration_source',r.source.repository+'/'+p,'https://github.com/'+r.source.repository+'/blob/'+r.source.sha+'/'+p);
+  if(r.target?.repository)add('Repository','migration_target',r.target.repository);
+  for(const p of r.target?.paths||[])add('File','updates',p);
+  if(r.verification?.evidence_url)add('Evidence','hasEvidence','受入証跡',r.verification.evidence_url);
+  if(!r.target?.repository)add('EvidenceGap','missingEvidence','移管先未確定');
+  if(!(r.target?.paths||[]).length)add('EvidenceGap','missingEvidence','移管先ファイル未確定');
+  if(!r.verification)add('EvidenceGap','missingEvidence','受入証跡未登録');
+ }else if(selected.id.startsWith('repo:')){
   if(r.main)add('Commit','hasMain',r.main);
   for(const w of r.main_runs||[]){add('ActionsRun','hasRun',w.name+' / '+(w.conclusion||w.status)+' / attempt '+(w.run_attempt??'未確認'),w.html_url);for(const j of w.jobs||[])add('Job','hasJob',j.name+' / '+(j.conclusion||'未確認'),j.html_url)}
   for(const p of r.pin_records||[])add('FixedSHA','hasPin',p.repository+'@'+p.commit+' / '+(p.destination||''));
@@ -97,3 +106,14 @@ function convergenceBoard(){
 }
 
 document.addEventListener("change",ev=>{if(ev.target.matches("[data-convergence-focus]")){convergenceFocus=ev.target.value;render()}});
+
+function absorptionBoard(){
+ const registry=data.transfer_registry||{status:'未取得'},snap=data.aoi_integration||{},items=snap.transfers||[],scope=snap.transfer_scope||{};
+ let html='<h2>Flutter吸収台帳</h2><p>'+badge('OTL台帳 '+registry.status)+'<span class="sha">'+E(registry.source_sha||'観測main SHA未取得')+'</span></p>';
+ if(registry.status!=='取得済み')return html+'<p>未吸収がゼロとは判断できません。OTL mainの固定SHAから台帳を再取得してください。</p>';
+ const pending=items.filter(r=>r.state!=='完了'),features=pending.filter(r=>r.kind!=='request');
+ html+='<p>'+badge('未完了 '+pending.length)+' / 既存機能 '+features.length+' / 追加要望 '+pending.filter(r=>r.kind==='request').length+'。範囲 '+E(scope.inventory_complete===true?'棚卸し完了の記録あり':'初期棚卸し・全件網羅は未確定')+'</p><p class="small">完了は台帳の記録値。元SHA・移管先SHA・mainへの反映・全受入条件・Actions証跡をOTLのtransfersコマンドで照合します。実際のCIと機能同等性は独立再検証が必要です。Flutterのアーカイブ後も参照を保持します。</p>';
+ return html+table(['機能 / 区分','移管元 / 固定SHA','移管先 / SHA','状態 / 未吸収の理由','受入条件 / 検証証跡'],items.map(r=>{const source=r.source,target=r.target||{},receipt=r.verification||{};return '<tr><td><button data-transfer-focus="'+E(r.id)+'">'+E(r.title)+'</button><br>'+E(r.kind==='request'?'追加要望':'既存機能')+'</td><td>'+link('https://github.com/'+source.repository+'/tree/'+source.sha,source.repository)+'<span class="sha">'+E(source.sha)+'</span><details><summary>元ファイル '+source.paths.length+'件</summary>'+source.paths.map(p=>'<div>'+link('https://github.com/'+source.repository+'/blob/'+source.sha+'/'+p,p)+'</div>').join('')+'</details></td><td>'+E(target.repository||'未確定')+'<span class="sha">'+E(target.sha||'検証SHA未確定')+'</span>'+E((target.paths||[]).join(', ')||'移管先ファイル未確定')+'<div class="small">'+E(target.basis||'移管先の根拠未確定')+'</div></td><td>'+badge(M.states.includes(r.state)?r.state:'調査中')+'<p>'+E(r.notes)+'</p></td><td>'+(r.acceptance||[]).map(c=>'<div>'+E(c.id)+': '+E(c.description)+'</div>').join('')+'<p>'+link(receipt.evidence_url,receipt.evidence_url?'Actions受入証跡':'受入証跡未登録')+'</p></td></tr>'}).join(''));
+}
+
+document.addEventListener('click',ev=>{const b=ev.target.closest('[data-transfer-focus]');if(b){convergenceFocus='transfer:'+b.dataset.transferFocus;render();document.querySelector('[data-convergence-focus]')?.scrollIntoView({block:'center'})}});

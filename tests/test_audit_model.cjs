@@ -1,6 +1,32 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const compaction=require('../site/ui/compaction-review.js');
+test('convergence uses authoritative membership instead of missing detail records',()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),M=require('../site/ui/unified-model.js');
+ const source=fs.readFileSync(path.join(__dirname,'../site/ui/unified-app.js'),'utf8');
+ const start=source.indexOf('function convergenceBoard()'),end=source.indexOf('\ndocument.addEventListener',start+1);
+ const cases=[
+  [{complete:true,open_pr_numbers:[]},'0',false],
+  [{complete:false,open_pr_numbers:null},'未確認',false],
+  [{complete:true,open_pr_numbers:[301]},'1',true],
+  [null,'未確認',false]
+ ];
+ for(const [row,count,missing] of cases){
+  const snap={records:[],inventory:[],captured_at:'2026-11-15T00:00:00Z'};
+  if(row)snap.open_pr_inventory=[{repository:'o/r',...row}];
+  const context={M,data:{aoi_integration:snap,plan:{cycle:[],blocked:[]}},convergenceFocus:'',E:M.esc,
+   absorptionBoard:()=>'',badge:s=>s,observed:s=>s,table:(h,s)=>s,link:(url,label)=>label};
+  vm.createContext(context);vm.runInContext(source.slice(start,end)+'\noutput=convergenceBoard();',context);
+  assert.ok(context.output.includes('open PR '+count),context.output);
+  assert.equal(context.output.includes('証跡未取得'),missing);
+  if(count==='未確認'||missing){assert.ok(context.output.includes('依存評価は未確認'));assert.ok(!context.output.includes('循環: 対象なし'))}
+ }
+ const stale={repository:'o/r',number:1,github_state:'open'};
+ assert.equal(M.openMembership({records:[stale],inventory:[],open_pr_inventory:[{repository:'o/r',complete:false,open_pr_numbers:null}]}).open.length,0);
+ assert.equal(M.openMembership({records:[],inventory:[],open_pr_inventory:[null]}).count,null);
+ assert.equal(M.openMembership({records:[stale],inventory:[],open_pr_inventory:[{repository:'o/r',complete:true,open_pr_numbers:[]}]}).open.length,0);
+ assert.equal(M.openMembership({records:[],inventory:[{repo:'o/missing'}],open_pr_inventory:[{repository:'o/r',complete:true,open_pr_numbers:[]}]}).count,null);
+});
 test('compaction keeps #284 rate display on legacy counts while zero denominators stay unavailable',()=>{
  assert.equal(compaction.legacyRate('8/10'),'8/10 (80.00%)');
  assert.equal(compaction.legacyRate('0/0'),'0/0 (分母ゼロ)');
