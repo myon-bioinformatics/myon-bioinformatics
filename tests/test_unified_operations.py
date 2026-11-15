@@ -2,9 +2,9 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from tools.unified_operations import view_data, write_workspace, collect_main_runs, snapshot_comparison, collect_repository_counts
+from scripts.unified_operations import view_data, write_workspace, collect_main_runs, snapshot_comparison, collect_repository_counts
 
-from tools.unified_operations import refresh_evidence
+from scripts.unified_operations import refresh_evidence
 
 
 class CurrentRestObservationTests(unittest.TestCase):
