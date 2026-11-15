@@ -548,6 +548,16 @@
       }
     },
     {
+      "repository": "myon-bioinformatics/myon-bioinformatics",
+      "commit": "074d9c09810cc5b615ead6913645c40c8f9d9bfc",
+      "reason": "Shared child contract checks (parent PR #292, merged to main via #290): check_lock, parent_refs, workflow_job, run_main, node/node_parity replace the per-child copies of vendor lock, parent pin, CI setup, benchmark -O guard and Node parity tests. Consumers lock vendor/fleet_check.py and call it from one tests/test_fleet.py.",
+      "source": "fleet_check.py",
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
+    },
+    {
       "repository": "myon-bioinformatics/BrowserTestKit",
       "commit": "8d8512fefea38993e5b3695c0706075cf05071ad",
       "source": "scripts/browser_execution.mjs",
