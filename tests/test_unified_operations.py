@@ -298,3 +298,35 @@ class ConvergenceInventoryTests(unittest.TestCase):
         repo,=ontology_export(snap,issues,{})['inventory']
         self.assertEqual(len(repo['issues']),1);self.assertEqual(repo['pin_records'][0]['commit'],'c'*40)
         self.assertNotIn('artifacts',repo['main_runs'][0])
+
+
+class TransferRegistryTests(unittest.TestCase):
+    def test_registry_uses_observed_otl_sha_and_survives_flutter_absence(self):
+        import base64
+        from scripts.unified_operations import collect_transfer_registry, ontology_export
+        doc={'schema':'integration-audit/3','captured_at':'2026-11-15T01:00:00Z','records':[],
+             'transfers':[{'id':'flutter-feature','state':'調査中'}],
+             'transfer_scope':{'source_repository':'myon-bioinformatics/flutter_navigation_basic','inventory_complete':False}}
+        snapshot={'owner':'myon-bioinformatics','generated_at':'2026-11-16T01:00:00Z','records':[],
+                  'repositories':['OnTautoLogy'],'integrations':[{'repository':'OnTautoLogy','branch':'main','head_sha':'a'*40}]}
+        def fetch(path):
+            self.assertTrue(path.endswith('?ref='+'a'*40))
+            self.assertNotIn('/flutter_navigation_basic/',path)
+            return {'sha':'blob','content':base64.b64encode(json.dumps(doc).encode()).decode()}
+        snapshot['transfer_registry']=collect_transfer_registry(snapshot,fetch)
+        result=ontology_export(snapshot,[],{})
+        self.assertEqual(result['records'],[])
+        self.assertEqual(result['transfers'],doc['transfers'])
+        self.assertFalse(result['transfer_scope']['inventory_complete'])
+        self.assertEqual(result['transfer_scope']['registry_sha'],'a'*40)
+
+    def test_unavailable_or_invalid_registry_is_not_reported_as_no_pending(self):
+        from scripts.unified_operations import collect_transfer_registry, ontology_export
+        snapshot={'generated_at':'2026-11-15T01:00:00Z','records':[],'integrations':[]}
+        result=collect_transfer_registry(snapshot,lambda _:self.fail('must not fetch mutable main'))
+        self.assertEqual(result['status'],'未取得')
+        snapshot['transfer_registry']=result
+        self.assertEqual(ontology_export(snapshot,[],{})['transfer_scope']['registry_status'],'未取得')
+        snapshot['integrations']=[{'repository':'OnTautoLogy','branch':'main','head_sha':'a'*40}]
+        def unavailable(_):raise RuntimeError('missing registry')
+        self.assertEqual(collect_transfer_registry(snapshot,unavailable)['status'],'未取得')
