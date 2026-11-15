@@ -373,3 +373,9 @@ node ontautology.mjs audit ontautology-snapshot.json
 ```
 
 CLIはOnTautoLogy側の単一ファイル実装を使う。Nodeは同じCLIを呼び、GraphQLは収集層のみ、Rust置換は同じJSON契約の計算境界だけを対象とする。
+
+#### Flutterアーカイブ前後の未吸収台帳
+
+正本はOnTautoLogyの `examples/flutter-absorption.json`。Pagesビルドは観測済みOTL main SHAで台帳を読み、同じ収束ボードと `ontautology-snapshot.json` へ渡す。台帳未取得は未吸収ゼロと区別する。元のFlutterがactive監査の対象から外れても、OTLに保存した元SHA・ファイル・移管先・受入条件・証跡を残す。これはアーカイブ済みrepoのactive CI監視への再登録ではない。
+
+吸収済みは台帳の状態とし、`python -S ontautology.py transfers ontautology-snapshot.json` で検証SHA・受入条件・main反映記録の整合性を確認する。CI成功・main包含・機能同等性は独立再検証する。台帳のOTL main導入後に再ビルドすると表示される。新しいページ、Flutterの変更、アーカイブ操作、CI権限変更は不要。
