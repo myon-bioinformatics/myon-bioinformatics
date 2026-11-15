@@ -726,6 +726,34 @@ def test_fleet_check_workflow_job_setup_precedes_python_and_uv(tmp_path):
             fleet_check.workflow_job(tmp_path, "test", setup=setup, inputs=(version,))
 
 
+def test_fleet_check_workflow_job_vendor_dispatch_verifies_without_record(tmp_path):
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+    good = ("jobs:\n  vendor-dispatch:\n    steps:\n      # Verify mode does not --record.\n      - env:\n"
+            "          PARENT_REPOSITORY_ID: \"638801160\"\n        run: |\n"
+            "          sha=$(git ls-remote \"$url\" refs/heads/main)\n          test -f .parent/pilot/vendor_dispatch.py\n"
+            "          python \"$GITHUB_WORKSPACE/.parent/pilot/vendor_dispatch.py\" \\\n"
+            "            --manifest \"$GITHUB_WORKSPACE/vendor.lock.json\" | tee \"$out\"\n")
+    path = tmp_path / ".github/workflows/ci.yml"
+    path.write_text(good, encoding="utf-8")
+    assert fleet_check.workflow_job(tmp_path, "vendor-dispatch", dispatch_lock="vendor.lock.json") == good.split("vendor-dispatch:\n")[1]
+    with pytest.raises(AssertionError, match="no --manifest python/vendor.lock.json"):
+        fleet_check.workflow_job(tmp_path, "vendor-dispatch", dispatch_lock="python/vendor.lock.json")
+    for broken, message in (
+        (good.replace("638801160", "1"), "lacks PARENT_REPOSITORY_ID"),
+        (good.replace("git ls-remote", "git rev-parse"), "lacks git ls-remote"),
+        (good.replace("refs/heads/main", "refs/heads/dev"), "lacks refs/heads/main"),
+        (good.replace(" | tee", " --record | tee"), "without --record or -S"),
+        (good.replace("          test -f", "          python x.py --record\n          test -f"), "without --record or -S"),
+        (good.replace('python "$GITHUB', 'python -S "$GITHUB'), "without --record or -S"),
+        (good.replace('python "$GITHUB', '# python "$GITHUB'), "vendor_dispatch.py is not run"),
+        (good.replace("--manifest", "--lock"), "no --manifest vendor.lock.json"),
+    ):
+        assert broken != good
+        path.write_text(broken, encoding="utf-8")
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.workflow_job(tmp_path, "vendor-dispatch", dispatch_lock="vendor.lock.json")
+
+
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
 def test_fleet_check_workflow_job_runs_the_node_floor_guard(tmp_path):
     (tmp_path / ".github/workflows").mkdir(parents=True)

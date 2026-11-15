@@ -110,7 +110,7 @@ def check_actions(root, pins=None, workflow="*.y*ml") -> list:
     return rows
 
 
-def workflow_job(root, job, workflow="ci.yml", node_floor=None, setup=None, inputs=()) -> str:
+def workflow_job(root, job, workflow="ci.yml", node_floor=None, setup=None, inputs=(), dispatch_lock=None) -> str:
     """Body of one top-level job of ``.github/workflows/<workflow>``.
 
     With ``node_floor`` the job must set up that Node major and carry the bash
@@ -119,6 +119,10 @@ def workflow_job(root, job, workflow="ci.yml", node_floor=None, setup=None, inpu
     With ``setup`` (such as ``"astral-sh/setup-uv@"``) the job has exactly one
     ``uses: SETUP…`` step, it comes before the first ``python``/``python3``/``uv``
     command, and that step holds every string of ``inputs``.
+    With ``dispatch_lock`` (such as ``"vendor.lock.json"``) the job is the
+    vendor-dispatch verification: it checks the parent's repository id,
+    resolves ``refs/heads/main`` with ``git ls-remote`` and runs
+    ``pilot/vendor_dispatch.py --manifest …LOCK`` without ``--record`` or ``-S``.
     """
     text = (Path(root) / ".github/workflows" / workflow).read_text(encoding="utf-8")
     match = re.search(r"(?ms)^  " + re.escape(job) + r":\n(.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)", text)
@@ -134,6 +138,15 @@ def workflow_job(root, job, workflow="ci.yml", node_floor=None, setup=None, inpu
         step = re.split(r"(?m)^" + " " * (len(lead) - 2) + r"- ", match[1][at:], maxsplit=1)[0]
         for wanted in inputs:
             assert wanted in step, f"{where}: {setup} step lacks {wanted}"
+    if dispatch_lock is not None:
+        for wanted in ('PARENT_REPOSITORY_ID: "638801160"', "git ls-remote", "refs/heads/main"):  # the id of PARENT
+            assert wanted in match[1], f"{where}: lacks {wanted}"
+        code = re.sub(r"\\\n\s*", " ", "\n".join(line for line in match[1].splitlines() if not line.lstrip().startswith("#")))
+        runs = [line.strip() for line in code.splitlines() if re.search(r"\bpython3?\s.*pilot/vendor_dispatch\.py", line)]
+        assert runs, f"{where}: pilot/vendor_dispatch.py is not run"
+        for line in runs:
+            assert re.search(r"--manifest\s+\S*" + re.escape(dispatch_lock), line), f"{where}: no --manifest {dispatch_lock}: {line}"
+        assert "--record" not in code and not any(re.search(r"\s-S\s", line) for line in runs), f"{where}: verify only, without --record or -S"
     if node_floor is not None:
         assert re.search(r"(?m)^\s*node-version:\s*['\"]?%d['\"]?\s*$" % node_floor, match[1]), f"{where}: no setup of Node {node_floor}"
         guard = re.search(r'(?ms)^([ \t]*)if \[\[ "\$node_major" -lt (\d+) \]\]; then\n.*?^\1fi$', match[1])
