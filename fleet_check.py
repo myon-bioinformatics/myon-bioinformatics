@@ -110,18 +110,31 @@ def check_actions(root, pins=None, workflow="*.y*ml") -> list:
     return rows
 
 
-def workflow_job(root, job, workflow="ci.yml", node_floor=None) -> str:
+def workflow_job(root, job, workflow="ci.yml", node_floor=None, setup=None, inputs=()) -> str:
     """Body of one top-level job of ``.github/workflows/<workflow>``.
 
     With ``node_floor`` the job must set up that Node major and carry the bash
     guard ``if [[ "$node_major" -lt FLOOR ]]; then … fi``; the guard is run in
     ``bash`` around the floor and must reject every older major only.
+    With ``setup`` (such as ``"astral-sh/setup-uv@"``) the job has exactly one
+    ``uses: SETUP…`` step, it comes before the first ``python``/``python3``/``uv``
+    command, and that step holds every string of ``inputs``.
     """
     text = (Path(root) / ".github/workflows" / workflow).read_text(encoding="utf-8")
     match = re.search(r"(?ms)^  " + re.escape(job) + r":\n(.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)", text)
     assert match, f"{workflow}: missing job {job}"
+    where = f"{workflow}: job {job}"
+    if setup is not None:
+        assert match[1].count("uses: " + setup) == 1, f"{where}: needs exactly one uses: {setup}"
+        at = match[1].index("uses: " + setup)
+        command = re.search(r"(?m)^\s*(?:-\s+)?(?:run:\s*)?(?:python3?|uv)\s|\bpython3?\s+(?:-c|-\s|[A-Za-z_])", match[1])
+        assert command, f"{where}: no python or uv command to set up for"
+        assert at < command.start(), f"{where}: {command[0].strip()} runs before {setup}"
+        lead = match[1][match[1].rfind("\n", 0, at) + 1:at]  # "      - " or "        ": the step's list indent either way
+        step = re.split(r"(?m)^" + " " * (len(lead) - 2) + r"- ", match[1][at:], maxsplit=1)[0]
+        for wanted in inputs:
+            assert wanted in step, f"{where}: {setup} step lacks {wanted}"
     if node_floor is not None:
-        where = f"{workflow}: job {job}"
         assert re.search(r"(?m)^\s*node-version:\s*['\"]?%d['\"]?\s*$" % node_floor, match[1]), f"{where}: no setup of Node {node_floor}"
         guard = re.search(r'(?ms)^([ \t]*)if \[\[ "\$node_major" -lt (\d+) \]\]; then\n.*?^\1fi$', match[1])
         assert guard and int(guard[2]) == node_floor, f"{where}: no node_major guard at {node_floor}"

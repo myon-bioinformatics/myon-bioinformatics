@@ -695,6 +695,37 @@ def test_fleet_check_workflow_job_and_run_main(tmp_path):
         assert (bad.returncode, bad.stdout) == (1, "") and "result mismatch" in bad.stderr
 
 
+def test_fleet_check_workflow_job_setup_precedes_python_and_uv(tmp_path):
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+    setup, version = "astral-sh/setup-uv@", 'python-version: "${{ matrix.python }}"'
+    good = ("jobs:\n  test:\n    steps:\n      - uses: actions/checkout@v7\n        with:\n          python-version: \"3.9\"\n"
+            "      - name: Set up uv\n        uses: astral-sh/setup-uv@" + "1" * 40 + " # v10.3.3\n        with:\n"
+            "          version: \"latest\"\n          python-version: \"${{ matrix.python }}\"\n          activate-environment: true\n"
+            "      - run: python -m compileall -q .\n      - name: tests\n        run: |\n          uv run --locked pytest -q\n"
+            "        env:\n          enable-cache: true\n  lint:\n    steps:\n      - run: echo\n")
+    path = tmp_path / ".github/workflows/ci.yml"
+    path.write_text(good, encoding="utf-8")
+    assert fleet_check.workflow_job(tmp_path, "test", setup=setup, inputs=(version, "activate-environment: true")) \
+        == fleet_check.workflow_job(tmp_path, "test")
+    for inputs, message in ((('python-version: "3.9"',), "step lacks python-version"),   # another step's input
+                            (("enable-cache: true",), "step lacks enable-cache")):       # a later step's key
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.workflow_job(tmp_path, "test", setup=setup, inputs=inputs)
+    moved = "      - run: python -m compileall -q .\n"
+    for broken, message in (
+        (good.replace(moved, "").replace("      - name: Set up uv", moved + "      - name: Set up uv"), "python runs before"),
+        (good.replace("      - uses: actions/checkout@v7", "      - run: |\n          uv --version\n      - uses: actions/checkout@v7"), "uv runs before"),
+        (good.replace("      - uses: actions/checkout@v7", "      - run: echo \"$(python3 -c 'print(1)')\"\n      - uses: actions/checkout@v7"), "python3 -c runs before"),
+        (good.replace("      - name: tests", "      - uses: astral-sh/setup-uv@v10\n      - name: tests"), "exactly one uses: astral-sh/setup-uv@"),
+        (good.replace("uses: astral-sh/setup-uv@", "uses: actions/setup-python@"), "exactly one uses: astral-sh/setup-uv@"),
+        (good.replace(moved, "").replace("          uv run --locked pytest -q", "          pytest -q"), "no python or uv command"),
+    ):
+        assert broken != good
+        path.write_text(broken, encoding="utf-8")
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.workflow_job(tmp_path, "test", setup=setup, inputs=(version,))
+
+
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
 def test_fleet_check_workflow_job_runs_the_node_floor_guard(tmp_path):
     (tmp_path / ".github/workflows").mkdir(parents=True)
