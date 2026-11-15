@@ -51,7 +51,7 @@ const CALL_SHIM = [
   "import dataclasses, importlib.util, json, os, re, sys",
   "path, target = sys.argv[1], sys.argv[2]",
   "sys.argv = [path]",  // argparse-style main() sees no stray argv and reports the script as prog
-  "req = json.loads(sys.stdin.read() or '{}')",
+  "req = json.loads(sys.stdin.buffer.read().decode('utf-8') or '{}')",  // bytes, not the locale codec (cp1252 on Windows, also under -I)
   "req = {'args': req} if isinstance(req, list) else req",
   "sys.path.insert(0, os.path.dirname(os.path.abspath(path)))",
   "name = re.sub(r'\\W', '_', os.path.splitext(os.path.basename(path))[0])",
