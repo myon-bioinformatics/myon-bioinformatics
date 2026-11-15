@@ -360,3 +360,16 @@ Nodeから呼ぶ場合は標準 `child_process.spawnSync` にPython実行ファ�
 受入ケースは、通常の依存順、循環＋下流＋独立成分、未観測の依存先、日本語を含むJSON、不正JSON。Python直接とNode経由で同じ入力・出力・終了コードを比較する。順序と循環の表現は入力配列の並びやPython hash seedに左右されないことを確認する。GraphQL/Rustは実装・性能測定済みと表示しない。GraphQLは取得側、Rustは同じJSON契約の背後で将来差し替える計算層。
 
 親に未マージのOnTautoLogyコードを複製しない。#5がmainへ入った後に取り込み元SHAを固定して再検証する。画面の追加ページ・PSWBの追加APIは不要。
+
+
+### 収束ボードとOnTautoLogy
+
+既存の「監査・依存」内で収束ボードと観測グラフを表示する。別ページは生成しない。`ontautology-snapshot.json` はPRだけでなくリポジトリ別mainのrun・取得済みjob・固定SHA・Issue・証跡不足を `inventory` に保持し、open PRが0件でも観測を残す。前回差分・完了記録・main失敗は既存の記録・優先確認を利用する。生成物の内容、required checks、コピー一致は未検証のままとする。
+
+```sh
+python -S ontautology.py audit ontautology-snapshot.json -o graph.json
+python -S ontautology.py plan graph.json
+node ontautology.mjs audit ontautology-snapshot.json
+```
+
+CLIはOnTautoLogy側の単一ファイル実装を使う。Nodeは同じCLIを呼び、GraphQLは収集層のみ、Rust置換は同じJSON契約の計算境界だけを対象とする。
