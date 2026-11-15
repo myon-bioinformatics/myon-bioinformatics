@@ -442,7 +442,7 @@ def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, f
         registry = json.loads((ROOT / "vendor-consumers.json").read_text())
         heads = json.loads((ROOT / "child-heads.json").read_text())
         workflow_fixture = "tests/fixtures/flutter_non_dart_ci_python_241.yml"
-        expected_sha = "b17422b5aed1fc1eeefce2a999346a8da65124e6"  # re-observed after #248 (fleet_check); the workflow is unchanged
+        expected_sha = "2797b004499b14c9d530857566e80c0a1dadfd8e"
     else:
         registry = load_flutter("vendor-consumers.json")
         heads = load_flutter("child-heads.json")

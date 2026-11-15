@@ -134,7 +134,6 @@ POST_BASELINE_ENROLLMENTS = {
     **{f"myon-bioinformatics/{name}": {"vendor/fleet_check.py"} for name in (
         "yourself", "nvd_nist_known_vulns", "ascii_artist", "cli_args", "gh_identity")},
     "myon-bioinformatics/search_seq_including_spaces": {"vendor/fleet_check.py", "vendor/myon-bioinformatics-LICENSE"},
-    "myon-bioinformatics/flutter_navigation_basic": {"python/vendor/fleet_check.py"},
 }
 
 
@@ -277,11 +276,10 @@ def test_ironmate_adoption_preserves_previous_snapshot_and_checks_new_entries():
 def test_flutter_python_ci_adoption_preserves_the_adopted_vendor_lock():
     name = "myon-bioinformatics/flutter_navigation_basic"
     old = FIXTURES[name]
-    # The reviewed adoption snapshot; the later fleet_check re-observation (#248) moves REFRESHED_FIXTURES.
-    current = json.loads((ROOT / "tests/fixtures/flutter_adopted_vendor_235.json").read_text())
+    current = REFRESHED_FIXTURES[name]
     assert old["sha"] == "075e08530e6c02b9f0b2194922f244ff047ab23f"
     assert current["lock"] == old["lock"]
-    heads, _ = recorded_before_reobservation()
+    heads = json.loads((ROOT / "child-heads.json").read_text())
     assert heads["heads"][name]["pull_number"] == ROLLOUT_FIXTURES[name]["pull_number"] == 241
 
 

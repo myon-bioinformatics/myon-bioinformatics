@@ -554,11 +554,6 @@
           "repository": "myon-bioinformatics/Ironmate",
           "source": "pillow_min.py",
           "destination": "python/vendor/pillow_min/pillow_min.py"
-        },
-        {
-          "repository": "myon-bioinformatics/myon-bioinformatics",
-          "source": "fleet_check.py",
-          "destination": "python/vendor/fleet_check.py"
         }
       ],
       "locked_ci": {

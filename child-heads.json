@@ -49,9 +49,9 @@
       "optional": {
         "repository_created_at": "2024-01-05T10:54:32Z"
       },
-      "pull_number": 248,
+      "pull_number": 241,
       "repository_id": 739348522,
-      "sha": "b17422b5aed1fc1eeefce2a999346a8da65124e6"
+      "sha": "2797b004499b14c9d530857566e80c0a1dadfd8e"
     },
     "myon-bioinformatics/gh_identity": {
       "optional": {
