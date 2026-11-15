@@ -187,3 +187,76 @@ class UnifiedOperationsTests(unittest.TestCase):
 if __name__=='__main__':unittest.main()
 
 
+
+
+class OntologyExportTests(unittest.TestCase):
+    def values(self):
+        snap = {'generated_at': '2026-11-15T00:00:00Z', 'owner': 'myon-bioinformatics',
+                'records': [{'id': 'Demo#2', 'head_sha': 'a'*40, 'changed_files': ['module.py'],
+                             'files_head': 'a'*40, 'depends_on': ['Demo#99']}],
+                'integrations': [{'repository': 'Demo', 'branch': 'main', 'head_sha': 'b'*40}]}
+        record = {'id': 'Demo#2', 'repository': 'Demo', 'number': 2, 'kind': 'pr',
+                  'github_state': 'open', 'head_sha': 'a'*40, 'base_sha': 'c'*40,
+                  'base_ref': 'main', 'head_ref': 'feature', 'draft': False, 'mergeable': None,
+                  'future_field': {'uninterpreted': '保持'}, 'events': []}
+        return snap, {'records': [record]}
+
+    def test_reuses_current_files_and_config_dependencies_preserving_unknown(self):
+        snap, evidence = self.values()
+        result = view_data(snap, evidence, {'weeks': []}, [])
+        row, = result['aoi_integration']['records']
+        self.assertEqual(row['files'], ['module.py'])
+        self.assertEqual(row['dependencies'], ['myon-bioinformatics/Demo#99'])
+        self.assertIsNone(row['mergeable']); self.assertIsNone(row['contained_in_main'])
+        self.assertEqual(row['source_record']['future_field']['uninterpreted'], '保持')
+        self.assertEqual(result['plan']['order'], [])
+        self.assertEqual(result['plan']['blocked'], ['Demo#2'])
+        self.assertNotIn('changed_files', evidence['records'][0])
+
+    def test_missing_run_sha_attempt_are_not_filled_with_pr_head(self):
+        snap, evidence = self.values()
+        evidence['records'][0]['events'] = [dict(type='ci', run_id=10, name='CI', conclusion='success')]
+        row, = view_data(snap, evidence, {'weeks': []}, [])['aoi_integration']['records']
+        self.assertIsNone(row['runs'][0]['head_sha'])
+        self.assertIsNone(row['runs'][0]['run_attempt'])
+
+    def test_jobs_require_exact_run_attempt_and_sha(self):
+        snap, evidence = self.values()
+        record = evidence['records'][0]
+        record['events'] = [dict(type='ci', run_id=10, attempt=2, head_sha='a'*40),
+                            dict(type='job', run_id=10, attempt=1, head_sha='a'*40, job_id=21),
+                            dict(type='job', run_id=10, attempt=2, head_sha='b'*40, job_id=22),
+                            dict(type='job', run_id=10, attempt=2, head_sha='a'*40, job_id=23)]
+        row, = view_data(snap, evidence, {'weeks': []}, [])['aoi_integration']['records']
+        self.assertEqual([j['id'] for j in row['runs'][0]['jobs']], [23])
+        self.assertTrue(any('job対象SHA' in g['reason'] for g in row['gaps']))
+
+    def test_check_run_is_not_actions_run_and_stale_files_are_unknown(self):
+        snap, evidence = self.values(); snap['records'][0]['files_head'] = 'old'
+        evidence['records'][0]['events'] = [dict(type='ci', id=5, head_sha='a'*40)]
+        row, = view_data(snap, evidence, {'weeks': []}, [])['aoi_integration']['records']
+        self.assertIsNone(row['files']); self.assertEqual(row['runs'], [])
+        self.assertTrue(any('run ID' in g['reason'] for g in row['gaps']))
+
+    def test_no_merge_completion_or_closed_state_inferred_from_absence(self):
+        snap, evidence = self.values(); evidence['records'][0]['local'] = {'state': '完了'}
+        row, = view_data(snap, evidence, {'weeks': []}, [])['aoi_integration']['records']
+        self.assertIsNone(row['merged']); self.assertEqual(row['completion_records'], [])
+        snap['records'] = []
+        self.assertEqual(view_data(snap, evidence, {'weeks': []}, [])['aoi_integration']['records'], [])
+
+    def test_independent_component_survives_cycle_and_missing(self):
+        snap, evidence = self.values()
+        evidence['records'] = [dict(evidence['records'][0], id=f'Demo#{n}', number=n,
+                                    head_ref=None, base_ref=None) for n in range(1, 6)]
+        deps = {1: ['Demo#2'], 2: ['Demo#1'], 3: ['Demo#1'], 4: ['Demo#99'], 5: []}
+        snap['records'] = [dict(id=f'Demo#{n}', head_sha='a'*40, depends_on=deps[n]) for n in deps]
+        result = view_data(snap, evidence, {'weeks': []}, [])
+        self.assertEqual(result['plan']['order'], ['Demo#5'])
+        self.assertEqual(result['plan']['blocked'], [f'Demo#{n}' for n in range(1, 5)])
+        self.assertTrue(result['plan']['cycle'])
+
+    def test_design_is_in_existing_audit_view_and_download_is_same_observation(self):
+        app = (Path(__file__).resolve().parents[1] / 'site/ui/unified-app.js').read_text()
+        self.assertIn('return html+ontologyDesign()', app)
+        self.assertIn("download('ontautology-snapshot.json',data.aoi_integration)", app)

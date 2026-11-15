@@ -333,3 +333,19 @@ REST件数は親側の `collect_repository_counts()` でリポジトリ情報・
 - CI成功はケース専用実行や研究の独立確認を意味しない。保存済み監査mainとビルドmainが異なる場合は再検証を表示する。
 - 5状態・検索・表・横スクロール・JSON書出しは既存UIを再利用。PSWB追加API・依存追加は不要。研究データは一般PR一覧の件数へ加算しない。
 - 更新時は一次資料と対象SHAを固定しJSONのケース/共通証跡を更新する。Pagesの一般監査ビルドはケース実験を自動再実行しない。
+
+
+## OnTautoLogy設計と連携JSON
+
+「監査・依存」内の「オントロジー設計」は15エンティティ・11関係の対応と、Python/Node/GraphQL/Rustの境界を表示する。既存Pages・PSWBの表/スクロールを使用し、新しい監査ページは作らない。グラフ計算はOnTautoLogyの責務、GitHub固有の収集と状態は親の責務とする。
+
+`ontautology-snapshot.json` は同じビルドの既存観測から生成する `integration-audit/3`。`unified-data.json.aoi_integration` と同じ内容を配信・保存する。OnTautoLogy #5の `audit` 入力との互換を固定headで確認するが、未マージのコードをvendorしたりPagesで実行したりしない。#5採用後の利用例:
+
+```sh
+python -S ontautology.py audit ontautology-snapshot.json -o graph.json
+python -S ontautology.py plan graph.json
+```
+
+run ID/attempt/SHAはrun観測自身の値。check-run IDをActions runへ変換せず、jobのrun/attempt/SHAが一致する時だけ結合する。現headとfiles_headが一致する変更パスのみ出力する。未知属性はsource_recordへ残す。required checks・生成物バイト・main包含などの不足はgapsに保持し、SHAの不一致だけでmain未導入としない。ブラウザの手入力完了は輸出しない。`same_as`/`supersedes` は設計語彙であり、自動推論・既存スキーマの改名はしない。
+
+統合画面の依存順は、親の `ci_status.dependency_plan` に集約する。循環・その下流・欠損依存はblockedへ残し、独立成分は順序を出す。depends_onとchanged_filesは同じビルドの監査観測から証跡レコードへ結合し、取得済みの設定依存を落とさない。完了・前回差分は既存の記録ビューを使用する。PSWBには汎用部品の不足がないため変更しない。

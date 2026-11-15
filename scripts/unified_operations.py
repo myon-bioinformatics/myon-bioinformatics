@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import datetime as dt
 from pathlib import Path
-from graphlib import TopologicalSorter, CycleError
 from urllib.parse import quote
 
 
@@ -232,12 +231,118 @@ def snapshot_comparison(snapshot, previous):
     return result
 
 
+def ontology_export(snapshot, records, dependencies):
+    """Existing observations -> OnTautoLogy integration-audit/3, without network or graph code.
+
+    Only GitHub observation fields are exported. Browser-local completion is not merge evidence.
+    Missing SHA/attempt stays unknown; all uninterpreted facts remain in source_record.
+    """
+    import re
+    owner = snapshot.get('owner', 'myon-bioinformatics')
+    current = {r['id'] for r in snapshot['records']}
+    mains = {r['repository']: r.get('head_sha') for r in snapshot.get('integrations', [])
+             if r.get('branch') == 'main'}
+    def sha(value):
+        return value if isinstance(value, str) and re.fullmatch('[0-9a-f]{40}', value) else None
+    def reference(value):
+        if value.startswith('https://github.com/'):
+            match = re.fullmatch(r'https://github.com/([^/]+/[^/]+)/pull/([1-9][0-9]*)', value)
+            return f'{match[1]}#{match[2]}' if match else None
+        if re.fullmatch(r'(?:[^/#]+/)?[^/#]+#[1-9][0-9]*', value):
+            return value if '/' in value else owner + '/' + value
+        return None
+    result = []
+    for r in records:
+        if r['id'] not in current or r.get('kind') != 'pr':
+            continue
+        repo = r['repository'] if '/' in r['repository'] else owner + '/' + r['repository']
+        gaps = [{'reason': 'required checks・生成物バイト・main包含・全attemptは未検証'}]
+        runs, jobs = {}, [e for e in r.get('events', []) if e.get('type') == 'job']
+        for e in r.get('events', []):
+            if e.get('type') != 'ci':
+                continue
+            ident, attempt = e.get('run_id'), e.get('attempt')
+            if not isinstance(ident, int) or isinstance(ident, bool) or ident < 1:
+                gaps.append({'reason': 'run ID未取得。check-runをActionsRunへ推測変換しない'})
+                continue
+            if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
+                attempt = None
+            key = (ident, attempt)
+            run = {'id': ident, 'run_attempt': attempt, 'head_sha': sha(e.get('head_sha')),
+                   **{k: e.get(k) for k in ('name', 'workflow_id', 'event', 'status', 'conclusion')},
+                   'historical': e.get('historical'), 'jobs': []}
+            if key in runs and runs[key] != run:
+                gaps.append({'reason': '同じrun/attemptの観測差あり。原文source_recordを確認'})
+                continue
+            runs[key] = run
+            for job in jobs:
+                jid = job.get('job_id')
+                if (job.get('run_id'), job.get('attempt')) != key:
+                    continue
+                if job.get('head_sha') != e.get('head_sha') or not sha(job.get('head_sha')):
+                    gaps.append({'reason': 'job対象SHA不一致・未取得。runへ結合しない'})
+                    continue
+                if isinstance(jid, int) and not isinstance(jid, bool) and jid > 0:
+                    run['jobs'].append({'id': jid, 'html_url': job.get('url'),
+                                        **{k: job.get(k) for k in ('name', 'status', 'conclusion')}})
+        state = r.get('state') if r.get('state') in ('調査中', '着手中', '完了', '保留', 'ブロッカー') else '調査中'
+        if r.get('mergeable') is False:
+            state = 'ブロッカー'
+        elif r.get('draft'):
+            state = '保留'
+        deps = []
+        for value in dependencies.get(r['id'], []):
+            target = reference(value)
+            if target:
+                deps.append(target)
+            else:
+                gaps.append({'reason': 'PR以外の依存は親計画で確認', 'dependency': value})
+        files = r.get('changed_files') if r.get('files_head') == r.get('head_sha') else None
+        if files is None and r.get('files_head') == r.get('head_sha'):
+            files = r.get('files')
+        if isinstance(files, list) and all(isinstance(f, dict) and isinstance(f.get('filename'), str) for f in files):
+            files = [f['filename'] for f in files]
+        if not isinstance(files, list) or any(not isinstance(f, str) for f in files):
+            files = None
+        if files is None:
+            gaps.append({'reason': '現headに対応する変更ファイル未取得'})
+        row = {'repository': repo, 'number': r['number'], 'title': r.get('title'), 'url': r.get('url'),
+               'state': state, 'merged': r.get('merged'), 'mergeable': r.get('mergeable'), 'draft': r.get('draft'),
+               'head_sha': sha(r.get('head_sha')), 'base_sha': sha(r.get('base_sha')), 'base': r.get('base_ref'),
+               'main_sha': sha(mains.get(r['repository'])), 'contained_in_main': r.get('contained_in_main'),
+               'files': files, 'dependencies': deps, 'runs': list(runs.values()),
+               'reviews': [dict(e) for e in r.get('events', []) if e.get('type') == 'review'],
+               'issues': [{'url': i.get('url'), 'title': i.get('title'), 'relation_basis': 'same repository only'}
+                          for i in records if i['id'] in current and i.get('kind') == 'issue' and i['repository'] == r['repository']],
+               'pins': [], 'artifacts': [], 'evidence': [], 'gaps': gaps,
+               'tasks': [], 'completion_records': [], 'source_record': r}
+        for p in snapshot.get('vendor_pins', []):
+            if (p.get('repository') == r['repository'] and sha(p.get('commit'))
+                    and isinstance(p.get('source_repository'), str) and p['source_repository'].count('/') == 1):
+                row['pins'].append({'repository': p['source_repository'], 'sha': p['commit'],
+                                    'path': p.get('destination'), 'source': p})
+        result.append(row)
+    return {'schema': 'integration-audit/3', 'captured_at': snapshot['generated_at'], 'records': result,
+            'coverage': {'source': 'existing parent audit/evidence observations',
+                         'mutations': False, 'completion_scope': 'no inferred completion',
+                         'uninterpreted': 'source_record retains original fields; absence is not closure'}}
+
+
 def view_data(snapshot, evidence, history, operations, previous=None):
     records = evidence.get('records', [])
     current = {r['id'] for r in snapshot['records']}
+    observations = {r['id']: r for r in snapshot['records']}
     normalized = []
     for value in records:
         record = dict(value)
+        source = observations.get(record['id'])
+        if source:
+            record['depends_on'] = source.get('depends_on', [])
+            record['source_observation'] = source
+            if source.get('head_sha') == record.get('head_sha'):
+                for field in ('changed_files', 'files_head', 'files_checked', 'state', 'ci'):
+                    if field in source:
+                        record[field] = source[field]
         record['inventory_absent'] = record['id'] not in current
         record['fresh'] = record['id'] in current
         normalized.append(record)
@@ -284,13 +389,11 @@ def view_data(snapshot, evidence, history, operations, previous=None):
     for r in active:
         for other in active:
             if (r['id'] != other['id'] and r['repository'] == other['repository']
-                    and r.get('base_ref') == other.get('head_ref')):
+                    and r.get('base_ref') and r.get('base_ref') == other.get('head_ref')):
                 graph[r['id']].add(other['id'])
-    missing = sorted({d for values in graph.values() for d in values if d not in graph})
-    try:
-        order, cycle = list(TopologicalSorter(graph).static_order()), []
-    except CycleError as exc:
-        order, cycle = [], exc.args[1]
+    # Reuse the parent's existing TopologicalSorter contract, including missing/cycle propagation.
+    from ci_status import dependency_plan
+    plan = dependency_plan([dict(r, depends_on=sorted(graph[r['id']])) for r in active])
     counts = [dict(c, fresh=c.get('complete', False)) for c in evidence.get('repository_counts', [])]
     changes = [{'id': c['id'], 'change': key, 'before': value.get('before'), 'after': value.get('after')}
                for c in evidence.get('changes', []) for key, value in c.get('changes', {}).items()]
@@ -305,8 +408,8 @@ def view_data(snapshot, evidence, history, operations, previous=None):
             'main_workflows': snapshot.get('main_workflows', {'runs': [], 'errors': [], 'scope': '未取得'}),
             'pswb_migration': migration,
             'catalog': snapshot.get('catalog_observation', {'status': '未取得'}),
-            'plan': {'order': [x for x in order if x in graph], 'cycle': cycle,
-                     'missing': missing, 'edges': {k: sorted(v) for k, v in graph.items()}},
+            'plan': plan,
+            'aoi_integration': ontology_export(snapshot, normalized, plan['edges']),
             'source': {'parent_main': parent.get('head_sha') or '', 'kind': 'Pages audit build'}}
 
 
@@ -333,6 +436,9 @@ def write_workspace(snapshot, evidence, history, stage, source_root, previous=No
     content = content.replace('/*__DATA__*/', encoded)
     (Path(stage) / 'workspace.html').write_text(content, encoding='utf-8')
     (Path(stage) / 'unified-data.json').write_text(encoded, encoding='utf-8')
+    (Path(stage) / 'ontautology-snapshot.json').write_text(
+        json.dumps(data['aoi_integration'], ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     return data
+
 
 
