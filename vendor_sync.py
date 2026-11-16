@@ -193,7 +193,6 @@ _REPOSITORY_NWO_META = re.compile(
 )
 BRANCH_DIFF_SCAN_ERROR = "branch diff scan failed"
 AUDIT_SOURCE_ERROR = "source verification failed"
-HTML_IMPORT_LOCK_CANDIDATES = ("tools/html-import/vendor.lock.json",)
 MAX_BYTES = 8 * 1024 * 1024
 _REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 
@@ -2769,12 +2768,6 @@ def _fetch_consumer_documents(consumer, lock_path, revision, token=None):
     if primary is None:
         raise ValueError("missing consumer lock " + consumer + ":" + lock_path)
     lock_documents.append((lock_path, json.loads(primary)))
-    for candidate in HTML_IMPORT_LOCK_CANDIDATES:
-        if candidate == lock_path:
-            continue
-        text = _fetch_repo_text(consumer, candidate, revision, token)
-        if text is not None:
-            lock_documents.append((candidate, json.loads(text)))
     workflows = _fetch_workflow_documents(consumer, revision, token)
     return lock_documents, workflows
 
@@ -2807,7 +2800,7 @@ def audit_registry_merged_pins(registry, *, ref="main", parent_repository=PARENT
                 ).decode().strip()
                 _hex(revision, 40)
             lock_documents = []
-            for lock_path in [entry["lock"], *HTML_IMPORT_LOCK_CANDIDATES]:
+            for lock_path in [entry["lock"]]:
                 path = root / lock_path
                 if path.is_file():
                     lock_documents.append((lock_path, json.loads(path.read_text(encoding="utf-8"))))

@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import types
 import unittest
 import urllib.error
 import venv
@@ -571,7 +572,7 @@ def _lock_row(root: Path, where: str, data: bytes, commit: str = "a" * 40) -> di
     (root / where).parent.mkdir(parents=True, exist_ok=True)
     (root / where).write_bytes(data)
     blob = __import__("hashlib").sha1(b"blob %d\0" % len(data) + data).hexdigest()
-    return {"destination": where, "ref": commit, "commit": commit, "blob_sha": blob,
+    return {"destination": where, "repository": "o/" + Path(where).suffix[1:], "source": Path(where).name, "ref": commit, "commit": commit, "blob_sha": blob,
             "sha256": __import__("hashlib").sha256(data).hexdigest()}
 
 
@@ -583,6 +584,18 @@ def test_fleet_check_lock_verifies_bytes_and_accepted_commits(tmp_path):
     assert sorted(found) == ["python/vendor/a.py", "vendor/b.cjs"]
     with pytest.raises(AssertionError, match="vendor/b.cjs"):
         fleet_check.check_lock(tmp_path, "python/vendor.lock.json", {"vendor/b.cjs": "c" * 40})
+    # provenance: listed destinations match, and a listed repository has no unlisted row
+    rows.append(_lock_row(tmp_path, "vendor/c.cjs", b"//c\n"))
+    (tmp_path / "python/vendor.lock.json").write_text(json.dumps({"schema": "vendor-lock/1", "files": rows}))
+    cjs = {"vendor/b.cjs": ("o/cjs", "b.cjs"), "vendor/c.cjs": ["o/cjs", "c.cjs"]}
+    for sources in ({}, {"python/vendor/a.py": ("o/py", "a.py")}, cjs, {**cjs, "python/vendor/a.py": ("o/py", "a.py")}):
+        assert len(fleet_check.check_lock(tmp_path, "python/vendor.lock.json", sources=sources)) == 3
+    for sources, message in (({"vendor/b.cjs": ("o/cjs", "b.cjs")}, r"unlisted rows from a listed repository: \['vendor/c.cjs'\]"),
+                             ({**cjs, "vendor/b.cjs": ("o/cjs", "other.cjs")}, "vendor/b.cjs"),
+                             ({**cjs, "vendor/b.cjs": ("o/other", "b.cjs")}, "vendor/b.cjs"),
+                             ({**cjs, "vendor/d.cjs": ("o/cjs", "d.cjs")}, "vendor/d.cjs")):
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.check_lock(tmp_path, "python/vendor.lock.json", sources=sources)
     (tmp_path / "python/vendor/a.py").write_bytes(b"print(2)\n")
     with pytest.raises(AssertionError, match="python/vendor/a.py"):
         fleet_check.check_lock(tmp_path, "python/vendor.lock.json")
@@ -618,7 +631,125 @@ def test_fleet_check_parent_refs_keep_mutable_and_missing_refs(tmp_path):
 """, encoding="utf-8")
     assert fleet_check.parent_refs(tmp_path) == ["1" * 40, "main", "2" * 40, None, "${{ steps.parent.outputs.sha }}"]
     assert fleet_check.parent_refs(tmp_path, skip=(".vendor-sync-tools",)) == ["1" * 40, "main", "2" * 40, None]
+    assert fleet_check.parent_refs(tmp_path, only=(".vendor-sync-tools",)) == ["${{ steps.parent.outputs.sha }}"]
+    assert fleet_check.parent_refs(tmp_path, only=(None, ".vendor-sync-tools"), skip=(".vendor-sync-tools",)) == ["2" * 40, None]
+    assert fleet_check.parent_refs(tmp_path, only=(".no-such-path",)) == []
     assert fleet_check.repo_root(flows / "ci.yml") == tmp_path.resolve()
+
+
+def test_fleet_check_actions_need_full_shas_and_version_comments(tmp_path):
+    flows = tmp_path / ".github/workflows"
+    flows.mkdir(parents=True)
+    parent, sha, other = fleet_check.PARENT, "1" * 40, "2" * 40
+    good = f"""jobs:
+  a:
+    uses: {parent}/.github/workflows/x.yml@{sha}
+  b:
+    steps:
+      - uses: actions/checkout@{sha} # v7.0.1
+      - name: quoted
+        uses: "actions/cache/save@{other}"  # v6
+      - uses: ./.github/actions/local
+      - uses: docker://alpine:3
+"""
+    (flows / "ci.yml").write_text(good, encoding="utf-8")
+    rows = [(f"{parent}/.github/workflows/x.yml", sha, None), ("actions/checkout", sha, "v7.0.1"), ("actions/cache/save", other, "v6")]
+    assert fleet_check.check_actions(tmp_path) == rows
+    pins = {"actions/checkout": sha, "actions/cache/save": other + " # v6"}
+    assert fleet_check.check_actions(tmp_path, pins) == rows
+    for wrong, message in (({**pins, "actions/checkout": other}, "actions/checkout@1+ # v7.0.1: not the reviewed pin"),
+                           ({"actions/checkout": sha}, "cache/save.*not the reviewed pin"),
+                           ({**pins, "actions/cache/save": other + " # v7"}, "cache/save.*not the reviewed pin")):
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.check_actions(tmp_path, wrong)
+    for broken, message in (
+        (good.replace(f"checkout@{sha} # v7.0.1", "checkout@v7"), "not a full SHA"),
+        (good.replace(f"checkout@{sha} # v7.0.1", f"checkout@{sha[:7]} # v7.0.1"), "not a full SHA"),
+        (good.replace(f"x.yml@{sha}", "x.yml@main"), "not a full SHA"),
+        (good.replace(" # v7.0.1", ""), "other.yaml: - uses: actions/checkout@1+: no version comment"),
+        (good.replace(" # v7.0.1", " # latest"), "no version comment"),
+        # only the parent's reusable workflows pass on the SHA alone
+        (good.replace(parent + "/.github", "myon-bioinformatics/Aoi/.github"), "Aoi/.github/workflows/x.yml@1+: no version comment"),
+        (good.replace(parent + "/.github/workflows/x.yml", parent + "/actions/x"), "no version comment"),
+    ):
+        assert broken != good
+        (flows / "other.yaml").write_text(broken, encoding="utf-8")
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.check_actions(tmp_path)
+        assert fleet_check.check_actions(tmp_path, workflow="ci.yml") == rows
+
+
+def test_fleet_check_vendor_staging_runs_the_workflow_commands(tmp_path):
+    rows = [_lock_row(tmp_path, "vendor/a.py", b"print(1)\n"), _lock_row(tmp_path, "vendor/a.txt", b"MIT\n")]
+    (tmp_path / "vendor.lock.json").write_text(json.dumps({"schema": "vendor-lock/1", "files": rows}), encoding="utf-8")
+    (tmp_path / "legacy.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+    good = ("jobs:\n  test:\n    steps:\n      - name: Stage canonical vendor evidence\n        if: always()\n        shell: bash\n"
+            "        run: >-\n          python -S .vendor-sync-tools/vendor_stage.py\n"
+            "          --manifest vendor.lock.json --kind locked --output build/vendor-evidence-test\n"
+            "          --runtime-evidence vendor-enrollment.json --legacy-evidence legacy.json\n"
+            "      - name: Preserve vendor lock used by this run\n        if: always()\n        uses: actions/upload-artifact@v7\n"
+            "        with:\n          name: vendor-lock\n          path: build/vendor-evidence-test\n          retention-days: 14\n")
+    path = tmp_path / ".github/workflows/ci.yml"
+    path.write_text(good, encoding="utf-8")
+    tool = ROOT / "vendor_stage.py"
+    command = " ".join(line.strip() for line in good.split("run: >-\n")[1].split("      - name")[0].splitlines())
+    assert fleet_check.vendor_staging(tmp_path, tool) == [command]
+    assert sorted(p.name for p in tmp_path.iterdir()) == [".github", "legacy.json", "vendor", "vendor.lock.json"]  # the child stays untouched
+    with pytest.raises(AssertionError, match="no staging step, or no .vendor-sync-tools/vendor_stage.py"):
+        fleet_check.vendor_staging(tmp_path)
+    for broken, message in (
+        (good.replace("        if: always()\n        shell", "        shell"), "always run and fail closed"),
+        (good.replace("        shell: bash", "        continue-on-error: true"), "always run and fail closed"),
+        (good.replace("          path: build/vendor-evidence-test", "          path: build/other"), "staged output is not uploaded"),
+        (good.replace(" --legacy-evidence legacy.json", " --promotion-receipt vendor-promotion.json"), "--promotion-receipt"),
+        (good.replace("Stage canonical vendor evidence", "Stage"), "no staging step"),
+    ):
+        assert broken != good
+        path.write_text(broken, encoding="utf-8")
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.vendor_staging(tmp_path, tool)
+    path.write_text(good, encoding="utf-8")
+    (tmp_path / "vendor/a.py").write_bytes(b"print(2)\n")  # the checked-in bytes left the lock: staging refuses them
+    with pytest.raises(AssertionError, match="--manifest vendor.lock.json"):
+        fleet_check.vendor_staging(tmp_path, tool)
+
+
+def test_fleet_check_python_floor_agrees_across_project_lock_and_runtime_job(tmp_path):
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+    files = {
+        "pyproject.toml": '[build-system]\nrequires-python = ">=3.8"\n[project]\nname = "x"\nrequires-python = ">=3.11"\n'
+                          '[tool.uv.dependency-groups]\ndev = { requires-python = ">=3.12" }\n',
+        "uv.lock": 'version = 1\nrequires-python = ">=3.11"\n\n[[package]]\nname = "x"\n',
+        ".github/workflows/runtime-compatibility.yml":
+            'jobs:\n  runtime:\n    strategy:\n      fail-fast: false\n      matrix:\n        os: [ubuntu-latest]\n'
+            '        python: ["3.12", "3.11", "3.14"]\n        include:\n          - os: windows-latest\n            python: "3.11"\n'
+            '    steps:\n      - run: python -S -m unittest discover -s tests -p test_core.py -v\n',
+    }
+    def write(name, old="", new=""):
+        for key, text in files.items():
+            (tmp_path / key).write_text(text.replace(old, new) if key == name else text, encoding="utf-8")
+            assert key != name or not old or old in text
+    write("")
+    assert fleet_check.python_floor(tmp_path) == ("3.11", ["3.12", "3.11", "3.14"])
+    flow = ".github/workflows/runtime-compatibility.yml"
+    for name, old, new, message in (
+        ("uv.lock", ">=3.11", ">=3.12", "uv.lock requires-python differs"),
+        ("uv.lock", "requires-python", "python", "uv.lock requires-python differs"),
+        ("pyproject.toml", '\nrequires-python = ">=3.11"', "", r"\[project\] requires-python"),
+        ("pyproject.toml", '">=3.11"', '"==3.11.*"', r"\[project\] requires-python"),
+        (flow, '"3.11", ', "", "does not start at the floor 3.11"),
+        (flow, '"3.12", ', '"3.9", ', "does not start at the floor 3.11"),
+        (flow, 'python: "3.11"', 'python: "3.13"', r"include rows outside the matrix list: \['3.13'\]"),
+        (flow, "python -S -m", "python -m", "python -S -m unittest"),
+        (flow, "    steps:", "    continue-on-error: true\n    steps:", "fail closed"),
+        (flow, "  runtime:", "  other:", "missing job runtime"),
+    ):
+        write(name, old, new)
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.python_floor(tmp_path)
+    write(flow, "runtime:", "stdlib:")
+    assert fleet_check.python_floor(tmp_path, "stdlib")[0] == "3.11"
 
 
 def test_fleet_check_workflow_job_and_run_main(tmp_path):
@@ -638,6 +769,98 @@ def test_fleet_check_workflow_job_and_run_main(tmp_path):
         assert (bad.returncode, bad.stdout) == (1, "") and "result mismatch" in bad.stderr
 
 
+def test_fleet_check_workflow_job_setup_precedes_python_and_uv(tmp_path):
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+    setup, version = "astral-sh/setup-uv@", 'python-version: "${{ matrix.python }}"'
+    good = ("jobs:\n  test:\n    steps:\n      - uses: actions/checkout@v7\n        with:\n          python-version: \"3.9\"\n"
+            "      - name: Set up uv\n        uses: astral-sh/setup-uv@" + "1" * 40 + " # v10.3.3\n        with:\n"
+            "          version: \"latest\"\n          python-version: \"${{ matrix.python }}\"\n          activate-environment: true\n"
+            "      - run: python -m compileall -q .\n      - name: tests\n        run: |\n          uv run --locked pytest -q\n"
+            "        env:\n          enable-cache: true\n  lint:\n    steps:\n      - run: echo\n")
+    path = tmp_path / ".github/workflows/ci.yml"
+    path.write_text(good, encoding="utf-8")
+    assert fleet_check.workflow_job(tmp_path, "test", setup=setup, inputs=(version, "activate-environment: true")) \
+        == fleet_check.workflow_job(tmp_path, "test")
+    for inputs, message in ((('python-version: "3.9"',), "step lacks python-version"),   # another step's input
+                            (("enable-cache: true",), "step lacks enable-cache")):       # a later step's key
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.workflow_job(tmp_path, "test", setup=setup, inputs=inputs)
+    moved = "      - run: python -m compileall -q .\n"
+    for broken, message in (
+        (good.replace(moved, "").replace("      - name: Set up uv", moved + "      - name: Set up uv"), "python runs before"),
+        (good.replace("      - uses: actions/checkout@v7", "      - run: |\n          uv --version\n      - uses: actions/checkout@v7"), "uv runs before"),
+        (good.replace("      - uses: actions/checkout@v7", "      - run: echo \"$(python3 -c 'print(1)')\"\n      - uses: actions/checkout@v7"), "python3 -c runs before"),
+        (good.replace("      - name: tests", "      - uses: astral-sh/setup-uv@v10\n      - name: tests"), "exactly one uses: astral-sh/setup-uv@"),
+        (good.replace("uses: astral-sh/setup-uv@", "uses: actions/setup-python@"), "exactly one uses: astral-sh/setup-uv@"),
+        (good.replace(moved, "").replace("          uv run --locked pytest -q", "          pytest -q"), "no python or uv command"),
+    ):
+        assert broken != good
+        path.write_text(broken, encoding="utf-8")
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.workflow_job(tmp_path, "test", setup=setup, inputs=(version,))
+
+
+def test_fleet_check_workflow_job_vendor_dispatch_verifies_without_record(tmp_path):
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+    good = ("jobs:\n  vendor-dispatch:\n    steps:\n      # Verify mode does not --record.\n      - env:\n"
+            "          PARENT_REPOSITORY_ID: \"638801160\"\n        run: |\n"
+            "          sha=$(git ls-remote \"$url\" refs/heads/main)\n          test -f .parent/pilot/vendor_dispatch.py\n"
+            "          python \"$GITHUB_WORKSPACE/.parent/pilot/vendor_dispatch.py\" \\\n"
+            "            --manifest \"$GITHUB_WORKSPACE/vendor.lock.json\" | tee \"$out\"\n")
+    path = tmp_path / ".github/workflows/ci.yml"
+    path.write_text(good, encoding="utf-8")
+    assert fleet_check.workflow_job(tmp_path, "vendor-dispatch", dispatch_lock="vendor.lock.json") == good.split("vendor-dispatch:\n")[1]
+    with pytest.raises(AssertionError, match="no --manifest python/vendor.lock.json"):
+        fleet_check.workflow_job(tmp_path, "vendor-dispatch", dispatch_lock="python/vendor.lock.json")
+    for broken, message in (
+        (good.replace("638801160", "1"), "lacks PARENT_REPOSITORY_ID"),
+        (good.replace("git ls-remote", "git rev-parse"), "lacks git ls-remote"),
+        (good.replace("refs/heads/main", "refs/heads/dev"), "lacks refs/heads/main"),
+        (good.replace(" | tee", " --record | tee"), "without --record or -S"),
+        (good.replace("          test -f", "          python x.py --record\n          test -f"), "without --record or -S"),
+        (good.replace('python "$GITHUB', 'python -S "$GITHUB'), "without --record or -S"),
+        (good.replace('python "$GITHUB', '# python "$GITHUB'), "vendor_dispatch.py is not run"),
+        (good.replace("--manifest", "--lock"), "no --manifest vendor.lock.json"),
+    ):
+        assert broken != good
+        path.write_text(broken, encoding="utf-8")
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.workflow_job(tmp_path, "vendor-dispatch", dispatch_lock="vendor.lock.json")
+
+
+@pytest.mark.skipif(os.name == "nt" or shutil.which("bash") is None, reason="the guard is run on POSIX lanes only")
+def test_fleet_check_workflow_job_runs_the_node_floor_guard(tmp_path, monkeypatch):
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+    good = ("jobs:\n  lint:\n    runs-on: y\n  vendor-dispatch:\n    steps:\n      - uses: actions/setup-node@v7\n        with:\n"
+            "          node-version: \"26\"\n      - run: |\n          set -euo pipefail\n"
+            "          node_major=$(node -p \"process.versions.node.split('.')[0]\")\n"
+            "          if [[ \"$node_major\" -lt 26 ]]; then\n            echo \"node ${node_major} is older than 26\" >&2\n"
+            "            exit 1\n          fi\n          python - <<'PY'\n          if True:\n              pass\n          PY\n"
+            "  test:\n    runs-on: x\n")
+    path = tmp_path / ".github/workflows/ci.yml"
+    path.write_text(good, encoding="utf-8")
+    body = fleet_check.workflow_job(tmp_path, "vendor-dispatch", node_floor=26)
+    assert body == fleet_check.workflow_job(tmp_path, "vendor-dispatch") and "node_major" in body
+    for broken, message in (
+        (good.replace("            exit 1\n", ""), r"vendor-dispatch', 24"),             # the guard only warns
+        (good.replace("-lt 26", "-lt 24"), "no node_major guard at 26"),                 # the guard's floor drifted
+        (good.replace('node-version: "26"', "node-version: '24'"), "no setup of Node 26"),
+        (good.replace('if [[ "$node_major" -lt 26 ]]', 'if [[ "$node_major" -gt 26 ]]'), "no node_major guard at 26"),
+        (good.replace("-lt 26 ]]; then", "-lt 26 ]] && false; then"), "no node_major guard at 26"),
+    ):
+        assert broken != good
+        path.write_text(broken, encoding="utf-8")
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.workflow_job(tmp_path, "vendor-dispatch", node_floor=26)
+        assert "runs-on: x" in fleet_check.workflow_job(tmp_path, "test")
+    with pytest.raises(AssertionError, match="no setup of Node 26"):
+        fleet_check.workflow_job(tmp_path, "test", node_floor=26)
+    path.write_text(good, encoding="utf-8")
+    monkeypatch.setattr(fleet_check, "os", types.SimpleNamespace(name="nt"))           # Windows: text only, no bash
+    monkeypatch.setattr(fleet_check.subprocess, "run", lambda *a, **k: pytest.fail("bash was run on Windows"))
+    assert fleet_check.workflow_job(tmp_path, "vendor-dispatch", node_floor=26) == body
+
+
 def test_fleet_check_node_gate_skips_locally_and_fails_in_ci(tmp_path, monkeypatch):
     monkeypatch.setenv("NODE", str(tmp_path / "no-such-node"))
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
@@ -655,6 +878,14 @@ def test_fleet_check_node_gate_skips_locally_and_fails_in_ci(tmp_path, monkeypat
         with pytest.raises(AssertionError, match="required in CI job test"):
             fleet_check.node()
         assert fleet_check.node(ci_jobs=("node-parity",)) is None
+        with pytest.raises(AssertionError, match="required in CI job test"):
+            fleet_check.node(ci_jobs=None)
+        monkeypatch.setenv("GITHUB_JOB", "portability")
+        with pytest.raises(AssertionError, match="required in CI job portability"):
+            fleet_check.node(ci_jobs=None)
+        monkeypatch.delenv("GITHUB_ACTIONS")
+        fleet_check.node.cache_clear()
+        assert fleet_check.node(ci_jobs=None) is None
     finally:
         fleet_check.node.cache_clear()
 
@@ -686,9 +917,31 @@ def test_fleet_check_launcher_contract_holds_for_the_parent_launcher(tmp_path, m
     (tmp_path / "vendor").mkdir()
     shutil.copy(ROOT / "py_launch.cjs", tmp_path / "vendor/py_launch.cjs")
     fleet_check.launcher_contract(tmp_path)
-    (tmp_path / "vendor/py_launch.cjs").write_text("process.exit(0)\n", encoding="utf-8")
-    with pytest.raises(AssertionError):
-        fleet_check.launcher_contract(tmp_path)
+    source = (ROOT / "py_launch.cjs").read_text(encoding="utf-8")
+    for old, new, message in (
+        (source, "process.exit(0)\n", ""),
+        # library run() drops the discovery flags: only the hostile sitecustomize check sees it
+        ("  const resolved = resolvePython(options);", "  const resolved = resolvePython({ python: options.python });",
+         r"'run', \{'noSite': True\}"),
+        ("terminated by signal ${signal}`);\n      wrapped.code", "terminated by signal ${signal} (forwarded)`);\n      wrapped.code",
+         r"'SIGINT', 'SIGTERM', '', 0, 2, b'', b'[^']*\(forwarded\)"),
+        # item by item from BrowserTestKit's py_launch.test.cjs: Node bounds, JSON ENOINTERPRETER, interpreter prefix
+        ('    err.code = "ENODEVERSION";', '    err.code = "EOLDNODE";', "assertNodeVersion bounds or interpreter prefix"),
+        ('${result.error.message}`, {\n          code: "ENOINTERPRETER",', '${result.error.message}`, {\n          code: "ENOENT",', "no-such-python"),
+        ("    ...pythonArgv(\"-c\", [VERSION_PROBE], Boolean(opts.noSite), Boolean(opts.isolated)),",
+         "    ...pythonArgv(\"-c\", [VERSION_PROBE], Boolean(opts.noSite), Boolean(opts.isolated)).reverse(),",
+         "assertNodeVersion bounds or interpreter prefix"),
+        # SIGTERM no longer forwarded: it ends the launcher and orphans the Python child
+        ('  process.on("SIGTERM", forwardSignal);\n', "", r"'SIGINT', 'SIGTERM', '', 0, -15, b'', b''"),
+        # a second stderr line after the JSON error
+        ('      wrapped.hint = launcherHint({ code: "ESIGNAL" });\n      writeLauncherError(wrapped, opts);\n',
+         '      wrapped.hint = launcherHint({ code: "ESIGNAL" });\n      writeLauncherError(wrapped, opts);\n      console.error("extra");\n',
+         r"'SIGINT', 'SIGTERM', '', 0, 2, b'', b'[^']*extra"),
+    ):
+        assert source.count(old) == 1, old
+        (tmp_path / "vendor/py_launch.cjs").write_text(source.replace(old, new), encoding="utf-8")
+        with pytest.raises(AssertionError, match=message or None):
+            fleet_check.launcher_contract(tmp_path)
 
 # ═══ · git commit ════════════════════════════════════════════════════════════════════════════════════════
 

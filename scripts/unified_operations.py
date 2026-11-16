@@ -15,6 +15,7 @@ def collect_repository_counts(snapshot, fetch):
         root = f'/repos/{owner}/{name}'
         row = {'repository': name, 'open_issues_count': None, 'get_issues': None,
                'issues': None, 'pull_requests': None, 'complete': False,
+               'open_pr_numbers': None, 'pulls_complete': False,
                'checked': dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
                'sources': []}
         results.append(row)
@@ -22,9 +23,14 @@ def collect_repository_counts(snapshot, fetch):
             row['error'] = 'main SHA unavailable'
             continue
         try:
-            metadata = fetch(root)
-            inventories = {}
-            for kind in ('issues', 'pulls'):
+            metadata_count = fetch(root)['open_issues_count']
+            row['sources'].append('https://api.github.com' + root)
+        except (ValueError, KeyError, RuntimeError, OSError, TypeError) as exc:
+            row['error'] = type(exc).__name__
+            metadata_count = None
+        inventories = {}
+        for kind in ('issues', 'pulls'):
+            try:
                 items = []
                 for page in range(1, 101):
                     path = f'{root}/{kind}?state=open&per_page=100&page={page}'
@@ -39,15 +45,20 @@ def collect_repository_counts(snapshot, fetch):
                     raise ValueError('REST inventory pagination incomplete')
                 if len({v['number'] for v in items}) != len(items):
                     raise ValueError('REST inventory changed during pagination')
+                if kind == 'pulls':
+                    numbers = [v['number'] for v in items]
+                    if any(type(n) is not int or n < 1 for n in numbers):
+                        raise ValueError('invalid REST pull number')
+                    row.update(open_pr_numbers=sorted(numbers), pulls_complete=True)
                 inventories[kind] = items
+            except (ValueError, KeyError, RuntimeError, OSError, TypeError) as exc:
+                row['error'] = type(exc).__name__
+        if metadata_count is not None and len(inventories) == 2:
             issues, pulls = inventories['issues'], inventories['pulls']
-            row.update(open_issues_count=metadata['open_issues_count'], get_issues=len(issues),
+            row.update(open_issues_count=metadata_count, get_issues=len(issues),
                        issues=sum('pull_request' not in v for v in issues),
                        prs_in_issues=sum('pull_request' in v for v in issues),
                        pull_requests=len(pulls), complete=True)
-            row['sources'].insert(0, 'https://api.github.com' + root)
-        except (ValueError, KeyError, RuntimeError, OSError) as exc:
-            row['error'] = type(exc).__name__
     return results
 
 def _pages(fetch, path, key=None):
@@ -252,7 +263,7 @@ def collect_transfer_registry(snapshot, fetch):
         return dict(result, error=type(exc).__name__)
 
 
-def ontology_export(snapshot, records, dependencies):
+def ontology_export(snapshot, records, dependencies, repository_counts=None):
     """Existing observations -> OnTautoLogy integration-audit/3, without network or graph code.
 
     Only GitHub observation fields are exported. Browser-local completion is not merge evidence.
@@ -371,13 +382,26 @@ def ontology_export(snapshot, records, dependencies):
                           'gaps': ['main runは既存の取得範囲。jobは取得済みのみ。artifacts・required checks・コピー内容は未検証']})
     registry = snapshot.get('transfer_registry', {})
     ledger = registry.get('document', {}) if registry.get('status') == '取得済み' else {}
-    return {'schema': 'integration-audit/3', 'captured_at': snapshot['generated_at'], 'records': result, 'inventory': inventory,
+    export = {'schema': 'integration-audit/3', 'captured_at': snapshot['generated_at'], 'records': result, 'inventory': inventory,
             'transfers': ledger.get('transfers', []),
             'transfer_scope': dict(ledger.get('transfer_scope', {}), registry_status=registry.get('status', '未取得'),
                                    registry_sha=registry.get('source_sha'), recorded_at=ledger.get('captured_at')),
             'coverage': {'source': 'existing parent audit/evidence observations',
                          'mutations': False, 'completion_scope': 'no inferred completion',
                          'uninterpreted': 'source_record retains original fields; absence is not closure'}}
+    if repository_counts is not None:
+        open_inventory = []
+        for row in repository_counts:
+            numbers = row.get('open_pr_numbers')
+            complete = (row.get('pulls_complete') is True and isinstance(numbers, list)
+                        and all(type(n) is int and n > 0 for n in numbers)
+                        and len(numbers) == len(set(numbers)))
+            repo = row['repository']
+            open_inventory.append({'repository': repo if '/' in repo else owner + '/' + repo,
+                              'checked_at': row.get('checked'), 'complete': complete,
+                              'open_pr_numbers': list(numbers) if complete else None})
+        export['open_pr_inventory'] = open_inventory
+    return export
 
 
 def view_data(snapshot, evidence, history, operations, previous=None):
@@ -462,7 +486,7 @@ def view_data(snapshot, evidence, history, operations, previous=None):
             'transfer_registry': snapshot.get('transfer_registry', {'status':'未取得'}),
             'catalog': snapshot.get('catalog_observation', {'status': '未取得'}),
             'plan': plan,
-            'aoi_integration': ontology_export(snapshot, normalized, plan['edges']),
+            'aoi_integration': ontology_export(snapshot, normalized, plan['edges'], evidence.get('repository_counts')),
             'source': {'parent_main': parent.get('head_sha') or '', 'kind': 'Pages audit build'}}
 
 

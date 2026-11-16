@@ -18,5 +18,19 @@ function summarize(r){
 }
 function validate(d){if(!d||d.schema!=='integrated-operations/1'||!Array.isArray(d.records)||!Array.isArray(d.counts)||!Array.isArray(d.operations))throw Error('integrated-operations/1 のJSONが必要です');const ids=new Set();for(const r of d.records){if(!r||typeof r.id!=='string'||ids.has(r.id)||typeof r.repository!=='string'||!Number.isInteger(r.number)||!Array.isArray(r.events))throw Error('記録ID・repo・番号・eventsを確認');ids.add(r.id)}return d}
 function diff(a,b){const old=new Map(a.records.map(r=>[r.id,r])),now=new Map(b.records.map(r=>[r.id,r]));return [...new Set([...old.keys(),...now.keys()])].flatMap(id=>{const x=old.get(id),y=now.get(id);return JSON.stringify(x)!==JSON.stringify(y)?[{id,before:x?.state||'—',after:y?.state||'—'}]:[]})}
-const api={states,esc,summarize,validate,diff};if(typeof module!=='undefined')module.exports=api;root.UnifiedModel=api;
+function openMembership(snap){
+ const records=snap.records||[],raw=snap.open_pr_inventory,rows=Array.isArray(raw)?raw.filter(r=>r&&typeof r.repository==='string'):[];
+ const scope=new Set([...(snap.inventory||[]).map(r=>r.repo),...records.map(r=>r.repository),...rows.map(r=>r.repository)]);
+ const valid=r=>r.complete===true&&Array.isArray(r.open_pr_numbers)&&r.open_pr_numbers.every(n=>Number.isInteger(n)&&n>0)&&new Set(r.open_pr_numbers).size===r.open_pr_numbers.length;
+ const observed=new Map;for(const r of rows){if(observed.has(r.repository))observed.set(r.repository,null);else observed.set(r.repository,r)}
+ let total=0,complete=scope.size>0&&rows.length===raw?.length;const open=[];
+ for(const repo of scope){const row=observed.get(repo);
+  if(row&&valid(row)){total+=row.open_pr_numbers.length;for(const number of row.open_pr_numbers){
+   const detail=records.find(r=>r.repository===repo&&r.number===number);
+   open.push(detail||{repository:repo,number,url:'https://github.com/'+repo+'/pull/'+number,state:'調査中',runs:[],files:null,dependencies:[],gaps:[{reason:'証跡未取得'}],detail_missing:true});
+  }}else{complete=false}
+ }
+ return {count:complete?total:null,open};
+}
+const api={states,esc,summarize,validate,diff,openMembership};if(typeof module!=='undefined')module.exports=api;root.UnifiedModel=api;
 })(typeof window==='undefined'?globalThis:window);
