@@ -410,6 +410,11 @@
           "destination": "vendor/py_launch.cjs"
         },
         {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "tools/stdlib_min/pillow_min.py",
+          "destination": "vendor/pillow_min.py"
+        },
+        {
           "repository": "myon-bioinformatics/Aoi",
           "source": "scripts/fetch_module.py",
           "destination": "vendor/fetch_module.py",

@@ -10,6 +10,7 @@ import vendor_catalog
 import vendor_consumers
 import vendor_fleet_plan
 import vendor_sync
+from test_vendor_contracts import baseline_registry
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -60,7 +61,7 @@ IRONMATE = 'myon-bioinformatics/Ironmate'
 
 
 def test_ironmate_registry_matches_reviewed_flow_lock():
-    registry = load('vendor-consumers.json')
+    registry = baseline_registry(load('vendor-consumers.json'))   # enrollments after this lock are dropped
     lock = load('tests/fixtures/ironmate-flow-ascii-artist.lock.json')
     assert len(lock['files']) == 55
     assert not [x for x in lock['files'] if x['repository'].endswith('/PySaiyanWeBoo')]   # web-ui has no flow code now
@@ -79,7 +80,7 @@ def test_retired_sources_are_not_proposed_for_reenrollment():
         rows = [x for x in result['rows'] if x['tool_repository'] ==
                 'myon-bioinformatics/myon-bioinformatics' and x['source'] == source]
         assert len(rows) == 1 and rows[0]['action'] == 'skipped'
-    assert result['counts']['registered'] == 29
+    assert result['counts']['registered'] == 30   # + vendor/pillow_min.py from tools/stdlib_min/
     assert result['counts']['skipped'] == 21
     py_launch = [x for x in result['rows'] if x['source'] == 'py_launch.cjs']
     assert len(py_launch) == 1
@@ -99,7 +100,9 @@ def test_web_ui_flow_workspace_lock_is_not_accepted_after_the_move_to_ascii_arti
     result = vendor_consumers.compare(load('vendor-consumers.json'), old, IRONMATE)
     assert not result['matches'] and len(old['files']) == 61
     assert {x['repository'] for x in result['unexpected']} == {'myon-bioinformatics/PySaiyanWeBoo'}
-    assert [(x['repository'], x['source']) for x in result['missing']] == [('myon-bioinformatics/ascii_artist', 'examples/pr-flow.json')]
+    assert sorted((x['repository'], x['source']) for x in result['missing']) == [
+        ('myon-bioinformatics/ascii_artist', 'examples/pr-flow.json'),
+        ('myon-bioinformatics/myon-bioinformatics', 'tools/stdlib_min/pillow_min.py')]
 
 
 NJS_RECORDED = load('tests/fixtures/child_reobservations.json')['recorded']   # before the re-observations (njs_launch: 2026-11-14)
@@ -146,7 +149,7 @@ def test_njs_launch_is_registered_for_markdown_not_auto_proposed():
     assert njs_launch[0]["action"] == "registered"
     assert njs_launch[0]["destination"] == "vendor/njs_launch.py"
     assert result["counts"]["registered"] == 3
-    assert result["counts"]["skipped"] == 38
+    assert result["counts"]["skipped"] == 39
 
 
 # ═══ 🧪 mcp-toolcall-lab ══════════════════════════════════════════════════════════════════════════════════
@@ -191,7 +194,7 @@ def test_njs_launch_is_registered_for_mcp_toolcall_lab_not_auto_proposed():
     # The old catalog recommendation is not the desired canonical-module contract.
     assert web_ui[0]["destination"] is None
     assert result["counts"]["registered"] == 6
-    assert result["counts"]["skipped"] == 36
+    assert result["counts"]["skipped"] == 37
 
 
 def test_current_planner_registration_matches_immutable_child_lock():
@@ -206,7 +209,7 @@ def test_current_planner_registration_matches_immutable_child_lock():
     assert (heads["sha"], heads["repository_id"]) == (snapshot["sha"], snapshot["repository_id"])
     lock = vendor_sync.validate(snapshot["lock"])
     assert hashlib.sha256(json.dumps(lock, sort_keys=True, separators=(",", ":")).encode()).hexdigest() == snapshot["lock_sha256"]
-    registry = load("vendor-consumers.json")
+    registry = baseline_registry(load("vendor-consumers.json"))
     assert not vendor_consumers._compare_exact(registry, lock, MCP_TOOLCALL_LAB)["matches"]
     from unittest.mock import patch
     with patch.object(vendor_sync, '_load_recorded_child_lock', return_value=lock):
