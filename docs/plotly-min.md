@@ -22,7 +22,7 @@ Text uses `FONT` (`Meiryo, メイリオ, sans-serif`, the same stack as DRAgoWin
 |---|---|---|
 | Static export | Kaleido 1.x + Chrome; PNG / JPEG / WebP / SVG / PDF | SVG only, drawn in Python; other formats raise `ValueError` |
 | Layout engine | plotly.js (auto margins, text measurement in the browser) | Fixed margins (`l` 80, `r` 80, `t` 100, `b` 80, overridable); the right margin grows for the legend; text width is estimated (CJK = 1 em, others 0.58 em) |
-| Axes | Many types and tick formats | One `xaxis` / `yaxis`; `linear` or `category` (any string value makes a category axis); `range`, `autorange="reversed"`, `nticks`; 1 / 2 / 2.5 / 5 steps |
+| Axes | Many types and tick formats | One `xaxis` / `yaxis`; `linear` or `category` (any string value makes a category axis); `range`, `autorange="reversed"`, `nticks`, `xaxis.tickangle`; 1 / 2 / 2.5 / 5 steps |
 | Sankey placement | Iterative relaxation (d3-sankey) | Column = longest path from a source, sinks in the last column, nodes in input order, each column centred; `node.x` / `node.y` are not read |
 | Annotations | Full arrow styling | Text with an optional straight pointer (`showarrow`, `ax`, `ay`) |
 | Not covered | — | Subplots, 3D / geo / polar, templates, animation, hover, legend groups, stacked bars, `tonexty` fills, other trace types (they raise `ValueError` when added as dicts) |

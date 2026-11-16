@@ -302,6 +302,8 @@ def _svg(fig: Figure, width=None, height=None) -> str:
             color = _trace_color(trace, fig.data.index(trace))
             if trace['type'] == 'scatter' and 'lines' in _mode(trace):
                 svg.line(x, y, x + 20, y, color, trace.get('line', {}).get('width', 2), trace.get('line', {}).get('dash'))
+            elif trace['type'] == 'scatter':
+                _marker(svg, x + 10, y, trace.get('marker', {}), color)
             else:
                 svg.rect(x + 4, y - 6, 12, 12, color)
             svg.text(x + 26, y, trace['name'], anchor='start')
@@ -423,8 +425,12 @@ def _cartesian(svg: _Svg, fig: Figure, box, plot_bg: str) -> None:
             _colorbar(svg, t, box)
     for note in lay.get('annotations', []):
         _annotation(svg, note, box, ax, ay)
-    for px, text in ax.ticks():
-        svg.text(px, y0 + ph + 14, text)
+    angle = lay.get('xaxis', {}).get('tickangle')
+    for px, text in ax.ticks():  # tickangle rotates the labels about their top end, as in plotly
+        if angle:
+            svg.text(px, y0 + ph + 10, text, anchor='end' if angle < 0 else 'start', rotate=angle)
+        else:
+            svg.text(px, y0 + ph + 14, text)
     for py, text in ay.ticks():
         svg.text(x0 - 6, py, text, anchor='end')
     xt, yt = _title(lay.get('xaxis', {})), _title(lay.get('yaxis', {}))
@@ -532,19 +538,25 @@ def _scatter(svg: _Svg, t: dict, index: int, ax: _Axis, ay: _Axis) -> None:
         r = marker.get('size', 6) / 2
         mc = marker.get('color', color)
         for k, (x, y) in enumerate(pts):
-            fillc = mc[k] if isinstance(mc, (list, tuple)) else mc
-            if marker.get('symbol') in ('square', 'diamond'):
-                d = (f'M{_n(x - r)} {_n(y - r)} h{_n(2 * r)} v{_n(2 * r)} h{_n(-2 * r)} Z' if marker['symbol'] == 'square'
-                     else f'M{_n(x)} {_n(y - r * 1.3)} L{_n(x + r * 1.3)} {_n(y)} L{_n(x)} {_n(y + r * 1.3)} '
-                          f'L{_n(x - r * 1.3)} {_n(y)} Z')
-                svg.raw(f'<path d="{d}" fill="{escape(fillc)}"/>')
-            else:
-                svg.raw(f'<circle cx="{_n(x)}" cy="{_n(y)}" r="{_n(r)}" fill="{escape(fillc)}"/>')
+            _marker(svg, x, y, marker, mc[k] if isinstance(mc, (list, tuple)) else mc)
     if 'text' in mode and t.get('text') is not None:
         texts = t['text'] if isinstance(t['text'], (list, tuple)) else [t['text']] * len(pts)
         below = t.get('textposition', 'top center').startswith('bottom')
         for (x, y), label in zip(pts, texts):
             svg.text(x, y + (12 if below else -12), label)
+
+
+def _marker(svg: _Svg, x: float, y: float, marker: dict, color: str) -> None:
+    """One marker: circle (default), square or diamond, ``marker.size`` px across."""
+    r, symbol = marker.get('size', 6) / 2, marker.get('symbol', 'circle')
+    if symbol == 'square':
+        svg.raw(f'<path d="M{_n(x - r)} {_n(y - r)} h{_n(2 * r)} v{_n(2 * r)} h{_n(-2 * r)} Z" fill="{escape(color)}"/>')
+    elif symbol == 'diamond':
+        d = r * 1.3
+        svg.raw(f'<path d="M{_n(x)} {_n(y - d)} L{_n(x + d)} {_n(y)} L{_n(x)} {_n(y + d)} L{_n(x - d)} {_n(y)} Z" '
+                f'fill="{escape(color)}"/>')
+    else:
+        svg.raw(f'<circle cx="{_n(x)}" cy="{_n(y)}" r="{_n(r)}" fill="{escape(color)}"/>')
 
 
 def _heatmap(svg: _Svg, t: dict, ax: _Axis, ay: _Axis, box) -> None:
