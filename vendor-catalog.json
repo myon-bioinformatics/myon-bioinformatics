@@ -482,6 +482,16 @@
       }
     },
     {
+      "repository": "myon-bioinformatics/myon-bioinformatics",
+      "commit": "63a4e339927d32282b0d5a8378da6c982890b9e9",
+      "reason": "pillow_min.py moved here from Ironmate's root (parent #293); this is now the source of truth. Consumers move their lock from the Ironmate row one at a time.",
+      "source": "tools/stdlib_min/pillow_min.py",
+      "default_enrollment": {
+        "enrollment": "skipped",
+        "reason": "explicit_consumer_only"
+      }
+    },
+    {
       "repository": "myon-bioinformatics/BrowserTestKit",
       "commit": "61872b2df6da908152bc8f965832da79dd97d6b9",
       "reason": "Playwright interaction helpers vendored into flutter e2e; explicit consumer enrollment only.",

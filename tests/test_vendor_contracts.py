@@ -29,7 +29,7 @@ from test_vendor_sync import _staging_left, entry, lock
 # Advisory skips cannot revoke parent-registered adopted copies.
 
 def test_ironmate_registered_contract_ignores_recommendation_skips():
-    registry = json.loads((ROOT / 'vendor-consumers.json').read_text())
+    registry = baseline_registry(json.loads((ROOT / 'vendor-consumers.json').read_text()))
     catalog = json.loads((ROOT / 'vendor-catalog.json').read_text())
     lock = json.loads((ROOT / 'tests/fixtures/ironmate-flow-ascii-artist.lock.json').read_text())
     ironmate_rows = [t for t in catalog['tools'] if t['repository'].casefold() == 'myon-bioinformatics/ironmate']
@@ -126,7 +126,8 @@ def recorded_before_reobservation():
 # must land before the child lock (the child CI reads the live registry), so these
 # are excluded from the frozen-baseline comparison until the baseline is re-observed.
 POST_BASELINE_ENROLLMENTS = {
-    "myon-bioinformatics/Ironmate": {"vendor/fetch_module.py", "vendor/Aoi-LICENSE"},
+    # pillow_min.py moved from Ironmate's root to the parent's tools/stdlib_min/ (#293); Ironmate locks it from here.
+    "myon-bioinformatics/Ironmate": {"vendor/fetch_module.py", "vendor/Aoi-LICENSE", "vendor/pillow_min.py"},
     # The parent audit dashboard (ci_status.py --audit --html) renders through the vendored pysaiyanweboo.py.
     "myon-bioinformatics/myon-bioinformatics": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
     "myon-bioinformatics/mcp-toolcall-lab": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
@@ -422,7 +423,7 @@ NAME = 'myon-bioinformatics/Ironmate'
 def inputs():
     load = lambda p: json.loads((ROOT / p).read_text())
     heads, transitions = recorded_before_reobservation()   # the transition itself is retired; its mechanism still is tested
-    return (load('vendor-consumers.json'), heads, transitions, load('tests/fixtures/ironmate-observation-transition-old.lock.json'))
+    return (baseline_registry(load('vendor-consumers.json')), heads, transitions, load('tests/fixtures/ironmate-observation-transition-old.lock.json'))
 
 def resolve(registry, heads, manifest, lock, selected=None):
     with patch.object(sync, '_load_recorded_child_lock', return_value=lock):
@@ -950,7 +951,7 @@ MCP_PSWB_OBSERVATION_TRANSITION_NAME = 'myon-bioinformatics/mcp-toolcall-lab'
 def inputs_mcp_pswb_observation_transition():
     load = lambda p: json.loads((ROOT / p).read_text())
     heads, transitions = recorded_before_reobservation()   # the transition itself is retired; its mechanism still is tested
-    return (load('vendor-consumers.json'), heads, transitions, load('tests/fixtures/mcp-pswb-observation-old.lock.json'))
+    return (baseline_registry(load('vendor-consumers.json')), heads, transitions, load('tests/fixtures/mcp-pswb-observation-old.lock.json'))
 
 def resolve_mcp_pswb_observation_transition(registry, heads, manifest, lock, selected=None):
     with patch.object(sync, '_load_recorded_child_lock', return_value=lock):
@@ -1041,7 +1042,7 @@ def load(p): return json.loads((ROOT/p).read_text())
 @pytest.mark.parametrize('repo',REPOS)
 def test_exact_old_and_desired_new_contracts(repo):
  name='myon-bioinformatics/'+repo
- r=load('vendor-consumers.json'); h,t=recorded_before_reobservation()
+ r=baseline_registry(load('vendor-consumers.json')); h,t=recorded_before_reobservation()
  old=load('tests/fixtures/njs-'+repo+'-old.lock.json');new=load('tests/fixtures/njs-'+repo+'-new.lock.json');before=copy.deepcopy(r)
  assert c.compare(r,new,name)['matches']
  assert not c.compare(r,old,name)['matches']
