@@ -38,8 +38,8 @@ manifest format, remove child locks, or add a write-capable child workflow.
    The parent itself keeps its existing candidate-update ref contract and is
    checked from the current PR checkout against the exact recorded source
    commit/blob/digest; it is not treated as a child with a migrated lock.
-3. Automatic head refresh may not change the contract: compare adopted locks
-   (including the known nested html-import lock), all workflow definitions and
+3. Automatic head refresh may not change the contract: compare adopted locks,
+   all workflow definitions and
    the parent reference before opening/updating the refresh PR. Missing locks,
    workflow removal, changed parent references, new repositories and repository
    ID changes require deliberate parent review. No automatic adoption or merge.
