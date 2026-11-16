@@ -9,10 +9,10 @@ the child keeps only its own expectations (pins, cases, messages).
 """
 from __future__ import annotations
 
-import functools, hashlib, json, os, re, shutil, signal, subprocess, sys, tempfile
+import functools, hashlib, json, os, re, shlex, shutil, signal, subprocess, sys, tempfile
 from pathlib import Path
 
-__all__ = ["check_lock", "launcher_contract", "node", "node_parity", "parent_refs", "repo_root", "run_main", "workflow_job"]
+__all__ = ["check_actions", "check_lock", "launcher_contract", "node", "node_parity", "parent_refs", "python_floor", "repo_root", "run_main", "vendor_staging", "workflow_job"]
 PARENT = "myon-bioinformatics/myon-bioinformatics"
 
 
@@ -22,12 +22,14 @@ def repo_root(start) -> Path:
     return next(p for p in (start, *start.parents) if (p / ".github/workflows").is_dir())
 
 
-def check_lock(root, lock="vendor.lock.json", commits=None) -> dict:
+def check_lock(root, lock="vendor.lock.json", commits=None, sources=None) -> dict:
     """Verify every vendor-lock/1 row against its placed bytes; return rows by destination.
 
     Each row needs a full-SHA ``ref`` equal to ``commit`` and bytes matching
     ``blob_sha`` and ``sha256``. ``commits`` maps chosen destinations to the
-    accepted upstream commit they must stay on.
+    accepted upstream commit they must stay on. ``sources`` maps destinations
+    to their ``(repository, source)``; a repository named there has no other
+    locked row, so listing every row pins the whole lock's provenance.
     """
     root = Path(root)
     data = json.loads((root / lock).read_text(encoding="utf-8"))
@@ -42,22 +44,29 @@ def check_lock(root, lock="vendor.lock.json", commits=None) -> dict:
         rows[where] = row
     for where, commit in (commits or {}).items():
         assert rows[where]["commit"] == commit, where
+    for where, origin in (sources or {}).items():
+        assert where in rows and (rows[where]["repository"], rows[where]["source"]) == tuple(origin), where
+    named = {origin[0] for origin in (sources or {}).values()}
+    extra = sorted(where for where, row in rows.items() if row.get("repository") in named and where not in sources)
+    assert not extra, f"unlisted rows from a listed repository: {extra}"
     return rows
 
 
-def parent_refs(root, skip=()) -> list:
+def parent_refs(root, skip=(), only=()) -> list:
     """Every ref a workflow uses to reach the parent repository.
 
     Collects ``uses: PARENT/…@ref`` (mutable and short refs included) and the
     ``ref:`` of each ``repository: PARENT`` checkout (``None`` when missing).
     Checkouts whose ``path:`` is in ``skip`` (such as ``.vendor-sync-tools``,
-    resolved separately) are left out.
+    resolved separately) are left out. With ``only``, just the refs of the
+    checkouts at those paths are returned (no ``uses:`` refs).
     """
     name = re.escape(PARENT)
     refs = []
     for path in sorted((Path(root) / ".github/workflows").glob("*.y*ml")):
         text = path.read_text(encoding="utf-8")
-        refs += re.findall(r"uses:\s*['\"]?" + name + r"/[^\s@'\"]+@([^\s'\"]+)", text)
+        if not only:
+            refs += re.findall(r"uses:\s*['\"]?" + name + r"/[^\s@'\"]+@([^\s'\"]+)", text)
         lines = text.splitlines()
         for i, line in enumerate(lines):
             if not re.fullmatch(r"\s+(?:-\s+)?repository:\s*['\"]?" + name + r"['\"]?\s*", line):
@@ -69,17 +78,170 @@ def parent_refs(root, skip=()) -> list:
                 match = re.fullmatch(r"\s+(ref|path):\s*['\"]?(.*?)['\"]?\s*", item)
                 if match:
                     keys.setdefault(match[1], match[2])
-            if keys.get("path") not in skip:
+            if keys.get("path") not in skip and (not only or keys.get("path") in only):
                 refs.append(keys.get("ref"))
     return refs
 
 
-def workflow_job(root, job, workflow="ci.yml") -> str:
-    """Body of one top-level job of ``.github/workflows/<workflow>``."""
+def check_actions(root, pins=None, workflow="*.y*ml") -> list:
+    """Verify every ``uses: owner/repo[/path]@ref`` of the workflows; return ``(action, sha, version)`` rows.
+
+    Each ref is a full 40-hex SHA followed by a ``# vN[.N[.N]]`` version
+    comment; only the parent's reusable workflows (no release tags) pass on
+    the SHA alone, with version ``None``. ``pins`` maps every action in use to
+    its reviewed ``"<sha>"`` or ``"<sha> # <version>"``. Local ``./`` and
+    ``docker://`` steps are not refs to pin and are left out.
+    """
+    rows = []
+    for path in sorted((Path(root) / ".github/workflows").glob(workflow)):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            use = re.fullmatch(r"\s*(?:-\s+)?uses:\s*['\"]?([^\s'\"#]+)['\"]?\s*(?:#\s*(.*?))?\s*", line)
+            if not use or use[1].startswith(("./", "docker://")):
+                continue
+            where = f"{path.name}: {line.strip()}"
+            action, _, ref = use[1].partition("@")
+            assert re.fullmatch(r"[0-9a-f]{40}", ref), f"{where}: not a full SHA"
+            version = use[2] if re.fullmatch(r"v\d+(?:\.\d+){0,2}", use[2] or "") else None
+            if not action.startswith(PARENT + "/.github/workflows/"):
+                assert version, f"{where}: no version comment"
+                if pins is not None:
+                    assert pins.get(action) in (ref, f"{ref} # {version}"), f"{where}: not the reviewed pin"
+            rows.append((action, ref, version))
+    return rows
+
+
+def workflow_job(root, job, workflow="ci.yml", node_floor=None, setup=None, inputs=(), dispatch_lock=None) -> str:
+    """Body of one top-level job of ``.github/workflows/<workflow>``.
+
+    With ``node_floor`` the job must set up that Node major and carry the bash
+    guard ``if [[ "$node_major" -lt FLOOR ]]; then … fi``; the guard is run in
+    ``bash`` around the floor and must reject every older major only.
+    With ``setup`` (such as ``"astral-sh/setup-uv@"``) the job has exactly one
+    ``uses: SETUP…`` step, it comes before the first ``python``/``python3``/``uv``
+    command, and that step holds every string of ``inputs``.
+    With ``dispatch_lock`` (such as ``"vendor.lock.json"``) the job is the
+    vendor-dispatch verification: it checks the parent's repository id,
+    resolves ``refs/heads/main`` with ``git ls-remote`` and runs
+    ``pilot/vendor_dispatch.py --manifest …LOCK`` without ``--record`` or ``-S``.
+    """
     text = (Path(root) / ".github/workflows" / workflow).read_text(encoding="utf-8")
     match = re.search(r"(?ms)^  " + re.escape(job) + r":\n(.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)", text)
     assert match, f"{workflow}: missing job {job}"
+    where = f"{workflow}: job {job}"
+    if setup is not None:
+        assert match[1].count("uses: " + setup) == 1, f"{where}: needs exactly one uses: {setup}"
+        at = match[1].index("uses: " + setup)
+        command = re.search(r"(?m)^\s*(?:-\s+)?(?:run:\s*)?(?:python3?|uv)\s|\bpython3?\s+(?:-c|-\s|[A-Za-z_])", match[1])
+        assert command, f"{where}: no python or uv command to set up for"
+        assert at < command.start(), f"{where}: {command[0].strip()} runs before {setup}"
+        lead = match[1][match[1].rfind("\n", 0, at) + 1:at]  # "      - " or "        ": the step's list indent either way
+        step = re.split(r"(?m)^" + " " * (len(lead) - 2) + r"- ", match[1][at:], maxsplit=1)[0]
+        for wanted in inputs:
+            assert wanted in step, f"{where}: {setup} step lacks {wanted}"
+    if dispatch_lock is not None:
+        for wanted in ('PARENT_REPOSITORY_ID: "638801160"', "git ls-remote", "refs/heads/main"):  # the id of PARENT
+            assert wanted in match[1], f"{where}: lacks {wanted}"
+        code = re.sub(r"\\\n\s*", " ", "\n".join(line for line in match[1].splitlines() if not line.lstrip().startswith("#")))
+        runs = [line.strip() for line in code.splitlines() if re.search(r"\bpython3?\s.*pilot/vendor_dispatch\.py", line)]
+        assert runs, f"{where}: pilot/vendor_dispatch.py is not run"
+        for line in runs:
+            assert re.search(r"--manifest\s+\S*" + re.escape(dispatch_lock), line), f"{where}: no --manifest {dispatch_lock}: {line}"
+        assert "--record" not in code and not any(re.search(r"\s-S\s", line) for line in runs), f"{where}: verify only, without --record or -S"
+    if node_floor is not None:
+        assert re.search(r"(?m)^\s*node-version:\s*['\"]?%d['\"]?\s*$" % node_floor, match[1]), f"{where}: no setup of Node {node_floor}"
+        guard = re.search(r'(?ms)^([ \t]*)if \[\[ "\$node_major" -lt (\d+) \]\]; then\n.*?^\1fi$', match[1])
+        assert guard and int(guard[2]) == node_floor, f"{where}: no node_major guard at {node_floor}"
+        for major in range(node_floor - 2, node_floor + 2):
+            done = subprocess.run(["bash", "-c", f"node_major={major}\n{guard[0]}"], capture_output=True, text=True, timeout=30)
+            assert done.returncode == (major < node_floor), (where, major, done.stdout, done.stderr)
     return match[1]
+
+
+def vendor_staging(root, tool=".vendor-sync-tools/vendor_stage.py", timeout=60) -> list:
+    """Run every ``Stage canonical vendor evidence`` step against the real locked bytes; return the commands.
+
+    Each step runs ``if: always()`` without ``continue-on-error`` or
+    ``--promotion-receipt``, and the next step uploads its ``--output``. With
+    the parent's ``vendor_stage.py`` at ``tool``, each command is run on a copy
+    of the locked files plus one newly enrolled row: the evidence lists and
+    copies exactly the manifest, every locked row and the named legacy and
+    runtime evidence (a stray promotion receipt is left out) with matching
+    SHA-256, and a corrupted locked file exits 2 without leaving the output.
+    """
+    root, commands = Path(root).resolve(), []
+    for path in sorted((root / ".github/workflows").glob("*.y*ml")):
+        text = path.read_text(encoding="utf-8")
+        for found in re.finditer(r"(?m)^( +)- name: Stage canonical vendor evidence\n", text):
+            step, _, upload = text[found.end():].partition("\n" + found[1] + "- ")
+            run = re.search(r"(?m)^" + found[1] + r"  run: >-\n((?:" + found[1] + r"    [^\n]*\n)+)", step + "\n")
+            assert "if: always()" in step and "continue-on-error" not in step and run, f"{path.name}: staging must always run and fail closed"
+            command = " ".join(line.strip() for line in run[1].splitlines())
+            args = shlex.split(command)
+            assert "--promotion-receipt" not in args, command
+            assert "path: " + args[args.index("--output") + 1] in upload.split("retention-days:", 1)[0], f"{path.name}: staged output is not uploaded"
+            commands.append(command)
+    assert commands and (root / tool).is_file(), f"no staging step, or no {tool} (the workflow's parent checkout)"
+    for command in commands:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp, args = Path(tmp), shlex.split(command)
+            args[:3] = [sys.executable, "-S", str(root / tool)]
+            manifest, output = args[args.index("--manifest") + 1], tmp / args[args.index("--output") + 1]
+            lock = json.loads((root / manifest).read_text(encoding="utf-8"))
+            data = b"extra reviewed fixture\n"  # a newly enrolled member is staged without a workflow edit
+            (tmp / "extra").mkdir()
+            (tmp / "extra/LICENSE").write_bytes(data)
+            legacy, runtime = ([args[i + 1] for i, arg in enumerate(args) if arg == flag] for flag in ("--legacy-evidence", "--runtime-evidence"))
+            for member in [row["destination"] for row in lock["files"]] + legacy:
+                (tmp / member).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(root / member, tmp / member)
+            lock["files"].append(dict(lock["files"][0], destination="extra/LICENSE", sha256=hashlib.sha256(data).hexdigest(),
+                                      blob_sha=hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()))
+            (tmp / manifest).parent.mkdir(parents=True, exist_ok=True)
+            (tmp / manifest).write_text(json.dumps(lock), encoding="utf-8")
+            for member in [*runtime, "vendor-promotion.json"]:
+                (tmp / member).write_text("{}", encoding="utf-8")
+            done = subprocess.run(args, cwd=tmp, capture_output=True, text=True, timeout=timeout)
+            assert done.returncode == 0, (command, done.stderr)
+            evidence = json.loads((output / "vendor-evidence.json").read_text(encoding="utf-8"))
+            locked = {manifest, *(row["destination"] for row in lock["files"])}
+            seen = (evidence["kind"], set(evidence["locked"]), set(evidence["candidate"]), set(evidence["legacy"]), set(evidence["runtime"]))
+            assert seen == (args[args.index("--kind") + 1] if "--kind" in args else "locked", locked, locked, set(legacy), set(runtime)), command
+            staged = locked | set(legacy) | set(runtime)
+            assert {p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()} == staged | {"vendor-evidence.json"}, command
+            for member in staged:
+                body = (tmp / member).read_bytes()
+                assert (output / member).read_bytes() == body and evidence["sha256"][member] == hashlib.sha256(body).hexdigest(), member
+            shutil.rmtree(output)
+            (tmp / lock["files"][0]["destination"]).write_bytes(b"corrupt")
+            done = subprocess.run(args, cwd=tmp, capture_output=True, text=True, timeout=timeout)
+            assert done.returncode == 2 and not output.exists(), (command, done.stderr)
+    return commands
+
+
+def python_floor(root, job="runtime", workflow="runtime-compatibility.yml") -> tuple:
+    """``(floor, versions)``: the supported Python floor and the stdlib runtime job's version list.
+
+    ``[project] requires-python`` of ``pyproject.toml`` is ``>=FLOOR`` and equals
+    the ``requires-python`` of ``uv.lock``; the job's matrix ``python`` (or
+    ``python-version``) list starts at that floor, every ``include`` row names
+    a listed version, and the job runs ``python -S -m unittest`` without
+    ``continue-on-error``. The matrix itself stays the child's expectation.
+    """
+    root = Path(root)
+    section = re.split(r"(?m)^\[", ("\n" + (root / "pyproject.toml").read_text(encoding="utf-8")).partition("\n[project]\n")[2])[0]
+    project = re.search(r'(?m)^requires-python\s*=\s*"(>=(\d+\.\d+))"', section)
+    assert project, "pyproject.toml: [project] requires-python is not >=X.Y"
+    lock = re.search(r'(?m)^requires-python\s*=\s*"([^"]*)"', (root / "uv.lock").read_text(encoding="utf-8"))
+    assert lock and lock[1] == project[1], f"uv.lock requires-python differs from pyproject.toml {project[1]}"
+    body, where = workflow_job(root, job, workflow), f"{workflow}: job {job}"
+    listed = re.search(r"(?m)^\s+python(?:-version)?:\s*\[([^\]]*)\]", body)
+    versions = re.findall(r"\d+\.\d+", listed[1]) if listed else []
+    order = sorted(versions, key=lambda version: tuple(map(int, version.split("."))))
+    assert order and order[0] == project[2], f"{where}: matrix {versions} does not start at the floor {project[2]}"
+    extra = set(re.findall(r"(?m)^\s+python(?:-version)?:\s*['\"]?(\d+\.\d+)['\"]?\s*$", body)) - set(versions)
+    assert not extra, f"{where}: include rows outside the matrix list: {sorted(extra)}"
+    assert "python -S -m unittest" in body and "continue-on-error" not in body, f"{where}: needs python -S -m unittest, fail closed"
+    return project[2], versions
 
 
 def run_main(root, script, patch="", *, optimized=False, timeout=60) -> subprocess.CompletedProcess:
@@ -103,6 +265,7 @@ def node(minimum=26, ci_jobs=("test",)):
     In a GitHub Actions job named in ``ci_jobs`` (``GITHUB_JOB``) a missing or
     old Node is an ``AssertionError``, so the job that provisions Node runs the
     parity checks instead of skipping them; other jobs (portability, stdlib) skip.
+    ``ci_jobs=None`` requires Node in every GitHub Actions job.
     """
     found = os.environ.get("NODE") or shutil.which("node")
     version = ""
@@ -114,7 +277,7 @@ def node(minimum=26, ci_jobs=("test",)):
     match = re.match(r"v(\d+)", version.strip())
     if match and int(match[1]) >= minimum:
         return found
-    in_job = os.environ.get("GITHUB_ACTIONS") == "true" and os.environ.get("GITHUB_JOB") in ci_jobs
+    in_job = os.environ.get("GITHUB_ACTIONS") == "true" and (ci_jobs is None or os.environ.get("GITHUB_JOB") in ci_jobs)
     assert not in_job, f"Node {minimum}+ is required in CI job {os.environ.get('GITHUB_JOB')}"
     return None
 
@@ -144,11 +307,19 @@ def node_parity(root, tool, env_var, *args, input=None, timeout=120) -> tuple:
 def launcher_contract(root, env_var="FLEET_PYTHON", timeout=60) -> None:
     """Check the child's own ``vendor/py_launch.cjs`` bytes against the launcher contract.
 
-    A missing interpreter exits 2 with empty stdout; argv, stdin and exit codes
+    A missing interpreter exits 2 with empty stdout (as one JSON
+    ``ENOINTERPRETER`` line under ``PY_LAUNCH_ERROR_FORMAT=json`` or
+    ``jsonErrors``); ``assertNodeVersion`` accepts Node 26 and newer without an
+    upper bound and rejects older with ``ENODEVERSION``; a candidate's
+    interpreter prefix stays before the probe's ``-S -I``; argv, stdin and exit codes
     pass through unchanged under ``-S``; ``-S`` also covers interpreter
-    discovery (no ``sitecustomize``), and the library ``resolvePython`` honors
-    ``noSite`` and ``isolated`` independently; on POSIX, repeated signals are forwarded
-    until the child exits, ending in exit 2 with a text or JSON ``ESIGNAL`` error.
+    discovery (no ``sitecustomize``), and the library ``resolvePython``, ``run``
+    and ``main`` honor ``noSite`` and ``isolated`` independently against a hostile
+    ``sitecustomize`` (unprotected, the interpreter is "not suitable"); on POSIX,
+    SIGINT and SIGTERM are forwarded in either order, directly or after repeated
+    acknowledged signals, until the child exits: exit 2, empty stdout and exactly
+    one stderr line (text or JSON ``ESIGNAL``, ``ok: false``) ending in
+    ``terminated by signal NAME``.
     """
     exe = node()
     assert exe, "Node 26+ is not available (set NODE)"
@@ -168,19 +339,44 @@ def launcher_contract(root, env_var="FLEET_PYTHON", timeout=60) -> None:
         tool.write_text("print('ok')\n", encoding="utf-8")
         missing = run(extra={env_var: str(tmp / "no-such-python")})
         assert (missing.returncode, missing.stdout) == (2, ""), missing
+        library, script = json.dumps(str(tmp / "vendor/py_launch.cjs")), json.dumps(str(tool))
+        absent = json.dumps({"python": str(tmp / "no-such-python"), "jsonErrors": True})
+        for missing in (run(extra={env_var: str(tmp / "no-such-python"), "PY_LAUNCH_ERROR_FORMAT": "json"}),
+                        subprocess.run([exe, "-e", f"require({library}).main({script}, {absent});"], env=env, capture_output=True,
+                                       text=True, encoding="utf-8", errors="replace", timeout=timeout)):
+            assert (missing.returncode, missing.stdout, missing.stderr.count("\n")) == (2, "", 1), missing
+            error = json.loads(missing.stderr)
+            assert (error["ok"], error["code"], error["exit_code"]) == (False, "ENOINTERPRETER", 2) and "Python 3.9+" in error["hint"], missing
+        (tmp / "probe.cjs").write_text('require("node:assert/strict").deepEqual(process.argv.slice(2, -1), ["-S", "-I", "-c"]); '
+                                       'console.log("3.12");\n', encoding="utf-8")
+        library_checks = (
+            f"const assert = require('node:assert/strict'), launcher = require({library});"
+            "for (const version of ['26.0.0', '99.0.0']) launcher.assertNodeVersion(version);"
+            "assert.throws(() => launcher.assertNodeVersion('24.0.0'), (e) => e.code === 'ENODEVERSION' && /Node 26\\+/.test(e.message));"
+            f"const found = launcher.resolvePython({{candidates: [{{cmd: process.execPath, prefix: [{json.dumps(str(tmp / 'probe.cjs'))}]}}], "
+            "noSite: true, isolated: true});"
+            "assert.equal(found.cmd, process.execPath);")
+        checked = subprocess.run([exe, "-e", library_checks], env=env, capture_output=True, text=True, encoding="utf-8",
+                                 errors="replace", timeout=timeout)
+        assert checked.returncode == 0, ("assertNodeVersion bounds or interpreter prefix", checked.stderr)
         marker = tmp / "site-hook-ran"
-        (tmp / "sitecustomize.py").write_text(f"open({str(marker)!r}, 'w').close()\n", encoding="utf-8")
+        (tmp / "sitecustomize.py").write_text(f"open({str(marker)!r}, 'w').close()\nraise SystemExit(42)\n", encoding="utf-8")
         probe = run(extra={"PYTHONPATH": str(tmp)})
-        assert probe.returncode == 0 and not marker.exists(), "-S must cover interpreter discovery too"
-        library = json.dumps(str(tmp / "vendor/py_launch.cjs"))
-        for no_site in (False, True):
-            for isolated in (False, True):
+        assert (probe.returncode, probe.stdout) == (0, "ok\n") and not marker.exists(), "-S must cover interpreter discovery too"
+        for flags in ({}, {"noSite": True}, {"isolated": True}, {"noSite": True, "isolated": True}):
+            options = json.dumps({"python": sys.executable, **flags})
+            for name, call in (("resolvePython", f"launcher.resolvePython({options}); console.log('ok');"),
+                               ("run", f"process.stdout.write(launcher.run({script}, [], {options}).stdout);"),
+                               ("main", f"launcher.main({script}, {options});")):
                 marker.unlink(missing_ok=True)
-                options = json.dumps({"python": sys.executable, "noSite": no_site, "isolated": isolated})
-                found = subprocess.run([exe, "-e", f"require({library}).resolvePython({options});"],
-                                       env={**env, "PYTHONPATH": str(tmp)}, capture_output=True, timeout=timeout)
-                assert found.returncode == 0, found.stderr
-                assert marker.exists() == (not (no_site or isolated)), ("resolvePython", no_site, isolated)
+                found = subprocess.run([exe, "-e", f"const launcher = require({library}); {call}"], cwd=tmp,
+                                       env={**env, "PYTHONPATH": str(tmp)}, capture_output=True, text=True,
+                                       encoding="utf-8", errors="replace", timeout=timeout)
+                seen = (name, flags, found.returncode, found.stdout, found.stderr)
+                if flags:
+                    assert not marker.exists() and seen[2:] == (0, "ok\n", ""), seen
+                else:  # control: the hostile hook is reachable, and an unprotected probe refuses the interpreter
+                    assert marker.exists() and found.returncode != 0 and "not suitable" in found.stderr, seen
         for code in (0, 1, 3, 7):
             tool.write_text("import json, sys\nsys.stdout.write(json.dumps({'argv': sys.argv[1:], "
                             "'stdin': sys.stdin.read(), 'nosite': sys.flags.no_site}))\n"
@@ -192,28 +388,38 @@ def launcher_contract(root, env_var="FLEET_PYTHON", timeout=60) -> None:
         if os.name == "nt":
             return
         import selectors
-        tool.write_text("import signal, time\nsignal.signal(signal.SIGINT, lambda *_: print('ACK', flush=True))\n"
-                        "print('READY', flush=True)\nwhile True: time.sleep(60)\n", encoding="utf-8")
-        for fmt in ("", "json"):
-            child = subprocess.Popen(argv, env={**env, "PY_LAUNCH_ERROR_FORMAT": fmt}, stdin=subprocess.DEVNULL,
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
-            try:
-                with selectors.DefaultSelector() as selector:
-                    selector.register(child.stdout, selectors.EVENT_READ)
-                    for expected, sent in ((b"READY\n", signal.SIGINT), (b"ACK\n", signal.SIGINT), (b"ACK\n", signal.SIGTERM)):
-                        assert selector.select(timeout=5), "child did not acknowledge forwarded signal"
-                        assert child.stdout.readline() == expected
-                        child.send_signal(sent)
-                stdout, stderr = child.communicate(timeout=5)
-                assert (child.returncode, stdout) == (2, b""), stderr
-                if fmt:
-                    error = json.loads(stderr)
-                    assert (error["code"], error["exit_code"]) == ("ESIGNAL", 2) and "SIGTERM" in error["message"]
-                else:
-                    assert b"terminated by signal SIGTERM" in stderr
-            finally:
+        for ignored, last in (("SIGINT", "SIGTERM"), ("SIGTERM", "SIGINT")):
+            tool.write_text(f"import signal, time\nsignal.signal(signal.{ignored}, lambda *_: print('ACK', flush=True))\n"
+                            f"signal.signal(signal.{last}, signal.SIG_DFL)\n"
+                            # short sleeps: a signal landing just before a long sleep would be handled only after it
+                            "print('READY', flush=True)\nwhile True: time.sleep(0.05)\n", encoding="utf-8")
+            for fmt, repeats in (("", 0), ("", 2), ("json", 0), ("json", 2)):
+                child = subprocess.Popen(argv, env={**env, "PY_LAUNCH_ERROR_FORMAT": fmt}, stdin=subprocess.DEVNULL,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
                 try:
-                    os.killpg(child.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                child.communicate(timeout=5)
+                    with selectors.DefaultSelector() as selector:
+                        selector.register(child.stdout, selectors.EVENT_READ)
+                        # Only the launcher PID is signalled, never the Python child or its group.
+                        for step in range(repeats + 1):
+                            assert selector.select(timeout=5), "child did not acknowledge forwarded signal"
+                            assert child.stdout.readline() == (b"ACK\n" if step else b"READY\n") and child.poll() is None
+                            child.send_signal(getattr(signal, last if step == repeats else ignored))
+                    try:
+                        stdout, stderr = child.communicate(timeout=5)
+                    except subprocess.TimeoutExpired:  # the launcher went away and left its Python child holding the pipes
+                        os.killpg(child.pid, signal.SIGKILL)
+                        stdout, stderr = child.communicate(timeout=5)
+                    seen = (ignored, last, fmt, repeats, child.returncode, stdout, stderr)
+                    assert (child.returncode, stdout) == (2, b"") and stderr.count(b"\n") == 1, seen
+                    message = stderr.decode("utf-8").strip()
+                    if fmt:
+                        error = json.loads(stderr)
+                        assert (error["ok"], error["code"], error["exit_code"]) == (False, "ESIGNAL", 2), seen
+                        message = error["message"]
+                    assert message.endswith(f"terminated by signal {last}"), seen
+                finally:
+                    try:
+                        os.killpg(child.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    child.communicate(timeout=5)
