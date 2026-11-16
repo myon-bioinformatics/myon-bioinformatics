@@ -337,13 +337,13 @@ REST件数は親側の `collect_repository_counts()` でリポジトリ情報・
 
 ## OnTautoLogy設計と連携JSON
 
-「監査・依存」内の「オントロジー設計」は15エンティティ・11関係の対応と、Python/Node/GraphQL/Rustの境界を表示する。既存Pages・PSWBの表/スクロールを使用し、新しい監査ページは作らない。グラフ計算はOnTautoLogyの責務、GitHub固有の収集と状態は親の責務とする。
+「監査・依存」内の「オントロジー設計」は15エンティティ・11関係の対応と、Python/Node/GraphQL/Rustの境界を表示する。既存Pages・PSWBの表/スクロールを使用し、新しい監査ページは作らない。グラフ計算はOnTautoLogyの責務、GitHub固有の収集と状態は親の責務とする。OnTautoLogy では汎用の芯が `ontautology.py`、この監査（`integration-audit/3` の読み取り・plan・diff・Turtle・移管台帳）が `gh_audit/gh_audit.py` に分かれており、監査の拡張は `gh_audit/` に足す。
 
-`ontautology-snapshot.json` は同じビルドの既存観測から生成する `integration-audit/3`。`unified-data.json.aoi_integration` と同じ内容を配信・保存する。OnTautoLogy #5の `audit` 入力との互換を固定headで確認するが、未マージのコードをvendorしたりPagesで実行したりしない。#5採用後の利用例:
+`ontautology-snapshot.json` は同じビルドの既存観測から生成する `integration-audit/3`。`unified-data.json.aoi_integration` と同じ内容を配信・保存する。OnTautoLogy の `audit` 入力との互換を固定headで確認するが、未マージのコードをvendorしたりPagesで実行したりしない。OnTautoLogy のチェックアウトでの利用例:
 
 ```sh
-python -S ontautology.py audit ontautology-snapshot.json -o graph.json
-python -S ontautology.py plan graph.json
+python -S gh_audit/gh_audit.py audit ontautology-snapshot.json -o graph.json
+python -S gh_audit/gh_audit.py plan graph.json
 ```
 
 run ID/attempt/SHAはrun観測自身の値。check-run IDをActions runへ変換せず、jobのrun/attempt/SHAが一致する時だけ結合する。現headとfiles_headが一致する変更パスのみ出力する。未知属性はsource_recordへ残す。required checks・生成物バイト・main包含などの不足はgapsに保持し、SHAの不一致だけでmain未導入としない。ブラウザの手入力完了は輸出しない。`same_as`/`supersedes` は設計語彙であり、自動推論・既存スキーマの改名はしない。
@@ -353,13 +353,13 @@ run ID/attempt/SHAはrun観測自身の値。check-run IDをActions runへ変換
 
 ### 最小JSON入口の受入検証
 
-OnTautoLogy #5のstdin対応後は、`python -S ontautology.py audit -` にUTF-8 JSONを渡せる。`plan -`も同じ入力方式。標準入力は1コマンドに1回だけで、引数のない自動ネットワーク取得は行わない。Pythonからは `audit([snapshot])` / `plan(graph)` を直接呼ぶ。
+`python -S gh_audit/gh_audit.py audit -` にUTF-8 JSONを渡せる。`plan -`も同じ入力方式。標準入力は1コマンドに1回だけで、引数のない自動ネットワーク取得は行わない。Pythonからは `from gh_audit import gh_audit` の `audit([snapshot])` / `plan(graph)` を直接呼ぶ。
 
-Nodeから呼ぶ場合は標準 `child_process.spawnSync` にPython実行ファイルと `['-S', 'ontautology.py', 'audit', '-']` を引数配列で渡す。`input`は保存したスナップショットのバイト、`shell`は使わず、`timeout`・`maxBuffer`を設定し、起動エラーと終了コードを保持する。0は回答、1は入力エラー、2は循環・欠損等の要確認で、2でもstdoutの回答を捨てない。
+Nodeから呼ぶ場合は OnTautoLogy の `vendor/py_launch.cjs`（親の起動役を SHA 固定で vendor したもの）を通し、`node vendor/py_launch.cjs -- gh_audit/gh_audit.py audit -` とする。標準 `child_process.spawnSync` で直接呼ぶ場合はPython実行ファイルと `['-S', 'gh_audit/gh_audit.py', 'audit', '-']` を引数配列で渡す。`input`は保存したスナップショットのバイト、`shell`は使わず、`timeout`・`maxBuffer`を設定し、起動エラーと終了コードを保持する。0は回答、1は入力エラー、2は循環・欠損等の要確認で、2でもstdoutの回答を捨てない。
 
 受入ケースは、通常の依存順、循環＋下流＋独立成分、未観測の依存先、日本語を含むJSON、不正JSON。Python直接とNode経由で同じ入力・出力・終了コードを比較する。順序と循環の表現は入力配列の並びやPython hash seedに左右されないことを確認する。GraphQL/Rustは実装・性能測定済みと表示しない。GraphQLは取得側、Rustは同じJSON契約の背後で将来差し替える計算層。
 
-親に未マージのOnTautoLogyコードを複製しない。#5がmainへ入った後に取り込み元SHAを固定して再検証する。画面の追加ページ・PSWBの追加APIは不要。
+親に未マージのOnTautoLogyコードを複製しない。OnTautoLogy #11（`gh_audit/` への分離）がmainへ入った後に取り込み元SHAを固定して再検証する。画面の追加ページ・PSWBの追加APIは不要。
 
 
 ### 収束ボードとOnTautoLogy
@@ -367,15 +367,15 @@ Nodeから呼ぶ場合は標準 `child_process.spawnSync` にPython実行ファ�
 既存の「監査・依存」内で収束ボードと観測グラフを表示する。別ページは生成しない。`ontautology-snapshot.json` はPRだけでなくリポジトリ別mainのrun・取得済みjob・固定SHA・Issue・証跡不足を `inventory` に保持し、open PRが0件でも観測を残す。前回差分・完了記録・main失敗は既存の記録・優先確認を利用する。生成物の内容、required checks、コピー一致は未検証のままとする。
 
 ```sh
-python -S ontautology.py audit ontautology-snapshot.json -o graph.json
-python -S ontautology.py plan graph.json
-node ontautology.mjs audit ontautology-snapshot.json
+python -S gh_audit/gh_audit.py audit ontautology-snapshot.json -o graph.json
+python -S gh_audit/gh_audit.py plan graph.json
+node vendor/py_launch.cjs -- gh_audit/gh_audit.py audit ontautology-snapshot.json
 ```
 
-CLIはOnTautoLogy側の単一ファイル実装を使う。Nodeは同じCLIを呼び、GraphQLは収集層のみ、Rust置換は同じJSON契約の計算境界だけを対象とする。
+CLIはOnTautoLogy側の `gh_audit/gh_audit.py` を使う（本体 `ontautology.py` は汎用の芯で、監査グラフの check・reach・why なども `gh_audit/gh_audit.py` から呼ぶ）。ツールごとの `.mjs` は置かない。Nodeは同じCLIを呼び、GraphQLは収集層のみ、Rust置換は同じJSON契約の計算境界だけを対象とする。
 
 #### Flutterアーカイブ前後の未吸収台帳
 
 正本はOnTautoLogyの `examples/flutter-absorption.json`。Pagesビルドは観測済みOTL main SHAで台帳を読み、同じ収束ボードと `ontautology-snapshot.json` へ渡す。台帳未取得は未吸収ゼロと区別する。元のFlutterがactive監査の対象から外れても、OTLに保存した元SHA・ファイル・移管先・受入条件・証跡を残す。これはアーカイブ済みrepoのactive CI監視への再登録ではない。
 
-吸収済みは台帳の状態とし、`python -S ontautology.py transfers ontautology-snapshot.json` で検証SHA・受入条件・main反映記録の整合性を確認する。CI成功・main包含・機能同等性は独立再検証する。台帳のOTL main導入後に再ビルドすると表示される。新しいページ、Flutterの変更、アーカイブ操作、CI権限変更は不要。
+吸収済みは台帳の状態とし、`python -S gh_audit/gh_audit.py transfers ontautology-snapshot.json` で検証SHA・受入条件・main反映記録の整合性を確認する。CI成功・main包含・機能同等性は独立再検証する。台帳のOTL main導入後に再ビルドすると表示される。新しいページ、Flutterの変更、アーカイブ操作、CI権限変更は不要。
