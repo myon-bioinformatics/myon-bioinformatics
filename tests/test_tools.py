@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import types
 import unittest
 import urllib.error
 import venv
@@ -827,8 +828,8 @@ def test_fleet_check_workflow_job_vendor_dispatch_verifies_without_record(tmp_pa
             fleet_check.workflow_job(tmp_path, "vendor-dispatch", dispatch_lock="vendor.lock.json")
 
 
-@pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
-def test_fleet_check_workflow_job_runs_the_node_floor_guard(tmp_path):
+@pytest.mark.skipif(os.name == "nt" or shutil.which("bash") is None, reason="the guard is run on POSIX lanes only")
+def test_fleet_check_workflow_job_runs_the_node_floor_guard(tmp_path, monkeypatch):
     (tmp_path / ".github/workflows").mkdir(parents=True)
     good = ("jobs:\n  lint:\n    runs-on: y\n  vendor-dispatch:\n    steps:\n      - uses: actions/setup-node@v7\n        with:\n"
             "          node-version: \"26\"\n      - run: |\n          set -euo pipefail\n"
@@ -854,6 +855,10 @@ def test_fleet_check_workflow_job_runs_the_node_floor_guard(tmp_path):
         assert "runs-on: x" in fleet_check.workflow_job(tmp_path, "test")
     with pytest.raises(AssertionError, match="no setup of Node 26"):
         fleet_check.workflow_job(tmp_path, "test", node_floor=26)
+    path.write_text(good, encoding="utf-8")
+    monkeypatch.setattr(fleet_check, "os", types.SimpleNamespace(name="nt"))           # Windows: text only, no bash
+    monkeypatch.setattr(fleet_check.subprocess, "run", lambda *a, **k: pytest.fail("bash was run on Windows"))
+    assert fleet_check.workflow_job(tmp_path, "vendor-dispatch", node_floor=26) == body
 
 
 def test_fleet_check_node_gate_skips_locally_and_fails_in_ci(tmp_path, monkeypatch):
