@@ -678,6 +678,79 @@ def test_fleet_check_actions_need_full_shas_and_version_comments(tmp_path):
         assert fleet_check.check_actions(tmp_path, workflow="ci.yml") == rows
 
 
+def test_fleet_check_vendor_staging_runs_the_workflow_commands(tmp_path):
+    rows = [_lock_row(tmp_path, "vendor/a.py", b"print(1)\n"), _lock_row(tmp_path, "vendor/a.txt", b"MIT\n")]
+    (tmp_path / "vendor.lock.json").write_text(json.dumps({"schema": "vendor-lock/1", "files": rows}), encoding="utf-8")
+    (tmp_path / "legacy.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+    good = ("jobs:\n  test:\n    steps:\n      - name: Stage canonical vendor evidence\n        if: always()\n        shell: bash\n"
+            "        run: >-\n          python -S .vendor-sync-tools/vendor_stage.py\n"
+            "          --manifest vendor.lock.json --kind locked --output build/vendor-evidence-test\n"
+            "          --runtime-evidence vendor-enrollment.json --legacy-evidence legacy.json\n"
+            "      - name: Preserve vendor lock used by this run\n        if: always()\n        uses: actions/upload-artifact@v7\n"
+            "        with:\n          name: vendor-lock\n          path: build/vendor-evidence-test\n          retention-days: 14\n")
+    path = tmp_path / ".github/workflows/ci.yml"
+    path.write_text(good, encoding="utf-8")
+    tool = ROOT / "vendor_stage.py"
+    command = " ".join(line.strip() for line in good.split("run: >-\n")[1].split("      - name")[0].splitlines())
+    assert fleet_check.vendor_staging(tmp_path, tool) == [command]
+    assert sorted(p.name for p in tmp_path.iterdir()) == [".github", "legacy.json", "vendor", "vendor.lock.json"]  # the child stays untouched
+    with pytest.raises(AssertionError, match="no staging step, or no .vendor-sync-tools/vendor_stage.py"):
+        fleet_check.vendor_staging(tmp_path)
+    for broken, message in (
+        (good.replace("        if: always()\n        shell", "        shell"), "always run and fail closed"),
+        (good.replace("        shell: bash", "        continue-on-error: true"), "always run and fail closed"),
+        (good.replace("          path: build/vendor-evidence-test", "          path: build/other"), "staged output is not uploaded"),
+        (good.replace(" --legacy-evidence legacy.json", " --promotion-receipt vendor-promotion.json"), "--promotion-receipt"),
+        (good.replace("Stage canonical vendor evidence", "Stage"), "no staging step"),
+    ):
+        assert broken != good
+        path.write_text(broken, encoding="utf-8")
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.vendor_staging(tmp_path, tool)
+    path.write_text(good, encoding="utf-8")
+    (tmp_path / "vendor/a.py").write_bytes(b"print(2)\n")  # the checked-in bytes left the lock: staging refuses them
+    with pytest.raises(AssertionError, match="--manifest vendor.lock.json"):
+        fleet_check.vendor_staging(tmp_path, tool)
+
+
+def test_fleet_check_python_floor_agrees_across_project_lock_and_runtime_job(tmp_path):
+    (tmp_path / ".github/workflows").mkdir(parents=True)
+    files = {
+        "pyproject.toml": '[build-system]\nrequires-python = ">=3.8"\n[project]\nname = "x"\nrequires-python = ">=3.11"\n'
+                          '[tool.uv.dependency-groups]\ndev = { requires-python = ">=3.12" }\n',
+        "uv.lock": 'version = 1\nrequires-python = ">=3.11"\n\n[[package]]\nname = "x"\n',
+        ".github/workflows/runtime-compatibility.yml":
+            'jobs:\n  runtime:\n    strategy:\n      fail-fast: false\n      matrix:\n        os: [ubuntu-latest]\n'
+            '        python: ["3.12", "3.11", "3.14"]\n        include:\n          - os: windows-latest\n            python: "3.11"\n'
+            '    steps:\n      - run: python -S -m unittest discover -s tests -p test_core.py -v\n',
+    }
+    def write(name, old="", new=""):
+        for key, text in files.items():
+            (tmp_path / key).write_text(text.replace(old, new) if key == name else text, encoding="utf-8")
+            assert key != name or not old or old in text
+    write("")
+    assert fleet_check.python_floor(tmp_path) == ("3.11", ["3.12", "3.11", "3.14"])
+    flow = ".github/workflows/runtime-compatibility.yml"
+    for name, old, new, message in (
+        ("uv.lock", ">=3.11", ">=3.12", "uv.lock requires-python differs"),
+        ("uv.lock", "requires-python", "python", "uv.lock requires-python differs"),
+        ("pyproject.toml", '\nrequires-python = ">=3.11"', "", r"\[project\] requires-python"),
+        ("pyproject.toml", '">=3.11"', '"==3.11.*"', r"\[project\] requires-python"),
+        (flow, '"3.11", ', "", "does not start at the floor 3.11"),
+        (flow, '"3.12", ', '"3.9", ', "does not start at the floor 3.11"),
+        (flow, 'python: "3.11"', 'python: "3.13"', r"include rows outside the matrix list: \['3.13'\]"),
+        (flow, "python -S -m", "python -m", "python -S -m unittest"),
+        (flow, "    steps:", "    continue-on-error: true\n    steps:", "fail closed"),
+        (flow, "  runtime:", "  other:", "missing job runtime"),
+    ):
+        write(name, old, new)
+        with pytest.raises(AssertionError, match=message):
+            fleet_check.python_floor(tmp_path)
+    write(flow, "runtime:", "stdlib:")
+    assert fleet_check.python_floor(tmp_path, "stdlib")[0] == "3.11"
+
+
 def test_fleet_check_workflow_job_and_run_main(tmp_path):
     (tmp_path / ".github/workflows").mkdir(parents=True)
     (tmp_path / ".github/workflows/ci.yml").write_text("jobs:\n  test:\n    runs-on: x\n  lint:\n    runs-on: y\n")

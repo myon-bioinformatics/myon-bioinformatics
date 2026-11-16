@@ -9,10 +9,10 @@ the child keeps only its own expectations (pins, cases, messages).
 """
 from __future__ import annotations
 
-import functools, hashlib, json, os, re, shutil, signal, subprocess, sys, tempfile
+import functools, hashlib, json, os, re, shlex, shutil, signal, subprocess, sys, tempfile
 from pathlib import Path
 
-__all__ = ["check_actions", "check_lock", "launcher_contract", "node", "node_parity", "parent_refs", "repo_root", "run_main", "workflow_job"]
+__all__ = ["check_actions", "check_lock", "launcher_contract", "node", "node_parity", "parent_refs", "python_floor", "repo_root", "run_main", "vendor_staging", "workflow_job"]
 PARENT = "myon-bioinformatics/myon-bioinformatics"
 
 
@@ -155,6 +155,93 @@ def workflow_job(root, job, workflow="ci.yml", node_floor=None, setup=None, inpu
             done = subprocess.run(["bash", "-c", f"node_major={major}\n{guard[0]}"], capture_output=True, text=True, timeout=30)
             assert done.returncode == (major < node_floor), (where, major, done.stdout, done.stderr)
     return match[1]
+
+
+def vendor_staging(root, tool=".vendor-sync-tools/vendor_stage.py", timeout=60) -> list:
+    """Run every ``Stage canonical vendor evidence`` step against the real locked bytes; return the commands.
+
+    Each step runs ``if: always()`` without ``continue-on-error`` or
+    ``--promotion-receipt``, and the next step uploads its ``--output``. With
+    the parent's ``vendor_stage.py`` at ``tool``, each command is run on a copy
+    of the locked files plus one newly enrolled row: the evidence lists and
+    copies exactly the manifest, every locked row and the named legacy and
+    runtime evidence (a stray promotion receipt is left out) with matching
+    SHA-256, and a corrupted locked file exits 2 without leaving the output.
+    """
+    root, commands = Path(root).resolve(), []
+    for path in sorted((root / ".github/workflows").glob("*.y*ml")):
+        text = path.read_text(encoding="utf-8")
+        for found in re.finditer(r"(?m)^( +)- name: Stage canonical vendor evidence\n", text):
+            step, _, upload = text[found.end():].partition("\n" + found[1] + "- ")
+            run = re.search(r"(?m)^" + found[1] + r"  run: >-\n((?:" + found[1] + r"    [^\n]*\n)+)", step + "\n")
+            assert "if: always()" in step and "continue-on-error" not in step and run, f"{path.name}: staging must always run and fail closed"
+            command = " ".join(line.strip() for line in run[1].splitlines())
+            args = shlex.split(command)
+            assert "--promotion-receipt" not in args, command
+            assert "path: " + args[args.index("--output") + 1] in upload.split("retention-days:", 1)[0], f"{path.name}: staged output is not uploaded"
+            commands.append(command)
+    assert commands and (root / tool).is_file(), f"no staging step, or no {tool} (the workflow's parent checkout)"
+    for command in commands:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp, args = Path(tmp), shlex.split(command)
+            args[:3] = [sys.executable, "-S", str(root / tool)]
+            manifest, output = args[args.index("--manifest") + 1], tmp / args[args.index("--output") + 1]
+            lock = json.loads((root / manifest).read_text(encoding="utf-8"))
+            data = b"extra reviewed fixture\n"  # a newly enrolled member is staged without a workflow edit
+            (tmp / "extra").mkdir()
+            (tmp / "extra/LICENSE").write_bytes(data)
+            legacy, runtime = ([args[i + 1] for i, arg in enumerate(args) if arg == flag] for flag in ("--legacy-evidence", "--runtime-evidence"))
+            for member in [row["destination"] for row in lock["files"]] + legacy:
+                (tmp / member).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(root / member, tmp / member)
+            lock["files"].append(dict(lock["files"][0], destination="extra/LICENSE", sha256=hashlib.sha256(data).hexdigest(),
+                                      blob_sha=hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()))
+            (tmp / manifest).parent.mkdir(parents=True, exist_ok=True)
+            (tmp / manifest).write_text(json.dumps(lock), encoding="utf-8")
+            for member in [*runtime, "vendor-promotion.json"]:
+                (tmp / member).write_text("{}", encoding="utf-8")
+            done = subprocess.run(args, cwd=tmp, capture_output=True, text=True, timeout=timeout)
+            assert done.returncode == 0, (command, done.stderr)
+            evidence = json.loads((output / "vendor-evidence.json").read_text(encoding="utf-8"))
+            locked = {manifest, *(row["destination"] for row in lock["files"])}
+            seen = (evidence["kind"], set(evidence["locked"]), set(evidence["candidate"]), set(evidence["legacy"]), set(evidence["runtime"]))
+            assert seen == (args[args.index("--kind") + 1] if "--kind" in args else "locked", locked, locked, set(legacy), set(runtime)), command
+            staged = locked | set(legacy) | set(runtime)
+            assert {p.relative_to(output).as_posix() for p in output.rglob("*") if p.is_file()} == staged | {"vendor-evidence.json"}, command
+            for member in staged:
+                body = (tmp / member).read_bytes()
+                assert (output / member).read_bytes() == body and evidence["sha256"][member] == hashlib.sha256(body).hexdigest(), member
+            shutil.rmtree(output)
+            (tmp / lock["files"][0]["destination"]).write_bytes(b"corrupt")
+            done = subprocess.run(args, cwd=tmp, capture_output=True, text=True, timeout=timeout)
+            assert done.returncode == 2 and not output.exists(), (command, done.stderr)
+    return commands
+
+
+def python_floor(root, job="runtime", workflow="runtime-compatibility.yml") -> tuple:
+    """``(floor, versions)``: the supported Python floor and the stdlib runtime job's version list.
+
+    ``[project] requires-python`` of ``pyproject.toml`` is ``>=FLOOR`` and equals
+    the ``requires-python`` of ``uv.lock``; the job's matrix ``python`` (or
+    ``python-version``) list starts at that floor, every ``include`` row names
+    a listed version, and the job runs ``python -S -m unittest`` without
+    ``continue-on-error``. The matrix itself stays the child's expectation.
+    """
+    root = Path(root)
+    section = re.split(r"(?m)^\[", ("\n" + (root / "pyproject.toml").read_text(encoding="utf-8")).partition("\n[project]\n")[2])[0]
+    project = re.search(r'(?m)^requires-python\s*=\s*"(>=(\d+\.\d+))"', section)
+    assert project, "pyproject.toml: [project] requires-python is not >=X.Y"
+    lock = re.search(r'(?m)^requires-python\s*=\s*"([^"]*)"', (root / "uv.lock").read_text(encoding="utf-8"))
+    assert lock and lock[1] == project[1], f"uv.lock requires-python differs from pyproject.toml {project[1]}"
+    body, where = workflow_job(root, job, workflow), f"{workflow}: job {job}"
+    listed = re.search(r"(?m)^\s+python(?:-version)?:\s*\[([^\]]*)\]", body)
+    versions = re.findall(r"\d+\.\d+", listed[1]) if listed else []
+    order = sorted(versions, key=lambda version: tuple(map(int, version.split("."))))
+    assert order and order[0] == project[2], f"{where}: matrix {versions} does not start at the floor {project[2]}"
+    extra = set(re.findall(r"(?m)^\s+python(?:-version)?:\s*['\"]?(\d+\.\d+)['\"]?\s*$", body)) - set(versions)
+    assert not extra, f"{where}: include rows outside the matrix list: {sorted(extra)}"
+    assert "python -S -m unittest" in body and "continue-on-error" not in body, f"{where}: needs python -S -m unittest, fail closed"
+    return project[2], versions
 
 
 def run_main(root, script, patch="", *, optimized=False, timeout=60) -> subprocess.CompletedProcess:
