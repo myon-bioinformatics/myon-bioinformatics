@@ -1786,6 +1786,62 @@ def test_plotly_min_html_json_preserves_text_without_html_metacharacters(text, t
     assert identifier == div_id
 
 
+
+def test_plotly_min_subplots_and_scaleanchor():
+    pm = _plotly_min()
+    go = pm.graph_objects
+    fig = go.Figure([go.Scatter(x=[1, 6], y=[1, 6], mode="markers", marker_color="#111111"),
+                     go.Scatter(x=[1, 6], y=[1, 6], mode="markers", xaxis="x2", yaxis="y2", marker_color="#222222")])
+    fig.update_layout(width=800, height=400, margin=dict(l=40, r=40, t=40, b=40), showlegend=False, template={},
+                      xaxis=dict(domain=[0, 0.4], range=[0, 7]), yaxis=dict(range=[0, 7]),
+                      xaxis2=dict(domain=[0.6, 1], range=[0, 7]), yaxis2=dict(range=[0, 7]))
+    root = _svg_tree(fig)
+    dots = {c.get("fill"): [] for c in root.iter(_SVG + "circle")}
+    for c in root.iter(_SVG + "circle"):
+        dots[c.get("fill")].append(float(c.get("cx")))
+    assert dots["#111111"] == [round(40 + 1 / 7 * 288, 2), round(40 + 6 / 7 * 288, 2)]  # first area: 0–40 % of 720 px
+    assert dots["#222222"] == [round(40 + 432 + 1 / 7 * 288, 2), round(40 + 432 + 6 / 7 * 288, 2)]
+    grids = {l.get("stroke") for l in root.iter(_SVG + "line")}
+    assert "#eee" in grids  # template={} draws plotly.js's own look (white, #eee grid), not plotly.py's default
+    sq = go.Figure(go.Scatter(x=[0, 10], y=[0, 1], mode="markers"))
+    sq.update_layout(width=600, height=400, margin=dict(l=0, r=0, t=0, b=0), xaxis_range=[0, 10], yaxis_range=[0, 1],
+                     yaxis=dict(scaleanchor="x", scaleratio=1))
+    xs = [float(c.get("cx")) for c in _svg_tree(sq).iter(_SVG + "circle")]
+    ys = [float(c.get("cy")) for c in _svg_tree(sq).iter(_SVG + "circle")]
+    assert abs((xs[1] - xs[0]) / 10 - (ys[0] - ys[1]) / 1) < 1e-6  # one unit is the same length on both axes
+
+
+def test_plotly_min_stacks_heatmap_text_and_markup():
+    pm = _plotly_min()
+    go = pm.graph_objects
+    fig = go.Figure([go.Bar(y=["a", "b"], x=[2, 1], orientation="h", marker=dict(color="#000001", line=dict(color="#fff", width=2))),
+                     go.Bar(y=["a", "b"], x=[3, 1], orientation="h", marker_color="#000002")])
+    fig.update_layout(barmode="stack", width=500, height=300, margin=dict(l=50, r=50, t=50, b=50), xaxis_range=[0, 5],
+                      yaxis=dict(categoryorder="array", categoryarray=["b", "a"], autorange="reversed"), showlegend=False)
+    rects = {r.get("fill"): [] for r in _svg_tree(fig).iter(_SVG + "rect")}
+    for r in (r for r in _svg_tree(fig).iter(_SVG + "rect") if r.get("x") is not None):
+        rects[r.get("fill")].append((float(r.get("x")), float(r.get("width")), float(r.get("y")), r.get("stroke")))
+    assert [(x, w) for x, w, _y, _s in rects["#000002"]] == [(50 + 2 * 80, 3 * 80), (50 + 80, 80)]  # on top of the first
+    assert rects["#000001"][0][3] == "#fff"  # marker.line draws the edge
+    assert rects["#000001"][0][2] > rects["#000001"][1][2]  # categoryarray b, a then reversed: "a" below "b"
+    heat = go.Figure(go.Heatmap(z=[[1, 20]], x=[0, 1], y=[0], texttemplate="%{z}", xgap=4, showscale=False,
+                                colorscale=[[0, "#ffffff"], [1, "#000000"]]))
+    heat.update_layout(width=400, height=300, margin=dict(l=0, r=0, t=0, b=0), xaxis=dict(tickvals=[0, 1], ticktext=["左", "右"]))
+    root = _svg_tree(heat)
+    texts = [(t.text, t.get("fill")) for t in root.iter(_SVG + "text")]
+    assert ("1", pm._INK) in texts and ("20", "white") in texts  # cell text in a contrasting colour
+    assert {"左", "右"} <= {t for t, _f in texts}
+    cells = [r for r in root.iter(_SVG + "rect") if r.get("fill") in ("#ffffff", "#000000")]
+    assert [round(float(r.get("width")), 2) for r in cells][-2:] == [196.0, 196.0]  # 200 px cells, 2 px gap each side
+    note = go.Figure(go.Scatter(x=[0], y=[0]))
+    note.update_layout(title="一行目<br><b>二行目 &gt; 0</b>")
+    note.add_annotation(x=0.5, y=0.5, xref="paper", yref="paper", text="<b>S1</b>", showarrow=False,
+                        bgcolor="#ffffff", bordercolor="#2a78d6", borderwidth=2)
+    root = _svg_tree(note)
+    lines = [(t.text, t.get("font-weight")) for t in root.iter(_SVG + "text")]
+    assert ("一行目", None) in lines and ("二行目 > 0", "bold") in lines and ("S1", "bold") in lines
+    assert any(r.get("stroke") == "#2a78d6" for r in root.iter(_SVG + "rect"))  # the annotation's box
+
 @pytest.mark.skipif(importlib.util.find_spec("plotly") is None, reason="plotly is a reference only, not installed")
 def test_plotly_min_matches_plotly_figure_json():
     import plotly.graph_objects as real

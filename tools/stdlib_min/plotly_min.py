@@ -15,8 +15,8 @@ plotly's "magic underscore" keywords (``line_color=...``). One cartesian plot ar
 """
 from __future__ import annotations
 
-import json, math
-from html import escape
+import json, math, re
+from html import escape, unescape
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -190,14 +190,32 @@ graph_objects = SimpleNamespace(Figure=Figure, Scatter=Scatter, Bar=Bar, Waterfa
 
 # --- SVG ---------------------------------------------------------------------------------------------
 
+_D3 = ('#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf')
+# plotly.py's default template, and plotly.js with no template (``template={}`` or ``"none"``)
+_THEMES = {'plotly': {'plot_bg': _PLOT_BG, 'grid': _GRID, 'zero': _GRID, 'ink': _INK, 'colorway': COLORWAY},
+           'none': {'plot_bg': 'white', 'grid': '#eee', 'zero': '#444', 'ink': '#444', 'colorway': _D3}}
+_TAG = re.compile(r'</?(?:b|i|em|sup|sub|span|a|s|u)\b[^>]*>', re.I)  # plotly's markup tags; other <...> stay text
+
+
+def _theme(layout: dict) -> dict:
+    return _THEMES['none' if layout.get('template', 'plotly') in ({}, 'none', None) else 'plotly']
+
+
 def _n(x: float) -> str:
     """Fixed, short number text (the same figure always gives the same bytes)."""
     text = f'{x:.2f}'.rstrip('0').rstrip('.')
     return '0' if text in ('-0', '') else text
 
 
-def _text_width(text: str, size: float) -> float:
-    return sum(size if ord(ch) > 0x2E7F else 0.58 * size for ch in str(text))
+def _lines(text) -> list[tuple[str, bool]]:
+    """plotly's text markup: ``<br>`` breaks lines, ``<b>`` makes the line bold, the other markup tags drop
+    (their text stays), entities decode."""
+    return [(unescape(_TAG.sub('', part)), bool(re.search(r'<b>', part, re.I)))
+            for part in re.split(r'<br\s*/?>', str(text), flags=re.I)]
+
+
+def _text_width(text, size: float) -> float:
+    return max((sum(size if ord(ch) > 0x2E7F else 0.58 * size for ch in line) for line, _b in _lines(text)), default=0)
 
 
 def _label(value: float, step: float) -> str:
@@ -242,11 +260,11 @@ def _rgb(color: str) -> tuple[int, int, int]:
 
 
 class _Svg:
-    def __init__(self, width: int, height: int, font: dict):
+    def __init__(self, width: int, height: int, font: dict, ink: str):
         self.w, self.h, self.out = width, height, []
         self.family = font.get('family', FONT)
         self.size = font.get('size', 12)
-        self.ink = font.get('color', _INK)
+        self.ink = font.get('color', ink)
 
     def rect(self, x, y, w, h, fill, extra=''):
         self.out.append(f'<rect x="{_n(x)}" y="{_n(y)}" width="{_n(max(w, 0))}" height="{_n(max(h, 0))}" '
@@ -256,12 +274,21 @@ class _Svg:
         self.out.append(f'<line x1="{_n(x0)}" y1="{_n(y0)}" x2="{_n(x1)}" y2="{_n(y1)}" stroke="{escape(stroke)}" '
                         f'stroke-width="{_n(width)}"{_dash(dash, width)}/>')
 
-    def text(self, x, y, text, *, anchor='middle', size=None, color=None, rotate=None, weight=None, baseline='middle'):
-        extra = f' transform="rotate({_n(rotate)} {_n(x)} {_n(y)})"' if rotate else ''
-        extra += f' font-weight="{weight}"' if weight else ''
-        self.out.append(f'<text x="{_n(x)}" y="{_n(y)}" text-anchor="{anchor}" dominant-baseline="{baseline}" '
-                        f'font-family="{escape(self.family)}" font-size="{_n(size or self.size)}" '
-                        f'fill="{escape(color or self.ink)}"{extra}>{escape(str(text), quote=False)}</text>')
+    def text(self, x, y, text, *, anchor='middle', size=None, color=None, rotate=None, weight=None, family=None,
+             valign='middle'):
+        """Text with plotly's markup (``<br>`` lines, ``<b>``, entities); ``valign`` places the block on y."""
+        size = size or self.size
+        lines = _lines(text)
+        step = size * 1.3
+        first = y - (len(lines) - 1) * step * {'top': 0, 'middle': 0.5, 'bottom': 1}[valign] \
+            + {'top': size / 2, 'middle': 0, 'bottom': -size / 2}[valign]
+        for k, (line, bold) in enumerate(lines):
+            ly = first + k * step
+            extra = f' transform="rotate({_n(rotate)} {_n(x)} {_n(y)})"' if rotate else ''
+            extra += ' font-weight="bold"' if (bold or weight) else ''
+            self.out.append(f'<text x="{_n(x)}" y="{_n(ly)}" text-anchor="{anchor}" dominant-baseline="middle" '
+                            f'font-family="{escape(family or self.family)}" font-size="{_n(size)}" '
+                            f'fill="{escape(color or self.ink)}"{extra}>{escape(line, quote=False)}</text>')
 
     def raw(self, element: str):
         self.out.append(element)
@@ -277,68 +304,114 @@ def _dash(dash, width) -> str:
     return f' stroke-dasharray="{",".join(_n(p * max(width, 1)) for p in pattern)}"' if pattern else ''
 
 
-def _title(layout: dict) -> str:
-    title = layout.get('title', {})
+def _title(spec: dict) -> str:
+    title = spec.get('title', {})
     return title.get('text', '') if isinstance(title, dict) else str(title)
+
+
+def _axis_key(ref: str) -> str:
+    """'x' → 'xaxis', 'x2' → 'xaxis2' (plotly.js reads only these names)."""
+    return f'{ref[0]}axis{ref[1:]}'
+
+
+def _legend_items(fig: Figure) -> list:
+    return [t for t in fig.data if t.get('name') and t.get('showlegend', True) and t['type'] != 'sankey']
 
 
 def _svg(fig: Figure, width=None, height=None) -> str:
     lay = fig.layout
+    theme = _theme(lay)
     w, h = int(width or lay.get('width', 700)), int(height or lay.get('height', 500))
-    svg = _Svg(w, h, {**{'family': FONT}, **lay.get('font', {})})
+    svg = _Svg(w, h, {**{'family': FONT}, **lay.get('font', {})}, theme['ink'])
     m = {'l': 80, 'r': 80, 't': 100, 'b': 80, **lay.get('margin', {})}
-    legend = [t for t in fig.data if t.get('name') and t.get('showlegend', True) and t['type'] != 'sankey']
-    show_legend = lay.get('showlegend', len(legend) > 1)
-    if show_legend and legend:
-        m['r'] += max(_text_width(t['name'], svg.size) for t in legend) + 40
+    legend = _legend_items(fig)
+    show_legend = lay.get('showlegend', len(legend) > 1) and bool(legend)
+    spec = lay.get('legend', {})
+    size = spec.get('font', {}).get('size', svg.size)
+    if show_legend and 'x' not in spec:  # plotly's default legend sits right of the plot and pushes the margin
+        m['r'] += max(_text_width(t['name'], size) for t in legend) + 40
+    if any(t['type'] == 'heatmap' and t.get('showscale', True) for t in fig.data):
+        m['r'] += 64  # colour bar
+    for t in fig.data:  # automargin: long category labels on the left
+        ref = _axis_key(t.get('yaxis', 'y'))
+        if lay.get(ref, {}).get('automargin') and t['type'] != 'sankey':
+            labels = [v for v in t.get('y', []) if isinstance(v, str)] + list(lay[ref].get('categoryarray', []))
+            m['l'] = max(m['l'], max((_text_width(v, svg.size) for v in labels), default=0) + 40)
     box = (m['l'], m['t'], w - m['l'] - m['r'], h - m['t'] - m['b'])
-    if _title(lay):
-        svg.text(w * lay.get('title', {}).get('x', 0.05), m['t'] / 2, _title(lay), anchor='start', size=17)
+    title = lay.get('title', {}) if isinstance(lay.get('title'), dict) else {'text': lay.get('title', '')}
+    if title.get('text'):
+        x = w * title.get('x', 0.05)
+        anchor = {'center': 'middle', 'right': 'end'}.get(title.get('xanchor'), 'start')
+        svg.text(max(x, 8) if anchor == 'start' else x, m['t'] / 2, title['text'], anchor=anchor,
+                 size=title.get('font', {}).get('size', 17))
     if any(t['type'] == 'sankey' for t in fig.data):
         for trace in fig.data:
             if trace['type'] == 'sankey':
-                _sankey(svg, trace, box)
+                _sankey(svg, trace, box, theme)
         for note in lay.get('annotations', []):
-            _annotation(svg, note, box, None, None)
+            _annotation(svg, note, box, {})
     else:
-        _cartesian(svg, fig, box, lay.get('plot_bgcolor', _PLOT_BG))
+        _cartesian(svg, fig, box, theme)
     if show_legend:
-        for i, trace in enumerate(legend):
-            x, y = w - m['r'] + 20, m['t'] + 10 + 20 * i
-            color = _trace_color(trace, fig.data.index(trace))
-            if trace['type'] == 'scatter' and 'lines' in _mode(trace):
-                svg.line(x, y, x + 20, y, color, trace.get('line', {}).get('width', 2), trace.get('line', {}).get('dash'))
-            elif trace['type'] == 'scatter':
-                _marker(svg, x + 10, y, trace.get('marker', {}), color)
-            else:
-                svg.rect(x + 4, y - 6, 12, 12, color)
-            svg.text(x + 26, y, trace['name'], anchor='start')
+        _legend(svg, fig, legend, box, w, m, size, theme)
     return svg.done(lay.get('paper_bgcolor', 'white'))
+
+
+def _legend(svg: _Svg, fig: Figure, items: list, box, w: int, m: dict, size: float, theme: dict) -> None:
+    spec = fig.layout.get('legend', {})
+    x0, y0, pw, ph = box
+    row = max(20.0, size * 1.6)
+    width = max(_text_width(t['name'], size) for t in items) + 36
+    lx = x0 + spec.get('x', 1.02) * pw
+    lx -= {'right': width, 'center': width / 2}.get(spec.get('xanchor'), 0)
+    ly = y0 + (1 - spec.get('y', 1.0)) * ph
+    ly -= {'bottom': row * len(items), 'middle': row * len(items) / 2}.get(spec.get('yanchor'), 0)
+    for i, trace in enumerate(items):
+        x, y = lx, ly + row * (i + 0.5)
+        color = _trace_color(trace, fig.data.index(trace), theme)
+        mode = _mode(trace) if trace['type'] == 'scatter' else ''
+        if 'lines' in mode:
+            line = trace.get('line', {})
+            svg.line(x, y, x + 20, y, color, line.get('width', 2), line.get('dash'))
+        if 'markers' in mode:
+            mc = trace.get('marker', {}).get('color', color)
+            _marker(svg, x + 10, y, trace.get('marker', {}), mc[0] if isinstance(mc, (list, tuple)) and mc else
+                    color if isinstance(mc, (list, tuple)) else mc)
+        if not mode:
+            svg.rect(x + 4, y - 6, 12, 12, color)
+        svg.text(x + 26, y, trace['name'], anchor='start', size=size)
 
 
 def _mode(trace: dict) -> str:
     return trace.get('mode') or ('lines+markers' if len(trace.get('y', trace.get('x', []))) < 20 else 'lines')
 
 
-def _trace_color(trace: dict, index: int) -> str:
+def _trace_color(trace: dict, index: int, theme: dict | None = None) -> str:
     for key in ('line', 'marker'):
         color = trace.get(key, {}).get('color')
         if isinstance(color, str):
             return color
-    return COLORWAY[index % len(COLORWAY)]
+    way = (theme or _THEMES['plotly'])['colorway']
+    return way[index % len(way)]
 
 
 class _Axis:
+    """One axis: category (any string value, or ``type="category"``) or linear; pixels lo_px → hi_px."""
+
     def __init__(self, spec: dict, values: list, lo_px: float, hi_px: float, *, zero: bool, pad: float):
         self.spec, self.lo_px, self.hi_px = spec, lo_px, hi_px
         self.categories = None
+        values = [v for v in values if v is not None]
         if spec.get('type') == 'category' or any(isinstance(v, str) for v in values):
-            self.categories = list(dict.fromkeys(str(v) for v in values if v is not None))
-            self.range = (-0.5, len(self.categories) - 0.5)
+            seen = [str(v) for v in values]
+            first = [str(v) for v in spec.get('categoryarray', [])] if spec.get('categoryorder') == 'array' else []
+            self.categories = list(dict.fromkeys(first + seen))
+            self.range = tuple(spec['range']) if 'range' in spec else (-0.5, len(self.categories) - 0.5)
         elif 'range' in spec:
-            self.range = tuple(spec['range'])
+            self.range = tuple(float(v) for v in spec['range'])
         else:
-            nums = [float(v) for v in values if v is not None] + ([0.0] if zero else [])
+            zero = zero or spec.get('rangemode') == 'tozero'
+            nums = [float(v) for v in values] + ([0.0] if zero else [])
             lo, hi = (min(nums), max(nums)) if nums else (0.0, 1.0)
             if hi == lo:
                 lo, hi = lo - 1, hi + 1
@@ -347,12 +420,19 @@ class _Axis:
             hi += pad * span if not (zero and hi == 0) else 0
             self.range = (lo, hi)
         if spec.get('autorange') == 'reversed':
-            self.range = self.range[::-1]
+            self.range = (max(self.range), min(self.range))
 
     def unit(self) -> float:
         """Pixels per one unit (one category step on a category axis)."""
         lo, hi = self.range
         return abs(self.hi_px - self.lo_px) / abs(hi - lo)
+
+    def stretch(self, unit: float) -> None:
+        """Widen the range about its centre until one unit is ``unit`` px (plotly's scaleanchor, constrain=range)."""
+        lo, hi = self.range
+        half = abs(self.hi_px - self.lo_px) / unit / 2 * (1 if hi >= lo else -1)
+        mid = (lo + hi) / 2
+        self.range = (mid - half, mid + half)
 
     def pos(self, value) -> float:
         v = self.categories.index(str(value)) if self.categories is not None else float(value)
@@ -360,91 +440,141 @@ class _Axis:
         return self.lo_px + (v - lo) / (hi - lo) * (self.hi_px - self.lo_px)
 
     def ticks(self) -> list[tuple[float, str]]:
+        lo, hi = sorted(self.range)
+        if 'tickvals' in self.spec:
+            texts = self.spec.get('ticktext', [])
+            return [(self.pos(v), str(texts[k]) if k < len(texts) else str(v)) for k, v in enumerate(self.spec['tickvals'])
+                    if self.categories is not None or lo - 1e-9 <= float(v) <= hi + 1e-9]
         if self.categories is not None:
             return [(self.pos(c), c) for c in self.categories]
-        lo, hi = sorted(self.range)
-        ticks, step = _ticks(lo, hi, self.spec.get('nticks', 6))
+        if 'dtick' in self.spec:
+            step, start = float(self.spec['dtick']), float(self.spec.get('tick0', 0))
+            ticks = [start + k * step for k in range(math.ceil((lo - start) / step - 1e-9),
+                                                     math.floor((hi - start) / step + 1e-9) + 1)]
+        else:
+            ticks, step = _ticks(lo, hi, self.spec.get('nticks', 6))
+        if self.spec.get('tickformat') == 'd':
+            return [(self.pos(t), _label(round(t), 1)) for t in ticks if abs(t - round(t)) < 1e-9]
         return [(self.pos(t), _label(t, step)) for t in ticks if lo - 1e-9 <= t <= hi + 1e-9]
 
 
-def _cartesian(svg: _Svg, fig: Figure, box, plot_bg: str) -> None:
+def _cartesian(svg: _Svg, fig: Figure, box, theme: dict) -> None:
+    """Every (xaxis, yaxis) pair the traces use is its own plot area, placed by the axes' ``domain``."""
     lay = fig.layout
     x0, y0, pw, ph = box
-    xs, ys, bars_x, bars_y = [], [], False, False
-    for t in fig.data:
+    traces = [t for t in fig.data if t['type'] != 'sankey']
+    pairs = list(dict.fromkeys((t.get('xaxis', 'x'), t.get('yaxis', 'y')) for t in traces)) or [('x', 'y')]
+    vals: dict[str, list] = {}
+    flags: dict[str, dict] = {}
+    stacks = _stacks(traces, lay)
+    for t in traces:
+        xr, yr = t.get('xaxis', 'x'), t.get('yaxis', 'y')
+        xs, ys = vals.setdefault(xr, []), vals.setdefault(yr, [])
+        fx, fy = flags.setdefault(xr, {}), flags.setdefault(yr, {})
         if t['type'] == 'scatter':
             xs += list(t.get('x', range(len(t.get('y', [])))))
             ys += list(t.get('y', []))
+            if 'markers' in _mode(t) or 'text' in _mode(t):
+                fx['marks'] = fy['marks'] = True
         elif t['type'] in ('bar', 'waterfall'):
-            cats, vals = _bar_parts(t)
-            ends = [b + v for b, v in zip(vals[0], vals[1])] + vals[0]
-            if t.get('orientation', 'v') == 'h':
-                ys += cats
-                xs += ends
-                bars_x = True
-            else:
-                xs += cats
-                ys += ends
-                bars_y = True
+            cats, (starts, lengths) = _bar_parts(t, stacks.get(id(t)))
+            ends = [b + v for b, v in zip(starts, lengths)] + starts
+            cat_vals, val_vals, val_flag = (ys, xs, fx) if t.get('orientation', 'v') == 'h' else (xs, ys, fy)
+            cat_vals += cats
+            val_vals += ends
+            val_flag['bars'] = True
+            val_flag['labels'] = val_flag.get('labels') or t.get('text') is not None
         elif t['type'] == 'heatmap':
             z = t.get('z', [[]])
-            xs += list(t.get('x', range(len(z[0]) if z else 0)))
-            ys += list(t.get('y', range(len(z))))
+            for ref, got, keys in ((xr, xs, list(t.get('x', range(len(z[0]) if z else 0)))),
+                                   (yr, ys, list(t.get('y', range(len(z)))))):
+                got += keys if lay.get(_axis_key(ref), {}).get('type') == 'category' else _cell_edges(keys)
+            fx['heat'] = fy['heat'] = True
     for s in lay.get('shapes', []):
-        if s.get('xref', 'x') == 'x':
-            xs += [s.get('x0'), s.get('x1')]
-        if s.get('yref', 'y') == 'y':
-            ys += [s.get('y0'), s.get('y1')]
-    heat = any(t['type'] == 'heatmap' for t in fig.data)
-    marks = any('markers' in _mode(t) or 'text' in _mode(t) for t in fig.data if t['type'] == 'scatter')
-    labels = any(t.get('text') is not None for t in fig.data if t['type'] in ('bar', 'waterfall'))
-    pad_x = 0.0 if heat else 0.12 if bars_x and labels else 0.05 if bars_x or marks else 0.0
-    pad_y = 0.0 if heat else 0.12 if bars_y and labels else 0.05 if bars_y or marks else 0.0
-    if heat:  # cells are centred on their x / y
-        xs, ys = _cell_edges(xs), _cell_edges(ys)
-    ax = _Axis(lay.get('xaxis', {}), xs, x0, x0 + pw, zero=bars_x, pad=pad_x)
-    ay = _Axis(lay.get('yaxis', {}), ys, y0 + ph, y0, zero=bars_y, pad=pad_y)
-    svg.rect(x0, y0, pw, ph, plot_bg)
-    for px, _label_text in ax.ticks():
-        svg.line(px, y0, px, y0 + ph, _GRID)
-    for py, _label_text in ay.ticks():
-        svg.line(x0, py, x0 + pw, py, _GRID)
-    if ax.categories is None and min(ax.range) < 0 < max(ax.range):  # zero lines, 2 px like plotly
-        svg.line(ax.pos(0), y0, ax.pos(0), y0 + ph, _GRID, 2)
-    if ay.categories is None and min(ay.range) < 0 < max(ay.range):
-        svg.line(x0, ay.pos(0), x0 + pw, ay.pos(0), _GRID, 2)
-    svg.raw(f'<clipPath id="plot-area"><rect x="{_n(x0)}" y="{_n(y0)}" width="{_n(pw)}" height="{_n(ph)}"/>'
-            '</clipPath><g clip-path="url(#plot-area)">')
-    bar_traces = [t for t in fig.data if t['type'] in ('bar', 'waterfall')]
-    for i, t in enumerate(fig.data):
-        if t['type'] == 'heatmap':
-            _heatmap(svg, t, ax, ay, box)
-        elif t['type'] in ('bar', 'waterfall'):
-            _bars(svg, t, i, ax, ay, bar_traces.index(t), len(bar_traces), lay)
-        elif t['type'] == 'scatter':
-            _scatter(svg, t, i, ax, ay)
-    for s in lay.get('shapes', []):
-        _shape(svg, s, ax, ay, box)
-    svg.raw('</g>')
-    for t in fig.data:
+        for ref, keys in ((s.get('xref', 'x'), ('x0', 'x1')), (s.get('yref', 'y'), ('y0', 'y1'))):
+            if ref in vals:
+                vals[ref] += [s.get(k) for k in keys]
+    axes = {}
+    for xr, yr in pairs:
+        for ref in (xr, yr):
+            if ref in axes:
+                continue
+            spec = lay.get(_axis_key(ref), {})
+            d0, d1 = spec.get('domain', [0.0, 1.0])
+            lo_px, hi_px = (x0 + d0 * pw, x0 + d1 * pw) if ref[0] == 'x' else (y0 + ph - d0 * ph, y0 + ph - d1 * ph)
+            f = flags.get(ref, {})
+            pad = 0.0 if f.get('heat') else 0.12 if f.get('bars') and f.get('labels') else \
+                0.05 if f.get('bars') or f.get('marks') else 0.0
+            axes[ref] = _Axis(spec, vals.get(ref, []), lo_px, hi_px, zero=bool(f.get('bars')), pad=pad)
+    for ref, axis in axes.items():  # scaleanchor: one unit on this axis = scaleratio units of the anchor
+        anchor = axis.spec.get('scaleanchor')
+        if anchor in axes and axis.categories is None and axes[anchor].categories is None:
+            other, r = axes[anchor], float(axis.spec.get('scaleratio', 1))
+            if axis.unit() > other.unit() * r:
+                axis.stretch(other.unit() * r)
+            else:
+                other.stretch(axis.unit() / r)
+    for n, (xr, yr) in enumerate(pairs):
+        ax, ay = axes[xr], axes[yr]
+        left, right = sorted((ax.lo_px, ax.hi_px))
+        top, bottom = sorted((ay.lo_px, ay.hi_px))
+        svg.rect(left, top, right - left, bottom - top, lay.get('plot_bgcolor', theme['plot_bg']))
+        for axis, horizontal in ((ax, False), (ay, True)):
+            grid = axis.spec.get('gridcolor', theme['grid'])
+            if axis.spec.get('showgrid', True):
+                for p, _t in axis.ticks():
+                    svg.line(left, p, right, p, grid) if horizontal else svg.line(p, top, p, bottom, grid)
+            if axis.spec.get('zeroline', True) and axis.categories is None and min(axis.range) < 0 < max(axis.range):
+                p, color = axis.pos(0), axis.spec.get('zerolinecolor', theme['zero'])
+                svg.line(left, p, right, p, color, 2) if horizontal else svg.line(p, top, p, bottom, color, 2)
+        clip = f'plot-area-{n}'
+        svg.raw(f'<clipPath id="{clip}"><rect x="{_n(left)}" y="{_n(top)}" width="{_n(right - left)}" '
+                f'height="{_n(bottom - top)}"/></clipPath><g clip-path="url(#{clip})">')
+        mine = [t for t in traces if (t.get('xaxis', 'x'), t.get('yaxis', 'y')) == (xr, yr)]
+        bars = [t for t in mine if t['type'] in ('bar', 'waterfall')]
+        for t in mine:
+            i = fig.data.index(t)
+            if t['type'] == 'heatmap':
+                _heatmap(svg, t, ax, ay)
+            elif t['type'] in ('bar', 'waterfall'):
+                _bars(svg, t, i, ax, ay, bars.index(t), len(bars), lay, stacks.get(id(t)), theme)
+            elif t['type'] == 'scatter':
+                _scatter(svg, t, i, ax, ay, theme)
+        svg.raw('</g>')
+        _axis_labels(svg, ax, ay, (left, top, right, bottom))
+    full = {'paper': box, **{ref: a for ref, a in axes.items()}}
+    for s in sorted(lay.get('shapes', []), key=lambda s: s.get('layer', 'above') != 'below'):
+        _shape(svg, s, full)
+    for t in traces:
         if t['type'] == 'heatmap' and t.get('showscale', True):
-            _colorbar(svg, t, box)
+            ay = axes[t.get('yaxis', 'y')]
+            ax = axes[t.get('xaxis', 'x')]
+            _colorbar(svg, t, (max(ax.lo_px, ax.hi_px), min(ay.lo_px, ay.hi_px), abs(ay.hi_px - ay.lo_px)))
     for note in lay.get('annotations', []):
-        _annotation(svg, note, box, ax, ay)
-    angle = lay.get('xaxis', {}).get('tickangle')
+        _annotation(svg, note, box, axes)
+
+
+def _axis_labels(svg: _Svg, ax: _Axis, ay: _Axis, area) -> None:
+    left, top, right, bottom = area
+    xs, ys = ax.spec, ay.spec
+    gap_x = (xs.get('ticklen', 5) if xs.get('ticks') == 'outside' else 0) + 8
+    gap_y = (ys.get('ticklen', 5) if ys.get('ticks') == 'outside' else 0) + 6
+    x_size = xs.get('tickfont', {}).get('size')
+    y_size = ys.get('tickfont', {}).get('size')
+    angle, on_top = xs.get('tickangle'), xs.get('side') == 'top'
     for px, text in ax.ticks():  # tickangle rotates the labels about their top end, as in plotly
+        y = top - gap_x if on_top else bottom + gap_x
         if angle:
-            svg.text(px, y0 + ph + 10, text, anchor='end' if angle < 0 else 'start', rotate=angle)
+            svg.text(px, y, text, anchor='end' if angle < 0 else 'start', rotate=angle, size=x_size)
         else:
-            svg.text(px, y0 + ph + 14, text)
+            svg.text(px, y, text, size=x_size, valign='bottom' if on_top else 'top')
     for py, text in ay.ticks():
-        svg.text(x0 - 6, py, text, anchor='end')
-    xt, yt = _title(lay.get('xaxis', {})), _title(lay.get('yaxis', {}))
-    if xt:
-        svg.text(x0 + pw / 2, y0 + ph + 40, xt, size=14)
-    if yt:
-        width = max((_text_width(text, svg.size) for _p, text in ay.ticks()), default=0)
-        svg.text(x0 - width - 24, y0 + ph / 2, yt, size=14, rotate=-90)
+        svg.text(left - gap_y, py, text, anchor='end', size=y_size)
+    if _title(xs):
+        svg.text((left + right) / 2, (top - gap_x - 28) if on_top else (bottom + gap_x + 26), _title(xs), size=14)
+    if _title(ys):
+        width = max((_text_width(text, y_size or svg.size) for _p, text in ay.ticks()), default=0)
+        svg.text(left - gap_y - width - 18, (top + bottom) / 2, _title(ys), size=14, rotate=-90)
 
 
 def _cell_edges(values: list) -> list:
@@ -455,10 +585,32 @@ def _cell_edges(values: list) -> list:
     return [nums[0] - half, nums[-1] + half]
 
 
-def _bar_parts(t: dict) -> tuple[list, tuple[list, list]]:
+def _stacks(traces: list, lay: dict) -> dict:
+    """barmode stack / relative: each bar starts where the bars before it (same axes, same category, same sign) end."""
+    if lay.get('barmode') not in ('stack', 'relative'):
+        return {}
+    ends: dict = {}
+    out = {}
+    for t in traces:
+        if t['type'] != 'bar':
+            continue
+        horizontal = t.get('orientation', 'v') == 'h'
+        vals = list(t.get('x' if horizontal else 'y', []))
+        cats = list(t.get('y' if horizontal else 'x', range(len(vals))))
+        where = (t.get('xaxis', 'x'), t.get('yaxis', 'y'))
+        starts = []
+        for c, v in zip(cats, vals):
+            key = (where, str(c), (v or 0) >= 0)
+            starts.append(ends.get(key, 0.0))
+            ends[key] = starts[-1] + float(v or 0)
+        out[id(t)] = starts
+    return out
+
+
+def _bar_parts(t: dict, stacked=None) -> tuple[list, tuple[list, list]]:
     """(categories, (starts, lengths)) of each bar; waterfall bars float on the running total."""
     horizontal = t.get('orientation', 'v') == 'h'
-    vals = list(t.get('x' if horizontal else 'y', []))
+    vals = [float(v or 0) for v in t.get('x' if horizontal else 'y', [])]
     cats = list(t.get('y' if horizontal else 'x', range(len(vals))))
     if t['type'] == 'waterfall':
         starts, lengths, total = [], [], 0.0
@@ -472,20 +624,27 @@ def _bar_parts(t: dict) -> tuple[list, tuple[list, list]]:
                 starts.append(total), lengths.append(v)
                 total += v
         return cats, (starts, lengths)
+    if stacked is not None:
+        return cats, (stacked, vals)
     base = t.get('base', 0)
     starts = list(base) if isinstance(base, (list, tuple)) else [base] * len(vals)
-    return cats, ([float(s) for s in starts], [float(v) for v in vals])
+    return cats, ([float(s) for s in starts], vals)
 
 
-def _bars(svg: _Svg, t: dict, index: int, ax: _Axis, ay: _Axis, slot: int, count: int, lay: dict) -> None:
+def _bars(svg: _Svg, t: dict, index: int, ax: _Axis, ay: _Axis, slot: int, count: int, lay: dict, stacked,
+          theme: dict) -> None:
     horizontal = t.get('orientation', 'v') == 'h'
-    cats, (starts, lengths) = _bar_parts(t)
+    cats, (starts, lengths) = _bar_parts(t, stacked)
     cat_axis, val_axis = (ay, ax) if horizontal else (ax, ay)
     group = lay.get('barmode', 'group') == 'group' and t['type'] == 'bar'
     full = (1 - lay.get('bargap', 0.2)) * (cat_axis.unit() if cat_axis.categories is not None else _slot(cats, cat_axis))
     width = full / count if group else full
     shift = (-full / 2 + width * (slot + 0.5)) if group else 0.0
-    colors = t.get('marker', {}).get('color', _trace_color(t, index))
+    marker = t.get('marker', {})
+    colors = marker.get('color', _trace_color(t, index, theme))
+    edge = marker.get('line', {})
+    stroke = f' stroke="{escape(edge["color"])}" stroke-width="{_n(edge.get("width", 0))}"' \
+        if edge.get('color') and edge.get('width', 0) else ''
     texts = t.get('text')
     measures = t.get('measure', [])
     prev = None
@@ -497,10 +656,11 @@ def _bars(svg: _Svg, t: dict, index: int, ax: _Axis, ay: _Axis, slot: int, count
             color = colors[k] if isinstance(colors, (list, tuple)) else colors
         mid = cat_axis.pos(c) + shift
         a, b = sorted((val_axis.pos(s), val_axis.pos(s + v)))
-        if horizontal:
-            svg.rect(a, mid - width / 2, b - a, width, color)
-        else:
-            svg.rect(mid - width / 2, a, width, b - a, color)
+        if v != 0 or t['type'] == 'waterfall':
+            if horizontal:
+                svg.rect(a, mid - width / 2, b - a, width, color, stroke)
+            else:
+                svg.rect(mid - width / 2, a, width, b - a, color, stroke)
         if t['type'] == 'waterfall' and prev is not None:  # connector from the last bar's end
             if horizontal:
                 svg.line(prev[0], prev[1], prev[0], mid - width / 2, '#444', 1)
@@ -522,13 +682,13 @@ def _slot(cats: list, axis: _Axis) -> float:
     return abs(axis.pos(nums[0] + step) - axis.pos(nums[0])) if nums else 1.0
 
 
-def _scatter(svg: _Svg, t: dict, index: int, ax: _Axis, ay: _Axis) -> None:
+def _scatter(svg: _Svg, t: dict, index: int, ax: _Axis, ay: _Axis, theme: dict) -> None:
     ys = list(t.get('y', []))
     xs = list(t.get('x', range(len(ys))))
     pts = [(ax.pos(x), ay.pos(y)) for x, y in zip(xs, ys) if x is not None and y is not None]
     if not pts:
         return
-    mode, color = _mode(t), _trace_color(t, index)
+    mode, color = _mode(t), _trace_color(t, index, theme)
     line = t.get('line', {})
     fill = t.get('fill')
     if fill in ('tozeroy', 'toself'):
@@ -541,7 +701,6 @@ def _scatter(svg: _Svg, t: dict, index: int, ax: _Axis, ay: _Axis) -> None:
                 f'stroke-width="{_n(line.get("width", 2))}"{_dash(line.get("dash"), line.get("width", 2))}/>')
     if 'markers' in mode:
         marker = t.get('marker', {})
-        r = marker.get('size', 6) / 2
         mc = marker.get('color', color)
         for k, (x, y) in enumerate(pts):
             _marker(svg, x, y, marker, mc[k] if isinstance(mc, (list, tuple)) else mc)
@@ -565,12 +724,16 @@ def _marker(svg: _Svg, x: float, y: float, marker: dict, color: str) -> None:
         svg.raw(f'<circle cx="{_n(x)}" cy="{_n(y)}" r="{_n(r)}" fill="{escape(color)}"/>')
 
 
-def _heatmap(svg: _Svg, t: dict, ax: _Axis, ay: _Axis, box) -> None:
+def _heatmap(svg: _Svg, t: dict, ax: _Axis, ay: _Axis) -> None:
+    """Cells (``xgap`` / ``ygap`` px apart) and, with ``texttemplate`` (``%{z}`` / ``%{text}``), their text."""
     z = t.get('z', [])
     cols = list(t.get('x', range(len(z[0]) if z else 0)))
     rows = list(t.get('y', range(len(z))))
     zmin, zmax = _z_range(t)
     scale = t.get('colorscale', 'plasma')
+    gx, gy = t.get('xgap', 0) / 2, t.get('ygap', 0) / 2
+    template, texts = t.get('texttemplate'), t.get('text')
+    font = t.get('textfont', {})
 
     def edges(axis, keys):
         if axis.categories is not None:
@@ -581,11 +744,21 @@ def _heatmap(svg: _Svg, t: dict, ax: _Axis, ay: _Axis, box) -> None:
         hi = mids + [nums[-1] + (nums[-1] - mids[-1] if mids else 0.5)]
         return [(axis.pos(a), axis.pos(b)) for a, b in zip(lo, hi)]
 
-    for (ya, yb), row in zip(edges(ay, rows), z):
-        for (xa, xb), v in zip(edges(ax, cols), row):
-            if v is not None:
-                t_ = 0.0 if zmax == zmin else (v - zmin) / (zmax - zmin)
-                svg.rect(min(xa, xb), min(ya, yb), abs(xb - xa) + 0.5, abs(yb - ya) + 0.5, _color_at(scale, t_))
+    for i, ((ya, yb), row) in enumerate(zip(edges(ay, rows), z)):
+        for j, ((xa, xb), v) in enumerate(zip(edges(ax, cols), row)):
+            if v is None:
+                continue
+            color = _color_at(scale, 0.0 if zmax == zmin else (v - zmin) / (zmax - zmin))
+            left, top = min(xa, xb) + gx, min(ya, yb) + gy
+            wide, tall = abs(xb - xa) - 2 * gx, abs(yb - ya) - 2 * gy
+            svg.rect(left, top, wide + (0.5 if not gx else 0), tall + (0.5 if not gy else 0), color)
+            if template:
+                cell = texts[i][j] if isinstance(texts, (list, tuple)) and i < len(texts) and j < len(texts[i]) else ''
+                value = int(v) if float(v).is_integer() else round(v, 2)
+                label = template.replace('%{z}', str(value)).replace('%{text}', str(cell))
+                lum = sum(c * k for c, k in zip(_rgb(color), (0.299, 0.587, 0.114))) / 255
+                svg.text(left + wide / 2, top + tall / 2, label, size=font.get('size'), family=font.get('family'),
+                         color=font.get('color', 'white' if lum < 0.5 else _INK))
 
 
 def _z_range(t: dict) -> tuple[float, float]:
@@ -593,36 +766,39 @@ def _z_range(t: dict) -> tuple[float, float]:
     return t.get('zmin', min(flat, default=0)), t.get('zmax', max(flat, default=1))
 
 
-def _colorbar(svg: _Svg, t: dict, box) -> None:
+def _colorbar(svg: _Svg, t: dict, where) -> None:
     """A vertical colour bar right of the plot area (32 steps), ticks like the axes."""
-    x0, y0, pw, ph = box
+    right, top, height = where
     zmin, zmax = _z_range(t)
-    scale, bx, steps = t.get('colorscale', 'plasma'), x0 + pw + 12, 32
+    scale, bx, steps = t.get('colorscale', 'plasma'), right + 12, 32
     for k in range(steps):
-        svg.rect(bx, y0 + ph * (1 - (k + 1) / steps), 14, ph / steps + 0.5, _color_at(scale, (k + 0.5) / steps))
+        svg.rect(bx, top + height * (1 - (k + 1) / steps), 14, height / steps + 0.5, _color_at(scale, (k + 0.5) / steps))
     if zmax != zmin:
         ticks, step = _ticks(min(zmin, zmax), max(zmin, zmax), 5)
         for v in ticks:
             if min(zmin, zmax) <= v <= max(zmin, zmax):
-                svg.text(bx + 18, y0 + ph * (1 - (v - zmin) / (zmax - zmin)), _label(v, step), anchor='start')
+                svg.text(bx + 18, top + height * (1 - (v - zmin) / (zmax - zmin)), _label(v, step), anchor='start')
     title = t.get('colorbar', {}).get('title', {})
     text = title.get('text', '') if isinstance(title, dict) else str(title or '')
     if text:
-        svg.text(bx, y0 - 12, text, anchor='start')
+        svg.text(bx, top - 12, text, anchor='start')
 
 
-def _shape(svg: _Svg, s: dict, ax: _Axis, ay: _Axis, box) -> None:
-    x0, y0, pw, ph = box
+def _ref_pos(ref: str, value, full: dict, horizontal: bool) -> float:
+    """A shape / annotation coordinate: 'paper' (the whole plot box), '<axis> domain' (that axis' span), or data."""
+    if ref == 'paper' or ref.endswith(' domain') or ref not in full:
+        if ref.endswith(' domain') and ref.split()[0] in full:
+            a = full[ref.split()[0]]
+            return a.lo_px + float(value) * (a.hi_px - a.lo_px)
+        x0, y0, pw, ph = full['paper']
+        return x0 + float(value) * pw if horizontal else y0 + ph - float(value) * ph
+    return full[ref].pos(value)
 
-    def px(v, ref):
-        return x0 + float(v) * pw if ref in ('paper', 'x domain') else ax.pos(v)
 
-    def py(v, ref):
-        return y0 + ph - float(v) * ph if ref in ('paper', 'y domain') else ay.pos(v)
-
+def _shape(svg: _Svg, s: dict, full: dict) -> None:
     xr, yr = s.get('xref', 'x'), s.get('yref', 'y')
-    a, b = px(s.get('x0', 0), xr), px(s.get('x1', 0), xr)
-    c, d = py(s.get('y0', 0), yr), py(s.get('y1', 0), yr)
+    a, b = _ref_pos(xr, s.get('x0', 0), full, True), _ref_pos(xr, s.get('x1', 0), full, True)
+    c, d = _ref_pos(yr, s.get('y0', 0), full, False), _ref_pos(yr, s.get('y1', 0), full, False)
     line = s.get('line', {})
     color, width = line.get('color', '#444'), line.get('width', 2)
     if s.get('type', 'line') == 'rect':
@@ -634,27 +810,39 @@ def _shape(svg: _Svg, s: dict, ax: _Axis, ay: _Axis, box) -> None:
         svg.line(a, c, b, d, color, width, line.get('dash'))
 
 
-def _annotation(svg: _Svg, note: dict, box, ax, ay) -> None:
+def _annotation(svg: _Svg, note: dict, box, axes: dict) -> None:
     """Text at (x, y) in data (``xref="x"``) or paper coordinates. With ``showarrow`` (plotly's default) the text
-    sits ``ax`` / ``ay`` px away (default -10 / -30) and a line points at (x, y)."""
-    x0, y0, pw, ph = box
-    xr, yr = note.get('xref', 'x'), note.get('yref', 'y')
-    x = x0 + float(note.get('x', 0)) * pw if xr == 'paper' or ax is None else ax.pos(note.get('x', 0))
-    y = y0 + ph - float(note.get('y', 0)) * ph if yr == 'paper' or ay is None else ay.pos(note.get('y', 0))
+    sits ``ax`` / ``ay`` px away (default -10 / -30) and a line points at (x, y). ``bgcolor`` / ``bordercolor``
+    draw a box (``borderpad`` inside)."""
+    full = {'paper': box, **axes}
+    x = _ref_pos(note.get('xref', 'x'), note.get('x', 0), full, True)
+    y = _ref_pos(note.get('yref', 'y'), note.get('y', 0), full, False)
     font = note.get('font', {})
-    color = font.get('color')
+    size = font.get('size', svg.size)
     tx, ty = x, y
     if note.get('showarrow', True):
         tx, ty = x + note.get('ax', -10), y + note.get('ay', -30)
         svg.line(tx, ty + (6 if note.get('ay', -30) < 0 else -6), x, y, note.get('arrowcolor', '#444'), 1)
         svg.raw(f'<circle cx="{_n(x)}" cy="{_n(y)}" r="2" fill="{escape(note.get("arrowcolor", "#444"))}"/>')
     anchor = {'left': 'start', 'right': 'end'}.get(note.get('xanchor'), 'middle')
-    svg.text(tx, ty, note.get('text', ''), anchor=anchor, size=font.get('size'), color=color)
+    valign = {'top': 'top', 'bottom': 'bottom'}.get(note.get('yanchor'), 'middle')
+    if note.get('bgcolor') or note.get('borderwidth'):
+        pad = note.get('borderpad', 1) + note.get('borderwidth', 1)
+        wide, lines = _text_width(note.get('text', ''), size), len(_lines(note.get('text', '')))
+        tall = lines * size * 1.3
+        left = tx - {'start': 0, 'end': wide, 'middle': wide / 2}[anchor] - pad
+        top = ty - {'top': 0, 'bottom': tall, 'middle': tall / 2}[valign] - pad
+        tx += {'start': pad, 'end': -pad, 'middle': 0}[anchor]
+        ty += {'top': pad, 'bottom': -pad, 'middle': 0}[valign]
+        edge = (f' stroke="{escape(note["bordercolor"])}" stroke-width="{_n(note.get("borderwidth", 1))}"'
+                if note.get('bordercolor') else '')
+        svg.rect(left, top, wide + 2 * pad, tall + 2 * pad, note.get('bgcolor', 'rgba(0,0,0,0)'), edge)
+    svg.text(tx, ty, note.get('text', ''), anchor=anchor, size=size, color=font.get('color'), valign=valign)
 
 
 # --- Sankey ------------------------------------------------------------------------------------------
 
-def _sankey(svg: _Svg, t: dict, box) -> None:
+def _sankey(svg: _Svg, t: dict, box, theme: dict) -> None:
     """Columns by longest path from the sources (sinks go to the last column), node height = max(in, out),
     nodes in input order, links as cubic bands (``node.pad`` / ``node.thickness`` as in plotly)."""
     x0, y0, pw, ph = box
@@ -687,7 +875,7 @@ def _sankey(svg: _Svg, t: dict, box) -> None:
             top[i] = y
             y += size[i] * ky + pad
     left = [x0 + (pw - thick) * (d / last if last else 0) for d in depth]
-    colors = node.get('color', COLORWAY)
+    colors = node.get('color', theme['colorway'])
     colors = [colors[i % len(colors)] if isinstance(colors, (list, tuple)) else colors for i in range(n)]
     link_colors = link.get('color', 'rgba(0,0,0,0.2)')
     out_y, in_y = list(top), list(top)
