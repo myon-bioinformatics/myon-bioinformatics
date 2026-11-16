@@ -1608,5 +1608,158 @@ def test_stdlib_min_stand_ins_import_only_the_standard_library():
         assert result.returncode == 0, (file.name, result.stderr)
 
 
+
+# ──── plotly_min（tools/stdlib_min/plotly_min.py）───────────────────────────────────
+
+def _plotly_min():
+    spec = importlib.util.spec_from_file_location("plotly_min", ROOT / "tools" / "stdlib_min" / "plotly_min.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _scales(seed: int, count: int) -> list[float]:
+    """A×10^-N with A in [1, 10) and N in 0..3 picked at random (not hand-picked powers of ten)."""
+    import random
+    rng = random.Random(seed)
+    return [round(rng.uniform(1, 10), 3) * 10 ** -rng.randint(0, 3) for _ in range(count)]
+
+
+def _svg_tree(fig):
+    import xml.etree.ElementTree as ET
+    return ET.fromstring(fig.to_image("svg").decode("utf-8"))
+
+
+_SVG = "{http://www.w3.org/2000/svg}"
+
+
+def test_plotly_min_figure_json_is_plotly_shaped():
+    pm = _plotly_min()
+    go = pm.graph_objects
+    fig = go.Figure(go.Scatter(x=[1, 2], y=[3, 4], line_color="red", line_dash="dash", name="a"))
+    fig.update_layout(title="題", xaxis_title="x [s]", paper_bgcolor="white", font_size=14)
+    fig.add_vline(1.5, line_width=1)
+    data = fig.to_dict()
+    assert data["data"] == [{"type": "scatter", "x": [1, 2], "y": [3, 4], "line": {"color": "red", "dash": "dash"},
+                             "name": "a"}]
+    assert data["layout"] == {"title": {"text": "題"}, "xaxis": {"title": {"text": "x [s]"}},
+                              "paper_bgcolor": "white", "font": {"size": 14},
+                              "shapes": [{"type": "line", "x0": 1.5, "x1": 1.5, "xref": "x", "y0": 0, "y1": 1,
+                                          "yref": "y domain", "line": {"width": 1}}]}
+    assert pm.Figure(json.loads(fig.to_json())).to_dict() == data  # Figure(dict) round trip
+    assert "題" in fig.to_json()
+    with pytest.raises(ValueError):
+        pm.Figure([{"type": "scatter3d"}])
+    with pytest.raises(ValueError):
+        fig.to_image("png")  # SVG only: plotly needs Kaleido + Chrome for raster formats
+
+
+def test_plotly_min_svg_is_deterministic_and_meiryo(tmp_path):
+    pm = _plotly_min()
+    go = pm.graph_objects
+    fig = go.Figure([go.Bar(x=["燃料", "電気"], y=[100, 41], text=["100", "41"]),
+                     go.Scatter(x=["燃料", "電気"], y=[90, 40], name="線")])
+    fig.update_layout(title="🔀 テスト <&>", width=640, height=360)
+    assert fig.to_image() == fig.to_image()
+    root = _svg_tree(fig)
+    assert (root.get("width"), root.get("height")) == ("640", "360")
+    texts = root.iter(_SVG + "text")
+    families = {t.get("font-family") for t in texts}
+    assert families == {pm.FONT} and pm.FONT.startswith("Meiryo")
+    assert any(t.text == "🔀 テスト <&>" for t in root.iter(_SVG + "text"))  # escaped, then parsed back
+    fig.write_image(tmp_path / "f.svg")
+    assert (tmp_path / "f.svg").read_bytes() == fig.to_image()
+    fig.update_layout(font_family="serif")
+    assert {t.get("font-family") for t in _svg_tree(fig).iter(_SVG + "text")} == {"serif"}
+
+
+def test_plotly_min_scatter_is_linear_in_the_data():
+    pm = _plotly_min()
+    go = pm.graph_objects
+    xs, ys = [0.0, 1.0, 2.5, 4.0], [1.0, -2.0, 0.5, 3.0]
+
+    def path(scale: float) -> str:
+        fig = go.Figure(go.Scatter(x=[x * scale for x in xs], y=[y * scale for y in ys], mode="lines"))
+        fig.update_layout(xaxis_range=[0, 4 * scale], yaxis_range=[-2 * scale, 3 * scale], width=480, height=320,
+                          margin=dict(l=40, r=40, t=40, b=40))
+        return next(p.get("d") for p in _svg_tree(fig).iter(_SVG + "path") if p.get("fill") == "none")
+
+    base = path(1.0)
+    pts = [tuple(map(float, part.split())) for part in base[1:].split(" L")]
+    assert pts == [(40 + x / 4 * 400, 280 - (y + 2) / 5 * 240) for x, y in zip(xs, ys)]
+    for scale in _scales(41, 3):  # the picture does not depend on the units
+        assert path(scale) == base, scale
+
+
+def test_plotly_min_bars_and_waterfall():
+    pm = _plotly_min()
+    go = pm.graph_objects
+    fig = go.Figure(go.Bar(y=["a", "b"], x=[3.0, 2.0], base=[-1.0, 0.5], orientation="h", marker_color="#123456"))
+    fig.update_layout(xaxis_range=[-1, 3], width=500, height=300, margin=dict(l=50, r=50, t=50, b=50))
+    bars = [r for r in _svg_tree(fig).iter(_SVG + "rect") if r.get("fill") == "#123456"]
+    assert [(float(r.get("x")), float(r.get("width"))) for r in bars] == [(50.0, 300.0), (50 + 1.5 * 100, 200.0)]
+    steps = [100.0, -6.0, -49.0, -4.0, 0.0]
+    wf = go.Figure(go.Waterfall(x=list("abcde"), y=steps, measure=["absolute", "relative", "relative", "relative", "total"]))
+    wf.update_layout(yaxis_range=[0, 100], width=500, height=300, margin=dict(l=50, r=50, t=50, b=50))
+    rects = [r for r in _svg_tree(wf).iter(_SVG + "rect") if r.get("fill") in pm._WATERFALL.values()]
+    heights = [round(float(r.get("height")), 2) for r in rects]
+    assert heights == [200.0, 12.0, 98.0, 8.0, 82.0]  # 1 unit = 2 px; the total is 100 − 6 − 49 − 4 = 41
+    assert [r.get("fill") for r in rects] == ["#4499FF", "#FF4136", "#FF4136", "#FF4136", "#4499FF"]
+
+
+def test_plotly_min_sankey_keeps_flows_and_ignores_units():
+    pm = _plotly_min()
+    go = pm.graph_objects
+    src, dst, val = [0, 1, 1, 2, 2], [1, 3, 2, 4, 5], [100.0, 6.0, 94.0, 45.0, 49.0]
+
+    def svg(scale: float) -> bytes:
+        fig = go.Figure(go.Sankey(node=dict(label=["燃料", "ボイラ", "蒸気", "煙突", "送電", "海"]),
+                                  link=dict(source=src, target=dst, value=[v * scale for v in val])))
+        return fig.update_layout(width=600, height=400).to_image()
+
+    base = svg(1.0)
+    for scale in _scales(42, 3):
+        assert svg(scale) == base, scale
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(base.decode("utf-8"))
+    nodes = [r for r in root.iter(_SVG + "rect") if r.get("stroke") == "#444"]
+    heights = [float(r.get("height")) for r in nodes]
+    ky = heights[0] / 100.0
+    for got, want in zip(heights, [100, 100, 94, 6, 45, 49]):  # node height = max(in, out)
+        assert abs(got - want * ky) < 0.02
+    bands = [p for p in root.iter(_SVG + "path") if p.get("fill") == "rgba(0,0,0,0.2)"]
+    assert len(bands) == len(val)
+    for band, v in zip(bands, val):  # a band keeps its width from end to end
+        nums = [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", band.get("d"))]
+        assert abs((nums[15] - nums[1]) - v * ky) < 0.02 and abs((nums[9] - nums[7]) - v * ky) < 0.02
+
+
+def test_plotly_min_heatmap_and_html():
+    pm = _plotly_min()
+    go = pm.graph_objects
+    fig = go.Figure(go.Heatmap(z=[[0.0, 1.0], [2.0, 3.0]], colorscale="viridis", showscale=False))
+    fills = [r.get("fill") for r in _svg_tree(fig).iter(_SVG + "rect")]
+    assert pm._SCALES["viridis"][0] in fills and pm._SCALES["viridis"][-1] in fills
+    html = go.Figure(go.Scatter(y=[1, 2], name="</script>")).to_html()
+    assert f"https://cdn.plot.ly/plotly-{pm.PLOTLY_JS}.min.js" in html
+    assert "</script>\"" not in html  # the name cannot close the script tag
+    payload = json.loads(html.split("const f = ", 1)[1].split(";Plotly.newPlot", 1)[0])
+    assert payload["layout"]["font"]["family"] == pm.FONT and payload["data"][0]["name"] == "</script>"
+    assert "<script src" not in go.Figure().to_html(include_plotlyjs=False, full_html=False)
+
+
+@pytest.mark.skipif(importlib.util.find_spec("plotly") is None, reason="plotly is a reference only, not installed")
+def test_plotly_min_matches_plotly_figure_json():
+    import plotly.graph_objects as real
+    pm = _plotly_min()
+    go = pm.graph_objects
+    cases = [(go.Scatter, real.Scatter, dict(x=[1, 2], y=[3, 4], line_color="red", mode="lines")),
+             (go.Bar, real.Bar, dict(y=["a"], x=[2], base=[1], orientation="h", marker_color="#123456")),
+             (go.Waterfall, real.Waterfall, dict(x=["a", "b"], y=[1, -1], measure=["absolute", "relative"])),
+             (go.Sankey, real.Sankey, dict(node=dict(label=["a", "b"]), link=dict(source=[0], target=[1], value=[1]))),
+             (go.Heatmap, real.Heatmap, dict(z=[[1, 2]], colorscale="viridis"))]
+    for mine, theirs, kwargs in cases:
+        assert go.Figure(mine(**kwargs)).to_dict()["data"] == real.Figure(theirs(**kwargs)).to_dict()["data"]
+
 if __name__ == "__main__":
     unittest.main()
