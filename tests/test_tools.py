@@ -1740,12 +1740,50 @@ def test_plotly_min_heatmap_and_html():
     fig = go.Figure(go.Heatmap(z=[[0.0, 1.0], [2.0, 3.0]], colorscale="viridis", showscale=False))
     fills = [r.get("fill") for r in _svg_tree(fig).iter(_SVG + "rect")]
     assert pm._SCALES["viridis"][0] in fills and pm._SCALES["viridis"][-1] in fills
-    html = go.Figure(go.Scatter(y=[1, 2], name="</script>")).to_html()
+    html = go.Figure(go.Scatter(y=[1, 2], name="water < steam")).to_html()
     assert f"https://cdn.plot.ly/plotly-{pm.PLOTLY_JS}.min.js" in html
-    assert "</script>\"" not in html  # the name cannot close the script tag
     payload = json.loads(html.split("const f = ", 1)[1].split(";Plotly.newPlot", 1)[0])
-    assert payload["layout"]["font"]["family"] == pm.FONT and payload["data"][0]["name"] == "</script>"
+    assert payload["layout"]["font"]["family"] == pm.FONT and payload["data"][0]["name"] == "water < steam"
     assert "<script src" not in go.Figure().to_html(include_plotlyjs=False, full_html=False)
+
+
+@pytest.mark.parametrize("text", ["water < steam", "water & steam", 'say "hello"', "single 'quote'"])
+@pytest.mark.parametrize("target", ["figure", "div_id"])
+def test_plotly_min_html_json_preserves_text_without_html_metacharacters(text, target):
+    from html.parser import HTMLParser
+
+    pm = _plotly_min()
+    name = text if target == "figure" else "water"
+    div_id = text if target == "div_id" else "figure"
+    fig = pm.Figure(pm.Scatter(y=[1, 2], name=name))
+    html = fig.to_html(include_plotlyjs=False, full_html=False, div_id=div_id)
+
+    class Document(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.div_ids = []
+            self.script_count = 0
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "div":
+                self.div_ids.append(dict(attrs)["id"])
+            if tag == "script":
+                self.script_count += 1
+
+    document = Document()
+    document.feed(html)
+    assert document.div_ids == [div_id]
+    assert document.script_count == 1
+    inline = html.split("<script>", 1)[1].rsplit("</script>", 1)[0]
+    assert not any(char in inline for char in "<>&")
+    decoder = json.JSONDecoder()
+    figure, end = decoder.raw_decode(inline.removeprefix("const f = "))
+    rest = inline.removeprefix("const f = ")[end:]
+    identifier, end = decoder.raw_decode(rest.removeprefix(";Plotly.newPlot("))
+    assert rest.removeprefix(";Plotly.newPlot(")[end:] == ", f.data, f.layout);"
+    assert figure["data"] == fig.to_dict()["data"]
+    assert figure["layout"]["font"]["family"] == pm.FONT
+    assert identifier == div_id
 
 
 @pytest.mark.skipif(importlib.util.find_spec("plotly") is None, reason="plotly is a reference only, not installed")

@@ -40,6 +40,12 @@ _SCALES = {
 _KEEP = {'paper_bgcolor', 'plot_bgcolor', 'error_x', 'error_y'}  # attribute names that contain "_"
 
 
+def _html_json(value) -> str:
+    """JSON for inline HTML scripts; retain values through JSON Unicode escapes."""
+    return (json.dumps(value, ensure_ascii=False)
+            .replace('&', r'\u0026').replace('<', r'\u003c').replace('>', r'\u003e'))
+
+
 def _plain(value):
     if isinstance(value, dict):
         return {k: _plain(v) for k, v in value.items()}
@@ -155,11 +161,11 @@ class Figure:
         """HTML that draws the figure with plotly.js (``'cdn'`` = script tag to cdn.plot.ly, ``False`` = none)."""
         fig = self.to_dict()
         fig['layout'] = _merge({'font': {'family': FONT}}, fig['layout'])
-        payload = json.dumps(fig, ensure_ascii=False).replace('</', '<\\/')
+        payload = _html_json(fig)
         script = f'<script src="https://cdn.plot.ly/plotly-{PLOTLY_JS}.min.js" charset="utf-8"></script>' \
             if include_plotlyjs == 'cdn' else ''
         div = (f'<div id="{escape(div_id)}"></div>{script}<script>const f = {payload};'
-               f'Plotly.newPlot({json.dumps(div_id)}, f.data, f.layout);</script>')
+               f'Plotly.newPlot({_html_json(div_id)}, f.data, f.layout);</script>')
         if not full_html:
             return div
         return f'<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>{div}</body></html>\n'
