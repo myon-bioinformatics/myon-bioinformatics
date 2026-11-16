@@ -43,6 +43,61 @@ class CurrentRestObservationTests(unittest.TestCase):
         self.assertNotIn('review_coverage', result)
 
 class UnifiedOperationsTests(unittest.TestCase):
+    def test_open_pr_inventory_survives_empty_active_view(self):
+        for numbers in ([], [17, 53, 211]):
+            with self.subTest(numbers=numbers):
+                snap = {'owner': 'demo', 'repositories': ['r'], 'records': [],
+                        'generated_at': '2026-11-15T00:00:00Z',
+                        'integrations': [{'repository': 'r', 'head_sha': 'main'}]}
+                calls = []
+                def fetch(path):
+                    calls.append(path)
+                    if '/pulls?' in path:
+                        return [{'number': n} for n in reversed(numbers)]
+                    return [] if '/issues?' in path else {'open_issues_count': 999}
+                counts = collect_repository_counts(snap, fetch)
+                result = view_data(snap, {'records': [], 'repository_counts': counts}, {}, [])
+                export = result['aoi_integration']
+                self.assertEqual(export['records'], [])
+                self.assertEqual(export['open_pr_inventory'], [dict(repository='demo/r',
+                    checked_at=counts[0]['checked'], complete=True, open_pr_numbers=numbers)])
+                self.assertEqual(len(calls), 3)  # Export reuses inventory, never fetches again.
+
+    def test_open_pulls_remain_independent_of_failed_issue_or_metadata_lookup(self):
+        snap = {'repositories': ['r'], 'integrations': [{'repository': 'r', 'head_sha': 'main'}]}
+        for failure in ('issues', 'metadata'):
+            with self.subTest(failure=failure):
+                def fetch(path):
+                    if '/pulls?' in path:
+                        return [{'number': 43}]
+                    if (failure == 'issues') == ('/issues?' in path):
+                        raise OSError('unavailable')
+                    return [] if '/issues?' in path else {'open_issues_count': 1}
+                row, = collect_repository_counts(snap, fetch)
+                self.assertFalse(row['complete'])  # Existing aggregate count contract stays strict.
+                self.assertIsNone(row['pull_requests'])
+                self.assertTrue(row['pulls_complete'])
+                self.assertEqual(row['open_pr_numbers'], [43])
+
+    def test_partial_or_invalid_pull_inventory_is_unknown_not_zero(self):
+        snap = {'repositories': ['r'], 'integrations': [{'repository': 'r', 'head_sha': 'main'}]}
+        for mode in ('partial', 'duplicate', 'zero', 'bool', 'missing'):
+            with self.subTest(mode=mode):
+                def fetch(path):
+                    if '/pulls?' in path:
+                        if mode == 'partial':
+                            if path.endswith('page=1'):
+                                return [{'number': n} for n in range(1, 101)]
+                            raise OSError('page 2 unavailable')
+                        return {'duplicate': [{'number': 1}, {'number': 1}],
+                                'zero': [{'number': 0}], 'bool': [{'number': True}],
+                                'missing': [{}]}[mode]
+                    return [] if '/issues?' in path else {'open_issues_count': 0}
+                row, = collect_repository_counts(snap, fetch)
+                self.assertFalse(row['complete'])
+                self.assertFalse(row['pulls_complete'])
+                self.assertIsNone(row['open_pr_numbers'])
+
     def test_rest_counts_paginate_issues_and_pulls_separately(self):
         snap = {'owner': 'demo', 'repositories': ['r'],
                 'integrations': [{'repository': 'r', 'head_sha': 'main'}]}
@@ -190,6 +245,16 @@ if __name__=='__main__':unittest.main()
 
 
 class OntologyExportTests(unittest.TestCase):
+    def test_inventory_missing_or_partial_is_not_inferred_from_counts_or_records(self):
+        snap, evidence = self.values()
+        self.assertNotIn('open_pr_inventory', view_data(snap, evidence, {}, [])['aoi_integration'])
+        for row in ({'complete': True, 'pull_requests': 0},
+                    {'complete': False, 'pulls_complete': False, 'open_pr_numbers': [2]}):
+            evidence['repository_counts'] = [dict(row, repository='Demo', checked='2026-11-15T00:00:00Z')]
+            inventory, = view_data(snap, evidence, {}, [])['aoi_integration']['open_pr_inventory']
+            self.assertFalse(inventory['complete'])
+            self.assertIsNone(inventory['open_pr_numbers'])
+
     def values(self):
         snap = {'generated_at': '2026-11-15T00:00:00Z', 'owner': 'myon-bioinformatics',
                 'records': [{'id': 'Demo#2', 'head_sha': 'a'*40, 'changed_files': ['module.py'],
@@ -258,5 +323,86 @@ class OntologyExportTests(unittest.TestCase):
 
     def test_design_is_in_existing_audit_view_and_download_is_same_observation(self):
         app = (Path(__file__).resolve().parents[1] / 'site/ui/unified-app.js').read_text()
-        self.assertIn('return html+ontologyDesign()', app)
+        self.assertIn('return html+convergenceBoard()+ontologyDesign()', app)
         self.assertIn("download('ontautology-snapshot.json',data.aoi_integration)", app)
+
+
+
+class ConvergenceInventoryTests(unittest.TestCase):
+    def test_open_membership_does_not_replace_independent_repository_facts(self):
+        from scripts.unified_operations import ontology_export
+        snap = self.data()
+        before = ontology_export(snap, [], {})['inventory']
+        counts = [dict(repository='Demo', checked=snap['generated_at'],
+                       pulls_complete=True, open_pr_numbers=[])]
+        result = ontology_export(snap, [], {}, counts)
+        self.assertEqual(result['inventory'], before)
+        self.assertEqual(result['open_pr_inventory'], [dict(repository='myon-bioinformatics/Demo',
+            checked_at=snap['generated_at'], complete=True, open_pr_numbers=[])])
+
+    def data(self):
+        snapshot={'owner':'myon-bioinformatics','generated_at':'2026-11-15T00:00:00Z',
+                  'repositories':['Demo'],'records':[],
+                  'integrations':[{'repository':'Demo','branch':'main','head_sha':'a'*40}],
+                  'main_workflows':{'runs':[dict(repository='Demo',run_id=1,attempt=2,name='CI',
+                                                current_main=True,head_sha='a'*40,conclusion='failure',
+                                                status='completed',jobs=[dict(id=2,name='test',conclusion='failure')])]}}
+        return snapshot
+
+    def test_zero_open_pr_still_exports_exact_main_and_run_attempt_job(self):
+        from scripts.unified_operations import ontology_export
+        snap=self.data();result=ontology_export(snap,[],{})
+        self.assertEqual(result['records'],[])
+        repo,=result['inventory'];self.assertEqual(repo['repo'],'myon-bioinformatics/Demo')
+        self.assertEqual(repo['main'],'a'*40);self.assertEqual(repo['state'],'ブロッカー')
+        run,=repo['main_runs'];self.assertEqual((run['id'],run['run_attempt'],run['jobs'][0]['id']),(1,2,2))
+        self.assertTrue(any('未検証' in reason for reason in repo['gaps']))
+
+    def test_old_or_moving_main_run_is_not_attached_to_current_inventory(self):
+        from scripts.unified_operations import ontology_export
+        for update in ({'head_sha':'b'*40},{'current_main':False}):
+            snap=self.data();snap['main_workflows']['runs'][0].update(update)
+            repo,=ontology_export(snap,[],{})['inventory']
+            self.assertEqual(repo['main_runs'],[])
+            self.assertEqual(repo['state'],'調査中')
+
+    def test_only_observed_pins_and_pure_issues_are_exported(self):
+        from scripts.unified_operations import ontology_export
+        snap=self.data();snap['records']=[{'id':'Demo#i3'}]
+        snap['vendor_pins']=[dict(repository='Demo',source_repository='other/source',commit='c'*40,destination='vendor/source.py')]
+        issues=[dict(id='Demo#i3',repository='Demo',kind='issue',number=3,title='Issue',url='https://github.com/myon-bioinformatics/Demo/issues/3')]
+        repo,=ontology_export(snap,issues,{})['inventory']
+        self.assertEqual(len(repo['issues']),1);self.assertEqual(repo['pin_records'][0]['commit'],'c'*40)
+        self.assertNotIn('artifacts',repo['main_runs'][0])
+
+
+class TransferRegistryTests(unittest.TestCase):
+    def test_registry_uses_observed_otl_sha_and_survives_flutter_absence(self):
+        import base64
+        from scripts.unified_operations import collect_transfer_registry, ontology_export
+        doc={'schema':'integration-audit/3','captured_at':'2026-11-15T01:00:00Z','records':[],
+             'transfers':[{'id':'flutter-feature','state':'調査中'}],
+             'transfer_scope':{'source_repository':'myon-bioinformatics/flutter_navigation_basic','inventory_complete':False}}
+        snapshot={'owner':'myon-bioinformatics','generated_at':'2026-11-16T01:00:00Z','records':[],
+                  'repositories':['OnTautoLogy'],'integrations':[{'repository':'OnTautoLogy','branch':'main','head_sha':'a'*40}]}
+        def fetch(path):
+            self.assertTrue(path.endswith('?ref='+'a'*40))
+            self.assertNotIn('/flutter_navigation_basic/',path)
+            return {'sha':'blob','content':base64.b64encode(json.dumps(doc).encode()).decode()}
+        snapshot['transfer_registry']=collect_transfer_registry(snapshot,fetch)
+        result=ontology_export(snapshot,[],{})
+        self.assertEqual(result['records'],[])
+        self.assertEqual(result['transfers'],doc['transfers'])
+        self.assertFalse(result['transfer_scope']['inventory_complete'])
+        self.assertEqual(result['transfer_scope']['registry_sha'],'a'*40)
+
+    def test_unavailable_or_invalid_registry_is_not_reported_as_no_pending(self):
+        from scripts.unified_operations import collect_transfer_registry, ontology_export
+        snapshot={'generated_at':'2026-11-15T01:00:00Z','records':[],'integrations':[]}
+        result=collect_transfer_registry(snapshot,lambda _:self.fail('must not fetch mutable main'))
+        self.assertEqual(result['status'],'未取得')
+        snapshot['transfer_registry']=result
+        self.assertEqual(ontology_export(snapshot,[],{})['transfer_scope']['registry_status'],'未取得')
+        snapshot['integrations']=[{'repository':'OnTautoLogy','branch':'main','head_sha':'a'*40}]
+        def unavailable(_):raise RuntimeError('missing registry')
+        self.assertEqual(collect_transfer_registry(snapshot,unavailable)['status'],'未取得')

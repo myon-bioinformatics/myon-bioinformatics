@@ -115,7 +115,8 @@ def workflow_job(root, job, workflow="ci.yml", node_floor=None, setup=None, inpu
 
     With ``node_floor`` the job must set up that Node major and carry the bash
     guard ``if [[ "$node_major" -lt FLOOR ]]; then … fi``; the guard is run in
-    ``bash`` around the floor and must reject every older major only.
+    ``bash`` around the floor and must reject every older major only (the run
+    is left to the POSIX lanes; on Windows the text of the guard is still checked).
     With ``setup`` (such as ``"astral-sh/setup-uv@"``) the job has exactly one
     ``uses: SETUP…`` step, it comes before the first ``python``/``python3``/``uv``
     command, and that step holds every string of ``inputs``.
@@ -151,7 +152,7 @@ def workflow_job(root, job, workflow="ci.yml", node_floor=None, setup=None, inpu
         assert re.search(r"(?m)^\s*node-version:\s*['\"]?%d['\"]?\s*$" % node_floor, match[1]), f"{where}: no setup of Node {node_floor}"
         guard = re.search(r'(?ms)^([ \t]*)if \[\[ "\$node_major" -lt (\d+) \]\]; then\n.*?^\1fi$', match[1])
         assert guard and int(guard[2]) == node_floor, f"{where}: no node_major guard at {node_floor}"
-        for major in range(node_floor - 2, node_floor + 2):
+        for major in range(node_floor - 2, node_floor + 2) if os.name != "nt" else ():
             done = subprocess.run(["bash", "-c", f"node_major={major}\n{guard[0]}"], capture_output=True, text=True, timeout=30)
             assert done.returncode == (major < node_floor), (where, major, done.stdout, done.stderr)
     return match[1]

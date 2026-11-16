@@ -15,6 +15,7 @@ def collect_repository_counts(snapshot, fetch):
         root = f'/repos/{owner}/{name}'
         row = {'repository': name, 'open_issues_count': None, 'get_issues': None,
                'issues': None, 'pull_requests': None, 'complete': False,
+               'open_pr_numbers': None, 'pulls_complete': False,
                'checked': dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
                'sources': []}
         results.append(row)
@@ -22,9 +23,14 @@ def collect_repository_counts(snapshot, fetch):
             row['error'] = 'main SHA unavailable'
             continue
         try:
-            metadata = fetch(root)
-            inventories = {}
-            for kind in ('issues', 'pulls'):
+            metadata_count = fetch(root)['open_issues_count']
+            row['sources'].append('https://api.github.com' + root)
+        except (ValueError, KeyError, RuntimeError, OSError, TypeError) as exc:
+            row['error'] = type(exc).__name__
+            metadata_count = None
+        inventories = {}
+        for kind in ('issues', 'pulls'):
+            try:
                 items = []
                 for page in range(1, 101):
                     path = f'{root}/{kind}?state=open&per_page=100&page={page}'
@@ -39,15 +45,20 @@ def collect_repository_counts(snapshot, fetch):
                     raise ValueError('REST inventory pagination incomplete')
                 if len({v['number'] for v in items}) != len(items):
                     raise ValueError('REST inventory changed during pagination')
+                if kind == 'pulls':
+                    numbers = [v['number'] for v in items]
+                    if any(type(n) is not int or n < 1 for n in numbers):
+                        raise ValueError('invalid REST pull number')
+                    row.update(open_pr_numbers=sorted(numbers), pulls_complete=True)
                 inventories[kind] = items
+            except (ValueError, KeyError, RuntimeError, OSError, TypeError) as exc:
+                row['error'] = type(exc).__name__
+        if metadata_count is not None and len(inventories) == 2:
             issues, pulls = inventories['issues'], inventories['pulls']
-            row.update(open_issues_count=metadata['open_issues_count'], get_issues=len(issues),
+            row.update(open_issues_count=metadata_count, get_issues=len(issues),
                        issues=sum('pull_request' not in v for v in issues),
                        prs_in_issues=sum('pull_request' in v for v in issues),
                        pull_requests=len(pulls), complete=True)
-            row['sources'].insert(0, 'https://api.github.com' + root)
-        except (ValueError, KeyError, RuntimeError, OSError) as exc:
-            row['error'] = type(exc).__name__
     return results
 
 def _pages(fetch, path, key=None):
@@ -165,7 +176,7 @@ def collect_main_runs(snapshot, fetch):
                        'name': run['name'], 'head_sha': run['head_sha'], 'main_sha': integration['head_sha'],
                        'current_main': stable and run['head_sha'] == integration['head_sha'],
                        'main_stable': stable, 'conclusion': run['conclusion'], 'status': run['status'],
-                       'url': run['html_url'], 'at': run['updated_at'], 'event': run['event'],
+                       'url': run['html_url'], 'at': run['updated_at'], 'event': run['event'], 'workflow_id': run['workflow_id'],
                        'checked': dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
                        'bot': any(s in (run.get('actor', {}).get('login', '')+' '+run['name']).lower()
                                   for s in ('dependabot', 'copilot')), 'jobs': []}
@@ -231,7 +242,28 @@ def snapshot_comparison(snapshot, previous):
     return result
 
 
-def ontology_export(snapshot, records, dependencies):
+def collect_transfer_registry(snapshot, fetch):
+    """Read OTL's ledger at the observed public main SHA; keep archived-source references."""
+    import base64
+    import re
+    source = next((r for r in snapshot.get('integrations', [])
+                   if r['repository'] == 'OnTautoLogy' and r.get('branch') == 'main'), {})
+    ref = source.get('head_sha')
+    result = {'status': '未取得', 'source_repository': 'myon-bioinformatics/OnTautoLogy',
+              'source_sha': ref, 'path': 'examples/flutter-absorption.json'}
+    if not isinstance(ref, str) or not re.fullmatch('[0-9a-f]{40}', ref):
+        return dict(result, error='observed OTL main SHA unavailable')
+    try:
+        value = fetch(f"/repos/myon-bioinformatics/OnTautoLogy/contents/{result['path']}?ref={ref}")
+        document = json.loads(base64.b64decode(value['content']))
+        if document.get('schema') != 'integration-audit/3' or not isinstance(document.get('transfers'), list):
+            raise ValueError('invalid OTL transfer ledger')
+        return dict(result, status='取得済み', source_blob=value.get('sha'), document=document)
+    except (ValueError, KeyError, RuntimeError, OSError, TypeError) as exc:
+        return dict(result, error=type(exc).__name__)
+
+
+def ontology_export(snapshot, records, dependencies, repository_counts=None):
     """Existing observations -> OnTautoLogy integration-audit/3, without network or graph code.
 
     Only GitHub observation fields are exported. Browser-local completion is not merge evidence.
@@ -307,7 +339,9 @@ def ontology_export(snapshot, records, dependencies):
         if files is None:
             gaps.append({'reason': '現headに対応する変更ファイル未取得'})
         row = {'repository': repo, 'number': r['number'], 'title': r.get('title'), 'url': r.get('url'),
-               'state': state, 'merged': r.get('merged'), 'mergeable': r.get('mergeable'), 'draft': r.get('draft'),
+               'state': state, 'github_state': r.get('github_state'), 'merged': r.get('merged'),
+               'merged_at': r.get('merged_at'), 'merge_commit_sha': r.get('merge_sha') or r.get('merge_commit_sha'),
+               'head_ref': r.get('head_ref'), 'mergeable': r.get('mergeable'), 'draft': r.get('draft'),
                'head_sha': sha(r.get('head_sha')), 'base_sha': sha(r.get('base_sha')), 'base': r.get('base_ref'),
                'main_sha': sha(mains.get(r['repository'])), 'contained_in_main': r.get('contained_in_main'),
                'files': files, 'dependencies': deps, 'runs': list(runs.values()),
@@ -322,10 +356,52 @@ def ontology_export(snapshot, records, dependencies):
                 row['pins'].append({'repository': p['source_repository'], 'sha': p['commit'],
                                     'path': p.get('destination'), 'source': p})
         result.append(row)
-    return {'schema': 'integration-audit/3', 'captured_at': snapshot['generated_at'], 'records': result,
+    inventory = []
+    workflows = snapshot.get('main_workflows', {}).get('runs', [])
+    names = set(snapshot.get('repositories', [])) | {r['repository'] for r in snapshot.get('integrations', [])}
+    for name in sorted(names):
+        main = sha(mains.get(name))
+        runs = []
+        for w in workflows:
+            if w['repository'] != name or not w.get('current_main') or not main or w.get('head_sha') != main:
+                continue
+            runs.append({'id': w['run_id'], 'run_attempt': w.get('attempt'), 'head_sha': sha(w.get('head_sha')),
+                         'name': w.get('name'), 'workflow_id': w.get('workflow_id'), 'event': w.get('event'),
+                         'status': w.get('status'), 'conclusion': w.get('conclusion'), 'html_url': w.get('url'),
+                         'jobs': [dict(id=j['id'], name=j.get('name'), conclusion=j.get('conclusion'),
+                                       html_url=j.get('url')) for j in w.get('jobs', [])]})
+        pins = [dict(repository=p['source_repository'], commit=p['commit'], destination=p.get('destination'))
+                for p in snapshot.get('vendor_pins', []) if p.get('repository') == name and sha(p.get('commit'))
+                and isinstance(p.get('source_repository'), str) and p['source_repository'].count('/') == 1]
+        inventory.append({'repo': name if '/' in name else owner + '/' + name,
+                          'main': main, 'main_runs': runs, 'pin_records': pins,
+                          'issues': [dict(number=r['number'], title=r.get('title'), url=r.get('url'))
+                                     for r in records if r['id'] in current and r.get('kind') == 'issue' and r['repository'] == name],
+                          'state': 'ブロッカー' if any(w['conclusion'] in ('failure','timed_out','action_required','startup_failure') for w in runs) else '調査中',
+                          'source_url': 'https://github.com/' + (name if '/' in name else owner + '/' + name),
+                          'gaps': ['main runは既存の取得範囲。jobは取得済みのみ。artifacts・required checks・コピー内容は未検証']})
+    registry = snapshot.get('transfer_registry', {})
+    ledger = registry.get('document', {}) if registry.get('status') == '取得済み' else {}
+    export = {'schema': 'integration-audit/3', 'captured_at': snapshot['generated_at'], 'records': result, 'inventory': inventory,
+            'transfers': ledger.get('transfers', []),
+            'transfer_scope': dict(ledger.get('transfer_scope', {}), registry_status=registry.get('status', '未取得'),
+                                   registry_sha=registry.get('source_sha'), recorded_at=ledger.get('captured_at')),
             'coverage': {'source': 'existing parent audit/evidence observations',
                          'mutations': False, 'completion_scope': 'no inferred completion',
                          'uninterpreted': 'source_record retains original fields; absence is not closure'}}
+    if repository_counts is not None:
+        open_inventory = []
+        for row in repository_counts:
+            numbers = row.get('open_pr_numbers')
+            complete = (row.get('pulls_complete') is True and isinstance(numbers, list)
+                        and all(type(n) is int and n > 0 for n in numbers)
+                        and len(numbers) == len(set(numbers)))
+            repo = row['repository']
+            open_inventory.append({'repository': repo if '/' in repo else owner + '/' + repo,
+                              'checked_at': row.get('checked'), 'complete': complete,
+                              'open_pr_numbers': list(numbers) if complete else None})
+        export['open_pr_inventory'] = open_inventory
+    return export
 
 
 def view_data(snapshot, evidence, history, operations, previous=None):
@@ -407,9 +483,10 @@ def view_data(snapshot, evidence, history, operations, previous=None):
             'fleet': snapshot.get('fleet', {}), 'history': history, 'operations': operations,
             'main_workflows': snapshot.get('main_workflows', {'runs': [], 'errors': [], 'scope': '未取得'}),
             'pswb_migration': migration,
+            'transfer_registry': snapshot.get('transfer_registry', {'status':'未取得'}),
             'catalog': snapshot.get('catalog_observation', {'status': '未取得'}),
             'plan': plan,
-            'aoi_integration': ontology_export(snapshot, normalized, plan['edges']),
+            'aoi_integration': ontology_export(snapshot, normalized, plan['edges'], evidence.get('repository_counts')),
             'source': {'parent_main': parent.get('head_sha') or '', 'kind': 'Pages audit build'}}
 
 
@@ -439,6 +516,7 @@ def write_workspace(snapshot, evidence, history, stage, source_root, previous=No
     (Path(stage) / 'ontautology-snapshot.json').write_text(
         json.dumps(data['aoi_integration'], ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
     return data
+
 
 
 
