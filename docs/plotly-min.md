@@ -1,6 +1,6 @@
 # plotly_min.py
 
-`plotly_min.py` is a stand-in for the plotly `graph_objects` calls our consumers make. It is a single file using only standard modules and runs on Python 3.9+. The source of truth is this repository's `tools/stdlib_min/plotly_min.py`. Consumers lock the exact bytes from here, like the other `tools/stdlib_min/` stand-ins. The first consumer is FluidFullSpeedSimulation (README figures).
+`plotly_min.py` is a stand-in for the plotly `graph_objects` calls our consumers make. It is a single file using only standard modules and runs on Python 3.9+. The source of truth is this repository's `tools/stdlib_min/plotly_min.py`. Consumers lock the exact bytes from here, like the other `tools/stdlib_min/` stand-ins. The planned first consumer is DRAgoWing: it draws the static figures (Sankey, T–Q, tornado, heatmap and so on) from FluidFullSpeedSimulation's `--jsonl` records, and can drop Chrome for SVG export of figures this module covers. FluidFullSpeedSimulation itself keeps to animated GIFs of flows and does not lock this file.
 
 The figure is plotly's own JSON, so `to_dict` / `to_json` / `write_html` feed plotly.js unchanged. Static export is the difference. In plotly.py, `write_image` needs Kaleido 1.x, which drives a Chrome install. Here `to_image` / `write_image` draw SVG with the standard library, in plotly's default look (colorway, `#E5ECF6` plot area, white grid, U+2212 minus on tick labels).
 
