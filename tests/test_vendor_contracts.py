@@ -209,9 +209,21 @@ def test_post_baseline_enrollments_are_registered():
 def test_observed_lock_topology_and_immutable_revision(name):
     if name == "myon-bioinformatics/flutter_navigation_basic":
         pytest.skip("archived 2026-11-18; dropped from live child-heads and vendor tracking")
-    registry = baseline_registry(json.loads((ROOT / "vendor-consumers.json").read_text()))
     heads = vendor_sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
-    fixture = LATEST_FIXTURES.get(name, ROLLOUT_FIXTURES.get(name, REFRESHED_FIXTURES.get(name, FIXTURES[name])))
+    # Ironmate #235 re-observation: the live registry already lists pillow_min from
+    # tools/stdlib_min/. Keep baseline_registry (and the #223 adopted row) unchanged
+    # so observation-transition tests keep their frozen target contract.
+    if name == "myon-bioinformatics/Ironmate":
+        registry = vendor_consumers.validate(json.loads((ROOT / "vendor-consumers.json").read_text()))
+        fixture = {
+            "sha": "2087012cc79d91982a8ab69098ec9c0fe37a4bcd",
+            "repository_id": 1181998414,
+            "lock_sha256": "b2cf9a4d57ac53d46b84a350e6743900898b8675e600f67a18b480373d81c1f0",
+            "lock": json.loads((ROOT / "tests/fixtures/ironmate-stdlib-pillow-min-235.lock.json").read_text()),
+        }
+    else:
+        registry = baseline_registry(json.loads((ROOT / "vendor-consumers.json").read_text()))
+        fixture = LATEST_FIXTURES.get(name, ROLLOUT_FIXTURES.get(name, REFRESHED_FIXTURES.get(name, FIXTURES[name])))
     lock = vendor_sync.validate(fixture["lock"])
     registry = before_replacements(registry, name, lock)
     observed = json.loads((ROOT / "tests/fixtures/parent_observation_20261102.json").read_text())
