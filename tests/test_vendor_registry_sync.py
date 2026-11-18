@@ -437,20 +437,15 @@ def test_historical_layout_requires_deliberate_parent_baseline_update():
     )
 
 
-@pytest.mark.parametrize("baseline", ["historical", "current"])
+# The "current" live baseline was dropped when flutter_navigation_basic was
+# archived 2026-11-18 and removed from child-heads / vendor tracking.
 @pytest.mark.parametrize("fault", [None, "removed", "disabled", "ignored", "command",
                                   "trigger", "digest", "revision", "missing"])
-def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, fault, baseline):
-    if baseline == "current":
-        registry = json.loads((ROOT / "vendor-consumers.json").read_text())
-        heads = json.loads((ROOT / "child-heads.json").read_text())
-        workflow_fixture = "tests/fixtures/flutter_non_dart_ci_python_241.yml"
-        expected_sha = "2797b004499b14c9d530857566e80c0a1dadfd8e"
-    else:
-        registry = load_flutter("vendor-consumers.json")
-        heads = load_flutter("child-heads.json")
-        workflow_fixture = WORKFLOW_FIXTURE
-        expected_sha = "4b0fbfbc14eb2d478af1c7bc8d5a1942a4dad454"
+def test_real_reviewed_workflow_acceptance_and_refresh_rejections(monkeypatch, fault):
+    registry = load_flutter("vendor-consumers.json")
+    heads = load_flutter("child-heads.json")
+    workflow_fixture = WORKFLOW_FIXTURE
+    expected_sha = "4b0fbfbc14eb2d478af1c7bc8d5a1942a4dad454"
     consumer = vendor_consumers.get_consumer(registry, FLUTTER)
     contract = consumer["locked_ci"]
     approved = (ROOT / workflow_fixture).read_bytes()
