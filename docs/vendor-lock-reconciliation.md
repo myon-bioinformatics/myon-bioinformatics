@@ -8,11 +8,12 @@ This lane neither updates a child repository nor enrolls any catalog entry.
 
 ```bash
 python -S vendor_lock_reconcile.py \
-  --consumer myon-bioinformatics/flutter_navigation_basic \
   --consumer myon-bioinformatics/mcp-toolcall-lab \
   --review docs/vendor-registration-review.json \
   --output reports/vendor-lock-reconciliation.json
 ```
+
+`flutter_navigation_basic` was archived 2026-11-18 and dropped from this workflow's `--consumer` list.
 
 Each consumer `main` ref is resolved first to an immutable commit SHA from the
 public Atom feed; the manifest is fetched at that SHA via

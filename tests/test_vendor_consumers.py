@@ -211,7 +211,6 @@ def test_checked_in_registry_and_parent_lock():
         "myon-bioinformatics/Ironmate",
         "myon-bioinformatics/BrowserTestKit",
         "myon-bioinformatics/PySaiyanWeBoo",
-        "myon-bioinformatics/flutter_navigation_basic",
         "myon-bioinformatics/Aoi",
         "myon-bioinformatics/Err-o-RoadRunner",
         "myon-bioinformatics/cli_args",

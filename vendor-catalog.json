@@ -127,10 +127,6 @@
       "reason": "Explicit baseline selected from the inspected default branch for organization-wide single-file coverage; not an automatic promotion.",
       "source": "git_inspector.py",
       "consumers": {
-        "myon-bioinformatics/flutter_navigation_basic": {
-          "enrollment": "skipped",
-          "reason": "retired_after_gh_identity_migration"
-        },
         "myon-bioinformatics/Ironmate": {
           "enrollment": "skipped",
           "reason": "retired_after_gh_identity_migration"
@@ -354,10 +350,6 @@
         "myon-bioinformatics/Err-o-RoadRunner": {
           "enrollment": "enrolled",
           "reason": "already_locked_by_consumer"
-        },
-        "myon-bioinformatics/flutter_navigation_basic": {
-          "enrollment": "enrolled",
-          "reason": "already_locked_by_consumer"
         }
       },
       "default_enrollment": {
@@ -374,10 +366,6 @@
         "myon-bioinformatics/Err-o-RoadRunner": {
           "enrollment": "enrolled",
           "reason": "already_locked_by_consumer"
-        },
-        "myon-bioinformatics/flutter_navigation_basic": {
-          "enrollment": "enrolled",
-          "reason": "already_locked_by_consumer"
         }
       },
       "default_enrollment": {
@@ -392,10 +380,6 @@
       "source": "scripts/check_png.py",
       "consumers": {
         "myon-bioinformatics/Err-o-RoadRunner": {
-          "enrollment": "enrolled",
-          "reason": "already_locked_by_consumer"
-        },
-        "myon-bioinformatics/flutter_navigation_basic": {
           "enrollment": "enrolled",
           "reason": "already_locked_by_consumer"
         }
@@ -446,12 +430,7 @@
       "commit": "2ee9b584340954cb5a2618e6abd8f892544c467b",
       "reason": "Browser evidence image diff loads vendored Ironmate pillow_min (stdlib only); reviewed default-branch merge for browser-test-kit #112. Enroll only with the companion pillow_min lock.",
       "source": "scripts/image_diff.py",
-      "consumers": {
-        "myon-bioinformatics/flutter_navigation_basic": {
-          "enrollment": "enrolled",
-          "reason": "already_locked_by_consumer"
-        }
-      },
+      "consumers": {},
       "default_enrollment": {
         "enrollment": "skipped",
         "reason": "requires_companion_tool"
@@ -464,10 +443,6 @@
       "source": "pillow_min.py",
       "consumers": {
         "myon-bioinformatics/BrowserTestKit": {
-          "enrollment": "enrolled",
-          "reason": "already_locked_by_consumer"
-        },
-        "myon-bioinformatics/flutter_navigation_basic": {
           "enrollment": "enrolled",
           "reason": "already_locked_by_consumer"
         },
@@ -496,12 +471,7 @@
       "commit": "61872b2df6da908152bc8f965832da79dd97d6b9",
       "reason": "Playwright interaction helpers vendored into flutter e2e; explicit consumer enrollment only.",
       "source": "scripts/interaction.mjs",
-      "consumers": {
-        "myon-bioinformatics/flutter_navigation_basic": {
-          "enrollment": "enrolled",
-          "reason": "already_locked_by_consumer"
-        }
-      },
+      "consumers": {},
       "default_enrollment": {
         "enrollment": "skipped",
         "reason": "explicit_consumer_only"
@@ -572,12 +542,7 @@
       "commit": "8d8512fefea38993e5b3695c0706075cf05071ad",
       "source": "scripts/browser_execution.mjs",
       "reason": "Shared browser worker budget and seeded exploration from Flutter #206; updated to reviewed browser-test-kit #85 default-branch merge to bound disappearing-candidate state checks and retain failure receipts. Enrolled only for Flutter #207; interaction.mjs and MIT license remain independently pinned.",
-      "consumers": {
-        "myon-bioinformatics/flutter_navigation_basic": {
-          "enrollment": "enrolled",
-          "reason": "explicit_shared_execution_handoff"
-        }
-      },
+      "consumers": {},
       "default_enrollment": {
         "enrollment": "skipped",
         "reason": "explicit_consumer_only"

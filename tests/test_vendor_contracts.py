@@ -207,6 +207,8 @@ def test_post_baseline_enrollments_are_registered():
 
 @pytest.mark.parametrize("name", sorted(FIXTURES))
 def test_observed_lock_topology_and_immutable_revision(name):
+    if name == "myon-bioinformatics/flutter_navigation_basic":
+        pytest.skip("archived 2026-11-18; dropped from live child-heads and vendor tracking")
     registry = baseline_registry(json.loads((ROOT / "vendor-consumers.json").read_text()))
     heads = vendor_sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
     fixture = LATEST_FIXTURES.get(name, ROLLOUT_FIXTURES.get(name, REFRESHED_FIXTURES.get(name, FIXTURES[name])))
@@ -235,11 +237,11 @@ def test_observed_lock_topology_and_immutable_revision(name):
 
 
 def test_flutter_full_workflow_digest_remains_explicit():
-    registry = json.loads((ROOT / "vendor-consumers.json").read_text())
-    row = vendor_consumers.get_consumer(registry, "myon-bioinformatics/flutter_navigation_basic")
+    # flutter_navigation_basic was archived 2026-11-18 and dropped from live vendor-consumers.json.
+    # Keep the last recorded locked_ci digest against the reviewed workflow fixture.
     workflow = (ROOT / "tests/fixtures/flutter_non_dart_ci_python_241.yml").read_bytes()
-    assert hashlib.sha256(workflow).hexdigest() == row["locked_ci"]["sha256"]
-    assert row["locked_ci"]["workflow"] == ".github/workflows/non-dart.yml"
+    assert hashlib.sha256(workflow).hexdigest() == (
+        "c57e651123c245b2295adfb900613c324324135557aa609e7f2adf600c5393bc")
     assert b"python-vendor-locked:" in workflow
     assert workflow.count(b"vendor_sync.py check --manifest python/vendor.lock.json") == 2
     assert b"vendor_sync.py materialize --manifest python/vendor.lock.json" in workflow
@@ -248,7 +250,8 @@ def test_flutter_full_workflow_digest_remains_explicit():
 def test_observation_does_not_enroll_new_repositories():
     registry = vendor_consumers.validate(json.loads((ROOT / "vendor-consumers.json").read_text()))
     locked = {row["repository"] for row in registry["consumers"] if row["state"] == "locked"}
-    assert set(FIXTURES) == locked
+    # flutter_navigation_basic was archived 2026-11-18 and dropped from live tracking.
+    assert set(FIXTURES) - {"myon-bioinformatics/flutter_navigation_basic"} == locked
 
 
 def test_ironmate_adoption_preserves_previous_snapshot_and_checks_new_entries():
@@ -280,8 +283,8 @@ def test_flutter_python_ci_adoption_preserves_the_adopted_vendor_lock():
     current = REFRESHED_FIXTURES[name]
     assert old["sha"] == "075e08530e6c02b9f0b2194922f244ff047ab23f"
     assert current["lock"] == old["lock"]
-    heads = json.loads((ROOT / "child-heads.json").read_text())
-    assert heads["heads"][name]["pull_number"] == ROLLOUT_FIXTURES[name]["pull_number"] == 241
+    # Live child-heads no longer tracks this repo (archived 2026-11-18); the rollout fixture still records PR 241.
+    assert ROLLOUT_FIXTURES[name]["pull_number"] == 241
 
 
 def test_rename_rollout_is_exact_without_identity_fallback():
@@ -293,6 +296,8 @@ def test_rename_rollout_is_exact_without_identity_fallback():
             "myon-bioinformatics.github.io", "PySaiyanWeBoo", "BrowserTestKit")
     }
     for name, fixture in ROLLOUT_FIXTURES.items():
+        if name == "myon-bioinformatics/flutter_navigation_basic":
+            continue  # archived 2026-11-18; dropped from live child-heads and vendor tracking
         if name in REOBSERVED['adopted']:
             continue  # re-observed later; test_observed_lock_topology_and_immutable_revision checks the newer snapshot
         if name == 'myon-bioinformatics/Aoi':

@@ -71,7 +71,6 @@ jobs:
           set -euo pipefail
           mkdir -p reports
           args=(
-            --consumer myon-bioinformatics/flutter_navigation_basic
             --consumer myon-bioinformatics/mcp-toolcall-lab
             --review docs/vendor-registration-review.json
             --output reports/vendor-lock-reconciliation.json
