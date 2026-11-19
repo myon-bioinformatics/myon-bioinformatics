@@ -148,8 +148,8 @@ def test_njs_launch_is_registered_for_markdown_not_auto_proposed():
     assert len(njs_launch) == 1
     assert njs_launch[0]["action"] == "registered"
     assert njs_launch[0]["destination"] == "vendor/njs_launch.py"
-    assert result["counts"]["registered"] == 3
-    assert result["counts"]["skipped"] == 39
+    assert result["counts"]["registered"] == 4
+    assert result["counts"]["skipped"] == 38
 
 
 # ═══ 🧪 mcp-toolcall-lab ══════════════════════════════════════════════════════════════════════════════════
@@ -193,8 +193,8 @@ def test_njs_launch_is_registered_for_mcp_toolcall_lab_not_auto_proposed():
     assert web_ui[0]["action"] == "needs_registration"
     # The old catalog recommendation is not the desired canonical-module contract.
     assert web_ui[0]["destination"] is None
-    assert result["counts"]["registered"] == 6
-    assert result["counts"]["skipped"] == 37
+    assert result["counts"]["registered"] == 7
+    assert result["counts"]["skipped"] == 36
 
 
 def test_current_planner_registration_matches_immutable_child_lock():
