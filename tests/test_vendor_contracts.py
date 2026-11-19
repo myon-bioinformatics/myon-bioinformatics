@@ -115,9 +115,27 @@ LATEST_FIXTURES.update({name: {**row, 'lock': row.get('lock') or json.loads((ROO
 REFRESHED_FIXTURES.update(LATEST_FIXTURES)
 
 
+REFRESH_20261119 = json.loads((ROOT / "tests/fixtures/parent-child-refresh-20261119.json").read_text())
+
+
+def pre_refresh_heads():
+    heads = json.loads((ROOT / "child-heads.json").read_text())
+    heads["heads"].update(copy.deepcopy(REFRESH_20261119["previous"]["heads"]))
+    return heads
+
+
+def pre_refresh_registry(registry):
+    registry = copy.deepcopy(registry)
+    previous = REFRESH_20261119["previous"]["entries"]
+    for consumer in registry["consumers"]:
+        if consumer["repository"] in previous:
+            consumer["entries"] = copy.deepcopy(previous[consumer["repository"]])
+    return registry
+
+
 def recorded_before_reobservation():
     """child-heads.json and the observation transitions as they stood before those re-observations."""
-    heads = json.loads((ROOT / 'child-heads.json').read_text())
+    heads = pre_refresh_heads()
     heads['heads'].update(copy.deepcopy(REOBSERVED['recorded']['heads']))
     return heads, copy.deepcopy(REOBSERVED['recorded']['transitions'])
 
@@ -158,7 +176,7 @@ def before_replacements(registry, name, lock):
     """``registry`` as ``name``'s reviewed ``lock`` last saw it: the retired entries back if the lock holds no replacement."""
     # Current desired topology can retire copies while frozen observations remain
     # bound to their reviewed old contract. Never rewrite historical fixtures.
-    migrations = json.loads((ROOT / 'vendor-observation-transitions.json').read_text())
+    migrations = REFRESH_20261119["previous"]["transitions"]
     for transition in migrations['transitions']:
         if transition['consumer'] == name and name in {
             'myon-bioinformatics/Aoi', 'myon-bioinformatics/myon-bioinformatics.github.io',
@@ -181,7 +199,7 @@ def before_replacements(registry, name, lock):
 
 
 def baseline_registry(registry):
-    registry = copy.deepcopy(registry)
+    registry = pre_refresh_registry(registry)
     for consumer in registry["consumers"]:
         name = consumer["repository"]
         fixture = REFRESHED_FIXTURES.get(name, FIXTURES.get(name))
@@ -209,7 +227,7 @@ def test_post_baseline_enrollments_are_registered():
 def test_observed_lock_topology_and_immutable_revision(name):
     if name == "myon-bioinformatics/flutter_navigation_basic":
         pytest.skip("archived 2026-11-18; dropped from live child-heads and vendor tracking")
-    heads = vendor_sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
+    heads = vendor_sync.validate_child_heads(pre_refresh_heads())
     # Ironmate #237 has the same lock as #235, including pillow_min from
     # tools/stdlib_min/. Keep the historical #223 contract for transition tests.
     if name == "myon-bioinformatics/Ironmate":
@@ -299,8 +317,8 @@ def test_flutter_python_ci_adoption_preserves_the_adopted_vendor_lock():
 
 
 def test_rename_rollout_is_exact_without_identity_fallback():
-    registry = json.loads((ROOT / "vendor-consumers.json").read_text())
-    heads = vendor_sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
+    registry = pre_refresh_registry(json.loads((ROOT / "vendor-consumers.json").read_text()))
+    heads = vendor_sync.validate_child_heads(pre_refresh_heads())
     assert set(ROLLOUT_FIXTURES) == {
         "myon-bioinformatics/" + name for name in (
             "Ironmate", "Aoi", "flutter_navigation_basic", "Err-o-RoadRunner",
@@ -1097,6 +1115,21 @@ def test_mcp_prior_pswb_transition_keeps_same_frozen_lock():
 # ═══ · pswb consumer migration ═══════════════════════════════════════════════════════════════════════════
 # Canonical PSWB consumers keep old observations strict and new locks exact.
 
+@pytest.mark.parametrize("name", REFRESH_20261119["adopted"])
+def test_refreshed_observation_matches_merged_lock(name):
+    registry = json.loads((ROOT / "vendor-consumers.json").read_text())
+    heads = sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
+    snapshot = REFRESH_20261119["adopted"][name]
+    observed = heads["heads"][name]
+    assert observed["sha"] == snapshot["sha"]
+    assert observed["repository_id"] == snapshot["repository_id"]
+    lock = sync.validate(snapshot["lock"])
+    assert sync._transition_digest(lock) == snapshot["lock_sha256"]
+    assert consumers.compare(registry, lock, name)["matches"]
+    if name != sync.PARENT_REPOSITORY:
+        assert all(row["ref"] == row["commit"] for row in lock["files"])
+
+
 def test_current_transitions_and_aoi_observation_are_consistent():
     registry = json.loads((ROOT / 'vendor-consumers.json').read_text())
     heads = json.loads((ROOT / 'child-heads.json').read_text())
@@ -1105,7 +1138,7 @@ def test_current_transitions_and_aoi_observation_are_consistent():
         assert sync._transition_digest(consumers.get_consumer(registry, row['consumer'])) == row['target_consumer_sha256']
     name = 'myon-bioinformatics/Aoi'
     assert name not in {row['consumer'] for row in transitions['transitions']}
-    snapshot = LATEST_FIXTURES[name]
+    snapshot = REFRESH_20261119["adopted"][name]
     assert heads['heads'][name]['sha'] == snapshot['sha']
     assert heads['heads'][name]['repository_id'] == snapshot['repository_id']
     assert sync._transition_digest(snapshot['lock']) == snapshot['lock_sha256']
@@ -1126,7 +1159,7 @@ def test_merged_lock_matches_its_historical_topology(name):
     assert sync._transition_digest(snapshot['lock']) == snapshot['lock_sha256']
     registry = (copy.deepcopy(PSWB_OBSERVATION_CONTEXT['registry'])
                 if name in PSWB_OBSERVATION_CONTEXT['heads']['heads']
-                else load_pswb_consumer_migration('vendor-consumers.json'))
+                else pre_refresh_registry(load_pswb_consumer_migration('vendor-consumers.json')))
     if name == 'myon-bioinformatics/mcp-toolcall-lab':
         # This frozen snapshot records the PSWB migration before the separate
         # launcher rename. Preserve its evidence, not a claim of current adoption.
