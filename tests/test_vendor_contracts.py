@@ -210,13 +210,12 @@ def test_observed_lock_topology_and_immutable_revision(name):
     if name == "myon-bioinformatics/flutter_navigation_basic":
         pytest.skip("archived 2026-11-18; dropped from live child-heads and vendor tracking")
     heads = vendor_sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
-    # Ironmate #235 re-observation: the live registry already lists pillow_min from
-    # tools/stdlib_min/. Keep baseline_registry (and the #223 adopted row) unchanged
-    # so observation-transition tests keep their frozen target contract.
+    # Ironmate #237 has the same lock as #235, including pillow_min from
+    # tools/stdlib_min/. Keep the historical #223 contract for transition tests.
     if name == "myon-bioinformatics/Ironmate":
         registry = vendor_consumers.validate(json.loads((ROOT / "vendor-consumers.json").read_text()))
         fixture = {
-            "sha": "2087012cc79d91982a8ab69098ec9c0fe37a4bcd",
+            "sha": "4d3713b412f5ecf39df6146af5a3c2bf4c8740ab",
             "repository_id": 1181998414,
             "lock_sha256": "b2cf9a4d57ac53d46b84a350e6743900898b8675e600f67a18b480373d81c1f0",
             "lock": json.loads((ROOT / "tests/fixtures/ironmate-stdlib-pillow-min-235.lock.json").read_text()),
