@@ -84,16 +84,19 @@
       : r.conclusion === 'success' ? '成功' : r.conclusion === 'cancelled' ? '取消' : r.conclusion === 'skipped' ? 'スキップ' : '不明';
     const rows = counts.map(c => {
       const run = latest.get(c.repository) || null;
-      return {repository:c.repository, pull_requests:c.pull_requests ?? 0, issues:c.issues ?? 0,
-        open_issues_count:c.open_issues_count ?? 0, complete:c.complete === true, checked:c.checked || '',
+      return {repository:c.repository, pull_requests:c.pull_requests ?? null, issues:c.issues ?? null,
+        open_issues_count:c.open_issues_count ?? null, complete:c.complete === true, checked:c.checked || '',
         main_ci:run ? {label:label(run), name:run.name || '', url:run.url || '', at:run.at || run.checked || ''} : null};
     }).sort((a, b) => (b.main_ci?.label === '失敗') - (a.main_ci?.label === '失敗') || a.repository.localeCompare(b.repository));
-    const summary = o?.summary || {};
-    return {totals:{repositories:summary.repositories ?? rows.length,
-        pull_requests:summary.pull_requests ?? rows.reduce((n, r) => n + r.pull_requests, 0),
-        issues:summary.issues ?? rows.reduce((n, r) => n + r.issues, 0),
+    const metric = key => {
+      const known = rows.filter(r => r[key] != null);
+      return {total:known.length ? known.reduce((n, r) => n + r[key], 0) : null, repositories:known.length};
+    };
+    const pullRequests = metric('pull_requests'), issues = metric('issues');
+    return {totals:{repositories:o?.summary?.repositories ?? rows.length,
+        pull_requests:pullRequests.total, issues:issues.total,
         main_failed:rows.filter(r => r.main_ci?.label === '失敗').length},
-      rows};
+      coverage:{pull_requests:pullRequests.repositories, issues:issues.repositories}, rows};
   }
   function weekBaseline(weeks, at) {
     const date=new Date(new Date(at).getTime()+9*3600000);

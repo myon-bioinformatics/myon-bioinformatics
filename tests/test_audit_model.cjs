@@ -274,3 +274,35 @@ test('repo overview tolerates missing sections and counts without runs',()=>{
  assert.equal(o.rows.length,1);assert.equal(o.rows[0].main_ci,null);assert.equal(o.totals.repositories,1);assert.equal(o.totals.issues,5);assert.equal(o.totals.main_failed,0);
  assert.deepEqual(m.repoOverview({}).rows,[]);
 });
+test('repo overview never treats missing counts as verified zero or a complete total',()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+ const source=fs.readFileSync(path.join(__dirname,'../site/ui/app.js'),'utf8');
+ const start=source.indexOf('function overview()'),end=source.indexOf('function legacyDetail(',start);
+ const checkedZero={repository:'Zero',pull_requests:0,issues:0,open_issues_count:0,complete:true};
+ const missing={repository:'Unknown',pull_requests:null,issues:null,open_issues_count:null,complete:false};
+ const summary={repositories:3,pull_requests:99,issues:99};
+ const mixed={summary,repository_counts:[checkedZero,missing,{repository:'Partial',pull_requests:2}]};
+ const render=snap=>{
+  const nodes={'#stats':{},'#search':{value:''},'#repo':{value:''},'#scope':{},'#content':{}};
+  vm.runInNewContext(source.slice(start,end)+'\noverview();',{$:key=>nodes[key],esc:String,AuditModel:m,observation:snap});
+  return [nodes['#stats'].innerHTML,nodes['#content'].innerHTML];
+ };
+ const o=m.repoOverview(mixed);
+ assert.equal(o.totals.pull_requests,2);
+ assert.equal(o.totals.issues,0);
+ assert.deepEqual(o.coverage,{pull_requests:2,issues:1});
+ assert.equal(o.rows.find(r=>r.repository==='Unknown').open_issues_count,null);
+ assert.equal(o.rows.find(r=>r.repository==='Zero').open_issues_count,0);
+ const [stats,html]=render(mixed);
+ assert.match(stats,/<small>オープンPR<\/small><strong>02<\/strong><em>取得分のみ（2\/3リポジトリ）/);
+ assert.match(stats,/<small>オープンIssue<\/small><strong>00<\/strong><em>取得分のみ（1\/3リポジトリ）/);
+ assert.match(html,/>Unknown<\/a><small>部分取得<\/small><\/td><td>未取得<\/td><td>未取得<\/td>/);
+ assert.match(html,/>Zero<\/a><\/td><td>0<\/td><td>0<\/td>/);
+ for(const snap of [{summary,repository_counts:[missing]},{}]){
+  const result=m.repoOverview(snap);
+  assert.equal(result.totals.pull_requests,null);
+  assert.equal(result.totals.issues,null);
+  assert.deepEqual(result.coverage,{pull_requests:0,issues:0});
+  assert.match(render(snap)[0],/<small>オープンIssue<\/small><strong>未取得<\/strong>/);
+ }
+});
