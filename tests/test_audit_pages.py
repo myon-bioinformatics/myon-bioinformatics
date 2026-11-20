@@ -103,6 +103,7 @@ class PublicationTests(unittest.TestCase):
         self.assertLess(html.index('href="evidence.html"'), html.index('href="component-ops/"'))
         self.assertFalse((Path(__file__).resolve().parents[1] / "site/ui/index.html").exists())   # assembled, not hand-written
         self.assertEqual(html.count('data-view="history"'), 3)                                    # side, top, footer: one VIEWS list
+        self.assertEqual(html.count('data-view="overview"'), 3)                                   # side, top, footer: one VIEWS list
         self.assertIn('<body data-ui-theme="green">', html)
         self.assertEqual(html, build.observatory_page(None, theme=build.THEME))
         parser = Elements()
