@@ -256,3 +256,21 @@ test('convergence uses current head latest attempt without dropping historical e
   assert.ok(context.output.includes('関連する観測一覧 '+(runs.length+1)+'件'));
  }
 });
+test('repo overview joins counts with the latest current-main run per repository',()=>{
+ const snap={summary:{repositories:2,pull_requests:3,issues:4},
+  repository_counts:[{repository:'Aoi',pull_requests:1,issues:2,open_issues_count:3,complete:true,checked:'2026-11-19T21:27:19+00:00'},{repository:'BlueProbe',pull_requests:2,issues:2,open_issues_count:4,complete:true,checked:'2026-11-19T21:27:20+00:00'}],
+  main_workflows:{runs:[
+   {repository:'Aoi',current_main:true,conclusion:'success',status:'completed',name:'CI',url:'https://github.com/run/1',at:'2026-11-19T00:00:00Z'},
+   {repository:'Aoi',current_main:true,conclusion:'failure',status:'completed',name:'CI',url:'https://github.com/run/2',at:'2026-11-19T01:00:00Z'},
+   {repository:'Aoi',current_main:false,conclusion:'success',status:'completed',name:'CI',url:'https://github.com/run/3',at:'2026-11-19T02:00:00Z'},
+   {repository:'BlueProbe',current_main:true,conclusion:null,status:'in_progress',name:'CI',url:'https://github.com/run/4',at:'2026-11-19T01:00:00Z'}]}};
+ const o=m.repoOverview(snap);
+ assert.equal(o.totals.repositories,2);assert.equal(o.totals.pull_requests,3);assert.equal(o.totals.issues,4);assert.equal(o.totals.main_failed,1);
+ assert.equal(o.rows[0].repository,'Aoi');assert.equal(o.rows[0].main_ci.label,'失敗');assert.equal(o.rows[0].main_ci.url,'https://github.com/run/2');
+ assert.equal(o.rows[1].repository,'BlueProbe');assert.equal(o.rows[1].main_ci.label,'実行中');
+});
+test('repo overview tolerates missing sections and counts without runs',()=>{
+ const o=m.repoOverview({repository_counts:[{repository:'Aoi',pull_requests:0,issues:5,open_issues_count:5,complete:true,checked:''}]});
+ assert.equal(o.rows.length,1);assert.equal(o.rows[0].main_ci,null);assert.equal(o.totals.repositories,1);assert.equal(o.totals.issues,5);assert.equal(o.totals.main_failed,0);
+ assert.deepEqual(m.repoOverview({}).rows,[]);
+});
