@@ -2150,6 +2150,20 @@ def _registry_for_recorded_transitions(registry, document, transitions, monitore
     return result, applied
 
 
+def _compare_observed_heads(recorded_heads, live_heads, parent_repository):
+    """The parent stores its own observation, so its live tip can advance on every merge."""
+    drift = []
+    parent_observation = None
+    for name, live in live_heads.items():
+        recorded = recorded_heads[name]
+        row = {"repository": name, "recorded": recorded["sha"], "live": live["sha"]}
+        if name.casefold() == parent_repository.casefold():
+            parent_observation = row
+        elif recorded["sha"] != live["sha"]:
+            drift.append(row)
+    return drift, parent_observation
+
+
 @_parent_fetch_scope
 def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, token=None,
                         autofix=False, parent_repository=PARENT_REPOSITORY, local_roots=None,
@@ -2173,7 +2187,6 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
             audit_registry, document, json.loads(transitions_path.read_text(encoding="utf-8")),
             monitored, token=token,
         )
-    drift = []
     identity_failures = []
     missing_heads = []
     extra_heads, extra_heads_excluded = _split_extra_heads(
@@ -2190,12 +2203,6 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
             prior_record=recorded,
         )
         live_heads[name] = live
-        if recorded["sha"] != live["sha"]:
-            drift.append({
-                "repository": name,
-                "recorded": recorded["sha"],
-                "live": live["sha"],
-            })
         try:
             verify_repository_id_identity(
                 expected_repository_id=recorded["repository_id"],
@@ -2206,6 +2213,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
                 "repository": name,
                 "message": str(error),
             })
+    drift, parent_observation = _compare_observed_heads(document["heads"], live_heads, parent_repository)
     if skip_source_diff:
         diff_report = {"schema": "source-diff-report/1", "findings": [], "finding_count": 0,
                        "scan_errors": [], "scan_error_count": 0, "skipped": True}
@@ -2250,13 +2258,16 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
     heads_dropped_unmonitored_count = len(set(document["heads"]) - set(monitored))
     needs_heads_refresh = bool(drift) or bool(missing_heads)
     if autofix and needs_heads_refresh and token:
-        proposed_heads = {
-            name: fetch_child_head_record(
+        proposed_heads = {}
+        for name in monitored:
+            recorded = document["heads"].get(name)
+            if recorded is not None and name.casefold() == parent_repository.casefold():
+                proposed_heads[name] = recorded
+                continue
+            proposed_heads[name] = fetch_child_head_record(
                 name, ref, remotes=remotes, token=token, repo_fetch=repo_fetch,
-                prior_record=document["heads"].get(name),
+                prior_record=recorded,
             )
-            for name in monitored
-        }
         drift_candidates = []
         for name in monitored:
             recorded = document["heads"].get(name)
@@ -2327,6 +2338,7 @@ def run_parent_child_ci(registry, document, *, parent_root=".", remotes=None, to
         "extra_heads_excluded_count": extra_heads_excluded,
         "drift": drift,
         "drift_count": len(drift),
+        "parent_observation": parent_observation,
         "identity_failures": identity_failures,
         "identity_failure_count": len(identity_failures),
         "template_failures": template_failures,
@@ -2357,7 +2369,6 @@ def check_child_heads(registry, document, *, remotes=None, token=None, parent_re
                         local_roots=None, local_consumers=None):
     document = validate_child_heads(document)
     ref = document["ref"]
-    drift = []
     live_heads = {}
     for name in monitored_repositories(registry, token=token):
         recorded = document["heads"].get(name)
@@ -2367,12 +2378,7 @@ def check_child_heads(registry, document, *, remotes=None, token=None, parent_re
             name, ref, remotes=remotes, token=token, prior_record=recorded,
         )
         live_heads[name] = live
-        if recorded["sha"] != live["sha"]:
-            drift.append({
-                "repository": name,
-                "recorded": recorded["sha"],
-                "live": live["sha"],
-            })
+    drift, parent_observation = _compare_observed_heads(document["heads"], live_heads, parent_repository)
     monitored = monitored_repositories(registry, token=token)
     extra, extra_excluded = _split_extra_heads(
         document["heads"], monitored, token=token,
@@ -2396,6 +2402,7 @@ def check_child_heads(registry, document, *, remotes=None, token=None, parent_re
         "ref": ref,
         "drift": drift,
         "drift_count": len(drift),
+        "parent_observation": parent_observation,
         "pin_audit": pin_report,
         "failure_count": len(drift) + pin_report["failure_count"],
     }
@@ -2860,8 +2867,15 @@ def _write_audit_summary(report, summary_path):
 
 
 def _write_child_heads_summary(report, summary_path):
-    lines = ["## Parent child CI", ""]
-    if report.get("schema") == "parent-child-ci/1":
+    parent_ci = report.get("schema") == "parent-child-ci/1"
+    lines = ["## Parent child CI" if parent_ci else "## Child head and pin audit", ""]
+    parent = report.get("parent_observation")
+    if parent:
+        lines.extend([
+            f"Parent SHA observation (report only): `{parent['repository']}` "
+            f"recorded `{parent['recorded']}`, live `{parent['live']}`.", "",
+        ])
+    if parent_ci:
         for row in report.get("pending_enrollments", []):
             lines.append(
                 f"Pending enrollment (report only): {row['consumer']} "
@@ -2958,7 +2972,6 @@ def _write_child_heads_summary(report, summary_path):
                 )
         Path(summary_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
         return
-    lines = ["## Child head and pin audit", ""]
     if report["drift_count"]:
         lines.append(f"**{report['drift_count']} child head(s) drifted from child-heads.json.**")
         lines.append("")

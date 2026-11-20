@@ -256,3 +256,70 @@ test('convergence uses current head latest attempt without dropping historical e
   assert.ok(context.output.includes('関連する観測一覧 '+(runs.length+1)+'件'));
  }
 });
+test('repo overview joins counts with the latest current-main run per repository',()=>{
+ const snap={summary:{repositories:2,pull_requests:3,issues:4},
+  repository_counts:[{repository:'Aoi',pull_requests:1,issues:2,open_issues_count:3,complete:true,checked:'2026-11-19T21:27:19+00:00'},{repository:'BlueProbe',pull_requests:2,issues:2,open_issues_count:4,complete:true,checked:'2026-11-19T21:27:20+00:00'}],
+  main_workflows:{runs:[
+   {repository:'Aoi',current_main:true,conclusion:'success',status:'completed',name:'CI',url:'https://github.com/run/1',at:'2026-11-19T00:00:00Z'},
+   {repository:'Aoi',current_main:true,conclusion:'failure',status:'completed',name:'CI',url:'https://github.com/run/2',at:'2026-11-19T01:00:00Z'},
+   {repository:'Aoi',current_main:false,conclusion:'success',status:'completed',name:'CI',url:'https://github.com/run/3',at:'2026-11-19T02:00:00Z'},
+   {repository:'BlueProbe',current_main:true,conclusion:null,status:'in_progress',name:'CI',url:'https://github.com/run/4',at:'2026-11-19T01:00:00Z'}]}};
+ const o=m.repoOverview(snap);
+ assert.equal(o.totals.repositories,2);assert.equal(o.totals.pull_requests,3);assert.equal(o.totals.issues,4);assert.equal(o.totals.main_failed,1);
+ assert.equal(o.rows[0].repository,'Aoi');assert.equal(o.rows[0].main_ci.label,'失敗');assert.equal(o.rows[0].main_ci.url,'https://github.com/run/2');
+ assert.equal(o.rows[1].repository,'BlueProbe');assert.equal(o.rows[1].main_ci.label,'実行中');
+});
+test('repo overview tolerates missing sections and counts without runs',()=>{
+ const o=m.repoOverview({repository_counts:[{repository:'Aoi',pull_requests:0,issues:5,open_issues_count:5,complete:true,checked:''}]});
+ assert.equal(o.rows.length,1);assert.equal(o.rows[0].main_ci,null);assert.equal(o.totals.repositories,1);assert.equal(o.totals.issues,5);assert.equal(o.totals.main_failed,0);
+ assert.deepEqual(m.repoOverview({}).rows,[]);
+});
+test('repo overview never treats missing counts as verified zero or a complete total',()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+ const source=fs.readFileSync(path.join(__dirname,'../site/ui/app.js'),'utf8');
+ const start=source.indexOf('function overview()'),end=source.indexOf('function legacyDetail(',start);
+ const checkedZero={repository:'Zero',pull_requests:0,issues:0,open_issues_count:0,complete:true};
+ const missing={repository:'Unknown',pull_requests:null,issues:null,open_issues_count:null,complete:false};
+ const summary={repositories:3,pull_requests:99,issues:99};
+ const mixed={summary,repository_counts:[checkedZero,missing,{repository:'Partial',pull_requests:2}]};
+ const render=snap=>{
+  const nodes={'#stats':{},'#search':{value:''},'#repo':{value:''},'#scope':{},'#content':{}};
+  vm.runInNewContext(source.slice(start,end)+'\noverview();',{$:key=>nodes[key],esc:String,AuditModel:m,observation:snap});
+  return [nodes['#stats'].innerHTML,nodes['#content'].innerHTML];
+ };
+ const o=m.repoOverview(mixed);
+ assert.equal(o.totals.pull_requests,2);
+ assert.equal(o.totals.issues,0);
+ assert.deepEqual(o.coverage,{pull_requests:2,issues:1});
+ assert.equal(o.rows.find(r=>r.repository==='Unknown').open_issues_count,null);
+ assert.equal(o.rows.find(r=>r.repository==='Zero').open_issues_count,0);
+ const [stats,html]=render(mixed);
+ assert.match(stats,/<small>オープンPR<\/small><strong>02<\/strong><em>取得分のみ（2\/3リポジトリ）/);
+ assert.match(stats,/<small>オープンIssue<\/small><strong>00<\/strong><em>取得分のみ（1\/3リポジトリ）/);
+ assert.match(html,/>Unknown<\/a><small>部分取得<\/small><\/td><td>未取得<\/td><td>未取得<\/td>/);
+ assert.match(html,/>Zero<\/a><\/td><td>0<\/td><td>0<\/td>/);
+ const independent={repository_counts:[
+  {...checkedZero,pulls_complete:true,open_pr_numbers:[7,9]},
+  {...missing,repository:'VerifiedZero',pulls_complete:true,open_pr_numbers:[]},
+  {...missing,repository:'VerifiedOne',pulls_complete:true,open_pr_numbers:[7]},
+  {...missing,repository:'Stale',pulls_complete:false,open_pr_numbers:[7,9]},
+  {...missing,repository:'Duplicate',pulls_complete:true,open_pr_numbers:[7,7]},
+  {...missing,repository:'Malformed',pulls_complete:true,open_pr_numbers:['7']}
+ ]};
+ const independentOverview=m.repoOverview(independent);
+ assert.equal(independentOverview.totals.pull_requests,1);
+ assert.equal(independentOverview.totals.issues,0);
+ assert.deepEqual(independentOverview.coverage,{pull_requests:3,issues:1});
+ const [indStats,indHtml]=render(independent);
+ assert.match(indStats,/<small>オープンPR<\/small><strong>01<\/strong><em>取得分のみ（3\/6リポジトリ）/);
+ assert.match(indHtml,/>VerifiedZero<\/a><small>部分取得<\/small><\/td><td>0<\/td><td>未取得<\/td>/);
+ assert.match(indHtml,/>VerifiedOne<\/a><small>部分取得<\/small><\/td><td>1<\/td><td>未取得<\/td>/);
+ assert.match(indHtml,/>Stale<\/a><small>部分取得<\/small><\/td><td>未取得<\/td><td>未取得<\/td>/);
+ for(const snap of [{summary,repository_counts:[missing]},{}]){
+  const result=m.repoOverview(snap);
+  assert.equal(result.totals.pull_requests,null);
+  assert.equal(result.totals.issues,null);
+  assert.deepEqual(result.coverage,{pull_requests:0,issues:0});
+  assert.match(render(snap)[0],/<small>オープンIssue<\/small><strong>未取得<\/strong>/);
+ }
+});

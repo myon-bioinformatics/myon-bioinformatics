@@ -70,6 +70,40 @@
     return {added:current.filter(r=>!old.has(r.id)), gone:previous.filter(r=>!now.has(r.id)),
       changed:current.filter(r=>old.has(r.id) && tracked.some(k=>JSON.stringify(r[k])!==JSON.stringify(old.get(r.id)[k])))};
   }
+  const mainFailed = new Set(['failure','timed_out','action_required','startup_failure']);
+  function repoOverview(o) {
+    const counts = Array.isArray(o?.repository_counts) ? o.repository_counts : [];
+    const runs = Array.isArray(o?.main_workflows?.runs) ? o.main_workflows.runs : [];
+    const latest = new Map();
+    for (const r of runs) {
+      if (!r || r.current_main !== true || typeof r.repository !== 'string') continue;
+      const old = latest.get(r.repository);
+      if (!old || String(r.at || r.checked || '') > String(old.at || old.checked || '')) latest.set(r.repository, r);
+    }
+    const label = r => mainFailed.has(r.conclusion) ? '失敗' : r.status !== 'completed' || r.conclusion == null ? '実行中'
+      : r.conclusion === 'success' ? '成功' : r.conclusion === 'cancelled' ? '取消' : r.conclusion === 'skipped' ? 'スキップ' : '不明';
+    const openPullCount = c => {
+      if (Number.isInteger(c.pull_requests) && c.pull_requests >= 0) return c.pull_requests;
+      const ids = c.open_pr_numbers;
+      return c.pulls_complete === true && Array.isArray(ids) &&
+        ids.every(n => Number.isInteger(n) && n > 0) && new Set(ids).size === ids.length ? ids.length : null;
+    };
+    const rows = counts.map(c => {
+      const run = latest.get(c.repository) || null;
+      return {repository:c.repository, pull_requests:openPullCount(c), issues:c.issues ?? null,
+        open_issues_count:c.open_issues_count ?? null, complete:c.complete === true, checked:c.checked || '',
+        main_ci:run ? {label:label(run), name:run.name || '', url:run.url || '', at:run.at || run.checked || ''} : null};
+    }).sort((a, b) => (b.main_ci?.label === '失敗') - (a.main_ci?.label === '失敗') || a.repository.localeCompare(b.repository));
+    const metric = key => {
+      const known = rows.filter(r => r[key] != null);
+      return {total:known.length ? known.reduce((n, r) => n + r[key], 0) : null, repositories:known.length};
+    };
+    const pullRequests = metric('pull_requests'), issues = metric('issues');
+    return {totals:{repositories:o?.summary?.repositories ?? rows.length,
+        pull_requests:pullRequests.total, issues:issues.total,
+        main_failed:rows.filter(r => r.main_ci?.label === '失敗').length},
+      coverage:{pull_requests:pullRequests.repositories, issues:issues.repositories}, rows};
+  }
   function weekBaseline(weeks, at) {
     const date=new Date(new Date(at).getTime()+9*3600000);
     const day=date.getUTCDay() || 7;
@@ -77,7 +111,7 @@
     const monday=date.getTime()-9*3600000;
     return weeks.filter(w=>new Date(w.at).getTime()<monday).sort((a,b)=>new Date(a.at)-new Date(b.at)).at(-1);
   }
-  const model={normalize,mergeRecord,importBundle,completedRecords,priority,diff,weekBaseline};
+  const model={normalize,mergeRecord,importBundle,completedRecords,priority,diff,weekBaseline,repoOverview};
   if (typeof module !== 'undefined') module.exports=model;
   else root.AuditModel=model;
 })(typeof window === 'undefined'?{}:window);

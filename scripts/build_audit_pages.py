@@ -29,7 +29,7 @@ BASE_URL = 'https://myon-bioinformatics.github.io/myon-bioinformatics'
 
 # The observatory page is assembled here, not kept as a hand-written site/ui/index.html: every list below is written once.
 # (view, icon, label in the top and footer rows, label in the side navigation)
-VIEWS = (('all', '▤', '監査一覧', '監査ワークスペース'), ('focus', '◎', '優先対応', '優先対応'),
+VIEWS = (('all', '▤', '監査一覧', '監査ワークスペース'), ('overview', '▥', '概要', 'リポジトリ概要'), ('focus', '◎', '優先対応', '優先対応'),
          ('dependencies', '⇄', '依存・統合順序・固定SHA', '依存・統合順序・固定SHA'), ('progress', '▦', '共通化の進捗', '共通化の進捗'),
          ('history', '◷', '週次記録', '週次スナップショット'), ('done', '✓', '完了記録', '完了記録'))
 LINKS = (('#pswb-migration', 'PSWB #141 統合順序'), ('workspace.html', '運用の確認・記録'), ('evidence.html', '◉ GitHub検証証跡 ↗'), ('component-ops/', '利用導線・責務移管 ↗'))  # other pages, before the actions
