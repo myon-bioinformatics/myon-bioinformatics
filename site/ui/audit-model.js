@@ -82,9 +82,15 @@
     }
     const label = r => mainFailed.has(r.conclusion) ? '失敗' : r.status !== 'completed' || r.conclusion == null ? '実行中'
       : r.conclusion === 'success' ? '成功' : r.conclusion === 'cancelled' ? '取消' : r.conclusion === 'skipped' ? 'スキップ' : '不明';
+    const openPullCount = c => {
+      if (Number.isInteger(c.pull_requests) && c.pull_requests >= 0) return c.pull_requests;
+      const ids = c.open_pr_numbers;
+      return c.pulls_complete === true && Array.isArray(ids) &&
+        ids.every(n => Number.isInteger(n) && n > 0) && new Set(ids).size === ids.length ? ids.length : null;
+    };
     const rows = counts.map(c => {
       const run = latest.get(c.repository) || null;
-      return {repository:c.repository, pull_requests:c.pull_requests ?? null, issues:c.issues ?? null,
+      return {repository:c.repository, pull_requests:openPullCount(c), issues:c.issues ?? null,
         open_issues_count:c.open_issues_count ?? null, complete:c.complete === true, checked:c.checked || '',
         main_ci:run ? {label:label(run), name:run.name || '', url:run.url || '', at:run.at || run.checked || ''} : null};
     }).sort((a, b) => (b.main_ci?.label === '失敗') - (a.main_ci?.label === '失敗') || a.repository.localeCompare(b.repository));

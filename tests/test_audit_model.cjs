@@ -298,6 +298,23 @@ test('repo overview never treats missing counts as verified zero or a complete t
  assert.match(stats,/<small>オープンIssue<\/small><strong>00<\/strong><em>取得分のみ（1\/3リポジトリ）/);
  assert.match(html,/>Unknown<\/a><small>部分取得<\/small><\/td><td>未取得<\/td><td>未取得<\/td>/);
  assert.match(html,/>Zero<\/a><\/td><td>0<\/td><td>0<\/td>/);
+ const independent={repository_counts:[
+  {...checkedZero,pulls_complete:true,open_pr_numbers:[7,9]},
+  {...missing,repository:'VerifiedZero',pulls_complete:true,open_pr_numbers:[]},
+  {...missing,repository:'VerifiedOne',pulls_complete:true,open_pr_numbers:[7]},
+  {...missing,repository:'Stale',pulls_complete:false,open_pr_numbers:[7,9]},
+  {...missing,repository:'Duplicate',pulls_complete:true,open_pr_numbers:[7,7]},
+  {...missing,repository:'Malformed',pulls_complete:true,open_pr_numbers:['7']}
+ ]};
+ const independentOverview=m.repoOverview(independent);
+ assert.equal(independentOverview.totals.pull_requests,1);
+ assert.equal(independentOverview.totals.issues,0);
+ assert.deepEqual(independentOverview.coverage,{pull_requests:3,issues:1});
+ const [indStats,indHtml]=render(independent);
+ assert.match(indStats,/<small>オープンPR<\/small><strong>01<\/strong><em>取得分のみ（3\/6リポジトリ）/);
+ assert.match(indHtml,/>VerifiedZero<\/a><small>部分取得<\/small><\/td><td>0<\/td><td>未取得<\/td>/);
+ assert.match(indHtml,/>VerifiedOne<\/a><small>部分取得<\/small><\/td><td>1<\/td><td>未取得<\/td>/);
+ assert.match(indHtml,/>Stale<\/a><small>部分取得<\/small><\/td><td>未取得<\/td><td>未取得<\/td>/);
  for(const snap of [{summary,repository_counts:[missing]},{}]){
   const result=m.repoOverview(snap);
   assert.equal(result.totals.pull_requests,null);
