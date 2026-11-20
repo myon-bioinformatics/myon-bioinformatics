@@ -118,6 +118,20 @@ REFRESHED_FIXTURES.update(LATEST_FIXTURES)
 REFRESH_20261119 = json.loads((ROOT / "tests/fixtures/parent-child-refresh-20261119.json").read_text())
 
 
+def assert_reviewed_or_advanced(heads, name, reviewed_sha):
+    """🔁 ``name``'s recorded head is the reviewed revision, or a later main with the same lock.
+
+    A dated fixture fixes the reviewed lock and the repository id. When only the child's SHA moves
+    (the lock bytes stay the same), ``vendor_sync.py refresh-child-heads`` records the new main and
+    the parent CI (``run-parent-child-ci``) re-reads the lock at that SHA online, so no new fixture
+    is needed here. Heads rebuilt from a fixture's ``previous`` stay exact.
+    """
+    sha = heads["heads"][name]["sha"]
+    assert len(sha) == 40 and set(sha) <= set("0123456789abcdef")
+    if name in REFRESH_20261119["previous"]["heads"] and heads["heads"][name] == REFRESH_20261119["previous"]["heads"][name]:
+        assert sha == reviewed_sha
+
+
 def pre_refresh_heads():
     heads = json.loads((ROOT / "child-heads.json").read_text())
     heads["heads"].update(copy.deepcopy(REFRESH_20261119["previous"]["heads"]))
@@ -253,7 +267,7 @@ def test_observed_lock_topology_and_immutable_revision(name):
         digest = hashlib.sha256(json.dumps(lock, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         assert digest == observed[name]["lock_sha256"]
         expected_sha = observed[name]["sha"]
-    assert heads["heads"][name]["sha"] == expected_sha
+    assert_reviewed_or_advanced(heads, name, expected_sha)
     assert vendor_consumers.compare(registry, lock, name)["matches"]
     if name != vendor_sync.PARENT_REPOSITORY:
         assert all(row["ref"] == row["commit"] for row in lock["files"])
@@ -1121,7 +1135,7 @@ def test_refreshed_observation_matches_merged_lock(name):
     heads = sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
     snapshot = REFRESH_20261119["adopted"][name]
     observed = heads["heads"][name]
-    assert observed["sha"] == snapshot["sha"]
+    assert_reviewed_or_advanced(heads, name, snapshot["sha"])
     assert observed["repository_id"] == snapshot["repository_id"]
     lock = sync.validate(snapshot["lock"])
     assert sync._transition_digest(lock) == snapshot["lock_sha256"]
@@ -1139,7 +1153,7 @@ def test_current_transitions_and_aoi_observation_are_consistent():
     name = 'myon-bioinformatics/Aoi'
     assert name not in {row['consumer'] for row in transitions['transitions']}
     snapshot = REFRESH_20261119["adopted"][name]
-    assert heads['heads'][name]['sha'] == snapshot['sha']
+    assert_reviewed_or_advanced(heads, name, snapshot['sha'])
     assert heads['heads'][name]['repository_id'] == snapshot['repository_id']
     assert sync._transition_digest(snapshot['lock']) == snapshot['lock_sha256']
     with patch.object(sync, '_load_recorded_child_lock', side_effect=AssertionError('retired observation read')):
