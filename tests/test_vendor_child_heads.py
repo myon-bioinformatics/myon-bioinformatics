@@ -342,6 +342,78 @@ def test_run_parent_child_ci_detects_sha_drift(tmp_path, monkeypatch):
     assert report["failure_count"] == 1
 
 
+@pytest.fixture
+def parent_and_child_heads(tmp_path, monkeypatch):
+    parent, child = "owner/parent", "owner/parent.github.io"
+    recorded = {parent: {**_head("a" * 40, 1), "pull_number": 7}, child: _head("b" * 40, 2)}
+    document = {"schema": sync.CHILD_HEADS_SCHEMA, "ref": "main", "heads": recorded}
+    live = {parent: _head("c" * 40, 1), child: dict(recorded[child])}
+    registry = _registry(parent)
+    registry["consumers"].extend(_registry(child)["consumers"])
+    (tmp_path / "templates").mkdir()
+    (tmp_path / sync.CHILD_CI_TEMPLATE).write_text("name: stub\n")
+    (tmp_path / "vendor.lock.json").write_text(json.dumps(_lock("a" * 40)))
+    (tmp_path / "vendor").mkdir()
+    (tmp_path / "vendor/tool.py").write_bytes(b"tool\n")
+
+    monkeypatch.setattr(sync, "monitored_repositories", lambda *a, **kw: list(recorded))
+    monkeypatch.setattr(sync, "fetch_child_head", lambda name, *a, **kw: live[name]["sha"])
+    monkeypatch.setattr(sync, "_live_consumer_repository_record", lambda name, **kw: {
+        "full_name": name, "id": live[name]["repository_id"], "private": False,
+        "visibility": "public", "archived": False,
+    })
+    monkeypatch.setattr(sync, "_lookup_child_main_pull_number", lambda *a: None)
+    monkeypatch.setattr(sync, "audit_child_workflow_templates", lambda *a, **kw: {"failures": [], "missing": []})
+    return parent, child, registry, document, live
+
+
+@pytest.mark.parametrize("child_drift", [False, True])
+def test_parent_observation_is_separate_from_child_drift(parent_and_child_heads, tmp_path, monkeypatch, child_drift):
+    parent, child, registry, document, live = parent_and_child_heads
+    recorded = document["heads"]
+    if child_drift:
+        live[child]["sha"] = "d" * 40
+
+    def audit_pins(*args, consumer_revisions, **kwargs):
+        assert consumer_revisions == {name: entry["sha"] for name, entry in recorded.items()}
+        return {"failures": [], "failure_count": 0}
+
+    monkeypatch.setattr(sync, "audit_registry_merged_pins", audit_pins)
+    ci = sync.run_parent_child_ci(registry, document, parent_repository=parent, parent_root=tmp_path,
+                                  skip_source_diff=True)
+    check = sync.check_child_heads(registry, document, parent_repository=parent)
+    assert ci["needs_heads_refresh"] is child_drift
+    for report in (ci, check):
+        assert report["parent_observation"] == {
+            "repository": parent, "recorded": recorded[parent]["sha"], "live": live[parent]["sha"],
+        }
+        assert [row["repository"] for row in report["drift"]] == ([child] if child_drift else [])
+        assert report["failure_count"] == report["drift_count"] == int(child_drift)
+        summary = tmp_path / "summary.md"
+        sync._write_child_heads_summary(report, summary)
+        assert recorded[parent]["sha"] in summary.read_text() and live[parent]["sha"] in summary.read_text()
+
+    proposed = []
+    def capture_pr(repo, branch, title, body, files, token):
+        proposed.append(json.loads(files["child-heads.json"])["heads"])
+        return {"url": "https://example.invalid/1"}
+
+    monkeypatch.setattr(sync, "_open_or_update_autofix_pr", capture_pr)
+    monkeypatch.setattr(sync, "_dispatch_parent_workflow", lambda *args: None)
+    monkeypatch.setattr(sync, "_fetch_repo_text", lambda *args: None)
+    sync.run_parent_child_ci(registry, document, parent_repository=parent, parent_root=tmp_path,
+                             skip_source_diff=True, autofix=True, token="fixture")
+    assert proposed == ([{parent: recorded[parent], child: live[child]}] if child_drift else [])
+
+
+def test_parent_observation_requires_matching_repository_id(parent_and_child_heads, tmp_path):
+    parent, child, registry, document, live = parent_and_child_heads
+    live[parent]["repository_id"] = 99
+    with pytest.raises(ValueError, match="repository id mismatch"):
+        sync.run_parent_child_ci(registry, document, parent_repository=parent, parent_root=tmp_path,
+                                 skip_source_diff=True, autofix=True, token="fixture")
+
+
 def test_run_parent_child_ci_pr_validation_sha_drift_report_only(tmp_path, monkeypatch):
     consumer = "owner/child"
     registry = _registry(consumer)

@@ -30,7 +30,11 @@ Reuse existing locks and identity/bootstrap checks. Do not introduce another
 manifest format, remove child locks, or add a write-capable child workflow.
 
 1. Parent Actions reads adopted locks at the immutable revisions in
-   `child-heads.json`. Registry topology must match.
+   `child-heads.json`. Registry topology must match. The parent stores this
+   file in its own history. CI reports its recorded and live SHAs separately
+   in `parent_observation` and preserves the recorded parent entry during
+   autofix. Its repository ID and vendor evidence still undergo verification.
+   Child SHA drift retains its existing PR and scheduled-run checks.
 2. Treat lock digests as claims: independently read regular Git blobs at each
    source commit, verify source blob/SHA-256, then verify the actual child files.
    No source or child code is executed. Fetch/identity/digest failures fail CI.
