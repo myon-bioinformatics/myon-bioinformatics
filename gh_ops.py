@@ -1142,6 +1142,116 @@ def run_cancel(repo: str, run_id: int, *, expect_head_sha: str | None = None,
     return {**out, "dry_run": False, "cancelled": True, "status": "requested", "mutation_status": "succeeded"}
 
 
+def _branch_state(client: Client, repo: str, branch: str) -> tuple[str, str | None]:
+    """Return ("present", tip_sha) or ("absent", None) for a branch.
+
+    A bare 404 is ambiguous (GitHub also hides inaccessible resources behind
+    it), so absence is proven only by a complete branch listing that excludes
+    the name, mirroring _variable_state.
+    """
+    path = f"/repos/{repo}/git/ref/heads/{urllib.parse.quote(branch, safe='/')}"
+    try:
+        observed = client.get(path)
+    except GhOpsError as error:
+        if error.http_status != 404:
+            raise
+        rows = client.paginate(f"/repos/{repo}/branches")
+        tips: dict[str, str] = {}
+        for row in rows:
+            candidate = row.get("name") if isinstance(row, dict) else None
+            if not isinstance(candidate, str) or not candidate:
+                raise GhOpsError("branch listing contains an invalid name; incomplete response")
+            if candidate in tips:
+                raise GhOpsError("branch listing contains duplicate names; incomplete response")
+            sha = (row.get("commit") or {}).get("sha") if isinstance(row.get("commit"), dict) else None
+            if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+                raise GhOpsError("branch listing contains an invalid commit SHA")
+            tips[candidate] = sha.lower()
+        if branch not in tips:
+            return "absent", None
+        return "present", tips[branch]
+    target = observed.get("object") if isinstance(observed, dict) else None
+    if (not isinstance(target, dict) or observed.get("ref") != f"refs/heads/{branch}"
+            or target.get("type") != "commit" or not isinstance(target.get("sha"), str)
+            or not re.fullmatch(r"[0-9a-fA-F]{40}", target["sha"])):
+        raise GhOpsError("branch read-back has an unexpected shape")
+    return "present", target["sha"].lower()
+
+
+def branch_delete(repo: str, branch: str, *, expect_tip_sha: str | None = None,
+                  write: bool = False, client: Client | None = None) -> dict:
+    """Delete one branch ref, dry-run by default, with verified absence.
+
+    Preconditions: the branch exists (its tip is captured and can be pinned
+    with ``expect_tip_sha``), it is not the repository default branch, and no
+    open pull request uses it as its head. A branch that is already absent is
+    an idempotent success (``already_absent``). ``write=True`` DELETEs the ref
+    and then proves absence again before reporting success.
+    """
+    if not isinstance(branch, str) or not branch or branch != branch.strip():
+        raise GhOpsError(f"invalid branch name: {branch!r}")
+    _validate_branch_name(branch, field="branch")
+    if expect_tip_sha is not None:
+        _sha(expect_tip_sha)
+    client, repo = _client(client), _repo(repo)
+    path = f"/repos/{repo}/git/refs/heads/{urllib.parse.quote(branch, safe='/')}"
+    base: dict[str, Any] = {"schema": "gh-ops-branch-delete/1", "repository": repo, "branch": branch}
+    try:
+        state, tip = _branch_state(client, repo, branch)
+    except GhOpsError as error:
+        return {**base, "ok": False, "dry_run": not write, "deleted": False, "status": "inaccessible",
+                "http_status": error.http_status, "reason": f"cannot confirm the branch exists: {error}"}
+    if state == "absent":
+        return {**base, "ok": True, "dry_run": not write, "deleted": False, "tip_sha": None,
+                "status": "already_absent"}
+    out: dict[str, Any] = {**base, "tip_sha": tip}
+    meta = client.get(f"/repos/{repo}")
+    default_branch = meta.get("default_branch") if isinstance(meta, dict) else None
+    if not isinstance(default_branch, str) or not default_branch.strip():
+        raise GhOpsError("repository read-back has no default branch")
+    out["default_branch"] = default_branch
+    if branch == default_branch:
+        return {**out, "ok": False, "dry_run": not write, "deleted": False, "status": "default_branch",
+                "reason": f"{branch!r} is the repository default branch; refusing to delete it"}
+    if expect_tip_sha is not None and (tip is None or not tip.startswith(_sha(expect_tip_sha))):
+        return {**out, "ok": False, "dry_run": not write, "deleted": False, "status": "tip_mismatch",
+                "reason": f"branch tip SHA {str(tip)[:12]} does not match --expect-tip-sha {expect_tip_sha}"}
+    owner = repo.split("/", 1)[0]
+    pulls = client.get(f"/repos/{repo}/pulls", params={"state": "open", "head": f"{owner}:{branch}"})
+    if not isinstance(pulls, list) or any(not isinstance(row, dict) or type(row.get("number")) is not int for row in pulls):
+        raise GhOpsError("open PR lookup returned an unexpected shape; incomplete response")
+    open_prs = [row["number"] for row in pulls]
+    if open_prs:
+        return {**out, "ok": False, "dry_run": not write, "deleted": False, "status": "open_pr_head",
+                "open_prs": open_prs,
+                "reason": f"open pull requests use this branch as head: {open_prs}"}
+    if not write:
+        return {**out, "ok": True, "dry_run": True, "deleted": False, "status": "would_delete",
+                "would_delete": {"path": path}}
+    if _branch_state(client, repo, branch) != ("present", tip):
+        return {**out, "ok": False, "dry_run": False, "deleted": False, "status": "tip_mismatch",
+                "reason": "branch state changed during preflight"}
+    try:
+        client.request("DELETE", path, expect=(204,))
+    except GhOpsError as error:
+        return _mutation_error_receipt(
+            out, error,
+            f"branch DELETE did not return success; inspect before retrying: {error}",
+            flag_key="deleted",
+        )
+    try:
+        after, _after_tip = _branch_state(client, repo, branch)
+    except GhOpsError as error:
+        return {**out, "ok": False, "dry_run": False, "deleted": True, "status": "verification_uncertain",
+                "verified": False, "mutation_status": "succeeded", "http_status": error.http_status,
+                "reason": f"DELETE succeeded but absence could not be verified; inspect before retrying: {error}"}
+    verified = after == "absent"
+    return {**out, "ok": verified, "dry_run": False, "deleted": True,
+            "status": "verified" if verified else "verification_failed", "verified": verified,
+            "mutation_status": "succeeded",
+            "reason": "" if verified else "branch is still present after DELETE"}
+
+
 def pr_body_replace(repo: str, number: int, *, old: str, new: str, write: bool = False,
                     client: Client | None = None) -> dict:
     """Replace one anchor in a PR body, only when it occurs exactly once."""
@@ -3726,6 +3836,11 @@ def _render(command: str, result: dict) -> str:
         return (f"{'OK' if result['ok'] else 'NG'} run-cancel ({result['status']}) "
                 f"{result['repository']} run={result['run_id']} "
                 f"head={str(result.get('head_sha') or '')[:12]}{reason}")
+    if command == "branch-delete":
+        reason = f": {result['reason']}" if result.get("reason") else ""
+        return (f"{'OK' if result['ok'] else 'NG'} branch-delete ({result['status']}) "
+                f"{result['repository']} branch={result['branch']} "
+                f"tip={str(result.get('tip_sha') or '')[:12]}{reason}")
     if command == "pr-review":
         url = f" {result['url']}" if result.get("url") else ""
         reason = f": {result['reason']}" if result.get("reason") else ""
@@ -3902,6 +4017,12 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p.add_argument("repo"); p.add_argument("run_id", type=int)
     p.add_argument("--expect-head-sha", metavar="SHA",
                    help="refuse unless the run's head SHA matches this SHA")
+    p.add_argument("--write", action="store_true")
+
+    p = _command_parser(sub, "branch-delete", help="delete a branch ref after safety checks (planned unless --write)")
+    p.add_argument("repo"); p.add_argument("branch")
+    p.add_argument("--expect-tip-sha", metavar="SHA",
+                   help="refuse unless the branch tip SHA matches this SHA")
     p.add_argument("--write", action="store_true")
 
     p = _command_parser(sub, "issue-comment", help="create a top-level PR conversation comment (needs --write)")
@@ -4153,6 +4274,9 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
     if command == "run-cancel":
         return run_cancel(args.repo, args.run_id, expect_head_sha=args.expect_head_sha,
                           write=args.write, client=client)
+    if command == "branch-delete":
+        return branch_delete(args.repo, args.branch, expect_tip_sha=args.expect_tip_sha,
+                             write=args.write, client=client)
     if command == "issue-comment":
         return issue_comment_create(args.repo, args.number, body=_read_text(args.file),
                                     write=args.write, client=client)
