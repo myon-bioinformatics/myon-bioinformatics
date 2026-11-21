@@ -399,3 +399,36 @@ def test_subtree_network_errors_keep_typed_timeout_and_guards(command):
 
     with pytest.raises(g.SubtreePushError, match=f"git_timeout: git {command}"):
         g._subtree_git(".", [command, "origin"], run=run, timeout=9)
+
+
+def test_subtree_push_ls_remote_timeout_never_pushes(tmp_path):
+    """A timed-out remote read stops subtree-push before any push."""
+    if subprocess.run(["git", "subtree", "-h"], capture_output=True).returncode == 1:
+        pytest.skip("git subtree not installed")
+    env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@e",
+               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@e")
+    repo, child = tmp_path / "mono", tmp_path / "child.git"
+    repo.mkdir()
+
+    def git(*args, cwd=repo):
+        subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True, text=True, env=env)
+
+    git("init", "-q", "-b", "main")
+    (repo / "sub").mkdir()
+    (repo / "sub" / "a.py").write_text("a = 1\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-qm", "one")
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "trunk", str(child)], check=True, env=env)
+    seen = []
+
+    def run(argv, **kwargs):
+        seen.append(list(argv))
+        if argv[1:2] == ["ls-remote"]:
+            assert kwargs["timeout"] == 9 and kwargs["stdin"] == subprocess.DEVNULL
+            assert kwargs["env"]["GIT_TERMINAL_PROMPT"] == "0"
+            raise subprocess.TimeoutExpired(argv, 9)
+        return subprocess.run(argv, **kwargs)
+
+    with pytest.raises(g.SubtreePushError, match="git_timeout: git ls-remote"):
+        g.subtree_push("sub", str(child), "sync/x", cwd=str(repo), run=run, timeout=9)
+    assert not any(argv[1:2] == ["push"] or argv[1:3] == ["subtree", "push"] for argv in seen)

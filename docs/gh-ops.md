@@ -81,6 +81,34 @@ names before judging (default `(?i)copilot`, so a failing Copilot review bot doe
 block; `--ignore ''` keeps every check). Ignored checks never count toward
 `--min-checks` and are listed under `checks.ignored`.
 
+The merge method and `--require-merge-commit` are specified in the Japanese section below. The default method remains `squash`.
+
+## マージ方法の方針とマージコミットの確認 (`pr-merge`)
+
+マージ方法は次の順で決まる。
+
+1. 明示した `--method`（`merge`、`squash`、`rebase`）
+2. 方針ファイルの、そのリポジトリ (`OWNER/REPO`) のエントリ
+3. 環境変数 `GH_OPS_MERGE_METHOD`
+4. 既定の `squash`
+
+方針ファイルは `--policy-file PATH` を優先し、無ければ `GH_OPS_MERGE_POLICY_FILE` を使う。どちらも前後の空白を除き、空なら未設定である。`GH_OPS_MERGE_METHOD` も同様に空白を除き、空なら未設定である。`--method` を明示し、かつ `--policy-file` を付けないときは、環境変数の方針ファイルは読まない。
+
+方針ファイルは JSON オブジェクトで、キーは `OWNER/REPO`、値は `merge`、`squash`、`rebase` のいずれかである。オブジェクトでない JSON と、未知の値は、1行のエラーになり、PUT は行わない。
+
+ドライランの表示には、決まった方法とその出典が出る。出典は `cli`（明示した `--method`）、`policy`（方針ファイル）、`env`（`GH_OPS_MERGE_METHOD`）、`default`（既定の `squash`）である。
+
+`--require-merge-commit` は、決まった方法が `merge` でないとき、どの PUT よりも前にエラーになる。`--write` でマージしたあとは、そのマージコミットを GET し、親がちょうど 2 つで、`parents[1]` が検証済みの head SHA と一致しない限り、0 以外で終了する。出力には `merge_sha`、`parent_count`、`parents`、`html_url` が加わる。
+
+```text
+python -S gh_ops.py pr-merge example-owner/example-repo 11 --sha <sha> --policy-file policy.json
+python -S gh_ops.py pr-merge example-owner/example-repo 11 --sha <sha> --method merge --require-merge-commit --write
+```
+
+```json
+{"example-owner/example-repo": "merge"}
+```
+
 ## Network Git limits (`fetch-guard`)
 
 | Operation | One communication | Attempts plus backoff |
@@ -164,9 +192,21 @@ python -S gh_ops.py subtree-push --root MONOREPO --prefix DIR --remote URL --bra
 python -S gh_ops.py subtree-push --root MONOREPO --prefix DIR --remote URL --branch sync/x --write  # push
 ```
 
-The decision logic is ported from gh_identity#77 (`cursor/subtree-stale-split-4489`,
-head `d43ceb5`). Once #77 is merged and `vendor/gh_identity.py` is repinned to it, the
-read-only checks switch to GHI's public functions and only the push stays here.
+The read-only split is vendored `gh_identity.git_subtree_split` (stale-split detection,
+filter-branch fallback, and subtree-cache cleanup). The pre-push tree gate calls the
+private `gh_identity._subtree_push_split_tree_gate` at this pin; there is no public
+function that only re-checks a split tree. Ancestor and path reads use
+`gh_identity._git_is_ancestor`, `_commit_root_tree`, and `_git_tree_paths`.
+`gh_identity._subtree_push_guards` is not called: with no compare ref it returns
+instead of failing, its remote-tip parser accepts only 40-hex SHAs, and it cannot
+allow a child-only path. Those checks stay in `gh_ops`, including the 40- and
+64-hex `ls-remote` parse that fails closed when `ls-remote` itself fails. The
+compare tip is still fetched into the monorepo object store before the split;
+the vendored guard would fetch it only into a temporary clone afterwards, and a
+squash join then fails the split. A failed `git subtree split` is
+`subtree_split_failed` with git's exit status and without git's stderr. The split
+and its filter-branch fallback share one timeout. The network push and the
+post-push read stay here.
 
 - The split must have the same tree as `<source>:<prefix>`. `git subtree split` can
   exit 0 with a stale SHA (git 2.47.3); then a filter-branch split in a temporary clone
@@ -423,13 +463,14 @@ Planning is the default; `--write` issues the DELETE.
 - The repository default branch is refused (`status="default_branch"`), and so
   is a branch that any open pull request uses as its head
   (`status="open_pr_head"`, with the PR numbers).
+- Immediately before writing, the command reads the tip again and stops if it moved during preflight. GitHub’s REST DELETE has no expected-SHA parameter. Concurrent pushes after that final read can still race with deletion.
 - After the DELETE (`204`), absence is proven again before the receipt reports
   `status="verified"`; a failed or uncertain verification is reported separately
   from the mutation result, and nothing is retried blindly.
 - Branch existence ownership is transferred to `gh_identity.branch_ref`
   (gh_identity #122/#123, including the complete-listing absence proof above).
-  With no injected client, `_branch_state` is only an adapter over it; an
-  injected client keeps the same contract over the caller's transport.
+  The REST adapter supports injected clients and older recommended vendor
+  revisions that predate `branch_ref`.
 
 ## Submit a pull request review (`pr-review`) and toggle draft state (`pr-ready`)
 

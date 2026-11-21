@@ -32,5 +32,9 @@ function openMembership(snap){
  }
  return {count:complete?total:null,open};
 }
-const api={states,esc,summarize,validate,diff,openMembership};if(typeof module!=='undefined')module.exports=api;root.UnifiedModel=api;
+function repoOverview(counts,runs){
+ const audit=typeof module!=='undefined'?require('./audit-model.js'):root.AuditModel;
+ return audit.repoOverview({repository_counts:counts,main_workflows:{runs}});
+}
+const api={states,esc,summarize,validate,diff,openMembership,repoOverview};if(typeof module!=='undefined')module.exports=api;root.UnifiedModel=api;
 })(typeof window==='undefined'?globalThis:window);

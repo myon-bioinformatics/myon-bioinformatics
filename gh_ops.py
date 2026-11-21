@@ -42,7 +42,7 @@ on stdout for exit 2. Without it, errors stay on stderr and stdout stays empty.
 from __future__ import annotations
 
 import argparse, base64, contextlib, difflib, fnmatch, importlib.util, json, os, re, shutil, signal, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request
-from dataclasses import dataclass, field; from datetime import datetime, timezone; from pathlib import Path; from typing import Any, Callable, Optional
+from dataclasses import dataclass, field; from datetime import datetime, timezone; from pathlib import Path; from typing import Any, Callable, Mapping, Optional
 
 def _load_adjacent_gh_identity():
     base = Path(__file__).resolve().parent
@@ -1147,23 +1147,24 @@ def _branch_state(client: Client | None, repo: str, branch: str) -> tuple[str, s
 
     Branch existence ownership is transferred to ``gh_identity.branch_ref``
     (including its complete-listing absence proof: a bare 404 is ambiguous
-    because GitHub also hides inaccessible resources behind it). With no
-    injected client this is only an adapter over that function; an injected
-    client keeps the same contract over the caller's transport.
+    because GitHub also hides inaccessible resources behind it). An injected
+    client or a vendor version predating branch_ref uses the REST adapter.
     """
-    if client is None:
+    read_ref = getattr(gh_identity, "branch_ref", None)
+    if client is None and read_ref is not None:
         try:
-            result = gh_identity.branch_ref(repo, branch)
+            result = read_ref(repo, branch)
         except gh_identity.Error as error:
             raise GhOpsError(error.code) from error
-        if not isinstance(result, dict) or result.get("exists") not in (True, False):
+        if not isinstance(result, dict) or type(result.get("exists")) is not bool:
             raise GhOpsError("branch read-back has an unexpected shape")
         if not result["exists"]:
             return "absent", None
         sha = result.get("sha")
-        if not isinstance(sha, str):
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
             raise GhOpsError("branch read-back has an unexpected shape")
         return "present", sha.lower()
+    client = _client(client)
     path = f"/repos/{repo}/git/ref/heads/{urllib.parse.quote(branch, safe='/')}"
     try:
         observed = client.get(path)
@@ -1171,7 +1172,7 @@ def _branch_state(client: Client | None, repo: str, branch: str) -> tuple[str, s
         if error.http_status != 404:
             raise
         rows = client.paginate(f"/repos/{repo}/branches")
-        tips: dict[str, str | None] = {}
+        tips: dict[str, str] = {}
         for row in rows:
             candidate = row.get("name") if isinstance(row, dict) else None
             if not isinstance(candidate, str) or not candidate:
@@ -1179,14 +1180,18 @@ def _branch_state(client: Client | None, repo: str, branch: str) -> tuple[str, s
             if candidate in tips:
                 raise GhOpsError("branch listing contains duplicate names; incomplete response")
             sha = (row.get("commit") or {}).get("sha") if isinstance(row.get("commit"), dict) else None
-            tips[candidate] = sha.lower() if isinstance(sha, str) else None
+            if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+                raise GhOpsError("branch listing contains an invalid commit SHA")
+            tips[candidate] = sha.lower()
         if branch not in tips:
             return "absent", None
         return "present", tips[branch]
-    if not isinstance(observed, dict) or not isinstance(observed.get("object"), dict) \
-            or not isinstance(observed["object"].get("sha"), str):
+    target = observed.get("object") if isinstance(observed, dict) else None
+    if (not isinstance(target, dict) or observed.get("ref") != f"refs/heads/{branch}"
+            or target.get("type") != "commit" or not isinstance(target.get("sha"), str)
+            or not re.fullmatch(r"[0-9a-fA-F]{40}", target["sha"])):
         raise GhOpsError("branch read-back has an unexpected shape")
-    return "present", observed["object"]["sha"].lower()
+    return "present", target["sha"].lower()
 
 
 def branch_delete(repo: str, branch: str, *, expect_tip_sha: str | None = None,
@@ -1201,10 +1206,11 @@ def branch_delete(repo: str, branch: str, *, expect_tip_sha: str | None = None,
     """
     if not isinstance(branch, str) or not branch or branch != branch.strip():
         raise GhOpsError(f"invalid branch name: {branch!r}")
+    _validate_branch_name(branch, field="branch")
     if expect_tip_sha is not None:
         _sha(expect_tip_sha)
     resolved, repo = _client(client), _repo(repo)
-    path = f"/repos/{repo}/git/ref/heads/{urllib.parse.quote(branch, safe='/')}"
+    path = f"/repos/{repo}/git/refs/heads/{urllib.parse.quote(branch, safe='/')}"
     base: dict[str, Any] = {"schema": "gh-ops-branch-delete/1", "repository": repo, "branch": branch}
     try:
         state, tip = _branch_state(client, repo, branch)
@@ -1217,6 +1223,8 @@ def branch_delete(repo: str, branch: str, *, expect_tip_sha: str | None = None,
     out: dict[str, Any] = {**base, "tip_sha": tip}
     meta = resolved.get(f"/repos/{repo}")
     default_branch = meta.get("default_branch") if isinstance(meta, dict) else None
+    if not isinstance(default_branch, str) or not default_branch.strip():
+        raise GhOpsError("repository read-back has no default branch")
     out["default_branch"] = default_branch
     if branch == default_branch:
         return {**out, "ok": False, "dry_run": not write, "deleted": False, "status": "default_branch",
@@ -1226,9 +1234,9 @@ def branch_delete(repo: str, branch: str, *, expect_tip_sha: str | None = None,
                 "reason": f"branch tip SHA {str(tip)[:12]} does not match --expect-tip-sha {expect_tip_sha}"}
     owner = repo.split("/", 1)[0]
     pulls = resolved.get(f"/repos/{repo}/pulls", params={"state": "open", "head": f"{owner}:{branch}"})
-    open_prs = [row.get("number") for row in pulls if isinstance(row, dict)] if isinstance(pulls, list) else None
-    if open_prs is None:
+    if not isinstance(pulls, list) or any(not isinstance(row, dict) or type(row.get("number")) is not int for row in pulls):
         raise GhOpsError("open PR lookup returned an unexpected shape; incomplete response")
+    open_prs = [row["number"] for row in pulls]
     if open_prs:
         return {**out, "ok": False, "dry_run": not write, "deleted": False, "status": "open_pr_head",
                 "open_prs": open_prs,
@@ -1236,6 +1244,9 @@ def branch_delete(repo: str, branch: str, *, expect_tip_sha: str | None = None,
     if not write:
         return {**out, "ok": True, "dry_run": True, "deleted": False, "status": "would_delete",
                 "would_delete": {"path": path}}
+    if _branch_state(client, repo, branch) != ("present", tip):
+        return {**out, "ok": False, "dry_run": False, "deleted": False, "status": "tip_mismatch",
+                "reason": "branch state changed during preflight"}
     try:
         resolved.request("DELETE", path, expect=(204,))
     except GhOpsError as error:
@@ -2010,9 +2021,126 @@ def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = Fal
     return out
 
 
+def _one_line(text: str) -> str:
+    return " ".join(str(text).split())
+
+
+def _blank_to_none(value: Any, label: str) -> str | None:
+    """Strip ``value``. ``None`` and whitespace-only strings are unset."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise GhOpsError(f"{label} must be a string")
+    return value.strip() or None
+
+
+def _merge_policy_path(policy_file: str | None, env: Mapping[str, str], *, explicit_method: bool) -> str | None:
+    """``--policy-file`` wins. The env file is ignored when ``--method`` is explicit."""
+    if policy_file is not None:
+        if not isinstance(policy_file, str):
+            raise GhOpsError("--policy-file must be a string")
+        path = policy_file.strip()
+        if not path:
+            raise GhOpsError("merge policy file path is empty")
+        return path
+    if explicit_method:
+        return None
+    raw = env.get("GH_OPS_MERGE_POLICY_FILE")
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise GhOpsError("GH_OPS_MERGE_POLICY_FILE must be a string")
+    return raw.strip() or None
+
+
+def _validate_merge_policy(payload: Any) -> dict[str, str]:
+    if not isinstance(payload, dict):
+        raise GhOpsError("merge policy must be a JSON object")
+    policy: dict[str, str] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str) or not _REPO_RE.fullmatch(key):
+            raise GhOpsError("merge policy key must look like OWNER/REPO")
+        if value not in MERGE_METHODS:
+            raise GhOpsError(f"merge policy value for {key} must be merge, squash, or rebase")
+        policy[key] = value
+    return policy
+
+
+def _load_merge_policy(path: str) -> dict[str, str]:
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError as error:
+        raise GhOpsError(_one_line(f"merge policy file: {error}")) from None
+    except UnicodeError:
+        raise GhOpsError("merge policy file is not valid UTF-8") from None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise GhOpsError(_one_line(f"merge policy file is not valid JSON: {error.msg}")) from None
+    return _validate_merge_policy(payload)
+
+
+def resolve_merge_method(repo: str, *, method: str | None = None, policy_file: str | None = None,
+                         environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Resolve a ``pr-merge`` method and the source that selected it.
+
+    Precedence is explicit ``method``, then the policy entry for ``repo``,
+    then ``GH_OPS_MERGE_METHOD``, then ``squash``. Blank strings are unset.
+    ``policy_file`` (``--policy-file``) wins over ``GH_OPS_MERGE_POLICY_FILE``.
+    That environment file is not read when ``method`` is explicit and
+    ``policy_file`` is omitted. Policy values must be ``merge``, ``squash``,
+    or ``rebase``; a non-object document is rejected.
+    """
+    env = os.environ if environ is None else environ
+    repository = _repo(repo)
+    explicit = _blank_to_none(method, "--method")
+    path = _merge_policy_path(policy_file, env, explicit_method=explicit is not None)
+    policy = _load_merge_policy(path) if path else {}
+    if explicit is not None:
+        if explicit not in MERGE_METHODS:
+            raise GhOpsError(f"--method must be one of {', '.join(MERGE_METHODS)}")
+        return {"method": explicit, "source": "cli"}
+    if repository in policy:
+        return {"method": policy[repository], "source": "policy"}
+    env_method = _blank_to_none(env.get("GH_OPS_MERGE_METHOD"), "GH_OPS_MERGE_METHOD")
+    if env_method is not None:
+        if env_method not in MERGE_METHODS:
+            raise GhOpsError(f"GH_OPS_MERGE_METHOD must be one of {', '.join(MERGE_METHODS)}")
+        return {"method": env_method, "source": "env"}
+    return {"method": "squash", "source": "default"}
+
+
+def merge_commit_parent_gate(commit: Any, head: str) -> dict[str, Any]:
+    """Accept a merge commit only when it has two parents and ``parents[1]`` is ``head``."""
+    if not isinstance(commit, dict):
+        return {"ok": False, "reason": "merge commit response was not an object",
+                "parent_count": None, "parents": None, "html_url": None}
+    html = commit.get("html_url")
+    html_url = html if isinstance(html, str) and html else None
+    raw_parents = commit.get("parents")
+    if not isinstance(raw_parents, list):
+        return {"ok": False, "reason": "merge commit response did not include a parents array",
+                "parent_count": None, "parents": None, "html_url": html_url}
+    parents: list[str] = []
+    for item in raw_parents:
+        sha = item.get("sha") if isinstance(item, dict) else None
+        if not isinstance(sha, str) or not sha:
+            return {"ok": False, "reason": "merge commit parent is missing sha",
+                    "parent_count": len(raw_parents), "parents": parents, "html_url": html_url}
+        parents.append(sha.lower())
+    expected = head.lower()
+    if len(parents) == 2 and parents[1] == expected:
+        return {"ok": True, "reason": None, "parent_count": 2, "parents": parents, "html_url": html_url}
+    shown = ", ".join(parents) if parents else "(none)"
+    return {"ok": False, "reason": (f"merge commit must have exactly 2 parents and parents[1] equal to head {expected}; "
+                                    f"got {len(parents)} ({shown})"),
+            "parent_count": len(parents), "parents": parents, "html_url": html_url}
+
+
 def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: str = "squash",
              message: str | None = None, title: str | None = None, ignore: str | None = None,
-             write: bool = False, client: Client | None = None) -> dict:
+             write: bool = False, client: Client | None = None, require_merge_commit: bool = False,
+             method_source: str | None = None) -> dict:
     """Verify, then (only with ``write=True``) merge a PR in one call.
 
     Preconditions: open, ``mergeable_state == "clean"``, head matches
@@ -2022,9 +2150,20 @@ def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: s
     The merge request always pins ``sha`` to the verified head. ``ignore`` is a
     regex of check names (e.g. ``(?i)copilot`` for the review bot) dropped
     before judging; they are listed under ``checks["ignored"]``.
+
+    ``require_merge_commit`` demands ``method == "merge"`` before any request.
+    After a write it GETs the merge commit and accepts it only when that commit
+    has exactly two parents and ``parents[1]`` is the verified head SHA.
     """
     if method not in MERGE_METHODS:
         raise GhOpsError(f"--method must be one of {', '.join(MERGE_METHODS)}")
+    if method_source is None:
+        method_source = "default" if method == "squash" else "cli"
+    if type(require_merge_commit) is not bool:
+        raise GhOpsError("--require-merge-commit must be a boolean")
+    if require_merge_commit and method != "merge":
+        raise GhOpsError(
+            f"--require-merge-commit requires method merge; resolved {method} from {method_source}")
     if min_checks < 1:
         raise GhOpsError("--min-checks must be at least 1; zero check runs never counts as green")
     try:
@@ -2065,7 +2204,9 @@ def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: s
     else:
         checks = {"ok": False, "reason": "not evaluated: --sha does not identify the PR head", "runs": []}
     result = {"ok": False, "dry_run": not write, "pre_merge": pre_merge, "checks": checks,
-              "merged": False, "merge_sha": None, "failures": failures}
+              "merged": False, "merge_sha": None, "failures": failures,
+              "merge_method": method, "merge_method_source": method_source,
+              "require_merge_commit": require_merge_commit}
     if failures:
         return result
     body: dict = {"sha": head, "merge_method": method}
@@ -2079,9 +2220,23 @@ def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: s
     response = client.request("PUT", path + "/merge", body, expect=(200, 405, 409))
     data = response.data if isinstance(response.data, dict) else {}
     merged = response.status == 200 and bool(data.get("merged"))
-    result.update(ok=merged, merged=merged, merge_sha=data.get("sha") if merged else None)
+    merge_sha = data.get("sha") if merged else None
+    result.update(ok=merged, merged=merged, merge_sha=merge_sha)
     if not merged:
         result["failures"] = [f"merge rejected: HTTP {response.status} {data.get('message', '')}".strip()]
+        return result
+    if not require_merge_commit:
+        return result
+    if not isinstance(merge_sha, str) or not merge_sha:
+        reason = "merge response did not include a commit sha"
+        result.update(ok=False, reason=reason, failures=[reason])
+        return result
+    commit = client.get(f"/repos/{repo}/commits/{_quote(merge_sha)}")
+    gate = merge_commit_parent_gate(commit, head)
+    result.update(parent_count=gate["parent_count"], parents=gate["parents"], html_url=gate["html_url"],
+                  merge_sha=merge_sha)
+    if not gate["ok"]:
+        result.update(ok=False, reason=gate["reason"], failures=[gate["reason"]])
     return result
 
 
@@ -2888,15 +3043,14 @@ def sync_main(*, base: str = "main", remote: str = "origin", write: bool = False
     return {"ok": True, "branch": branch, "behind": behind, "merged": True, "head": new_head, "pushed": pushed}
 
 
-# --- subtree push: verified split SHA, new branch only (ported from gh_identity#77) ---------
+# --- subtree push: verified split SHA, new branch only --------------------------------------
 #
-# Decision logic ported from gh_identity#77 (branch cursor/subtree-stale-split-4489, head
-# d43ceb5): tree-validated split, filter-branch fallback, push guards, direct push of the
-# verified SHA (never `git subtree push`, which re-splits internally), post-push check.
-# TODO(gh_identity#77): once #77 is merged and vendor/gh_identity.py is repinned to it,
-# replace the read-only helpers below (_subtree_prefix .. _subtree_push_guards) with GHI's
-# public read-only functions and keep only the push + post-push verification here. Until
-# then everything here fails closed: any unexpected git result refuses the push.
+# Read-only split and tree checks come from the vendored gh_identity pin. Public
+# ``git_subtree_split`` owns the stale-split fallback. The pre-push tree gate and the
+# ancestor/path primitives are private at that pin (``_subtree_push_split_tree_gate``,
+# ``_git_is_ancestor``, ``_git_tree_paths``, ``_commit_root_tree``); there is no public
+# guard that only checks a caller-selected compare tip. Network push, the empty lease,
+# and the post-push read stay here. Any unexpected git result still refuses the push.
 
 _SUBTREE_OID_RE = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 _SUBTREE_PROTECTED_BRANCHES = ("main", "master")
@@ -2930,15 +3084,6 @@ def _subtree_git(cwd: Any, args: list[str], *, run: Callable[..., Any], timeout:
         tail = (done.stderr or "").strip()[-300:]
         raise SubtreePushError("git_failed", f"git {args[0]} exited {done.returncode}" + (f": {tail}" if tail else ""))
     return done
-
-
-def _subtree_prefix(prefix: Any) -> str:
-    return gh_identity._subtree_prefix(prefix)
-
-
-def _subtree_branch(branch: Any) -> str:
-    return gh_identity._subtree_branch(branch)
-
 
 
 def _subtree_remote(remote: Any) -> str:
@@ -2981,129 +3126,27 @@ def _subtree_commit_exists(cwd: Any, sha: str | None, *, run: Callable[..., Any]
     return done.returncode == 0 and done.stdout.strip() == "commit"
 
 
-def _subtree_split_matches_prefix_tree(cwd: Any, source: str, prefix: str, split_sha: str | None, *,
-                                       run: Callable[..., Any], timeout: float, split_root: Any = None) -> dict:
-    """``trees_match`` is True only when ``split_sha^{tree}`` equals ``source:<prefix>``."""
-    prefix_tree = _subtree_oid(cwd, f"{source}:{prefix}", run=run, timeout=timeout)
-    split_tree = (_subtree_oid(cwd if split_root is None else split_root, f"{split_sha}^{{tree}}", run=run,
-                               timeout=timeout) if split_sha else None)
-    return {"prefix_tree": prefix_tree, "split_tree": split_tree,
-            "trees_match": bool(prefix_tree and split_tree and prefix_tree == split_tree)}
-
-
-def _subtree_is_ancestor(cwd: Any, ancestor: str, descendant: str, *, run: Callable[..., Any],
-                         timeout: float) -> bool:
-    if not (_subtree_commit_exists(cwd, ancestor, run=run, timeout=timeout)
-            and _subtree_commit_exists(cwd, descendant, run=run, timeout=timeout)):
-        return False
-    done = _subtree_git(cwd, ["merge-base", "--is-ancestor", ancestor, descendant], run=run, timeout=timeout,
-                        ok=(0, 1))
-    return done.returncode == 0
-
-
-def _subtree_tree_paths(cwd: Any, tree: str, *, run: Callable[..., Any], timeout: float) -> set[str]:
-    done = _subtree_git(cwd, ["ls-tree", "-r", "-z", "--name-only", tree], run=run, timeout=timeout)
-    return {path for path in done.stdout.split("\0") if path}
-
-
 def _subtree_available(cwd: Any, *, run: Callable[..., Any], timeout: float) -> bool:
-    done = _subtree_git(cwd, ["--exec-path"], run=run, timeout=timeout, ok=tuple(range(256)))
-    exec_path = done.stdout.strip() if done.returncode == 0 else ""
-    if exec_path and os.path.isfile(os.path.join(exec_path, "git-subtree")):
-        return True
-    return shutil.which("git-subtree") is not None
-
-
-@contextlib.contextmanager
-def _subtree_cache_cleanup(cwd: Any, *, run: Callable[..., Any], timeout: float):
-    """git-subtree leaves $GIT_DIR/subtree-cache/<pid>; remove only what this call created."""
-    git_dir = Path(_subtree_git(cwd, ["rev-parse", "--absolute-git-dir"], run=run, timeout=timeout).stdout.strip())
-    cache = git_dir / "subtree-cache"
-    existed = cache.is_dir()
-    before = set(os.listdir(cache)) if existed else set()
-    try:
-        yield
-    finally:
-        if cache.is_dir() and not cache.is_symlink():
-            for name in set(os.listdir(cache)) - before:
-                shutil.rmtree(cache / name, ignore_errors=True)
-            if not existed:
-                with contextlib.suppress(OSError):
-                    cache.rmdir()
-
-
-def _subtree_split_filter_branch(cwd: Any, prefix: str, source: str, *, run: Callable[..., Any],
-                                 timeout: float) -> str | None:
-    """filter-branch in a temporary clone; import the result object-only (no refs, no FETCH_HEAD)."""
-    origin = _subtree_git(cwd, ["rev-parse", "--show-toplevel"], run=run, timeout=timeout).stdout.strip()
-    with tempfile.TemporaryDirectory(prefix="gh-ops-subtree-fb-") as directory:
-        clone = os.path.join(directory, "repo")
-        steps = (
-            (cwd, ["clone", "-q", "--no-hardlinks", origin, clone]),
-            (clone, ["fetch", "-q", "--no-write-fetch-head", "--no-tags", origin, source]),
-            (clone, ["checkout", "-q", "--detach", source]),
-            (clone, ["filter-branch", "-f", "--prune-empty", "--subdirectory-filter", prefix, "HEAD"]),
-        )
-        for where, args in steps:
-            env = {"FILTER_BRANCH_SQUELCH_WARNING": "1"} if args[0] == "filter-branch" else None
-            if _subtree_git(where, args, run=run, timeout=timeout, ok=(0, 1, 128), env=env).returncode != 0:
-                return None
-        fb = _subtree_oid(clone, "HEAD^{commit}", run=run, timeout=timeout)
-        if not fb or not _subtree_split_matches_prefix_tree(cwd, source, prefix, fb, run=run, timeout=timeout,
-                                                            split_root=clone)["trees_match"]:
-            return None
-        done = _subtree_git(cwd, ["fetch", "-q", "--no-write-fetch-head", "--no-tags", clone, fb], run=run,
-                            timeout=timeout, ok=(0, 1, 128))
-        if done.returncode != 0 or not _subtree_split_matches_prefix_tree(
-                cwd, source, prefix, fb, run=run, timeout=timeout)["trees_match"]:
-            return None
-        return fb
+    """Vendored availability check. ``run`` and ``timeout`` stay for existing callers."""
+    del run, timeout
+    return gh_identity._git_subtree_available(cwd)
 
 
 def subtree_split_verified(prefix: str, *, source: str = "HEAD", cwd: str = ".",
                            run: Callable[..., Any] = subprocess.run, timeout: float = 600.0) -> dict:
-    """Read-only ``git subtree split`` whose result must have the tree of ``source:<prefix>``.
+    """Read-only split from vendored ``gh_identity.git_subtree_split``.
 
-    ``git subtree split`` can exit 0 with a stale SHA (seen on git 2.47.3); then a
-    filter-branch split in a temporary clone is tried. Never passes --branch/--rejoin, so no
-    ref moves. ``sha`` is None (and ``reason`` set) when no tree-identical split exists.
+    That public function owns the stale-split check, the filter-branch fallback,
+    and subtree-cache cleanup. ``run`` is unused here: callers still pass the
+    push runner, and only ls-remote, the compare-tip fetch, and the push use it.
+    A git failure becomes ``reason: subtree_split_failed`` so the push stays refused.
     """
-    prefix = _subtree_prefix(prefix)
-    source = _subtree_oid(cwd, f"{_subtree_revision(source)}^{{commit}}", run=run, timeout=timeout)
-    if not source:
-        raise ValueError("revision not found")
-    base = {"prefix": prefix, "source": source, "fallback_used": False}
-    kind = _subtree_git(cwd, ["cat-file", "-t", f"{source}:{prefix}"], run=run, timeout=timeout, ok=(0, 1, 128))
-    if kind.returncode != 0 or kind.stdout.strip() != "tree":
-        return {**base, "sha": None, "reason": "prefix_not_found"}
-    if not _subtree_available(cwd, run=run, timeout=timeout):
-        return {**base, "sha": None, "reason": "subtree_unavailable"}
-    with _subtree_cache_cleanup(cwd, run=run, timeout=timeout):
-        done = _subtree_git(cwd, ["subtree", "split", "-q", f"--prefix={prefix}", source], run=run,
-                            timeout=timeout, ok=tuple(range(256)))
-    if done.returncode != 0:
-        return {**base, "sha": None, "reason": "subtree_split_failed",
-                "detail": (done.stderr or "").strip()[-300:]}
-    lines = done.stdout.strip().splitlines()
-    subtree_sha = lines[-1].strip() if lines else ""
-    if not _SUBTREE_OID_RE.fullmatch(subtree_sha):
-        return {**base, "sha": None, "reason": "subtree_split_failed", "detail": "unexpected git subtree output"}
-    check = _subtree_split_matches_prefix_tree(cwd, source, prefix, subtree_sha, run=run, timeout=timeout)
-    method, warning, sha = "subtree", None, subtree_sha
-    if not check["trees_match"]:
-        warning = "subtree_split_stale"
-        base["fallback_used"] = True
-        fb = _subtree_split_filter_branch(cwd, prefix, source, run=run, timeout=timeout)
-        if fb is None:
-            return {**base, "sha": None, "reason": "stale_subtree_split", "subtree_sha": subtree_sha,
-                    "warning": warning, "method": "subtree", **check}
-        method, sha = "filter-branch", fb
-    final = _subtree_split_matches_prefix_tree(cwd, source, prefix, sha, run=run, timeout=timeout)
-    if not final["trees_match"]:
-        return {**base, "sha": None, "reason": "stale_subtree_split", "subtree_sha": subtree_sha,
-                "warning": warning or "subtree_split_stale", "method": method, **final}
-    return {**base, "sha": sha, "reason": None, "method": method, "warning": warning,
-            "subtree_sha": subtree_sha if method != "subtree" else None, **final}
+    del run
+    try:
+        return gh_identity.git_subtree_split(cwd, prefix, source, timeout=timeout)
+    except gh_identity.GitInspectionError as error:
+        return {"prefix": None, "source": None, "sha": None, "reason": "subtree_split_failed",
+                "detail": str(error), "fallback_used": False, "method": None, "warning": None}
 
 
 def _subtree_ls_remote(cwd: Any, remote: str, refs: list[str], *, run: Callable[..., Any],
@@ -3146,24 +3189,28 @@ def _subtree_fetch_compare_tip(cwd: Any, remote: str, ref: str, tip: str, *, run
 
 def _subtree_push_guards(cwd: str, split_sha: str, compare: dict | None, *, child_only_paths: tuple[str, ...] = (),
                          run: Callable[..., Any], timeout: float) -> dict:
-    """Refuse when the remote compare tip is not an ancestor of split_sha or has paths the split lacks.
+    """Refuse a push that is not a descendant of the selected compare tip.
 
-    Same decisions as gh_identity#77 ``_subtree_push_guards``; ``child_only_paths`` (fnmatch,
-    default empty, i.e. identical to #77) can explicitly allow known child-only files.
+    Vendored ``gh_identity._subtree_push_guards`` is not used as-is: with no compare
+    ref it returns instead of failing, its ls-remote parser accepts only 40-hex tips,
+    and it rejects every child-only path. This keeps the hard failure, names the ref,
+    and honors ``child_only_paths`` (fnmatch, default empty, so the default matches
+    the vendored rejection). Ancestor and tree reads are the vendored primitives.
+    ``run`` and ``timeout`` stay on the signature for the surrounding push runner.
     """
+    del run, timeout
     if not compare:
         raise SubtreePushError("compare_ref_unavailable", "remote comparison ref is required for ancestor validation")
     ref, tip = compare["ref"], compare["sha"]
-    if not _subtree_is_ancestor(cwd, tip, split_sha, run=run, timeout=timeout):
+    if not gh_identity._git_is_ancestor(cwd, tip, split_sha):
         raise ValueError(f"remote ref {ref} is not an ancestor of the split commit")
-    split_tree = _subtree_oid(cwd, f"{split_sha}^{{tree}}", run=run, timeout=timeout)
-    child_tree = _subtree_oid(cwd, f"{tip}^{{tree}}", run=run, timeout=timeout)
+    split_tree = gh_identity._commit_root_tree(cwd, split_sha)
+    child_tree = gh_identity._commit_root_tree(cwd, tip)
     if not split_tree or not child_tree:
         raise ValueError(f"could not resolve trees for push guard (remote ref {ref})")
-    only_child = sorted(_subtree_tree_paths(cwd, child_tree, run=run, timeout=timeout)
-                        - _subtree_tree_paths(cwd, split_tree, run=run, timeout=timeout))
-    allowed = [p for p in only_child if any(fnmatch.fnmatchcase(p, g) for g in child_only_paths)]
-    refused = [p for p in only_child if p not in allowed]
+    only_child = sorted(gh_identity._git_tree_paths(cwd, child_tree) - gh_identity._git_tree_paths(cwd, split_tree))
+    allowed = [path for path in only_child if any(fnmatch.fnmatchcase(path, pattern) for pattern in child_only_paths)]
+    refused = [path for path in only_child if path not in allowed]
     if refused:
         raise ValueError("child-only paths not present in split: " + ", ".join(refused)
                          + f" (remote ref {ref})")
@@ -3172,11 +3219,17 @@ def _subtree_push_guards(cwd: str, split_sha: str, compare: dict | None, *, chil
 
 def _subtree_push_split_tree_gate(cwd: Any, source: str, prefix: str, split_sha: str | None, *,
                                   run: Callable[..., Any], timeout: float) -> dict:
-    """Re-validate the split tree immediately before ``git push`` of that commit."""
-    check = _subtree_split_matches_prefix_tree(cwd, source, prefix, split_sha or "", run=run, timeout=timeout)
-    if not split_sha or not check["trees_match"]:
-        raise SubtreePushError("stale_subtree_split")
-    return check
+    """Re-validate via vendored ``_subtree_push_split_tree_gate`` immediately before push.
+
+    That helper is private at the vendored pin. It raises ``gh_identity.Error``;
+    callers of subtree-push still see ``SubtreePushError``. ``run`` and ``timeout``
+    belong to the push runner and are not used for this read.
+    """
+    del run, timeout
+    try:
+        return gh_identity._subtree_push_split_tree_gate(cwd, source, prefix, split_sha)
+    except gh_identity.Error as error:
+        raise SubtreePushError(str(error.code)) from None
 
 
 def subtree_push_plan(prefix: str, remote: str, branch: str, *, source: str = "HEAD",
@@ -3189,12 +3242,12 @@ def subtree_push_plan(prefix: str, remote: str, branch: str, *, source: str = "H
     remote default branch and an existing branch; fetch the compare tip object-only;
     tree-validated split; ancestor + child-only path guards. Local refs never move.
     """
-    prefix = _subtree_prefix(prefix)
+    prefix = gh_identity._subtree_prefix(prefix)
     remote = _subtree_remote(remote)
-    branch = _subtree_branch(branch)
+    branch = gh_identity._subtree_branch(branch)
     source = _subtree_revision(source)
     if compare_ref is not None:
-        compare_ref = _subtree_branch(compare_ref)
+        compare_ref = gh_identity._subtree_branch(compare_ref)
     patterns = tuple(child_only_paths or ())
     if any(not isinstance(p, str) or not p or "\0" in p for p in patterns):
         raise ValueError("invalid child-only path pattern")
@@ -3868,11 +3921,26 @@ def _render(command: str, result: dict) -> str:
         reason = f": {result['reason']}" if result.get("reason") else ""
         return (f"{'OK' if result['ok'] else 'NG'} issue-edit ({result['status']}) "
                 f"{result['repository']}#{result['number']}{reason}")
+    if command == "pr-merge":
+        reason = result.get("reason") or "; ".join(result.get("failures") or [])
+        status = "OK" if result.get("ok") else "NG"
+        mode = "dry run" if result.get("dry_run") else "applied"
+        parts = [f"{status} pr-merge ({mode})",
+                 f"method={result.get('merge_method')} source={result.get('merge_method_source')}"]
+        if result.get("merge_sha"):
+            parts.append(f"merge_sha={result['merge_sha']}")
+        if result.get("parent_count") is not None:
+            parents = result.get("parents") or []
+            parts.append(f"parent_count={result['parent_count']}")
+            parts.append("parents=" + ",".join(parents))
+        if result.get("html_url"):
+            parts.append(f"html_url={result['html_url']}")
+        text = " ".join(parts)
+        return text + (f": {reason}" if reason else "")
     reason = result.get("reason") or "; ".join(result.get("failures", []))
     status = "OK" if result["ok"] else "NG"
     mode = "dry run" if result.get("dry_run") else "applied"
-    extra = f" merge_sha={result['merge_sha']}" if result.get("merge_sha") else ""
-    return f"{status} {command} ({mode}){extra}" + (f": {reason}" if reason else "")
+    return f"{status} {command} ({mode})" + (f": {reason}" if reason else "")
 
 
 def _read_body_exact(path: str) -> str:
@@ -4058,7 +4126,13 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--sha", required=True)
     p.add_argument("--min-checks", type=int, default=1)
-    p.add_argument("--method", choices=MERGE_METHODS, default="squash")
+    p.add_argument("--method", choices=MERGE_METHODS, default=None,
+                   help="explicit merge method; otherwise policy, GH_OPS_MERGE_METHOD, else squash")
+    p.add_argument("--policy-file", default=None, metavar="PATH",
+                   help="JSON object mapping OWNER/REPO to merge, squash, or rebase "
+                        "(else GH_OPS_MERGE_POLICY_FILE)")
+    p.add_argument("--require-merge-commit", action="store_true",
+                   help="require method merge; after --write, the merge commit must have the head as parents[1]")
     p.add_argument("--ignore", default=r"(?i)copilot", metavar="REGEX",
                    help="drop check names matching REGEX before judging (default (?i)copilot; '' keeps all)")
     p.add_argument("--title")
@@ -4295,7 +4369,9 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
                                write=args.write, client=client)
     if command == "pr-merge":
         message = _read_text(args.message_file) if args.message_file else None
-        return pr_merge(args.repo, args.number, sha=args.sha, min_checks=args.min_checks, method=args.method,
+        resolved = resolve_merge_method(args.repo, method=args.method, policy_file=args.policy_file)
+        return pr_merge(args.repo, args.number, sha=args.sha, min_checks=args.min_checks, method=resolved["method"],
+                        method_source=resolved["source"], require_merge_commit=args.require_merge_commit,
                         title=args.title, message=message, ignore=args.ignore, write=args.write, client=client)
     if command == "git-commit":
         if args.push and not args.write:

@@ -581,14 +581,16 @@ def test_pr_merge_head_moved_during_merge_is_a_condition_failure():
     assert result["ok"] is False and "409" in result["failures"][0]
 
 
-def test_pr_merge_cli_one_line_dry_run_exit_code(tmp_path, capsys):
+def test_pr_merge_cli_one_line_dry_run_exit_code(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("GH_OPS_MERGE_METHOD", raising=False)
+    monkeypatch.delenv("GH_OPS_MERGE_POLICY_FILE", raising=False)
     message = tmp_path / "msg.txt"
     message.write_text("Squash title body\n", encoding="utf-8")
     client, stub = client_for(merge_routes())
     code = gh_ops.main(["pr-merge", REPO, "11", "--sha", "ecfd0ba", "--min-checks", "5",
                         "--message-file", str(message)], client=client)
     assert code == 0 and "PUT" not in stub.methods
-    assert capsys.readouterr().out.startswith("OK pr-merge (dry run)")
+    assert capsys.readouterr().out.startswith("OK pr-merge (dry run) method=squash source=default")
 
 
 @pytest.mark.parametrize("sha", ["xyz", "abc", "g" * 7])
@@ -1293,7 +1295,9 @@ def test_pr_merge_ignore_never_counts_ignored_checks_toward_min():
     assert "PUT" not in stub.methods
 
 
-def test_pr_merge_cli_ignores_copilot_by_default_and_rejects_bad_regex(capsys):
+def test_pr_merge_cli_ignores_copilot_by_default_and_rejects_bad_regex(capsys, monkeypatch):
+    monkeypatch.delenv("GH_OPS_MERGE_METHOD", raising=False)
+    monkeypatch.delenv("GH_OPS_MERGE_POLICY_FILE", raising=False)
     runs = [check_run(f"c{i}", run_id=i) for i in range(5)] + [check_run("copilot-pull-request-reviewer", "failure", run_id=9)]
     client, _ = client_for(merge_routes(runs=runs))
     assert gh_ops.main(["pr-merge", REPO, "11", "--sha", "ecfd0ba", "--min-checks", "5"], client=client) == 0
@@ -1301,6 +1305,395 @@ def test_pr_merge_cli_ignores_copilot_by_default_and_rejects_bad_regex(capsys):
     assert gh_ops.main(["pr-merge", REPO, "11", "--sha", "ecfd0ba", "--min-checks", "5", "--ignore", ""], client=client) != 0
     with pytest.raises(gh_ops.GhOpsError):
         gh_ops.pr_merge(REPO, 11, sha="ecfd0ba", ignore="(", client=client)
+
+
+# --- pr-merge method policy and merge-commit parents ---------------------------------------
+
+EXAMPLE = "example-owner/example-repo"
+MERGE_SHA = "b" * 40
+BASE_SHA = "c" * 40
+
+
+def example_merge_routes(pr=None, commits=(HEAD,), runs=None, merge_reply=None, commit_reply=None):
+    prefix = "/repos/example-owner/example-repo"
+    routes = {
+        ("GET", f"{prefix}/pulls/11"): reply(pr or pr_payload()),
+        ("GET", f"{prefix}/pulls/11/commits"): reply([{"sha": sha} for sha in commits]),
+        ("GET", f"{prefix}/commits/{HEAD}/check-runs"): reply(
+            {"check_runs": runs if runs is not None else [check_run(f"c{i}", run_id=i) for i in range(5)]}),
+        ("PUT", f"{prefix}/pulls/11/merge"): merge_reply or reply({"merged": True, "sha": MERGE_SHA}),
+    }
+    if commit_reply is not None:
+        routes[("GET", f"{prefix}/commits/{MERGE_SHA}")] = commit_reply
+    return routes
+
+
+def _policy(tmp_path, payload, name="policy.json"):
+    path = tmp_path / name
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def _resolve(repo=EXAMPLE, method=None, policy_file=None, env=None):
+    return gh_ops.resolve_merge_method(repo, method=method, policy_file=policy_file, environ=env or {})
+
+
+@pytest.fixture
+def clean_merge_env(monkeypatch):
+    monkeypatch.delenv("GH_OPS_MERGE_METHOD", raising=False)
+    monkeypatch.delenv("GH_OPS_MERGE_POLICY_FILE", raising=False)
+
+
+def _cli(args, extra=None):
+    env = {key: value for key, value in os.environ.items()
+           if key not in ("GH_OPS_MERGE_METHOD", "GH_OPS_MERGE_POLICY_FILE", "GITHUB_TOKEN", "GH_TOKEN")}
+    env.update(extra or {})
+    return subprocess.run([sys.executable, "-S", str(SCRIPTS / "gh_ops.py"), *args],
+                          cwd=SCRIPTS, env=env, capture_output=True, text=True, timeout=20)
+
+
+def test_merge_method_precedence(tmp_path):
+    cases = [
+        ("merge", {EXAMPLE: "squash"}, "rebase", "merge", "cli"),
+        ("  squash ", {EXAMPLE: "merge"}, "rebase", "squash", "cli"),
+        (None, {EXAMPLE: "rebase"}, "merge", "rebase", "policy"),
+        (None, {"example-owner/other-repo": "merge"}, "rebase", "rebase", "env"),
+        (None, {}, "  merge ", "merge", "env"),
+        (None, {}, "   ", "squash", "default"),
+        (None, {}, None, "squash", "default"),
+        ("", {}, "merge", "merge", "env"),
+        ("\n", {EXAMPLE: "squash"}, None, "squash", "policy"),
+        (None, {EXAMPLE: "squash"}, None, "squash", "policy"),
+        (None, {"Example-Owner/Example-Repo": "merge"}, None, "squash", "default"),
+    ]
+    for method, policy, env_method, expect, source in cases:
+        environ = {}
+        if env_method is not None:
+            environ["GH_OPS_MERGE_METHOD"] = env_method
+        policy_file = str(_policy(tmp_path, policy)) if policy else None
+        assert _resolve(method=method, policy_file=policy_file, env=environ) == {"method": expect, "source": source}
+
+
+def test_explicit_method_ignores_env_policy_file(tmp_path):
+    bad = tmp_path / "bad.json"
+    bad.write_text("[]", encoding="utf-8")
+    assert _resolve(method="merge", env={"GH_OPS_MERGE_POLICY_FILE": str(bad), "GH_OPS_MERGE_METHOD": "rebase"}) == {
+        "method": "merge", "source": "cli"}
+    with pytest.raises(gh_ops.GhOpsError, match="JSON object"):
+        _resolve(method="merge", policy_file=str(bad), env={})
+
+
+def test_policy_file_flag_beats_env_file(tmp_path):
+    bad = tmp_path / "bad.json"
+    bad.write_text("[]", encoding="utf-8")
+    good = _policy(tmp_path, {EXAMPLE: "rebase"})
+    environ = {"GH_OPS_MERGE_POLICY_FILE": str(bad), "GH_OPS_MERGE_METHOD": "squash"}
+    assert _resolve(policy_file=f"  {good}  ", env=environ) == {"method": "rebase", "source": "policy"}
+
+
+def test_env_policy_file_blank_is_unset_and_whitespace_method_is_unset():
+    assert _resolve(env={"GH_OPS_MERGE_POLICY_FILE": "  ", "GH_OPS_MERGE_METHOD": "\t"}) == {
+        "method": "squash", "source": "default"}
+
+
+def test_blank_explicit_method_still_reads_env_policy(tmp_path):
+    bad = tmp_path / "bad.json"
+    bad.write_text("null", encoding="utf-8")
+    with pytest.raises(gh_ops.GhOpsError, match="JSON object"):
+        _resolve(method="   ", env={"GH_OPS_MERGE_POLICY_FILE": str(bad)})
+
+
+def test_merge_policy_rejects_non_objects_and_unknown_values(tmp_path):
+    for text in ("[]", '"merge"', "1", "null", "true", "false"):
+        path = tmp_path / "policy.json"
+        path.write_text(text, encoding="utf-8")
+        with pytest.raises(gh_ops.GhOpsError, match="JSON object") as exc:
+            gh_ops._load_merge_policy(str(path))
+        assert "\n" not in str(exc.value)
+    for value in ("fast-forward", "Merge", " merge ", None, 1, True, ["merge"]):
+        path = _policy(tmp_path, {EXAMPLE: value})
+        with pytest.raises(gh_ops.GhOpsError, match=f"merge policy value for {EXAMPLE} must be merge, squash, or rebase") as exc:
+            gh_ops._load_merge_policy(str(path))
+        assert "\n" not in str(exc.value)
+    mixed = _policy(tmp_path, {EXAMPLE: "merge", "example-owner/other-repo": "nope"})
+    with pytest.raises(gh_ops.GhOpsError, match="example-owner/other-repo"):
+        gh_ops._load_merge_policy(str(mixed))
+
+
+def test_merge_policy_rejects_bad_keys_bad_files_and_types(tmp_path):
+    for key in ("not a repo", "example-owner", "/example-repo", "example-owner/example-repo/extra", ""):
+        with pytest.raises(gh_ops.GhOpsError, match="merge policy key must look like OWNER/REPO"):
+            gh_ops._validate_merge_policy({key: "merge"})
+    with pytest.raises(gh_ops.GhOpsError, match="merge policy key must look like OWNER/REPO"):
+        gh_ops._validate_merge_policy({1: "merge"})
+    with pytest.raises(gh_ops.GhOpsError, match="repository must look like"):
+        _resolve("not a repo", policy_file=str(_policy(tmp_path, [])))
+    missing = tmp_path / "missing.json"
+    with pytest.raises(gh_ops.GhOpsError, match="merge policy file:") as exc:
+        gh_ops._load_merge_policy(str(missing))
+    assert "\n" not in str(exc.value)
+    with pytest.raises(gh_ops.GhOpsError, match="merge policy file:") as exc:
+        gh_ops._load_merge_policy(str(tmp_path))
+    assert "\n" not in str(exc.value)
+    broken = tmp_path / "broken.json"
+    broken.write_bytes(b"\xff")
+    with pytest.raises(gh_ops.GhOpsError, match="not valid UTF-8"):
+        gh_ops._load_merge_policy(str(broken))
+    invalid = tmp_path / "invalid.json"
+    invalid.write_text("{", encoding="utf-8")
+    with pytest.raises(gh_ops.GhOpsError, match="not valid JSON") as exc:
+        gh_ops._load_merge_policy(str(invalid))
+    assert "\n" not in str(exc.value)
+    with pytest.raises(gh_ops.GhOpsError, match="--method must be a string"):
+        _resolve(method=1)
+    with pytest.raises(gh_ops.GhOpsError, match="--method must be one of"):
+        _resolve(method="fast-forward")
+    with pytest.raises(gh_ops.GhOpsError, match="GH_OPS_MERGE_METHOD must be a string"):
+        _resolve(env={"GH_OPS_MERGE_METHOD": 1})
+    with pytest.raises(gh_ops.GhOpsError, match="GH_OPS_MERGE_METHOD must be one of"):
+        _resolve(env={"GH_OPS_MERGE_METHOD": " fast-forward "})
+    with pytest.raises(gh_ops.GhOpsError, match="--policy-file must be a string"):
+        _resolve(policy_file=1)
+    with pytest.raises(gh_ops.GhOpsError, match="merge policy file path is empty"):
+        _resolve(policy_file="  ")
+    with pytest.raises(gh_ops.GhOpsError, match="GH_OPS_MERGE_POLICY_FILE must be a string"):
+        _resolve(env={"GH_OPS_MERGE_POLICY_FILE": 1})
+
+
+def test_parent_gate_accepts_only_head_as_second_parent():
+    url = "https://github.com/example-owner/example-repo/commit/" + MERGE_SHA
+    good = {"html_url": url, "parents": [{"sha": BASE_SHA}, {"sha": HEAD.upper()}]}
+    assert gh_ops.merge_commit_parent_gate(good, HEAD) == {
+        "ok": True, "reason": None, "parent_count": 2, "parents": [BASE_SHA, HEAD], "html_url": url}
+    assert gh_ops.merge_commit_parent_gate(good, HEAD.upper())["ok"] is True
+    bare = {"parents": [{"sha": BASE_SHA}, {"sha": HEAD}]}
+    assert gh_ops.merge_commit_parent_gate(bare, HEAD)["ok"] is True
+    assert gh_ops.merge_commit_parent_gate(bare, HEAD)["html_url"] is None
+    swapped = {"parents": [{"sha": HEAD}, {"sha": BASE_SHA}], "html_url": url}
+    refused = gh_ops.merge_commit_parent_gate(swapped, HEAD)
+    assert refused["ok"] is False and BASE_SHA in refused["reason"] and refused["parent_count"] == 2
+    three = {"parents": [{"sha": BASE_SHA}, {"sha": HEAD}, {"sha": "d" * 40}], "html_url": ""}
+    assert gh_ops.merge_commit_parent_gate(three, HEAD)["parent_count"] == 3
+    assert gh_ops.merge_commit_parent_gate(three, HEAD)["html_url"] is None
+    none = gh_ops.merge_commit_parent_gate({"parents": []}, HEAD)
+    assert none["ok"] is False and "(none)" in none["reason"] and none["parents"] == []
+    one = gh_ops.merge_commit_parent_gate({"parents": [{"sha": HEAD}], "html_url": 7}, HEAD)
+    assert one["parent_count"] == 1 and one["html_url"] is None and HEAD in one["reason"]
+    missing_array = gh_ops.merge_commit_parent_gate({"html_url": url, "parents": "no"}, HEAD)
+    assert missing_array["ok"] is False and missing_array["html_url"] == url and missing_array["parents"] is None
+    assert gh_ops.merge_commit_parent_gate(["not", "a", "commit"], HEAD)["reason"] == "merge commit response was not an object"
+    partial = gh_ops.merge_commit_parent_gate({"parents": [{"sha": BASE_SHA}, "nope"], "html_url": url}, HEAD)
+    assert partial["parents"] == [BASE_SHA] and partial["parent_count"] == 2 and "missing sha" in partial["reason"]
+    empty_sha = gh_ops.merge_commit_parent_gate({"parents": [{"sha": ""}]}, HEAD)
+    assert "missing sha" in empty_sha["reason"] and empty_sha["parents"] == []
+    no_sha = gh_ops.merge_commit_parent_gate({"parents": [{}]}, HEAD)
+    assert "missing sha" in no_sha["reason"]
+
+
+def test_pr_merge_rejects_unknown_method_and_records_title():
+    client, stub = client_for({})
+    with pytest.raises(gh_ops.GhOpsError, match="--method must be one of"):
+        gh_ops.pr_merge(EXAMPLE, 11, sha="abcd", method="fast-forward", client=client)
+    assert stub.calls == []
+    client, stub = client_for(example_merge_routes())
+    result = gh_ops.pr_merge(EXAMPLE, 11, sha="ecfd0ba", min_checks=5, method="merge", title="Merge title",
+                             message="body", client=client)
+    assert result["would_merge"] == {"sha": HEAD, "merge_method": "merge", "commit_title": "Merge title",
+                                     "commit_message": "body"}
+    assert "PUT" not in stub.methods
+    generic = gh_ops._render("file-put", {"ok": True, "dry_run": True, "failures": []})
+    assert generic == "OK file-put (dry run)"
+    failed = gh_ops._render("file-put", {"ok": False, "reason": "nope"})
+    assert failed == "NG file-put (applied): nope"
+
+
+def test_require_merge_commit_rejects_other_methods_before_http():
+    client, stub = client_for({})
+    with pytest.raises(gh_ops.GhOpsError, match="resolved rebase from cli"):
+        gh_ops.pr_merge(EXAMPLE, 11, sha="abcd", method="rebase", require_merge_commit=True, client=client)
+    with pytest.raises(gh_ops.GhOpsError, match="resolved squash from default"):
+        gh_ops.pr_merge(EXAMPLE, 11, sha="abcd", require_merge_commit=True, client=client)
+    with pytest.raises(gh_ops.GhOpsError, match="resolved squash from env"):
+        gh_ops.pr_merge(EXAMPLE, 11, sha="abcd", method_source="env", require_merge_commit=True, client=client)
+    with pytest.raises(gh_ops.GhOpsError, match="must be a boolean"):
+        gh_ops.pr_merge(EXAMPLE, 11, sha="abcd", method="merge", require_merge_commit="yes", client=client)
+    with pytest.raises(gh_ops.GhOpsError, match="--min-checks"):
+        gh_ops.pr_merge(EXAMPLE, 11, sha="abcd", method="merge", require_merge_commit=True, min_checks=0, client=client)
+    assert stub.calls == []
+
+
+def test_require_merge_commit_dry_run_does_not_get_or_put(clean_merge_env):
+    client, stub = client_for(example_merge_routes())
+    result = gh_ops.pr_merge(EXAMPLE, 11, sha="ecfd0ba", min_checks=5, method="merge", method_source="policy",
+                             require_merge_commit=True, client=client)
+    assert result["ok"] is True and result["dry_run"] is True
+    assert result["would_merge"]["merge_method"] == "merge"
+    assert result["merge_method_source"] == "policy"
+    assert "parent_count" not in result and "PUT" not in stub.methods and stub.methods == ["GET", "GET", "GET"]
+    text = gh_ops._render("pr-merge", result)
+    assert text == "OK pr-merge (dry run) method=merge source=policy"
+
+
+def test_verified_merge_commit_reports_parents_and_url():
+    url = "https://github.com/example-owner/example-repo/commit/" + MERGE_SHA
+    commit = reply({"sha": MERGE_SHA, "html_url": url, "parents": [{"sha": BASE_SHA}, {"sha": HEAD.upper()}]})
+    client, stub = client_for(example_merge_routes(commit_reply=commit))
+    result = gh_ops.pr_merge(EXAMPLE, 11, sha=HEAD, min_checks=5, method="merge", method_source="cli",
+                             require_merge_commit=True, write=True, client=client)
+    assert result["ok"] is True and result["merged"] is True
+    assert result["merge_sha"] == MERGE_SHA
+    assert result["parent_count"] == 2 and result["parents"] == [BASE_SHA, HEAD] and result["html_url"] == url
+    assert [call["method"] for call in stub.calls].count("PUT") == 1
+    assert stub.calls[-1]["path"] == f"/repos/{EXAMPLE}/commits/{MERGE_SHA}"
+    text = gh_ops._render("pr-merge", result)
+    assert text == (f"OK pr-merge (applied) method=merge source=cli merge_sha={MERGE_SHA} "
+                    f"parent_count=2 parents={BASE_SHA},{HEAD} html_url={url}")
+
+
+def _assert_merge_commit_failure(commit, needle):
+    client, stub = client_for(example_merge_routes(commit_reply=reply(commit)))
+    result = gh_ops.pr_merge(EXAMPLE, 11, sha=HEAD, min_checks=5, method="merge", require_merge_commit=True,
+                             write=True, client=client)
+    assert result["ok"] is False and result["merged"] is True
+    assert needle in result["reason"] and needle in result["failures"][0]
+    assert stub.methods.count("PUT") == 1 and stub.methods.count("GET") == 4
+    rendered = gh_ops._render("pr-merge", result)
+    assert rendered.startswith("NG pr-merge (applied) method=merge source=cli") and needle in rendered
+
+
+@pytest.mark.parametrize("commit,needle", [
+    ({"parents": [{"sha": BASE_SHA}], "html_url": "https://example.test/c"}, "got 1"),
+    ({"parents": [{"sha": BASE_SHA}, {"sha": HEAD}, {"sha": "d" * 40}]}, "got 3"),
+    ({"parents": [{"sha": HEAD}, {"sha": BASE_SHA}], "html_url": "https://example.test/c"}, BASE_SHA),
+    ({"parents": []}, "(none)"),
+    ({"parents": [{"sha": BASE_SHA}, {"sha": ""}]}, "missing sha"),
+    ({"html_url": "https://example.test/c"}, "parents array"),
+    (["nope"], "not an object"),
+])
+def test_merge_commit_shapes_fail(commit, needle):
+    _assert_merge_commit_failure(commit, needle)
+
+
+def test_merge_without_sha_does_not_get_commit():
+    for payload in ({"merged": True}, {"merged": True, "sha": ""}, {"merged": True, "sha": 12}):
+        client, stub = client_for(example_merge_routes(merge_reply=reply(payload)))
+        result = gh_ops.pr_merge(EXAMPLE, 11, sha=HEAD, min_checks=5, method="merge", require_merge_commit=True,
+                                 write=True, client=client)
+        assert result["ok"] is False and "did not include a commit sha" in result["reason"]
+        assert "parent_count" not in result
+        assert stub.methods == ["GET", "GET", "GET", "PUT"]
+
+
+def test_rejected_merge_does_not_fetch_commit_when_required():
+    client, stub = client_for(example_merge_routes(merge_reply=reply({"message": "Head branch was modified"}, status=409)))
+    result = gh_ops.pr_merge(EXAMPLE, 11, sha=HEAD, min_checks=5, method="merge", require_merge_commit=True,
+                             write=True, client=client)
+    assert result["ok"] is False and "409" in result["failures"][0]
+    assert all(not call["path"].endswith(MERGE_SHA) for call in stub.calls)
+
+
+def test_write_without_require_still_defaults_to_squash_and_skips_parent_get():
+    client, stub = client_for(example_merge_routes())
+    result = gh_ops.pr_merge(EXAMPLE, 11, sha=HEAD, min_checks=5, write=True, client=client)
+    assert result["ok"] is True and result["merge_method"] == "squash" and result["merge_method_source"] == "default"
+    assert "parent_count" not in result
+    put = [call for call in stub.calls if call["method"] == "PUT"]
+    assert put[0]["body"]["merge_method"] == "squash"
+    text = gh_ops._render("pr-merge", result)
+    assert text == f"OK pr-merge (applied) method=squash source=default merge_sha={MERGE_SHA}"
+
+
+def test_blocked_pr_with_require_merge_does_not_put():
+    client, stub = client_for(example_merge_routes(pr=pr_payload(mergeable_state="blocked")))
+    result = gh_ops.pr_merge(EXAMPLE, 11, sha=HEAD, min_checks=5, method="merge", require_merge_commit=True,
+                             write=True, client=client)
+    assert result["ok"] is False and "PUT" not in stub.methods
+    text = gh_ops._render("pr-merge", result)
+    assert text.startswith("NG pr-merge (applied) method=merge source=cli") and "not 'clean'" in text
+
+
+def test_cli_policy_and_require_merge_commit(tmp_path, capsys, clean_merge_env):
+    policy = _policy(tmp_path, {EXAMPLE: "merge", "example-owner/other-repo": "squash"})
+    url = "https://github.com/example-owner/example-repo/commit/" + MERGE_SHA
+    commit = reply({"sha": MERGE_SHA, "html_url": url, "parents": [{"sha": BASE_SHA}, {"sha": HEAD}]})
+    client, stub = client_for(example_merge_routes(commit_reply=commit))
+    code = gh_ops.main(["--json", "pr-merge", EXAMPLE, "11", "--sha", HEAD, "--min-checks", "5",
+                        "--policy-file", str(policy), "--require-merge-commit", "--write"], client=client)
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["merge_method"] == "merge" and payload["merge_method_source"] == "policy"
+    assert payload["parent_count"] == 2 and payload["parents"] == [BASE_SHA, HEAD] and payload["html_url"] == url
+    assert stub.calls[-1]["method"] == "GET" and stub.calls[-1]["path"].endswith(MERGE_SHA)
+    client, stub = client_for(example_merge_routes())
+    code = gh_ops.main(["pr-merge", EXAMPLE, "11", "--sha", HEAD, "--min-checks", "5",
+                        "--method", "squash", "--policy-file", str(policy), "--require-merge-commit"], client=client)
+    captured = capsys.readouterr()
+    assert code == 2 and captured.out == "" and captured.err.count("\n") == 1
+    assert "resolved squash from cli" in captured.err and "PUT" not in stub.methods
+
+
+def test_empty_policy_object_falls_through_to_env(tmp_path):
+    path = _policy(tmp_path, {}, name="empty.json")
+    assert _resolve(policy_file=str(path), env={"GH_OPS_MERGE_METHOD": "rebase"}) == {
+        "method": "rebase", "source": "env"}
+
+
+def test_cli_subprocess_policy_errors_are_one_line(tmp_path):
+    help_run = _cli(["pr-merge", "--help"])
+    assert help_run.returncode == 0
+    assert "--policy-file" in help_run.stdout and "--require-merge-commit" in help_run.stdout
+    bad = tmp_path / "bad.json"
+    bad.write_text("[1, 2]", encoding="utf-8")
+    unknown = _policy(tmp_path, {EXAMPLE: "fast-forward"}, name="unknown.json")
+    chosen = _policy(tmp_path, {EXAMPLE: "merge"}, name="chosen.json")
+    cases = [
+        (["pr-merge", EXAMPLE, "11", "--sha", "abcd", "--require-merge-commit"], {},
+         "resolved squash from default"),
+        (["pr-merge", EXAMPLE, "11", "--sha", "abcd", "--require-merge-commit"],
+         {"GH_OPS_MERGE_METHOD": "  rebase "}, "resolved rebase from env"),
+        (["pr-merge", EXAMPLE, "11", "--sha", "abcd", "--require-merge-commit"],
+         {"GH_OPS_MERGE_METHOD": "   "}, "resolved squash from default"),
+        (["pr-merge", EXAMPLE, "11", "--sha", "xyz", "--require-merge-commit"],
+         {"GH_OPS_MERGE_METHOD": "merge"}, "SHA must be 4-40"),
+        (["pr-merge", EXAMPLE, "11", "--sha", "abcd", "--policy-file", str(unknown), "--require-merge-commit"],
+         {"GH_OPS_MERGE_METHOD": "merge"}, f"merge policy value for {EXAMPLE}"),
+        (["pr-merge", EXAMPLE, "11", "--sha", "xyz", "--policy-file", str(chosen),
+          "--require-merge-commit"], {"GH_OPS_MERGE_METHOD": "squash"}, "SHA must be 4-40"),
+        (["pr-merge", EXAMPLE, "11", "--sha", "abcd", "--method", "squash", "--policy-file",
+          str(_policy(tmp_path, {EXAMPLE: "merge"})), "--require-merge-commit"], {}, "resolved squash from cli"),
+        (["pr-merge", EXAMPLE, "11", "--sha", "xyz", "--method", "merge", "--require-merge-commit"],
+         {"GH_OPS_MERGE_POLICY_FILE": str(bad)}, "SHA must be 4-40"),
+        (["pr-merge", EXAMPLE, "11", "--sha", "xyz", "--method", "merge", "--policy-file", str(bad)],
+         {}, "JSON object"),
+        (["pr-merge", EXAMPLE, "11", "--sha", "abcd", "--policy-file", "  "], {}, "path is empty"),
+        (["pr-merge", EXAMPLE, "11", "--sha", "abcd"], {"GH_OPS_MERGE_METHOD": "fast-forward"},
+         "GH_OPS_MERGE_METHOD must be one of"),
+        (["--json-errors", "pr-merge", EXAMPLE, "11", "--sha", "abcd", "--policy-file", str(bad)], {},
+         "JSON object"),
+    ]
+    for args, extra, needle in cases:
+        proc = _cli(args, extra)
+        assert proc.returncode == 2, (args, proc.stderr, proc.stdout)
+        assert needle in proc.stderr
+        assert proc.stderr.count("\n") == 1
+        assert "\n" not in proc.stderr.strip()
+        if args[0] == "--json-errors":
+            body = json.loads(proc.stdout)
+            assert body["ok"] is False and body["exit_code"] == 2 and needle in body["error"]
+        else:
+            assert proc.stdout == ""
+
+
+def test_cli_uses_os_environ_when_resolver_env_is_omitted(monkeypatch, tmp_path, clean_merge_env):
+    path = _policy(tmp_path, {EXAMPLE: "merge"}, name="env-policy.json")
+    monkeypatch.setenv("GH_OPS_MERGE_POLICY_FILE", f"  {path}  ")
+    monkeypatch.setenv("GH_OPS_MERGE_METHOD", "squash")
+    assert gh_ops.resolve_merge_method(EXAMPLE) == {"method": "merge", "source": "policy"}
+    monkeypatch.delenv("GH_OPS_MERGE_POLICY_FILE")
+    monkeypatch.setenv("GH_OPS_MERGE_METHOD", "  rebase ")
+    assert gh_ops.resolve_merge_method(EXAMPLE) == {"method": "rebase", "source": "env"}
+    monkeypatch.setenv("GH_OPS_MERGE_METHOD", "   ")
+    assert gh_ops.resolve_merge_method(EXAMPLE) == {"method": "squash", "source": "default"}
 
 
 def _branch_routes(state):
@@ -1318,7 +1711,7 @@ def _branch_routes(state):
 
     return {
         ("GET", ref_path): get_ref,
-        ("DELETE", ref_path): delete_ref,
+        ("DELETE", "/repos/octo/demo/git/refs/heads/feat/x"): delete_ref,
         ("GET", "/repos/octo/demo"): reply({"default_branch": "main"}),
         ("GET", "/repos/octo/demo/pulls"): reply([]),
         ("GET", "/repos/octo/demo/branches"): lambda parts, body: reply(
@@ -1365,6 +1758,29 @@ def test_branch_delete_refuses_open_pr_head():
     assert not out["ok"] and out["status"] == "open_pr_head" and out["open_prs"] == [7]
     assert "DELETE" not in stub.methods
 
+@pytest.mark.parametrize(("path", "payload"), [
+    ("/repos/octo/demo", {}),
+    ("/repos/octo/demo/pulls", [None]),
+])
+def test_branch_delete_requires_default_and_pr_evidence(path, payload):
+    routes = _branch_routes({"present": True})
+    routes[("GET", path)] = reply(payload)
+    client, stub = client_for(routes)
+    with pytest.raises(gh_ops.GhOpsError):
+        gh_ops.branch_delete(REPO, "feat/x", write=True, client=client)
+    assert "DELETE" not in stub.methods
+
+
+def test_branch_delete_checks_the_tip_again_before_write():
+    routes = _branch_routes({"present": True})
+    tips = iter([HEAD, OTHER])
+    routes[("GET", "/repos/octo/demo/git/ref/heads/feat/x")] = lambda *_: reply(
+        {"ref": "refs/heads/feat/x", "object": {"type": "commit", "sha": next(tips)}})
+    client, stub = client_for(routes)
+    result = gh_ops.branch_delete(REPO, "feat/x", expect_tip_sha=HEAD, write=True, client=client)
+    assert result["status"] == "tip_mismatch"
+    assert "DELETE" not in stub.methods
+
 
 def test_branch_state_delegates_to_gh_identity_branch_ref(monkeypatch):
     seen = {}
@@ -1373,7 +1789,7 @@ def test_branch_state_delegates_to_gh_identity_branch_ref(monkeypatch):
         seen["args"] = (repository, branch)
         return {"exists": True, "sha": HEAD}
 
-    monkeypatch.setattr(gh_identity, "branch_ref", fake_branch_ref)
+    monkeypatch.setattr(gh_identity, "branch_ref", fake_branch_ref, raising=False)
     assert gh_ops._branch_state(None, REPO, "feat/x") == ("present", HEAD)
     assert seen["args"] == (REPO, "feat/x")
     monkeypatch.setattr(gh_identity, "branch_ref",
@@ -1386,3 +1802,11 @@ def test_branch_state_delegates_to_gh_identity_branch_ref(monkeypatch):
     monkeypatch.setattr(gh_identity, "branch_ref", boom)
     with pytest.raises(gh_ops.GhOpsError):
         gh_ops._branch_state(None, REPO, "feat/x")
+
+def test_branch_state_uses_verified_rest_lookup_with_older_vendor(monkeypatch):
+    monkeypatch.delattr(gh_identity, "branch_ref", raising=False)
+    routes = _branch_routes({"present": True})
+    client, stub = client_for(routes)
+    monkeypatch.setattr(gh_ops, "_client", lambda _: client)
+    assert gh_ops._branch_state(None, REPO, "feat/x") == ("present", HEAD)
+    assert stub.methods == ["GET"]
