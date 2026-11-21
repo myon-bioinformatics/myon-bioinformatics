@@ -26,9 +26,14 @@ function overview(){
  const o=M.repoOverview(data.counts,data.main_workflows?.runs||[]),q=$('search').value.toLowerCase(),repo=$('repo').value;
  const rows=o.rows.filter(r=>(!repo||r.repository===repo)&&(!q||r.repository.toLowerCase().includes(q)));
  const failedRows=rows.filter(r=>r.main_ci&&r.main_ci.label==='失敗');
- let html='<h2>リポジトリ概要</h2><p class="small">監査の取得範囲 '+o.totals.repositories+' リポジトリ / オープンPR '+o.totals.pull_requests+' / 純Issue '+o.totals.issues+'。main CIは現mainの最新実行です。</p>';
+ const count=n=>n??'未取得';
+ const coverage=key=>{
+  const known=o.coverage[key],total=o.totals.repositories;
+  return known<total?`取得分のみ ${known}/${total}リポジトリ`:`取得 ${known}/${total}リポジトリ`;
+ };
+ let html='<h2>リポジトリ概要</h2><p class="small">監査の取得範囲 '+o.totals.repositories+' リポジトリ / オープンPR '+count(o.totals.pull_requests)+'（'+coverage('pull_requests')+'） / 純Issue '+count(o.totals.issues)+'（'+coverage('issues')+'）。main CIは現mainの最新実行です。</p>';
  if(failedRows.length)html+='<div class="notice">⚠️ main CI失敗 '+failedRows.length+' 件: '+failedRows.map(r=>link(r.main_ci.url,r.repository+' · '+r.main_ci.name)).join(' / ')+'</div>';
- return html+table(['リポジトリ','オープンPR','純Issue','main CI（最新）','確認日時'],rows.map(r=>`<tr><td>${link('https://github.com/myon-bioinformatics/'+r.repository,r.repository)}${r.complete?'':'<div class="small">部分取得</div>'}</td><td>${r.pull_requests}</td><td>${r.issues}</td><td>${r.main_ci?badge(r.main_ci.label)+' '+link(r.main_ci.url,r.main_ci.name)+'<div class="small">'+E(observed(r.main_ci.at))+'</div>':'—'}</td><td>${E(observed(r.checked))}</td></tr>`).join(''));
+ return html+table(['リポジトリ','オープンPR','純Issue','main CI（最新）','確認日時'],rows.map(r=>`<tr><td>${link('https://github.com/myon-bioinformatics/'+r.repository,r.repository)}${r.complete?'':'<div class="small">部分取得</div>'}</td><td>${count(r.pull_requests)}</td><td>${count(r.issues)}</td><td>${r.main_ci?badge(r.main_ci.label)+' '+link(r.main_ci.url,r.main_ci.name)+'<div class="small">'+E(observed(r.main_ci.at))+'</div>':'—'}</td><td>${E(observed(r.checked))}</td></tr>`).join(''));
 }
 function audit(){const q=$('search').value.toLowerCase(),repo=$('repo').value,cs=data.counts.filter(r=>(!repo||r.repository===repo)&&(!q||r.repository.toLowerCase().includes(q)));let html='<h2>Issue / PRの分離</h2><p class="small">ℹ️ 合算 = Issue + PR。純IssueはPRを除外。取得時刻は別。</p>'+table(['リポジトリ','open_issues_count','GET /issues','純Issue','GET /pulls / open PR','整合・範囲','確認日時'],cs.map(c=>`<tr><td>${link('https://github.com/myon-bioinformatics/'+c.repository,c.repository)}</td><td>${E(c.open_issues_count)}</td><td>${E(c.get_issues)}</td><td>${E(c.issues)}</td><td>${E(c.pull_requests)}</td><td>${badge(!c.complete?'未取得・部分取得':c.open_issues_count===c.issues+c.pull_requests&&c.get_issues===c.issues+c.pull_requests?'合算一致':'差分あり')}<br>${c.complete?'取得範囲内で完了':'継続取得が必要'} / ${c.fresh?'今回':'保存済み'}</td><td>${E(observed(c.checked))}</td></tr>`).join(''));
  html+='<h2>依存順序</h2><div class="notice">⚠️ 順序案。承認・CIは別確認。更新後に再計算。</div>'+table(['順序','対象','前提'],data.plan.order.map((id,i)=>`<tr><td>${i+1}</td><td>${E(id)}</td><td>${E((data.plan.edges[id]||[]).join(', ')||'登録された前提なし')}</td></tr>`).join(''))+(data.plan.cycle.length?'<p>'+badge('循環')+E(data.plan.cycle.join(' → '))+'</p>':'')+((data.plan.blocked||[]).length?'<p>'+badge('ブロッカー')+E(data.plan.blocked.join(', '))+'</p>':'');

@@ -20,7 +20,7 @@ PRではPython標準unittestとNode 26の組込みテストを実行します。
 
 `index.html` は `scripts/build_audit_pages.py` の `observatory_page()` がビルド時に組み立てる操作画面（手書きの `site/ui/index.html` は無し。ナビ・操作・絞り込みの一覧は同ファイルの `VIEWS` / `ACTIONS` / `FILTERS` に1回だけ書く）で、「統合後の確認」の表は同じく Python の `integration_summary()` がビルド時に書き（読む人の作業記録に依らない観測値なので JS では描かない）、配色は `<body data-ui-theme>` が指す PySaiyanWeBoo のトークンテーマ（既定 `green`、`style.css` は `--ui-*` を読むだけ）、`report.html` は共通web_uiヘルパーによる生成レポートです。すべて相対参照なのでプロジェクトPagesのサブパスでも動作します。公開成果物のルートには `assets/brand` の `favicon.ico` と `favicon.png` をコピーし、HTML から相対パスで参照します（ルート絶対パス `/favicon.ico` はポートフォリオホストを指すため使いません）。最新head、観測日時、CI失敗のcheck名とURLを表示します。再読込ボタンは公開済みJSONを読むもので、GitHub Actionsの新規実行を起動するものではありません。
 
-「概要」ビューは同じ観測JSONの `repository_counts` と `main_workflows` から、リポジトリ別のオープンPR・純Issue件数と最新main実行の結論を1表に並べます。集計と最新runの選択は `site/ui/audit-model.js` の `repoOverview` が担い、新規の取得は行いません。表示は既存の統計タイル・pill・表とPSWBのトークンを再利用し、main CIが失敗しているリポジトリを先頭に寄せて失敗runへのリンクをまとめます。対象は監査の取得範囲（`repository_counts` に載るリポジトリ）で、全公開リポジトリの一覧ではありません。本番の `index.html` は統合運用アプリ（unified）が組み立てるため、同じ集計を統合アプリの「概要」タブにも表示します。そちらの集計は `site/ui/unified-model.js` の `repoOverview` が担い、データは統合JSONの `counts` と `main_workflows` です。
+「概要」ビューは同じ観測JSONの `repository_counts` と `main_workflows` から、リポジトリ別のオープンPR・純Issue件数と最新main実行の結論を1表に並べます。集計と最新runの選択は `site/ui/audit-model.js` の `repoOverview` が担い、新規の取得は行いません。表示は既存の統計タイル・pill・表とPSWBのトークンを再利用し、main CIが失敗しているリポジトリを先頭に寄せて失敗runへのリンクをまとめます。対象は監査の取得範囲（`repository_counts` に載るリポジトリ）で、全公開リポジトリの一覧ではありません。本番の `index.html` は統合運用アプリ（unified）が組み立てるため、同じ集計を統合アプリの「概要」タブにも表示します。統合JSONの `counts` と `main_workflows` は `site/ui/unified-model.js` から同じ `AuditModel.repoOverview` へ渡します。不明な件数は「未取得」と表示し、確認済みの0件と区別します。合計は指標ごとに確認できたリポジトリ数を表示します。
 
 ## 共通スクロール操作
 
