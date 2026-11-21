@@ -81,6 +81,34 @@ names before judging (default `(?i)copilot`, so a failing Copilot review bot doe
 block; `--ignore ''` keeps every check). Ignored checks never count toward
 `--min-checks` and are listed under `checks.ignored`.
 
+The merge method and `--require-merge-commit` are specified in the Japanese section below. The default method remains `squash`.
+
+## マージ方法の方針とマージコミットの確認 (`pr-merge`)
+
+マージ方法は次の順で決まる。
+
+1. 明示した `--method`（`merge`、`squash`、`rebase`）
+2. 方針ファイルの、そのリポジトリ (`OWNER/REPO`) のエントリ
+3. 環境変数 `GH_OPS_MERGE_METHOD`
+4. 既定の `squash`
+
+方針ファイルは `--policy-file PATH` を優先し、無ければ `GH_OPS_MERGE_POLICY_FILE` を使う。どちらも前後の空白を除き、空なら未設定である。`GH_OPS_MERGE_METHOD` も同様に空白を除き、空なら未設定である。`--method` を明示し、かつ `--policy-file` を付けないときは、環境変数の方針ファイルは読まない。
+
+方針ファイルは JSON オブジェクトで、キーは `OWNER/REPO`、値は `merge`、`squash`、`rebase` のいずれかである。オブジェクトでない JSON と、未知の値は、1行のエラーになり、PUT は行わない。
+
+ドライランの表示には、決まった方法とその出典が出る。出典は `cli`（明示した `--method`）、`policy`（方針ファイル）、`env`（`GH_OPS_MERGE_METHOD`）、`default`（既定の `squash`）である。
+
+`--require-merge-commit` は、決まった方法が `merge` でないとき、どの PUT よりも前にエラーになる。`--write` でマージしたあとは、そのマージコミットを GET し、親がちょうど 2 つで、`parents[1]` が検証済みの head SHA と一致しない限り、0 以外で終了する。出力には `merge_sha`、`parent_count`、`parents`、`html_url` が加わる。
+
+```text
+python -S gh_ops.py pr-merge example-owner/example-repo 11 --sha <sha> --policy-file policy.json
+python -S gh_ops.py pr-merge example-owner/example-repo 11 --sha <sha> --method merge --require-merge-commit --write
+```
+
+```json
+{"example-owner/example-repo": "merge"}
+```
+
 ## Network Git limits (`fetch-guard`)
 
 | Operation | One communication | Attempts plus backoff |
