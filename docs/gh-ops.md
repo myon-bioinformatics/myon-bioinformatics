@@ -49,7 +49,7 @@ canonical promotion and compatibility tests.
 
 | Concern | Owner | Examples |
 |--------|--------|----------|
-| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `commit-files --write`, `pr-create --write`, `pr-merge --write`, `pr-retarget --write`, `run-rerun --write` |
+| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `commit-files --write`, `pr-create --write`, `pr-merge --write`, `pr-retarget --write`, `run-rerun --write`, `branch-delete --write` |
 | Local git writes on an enrolled checkout (explicit paths only) | Parent `gh_ops.py` | `git-commit --message-file msg.txt path/to/file --write` (optional `--push` with `--write`) |
 | Subtree split push from a monorepo to a NEW child branch | Parent `gh_ops.py` | `subtree-push --prefix DIR --remote URL --branch sync/x` (plan), add `--write` to push |
 | GitHub Pages delivery evidence (deploy API + HTTP/bytes/text) | Parent `publish_check.py` | `publish_check.py --site … --repo OWNER/OWNER.github.io` |
@@ -80,6 +80,34 @@ the head's check runs are all completed and passing. `--ignore REGEX` drops chec
 names before judging (default `(?i)copilot`, so a failing Copilot review bot does not
 block; `--ignore ''` keeps every check). Ignored checks never count toward
 `--min-checks` and are listed under `checks.ignored`.
+
+The merge method and `--require-merge-commit` are specified in the Japanese section below. The default method remains `squash`.
+
+## マージ方法の方針とマージコミットの確認 (`pr-merge`)
+
+マージ方法は次の順で決まる。
+
+1. 明示した `--method`（`merge`、`squash`、`rebase`）
+2. 方針ファイルの、そのリポジトリ (`OWNER/REPO`) のエントリ
+3. 環境変数 `GH_OPS_MERGE_METHOD`
+4. 既定の `squash`
+
+方針ファイルは `--policy-file PATH` を優先し、無ければ `GH_OPS_MERGE_POLICY_FILE` を使う。どちらも前後の空白を除き、空なら未設定である。`GH_OPS_MERGE_METHOD` も同様に空白を除き、空なら未設定である。`--method` を明示し、かつ `--policy-file` を付けないときは、環境変数の方針ファイルは読まない。
+
+方針ファイルは JSON オブジェクトで、キーは `OWNER/REPO`、値は `merge`、`squash`、`rebase` のいずれかである。オブジェクトでない JSON と、未知の値は、1行のエラーになり、PUT は行わない。
+
+ドライランの表示には、決まった方法とその出典が出る。出典は `cli`（明示した `--method`）、`policy`（方針ファイル）、`env`（`GH_OPS_MERGE_METHOD`）、`default`（既定の `squash`）である。
+
+`--require-merge-commit` は、決まった方法が `merge` でないとき、どの PUT よりも前にエラーになる。`--write` でマージしたあとは、そのマージコミットを GET し、親がちょうど 2 つで、`parents[1]` が検証済みの head SHA と一致しない限り、0 以外で終了する。出力には `merge_sha`、`parent_count`、`parents`、`html_url` が加わる。
+
+```text
+python -S gh_ops.py pr-merge example-owner/example-repo 11 --sha <sha> --policy-file policy.json
+python -S gh_ops.py pr-merge example-owner/example-repo 11 --sha <sha> --method merge --require-merge-commit --write
+```
+
+```json
+{"example-owner/example-repo": "merge"}
+```
 
 ## Network Git limits (`fetch-guard`)
 
@@ -415,6 +443,30 @@ python -S gh_ops.py run-cancel OWNER/REPO 123456789 --expect-head-sha "$(git rev
 `--expect-head-sha`. If the run is already `completed`, it returns `ok=True` and
 `status="already_completed"` without issuing a POST. Otherwise it plans or POSTs
 `/repos/OWNER/REPO/actions/runs/RUN_ID/cancel` (`202 Accepted`).
+
+## Delete a branch ref (`branch-delete`)
+
+```sh
+python -S gh_ops.py branch-delete OWNER/REPO feat/merged-work
+python -S gh_ops.py branch-delete OWNER/REPO feat/merged-work --expect-tip-sha "$(git rev-parse origin/feat/merged-work)" --write
+```
+
+`branch-delete` is the cleanup counterpart of `pr-create`/`pr-merge`: it removes
+a branch ref (for example after its PR merged) only after safety checks pass.
+Planning is the default; `--write` issues the DELETE.
+
+- The branch tip is captured first (`GET /repos/OWNER/REPO/git/ref/heads/BRANCH`)
+  and can be pinned with `--expect-tip-sha`. A bare 404 is ambiguous, so absence
+  is proven only by a complete branch listing that excludes the name (the same
+  rule as `variable-delete`). An already-absent branch is an idempotent success
+  (`status="already_absent"`), never an error.
+- The repository default branch is refused (`status="default_branch"`), and so
+  is a branch that any open pull request uses as its head
+  (`status="open_pr_head"`, with the PR numbers).
+- Immediately before writing, the command reads the tip again and stops if it moved during preflight. GitHub’s REST DELETE has no expected-SHA parameter. Concurrent pushes after that final read can still race with deletion.
+- After the DELETE (`204`), absence is proven again before the receipt reports
+  `status="verified"`; a failed or uncertain verification is reported separately
+  from the mutation result, and nothing is retried blindly.
 
 ## Submit a pull request review (`pr-review`) and toggle draft state (`pr-ready`)
 

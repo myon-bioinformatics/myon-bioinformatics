@@ -42,7 +42,7 @@ on stdout for exit 2. Without it, errors stay on stderr and stdout stays empty.
 from __future__ import annotations
 
 import argparse, base64, contextlib, difflib, fnmatch, importlib.util, json, os, re, shutil, signal, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request
-from dataclasses import dataclass, field; from datetime import datetime, timezone; from pathlib import Path; from typing import Any, Callable, Optional
+from dataclasses import dataclass, field; from datetime import datetime, timezone; from pathlib import Path; from typing import Any, Callable, Mapping, Optional
 
 def _load_adjacent_gh_identity():
     base = Path(__file__).resolve().parent
@@ -1142,6 +1142,116 @@ def run_cancel(repo: str, run_id: int, *, expect_head_sha: str | None = None,
     return {**out, "dry_run": False, "cancelled": True, "status": "requested", "mutation_status": "succeeded"}
 
 
+def _branch_state(client: Client, repo: str, branch: str) -> tuple[str, str | None]:
+    """Return ("present", tip_sha) or ("absent", None) for a branch.
+
+    A bare 404 is ambiguous (GitHub also hides inaccessible resources behind
+    it), so absence is proven only by a complete branch listing that excludes
+    the name, mirroring _variable_state.
+    """
+    path = f"/repos/{repo}/git/ref/heads/{urllib.parse.quote(branch, safe='/')}"
+    try:
+        observed = client.get(path)
+    except GhOpsError as error:
+        if error.http_status != 404:
+            raise
+        rows = client.paginate(f"/repos/{repo}/branches")
+        tips: dict[str, str] = {}
+        for row in rows:
+            candidate = row.get("name") if isinstance(row, dict) else None
+            if not isinstance(candidate, str) or not candidate:
+                raise GhOpsError("branch listing contains an invalid name; incomplete response")
+            if candidate in tips:
+                raise GhOpsError("branch listing contains duplicate names; incomplete response")
+            sha = (row.get("commit") or {}).get("sha") if isinstance(row.get("commit"), dict) else None
+            if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+                raise GhOpsError("branch listing contains an invalid commit SHA")
+            tips[candidate] = sha.lower()
+        if branch not in tips:
+            return "absent", None
+        return "present", tips[branch]
+    target = observed.get("object") if isinstance(observed, dict) else None
+    if (not isinstance(target, dict) or observed.get("ref") != f"refs/heads/{branch}"
+            or target.get("type") != "commit" or not isinstance(target.get("sha"), str)
+            or not re.fullmatch(r"[0-9a-fA-F]{40}", target["sha"])):
+        raise GhOpsError("branch read-back has an unexpected shape")
+    return "present", target["sha"].lower()
+
+
+def branch_delete(repo: str, branch: str, *, expect_tip_sha: str | None = None,
+                  write: bool = False, client: Client | None = None) -> dict:
+    """Delete one branch ref, dry-run by default, with verified absence.
+
+    Preconditions: the branch exists (its tip is captured and can be pinned
+    with ``expect_tip_sha``), it is not the repository default branch, and no
+    open pull request uses it as its head. A branch that is already absent is
+    an idempotent success (``already_absent``). ``write=True`` DELETEs the ref
+    and then proves absence again before reporting success.
+    """
+    if not isinstance(branch, str) or not branch or branch != branch.strip():
+        raise GhOpsError(f"invalid branch name: {branch!r}")
+    _validate_branch_name(branch, field="branch")
+    if expect_tip_sha is not None:
+        _sha(expect_tip_sha)
+    client, repo = _client(client), _repo(repo)
+    path = f"/repos/{repo}/git/refs/heads/{urllib.parse.quote(branch, safe='/')}"
+    base: dict[str, Any] = {"schema": "gh-ops-branch-delete/1", "repository": repo, "branch": branch}
+    try:
+        state, tip = _branch_state(client, repo, branch)
+    except GhOpsError as error:
+        return {**base, "ok": False, "dry_run": not write, "deleted": False, "status": "inaccessible",
+                "http_status": error.http_status, "reason": f"cannot confirm the branch exists: {error}"}
+    if state == "absent":
+        return {**base, "ok": True, "dry_run": not write, "deleted": False, "tip_sha": None,
+                "status": "already_absent"}
+    out: dict[str, Any] = {**base, "tip_sha": tip}
+    meta = client.get(f"/repos/{repo}")
+    default_branch = meta.get("default_branch") if isinstance(meta, dict) else None
+    if not isinstance(default_branch, str) or not default_branch.strip():
+        raise GhOpsError("repository read-back has no default branch")
+    out["default_branch"] = default_branch
+    if branch == default_branch:
+        return {**out, "ok": False, "dry_run": not write, "deleted": False, "status": "default_branch",
+                "reason": f"{branch!r} is the repository default branch; refusing to delete it"}
+    if expect_tip_sha is not None and (tip is None or not tip.startswith(_sha(expect_tip_sha))):
+        return {**out, "ok": False, "dry_run": not write, "deleted": False, "status": "tip_mismatch",
+                "reason": f"branch tip SHA {str(tip)[:12]} does not match --expect-tip-sha {expect_tip_sha}"}
+    owner = repo.split("/", 1)[0]
+    pulls = client.get(f"/repos/{repo}/pulls", params={"state": "open", "head": f"{owner}:{branch}"})
+    if not isinstance(pulls, list) or any(not isinstance(row, dict) or type(row.get("number")) is not int for row in pulls):
+        raise GhOpsError("open PR lookup returned an unexpected shape; incomplete response")
+    open_prs = [row["number"] for row in pulls]
+    if open_prs:
+        return {**out, "ok": False, "dry_run": not write, "deleted": False, "status": "open_pr_head",
+                "open_prs": open_prs,
+                "reason": f"open pull requests use this branch as head: {open_prs}"}
+    if not write:
+        return {**out, "ok": True, "dry_run": True, "deleted": False, "status": "would_delete",
+                "would_delete": {"path": path}}
+    if _branch_state(client, repo, branch) != ("present", tip):
+        return {**out, "ok": False, "dry_run": False, "deleted": False, "status": "tip_mismatch",
+                "reason": "branch state changed during preflight"}
+    try:
+        client.request("DELETE", path, expect=(204,))
+    except GhOpsError as error:
+        return _mutation_error_receipt(
+            out, error,
+            f"branch DELETE did not return success; inspect before retrying: {error}",
+            flag_key="deleted",
+        )
+    try:
+        after, _after_tip = _branch_state(client, repo, branch)
+    except GhOpsError as error:
+        return {**out, "ok": False, "dry_run": False, "deleted": True, "status": "verification_uncertain",
+                "verified": False, "mutation_status": "succeeded", "http_status": error.http_status,
+                "reason": f"DELETE succeeded but absence could not be verified; inspect before retrying: {error}"}
+    verified = after == "absent"
+    return {**out, "ok": verified, "dry_run": False, "deleted": True,
+            "status": "verified" if verified else "verification_failed", "verified": verified,
+            "mutation_status": "succeeded",
+            "reason": "" if verified else "branch is still present after DELETE"}
+
+
 def pr_body_replace(repo: str, number: int, *, old: str, new: str, write: bool = False,
                     client: Client | None = None) -> dict:
     """Replace one anchor in a PR body, only when it occurs exactly once."""
@@ -1895,9 +2005,126 @@ def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = Fal
     return out
 
 
+def _one_line(text: str) -> str:
+    return " ".join(str(text).split())
+
+
+def _blank_to_none(value: Any, label: str) -> str | None:
+    """Strip ``value``. ``None`` and whitespace-only strings are unset."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise GhOpsError(f"{label} must be a string")
+    return value.strip() or None
+
+
+def _merge_policy_path(policy_file: str | None, env: Mapping[str, str], *, explicit_method: bool) -> str | None:
+    """``--policy-file`` wins. The env file is ignored when ``--method`` is explicit."""
+    if policy_file is not None:
+        if not isinstance(policy_file, str):
+            raise GhOpsError("--policy-file must be a string")
+        path = policy_file.strip()
+        if not path:
+            raise GhOpsError("merge policy file path is empty")
+        return path
+    if explicit_method:
+        return None
+    raw = env.get("GH_OPS_MERGE_POLICY_FILE")
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise GhOpsError("GH_OPS_MERGE_POLICY_FILE must be a string")
+    return raw.strip() or None
+
+
+def _validate_merge_policy(payload: Any) -> dict[str, str]:
+    if not isinstance(payload, dict):
+        raise GhOpsError("merge policy must be a JSON object")
+    policy: dict[str, str] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str) or not _REPO_RE.fullmatch(key):
+            raise GhOpsError("merge policy key must look like OWNER/REPO")
+        if value not in MERGE_METHODS:
+            raise GhOpsError(f"merge policy value for {key} must be merge, squash, or rebase")
+        policy[key] = value
+    return policy
+
+
+def _load_merge_policy(path: str) -> dict[str, str]:
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError as error:
+        raise GhOpsError(_one_line(f"merge policy file: {error}")) from None
+    except UnicodeError:
+        raise GhOpsError("merge policy file is not valid UTF-8") from None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise GhOpsError(_one_line(f"merge policy file is not valid JSON: {error.msg}")) from None
+    return _validate_merge_policy(payload)
+
+
+def resolve_merge_method(repo: str, *, method: str | None = None, policy_file: str | None = None,
+                         environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Resolve a ``pr-merge`` method and the source that selected it.
+
+    Precedence is explicit ``method``, then the policy entry for ``repo``,
+    then ``GH_OPS_MERGE_METHOD``, then ``squash``. Blank strings are unset.
+    ``policy_file`` (``--policy-file``) wins over ``GH_OPS_MERGE_POLICY_FILE``.
+    That environment file is not read when ``method`` is explicit and
+    ``policy_file`` is omitted. Policy values must be ``merge``, ``squash``,
+    or ``rebase``; a non-object document is rejected.
+    """
+    env = os.environ if environ is None else environ
+    repository = _repo(repo)
+    explicit = _blank_to_none(method, "--method")
+    path = _merge_policy_path(policy_file, env, explicit_method=explicit is not None)
+    policy = _load_merge_policy(path) if path else {}
+    if explicit is not None:
+        if explicit not in MERGE_METHODS:
+            raise GhOpsError(f"--method must be one of {', '.join(MERGE_METHODS)}")
+        return {"method": explicit, "source": "cli"}
+    if repository in policy:
+        return {"method": policy[repository], "source": "policy"}
+    env_method = _blank_to_none(env.get("GH_OPS_MERGE_METHOD"), "GH_OPS_MERGE_METHOD")
+    if env_method is not None:
+        if env_method not in MERGE_METHODS:
+            raise GhOpsError(f"GH_OPS_MERGE_METHOD must be one of {', '.join(MERGE_METHODS)}")
+        return {"method": env_method, "source": "env"}
+    return {"method": "squash", "source": "default"}
+
+
+def merge_commit_parent_gate(commit: Any, head: str) -> dict[str, Any]:
+    """Accept a merge commit only when it has two parents and ``parents[1]`` is ``head``."""
+    if not isinstance(commit, dict):
+        return {"ok": False, "reason": "merge commit response was not an object",
+                "parent_count": None, "parents": None, "html_url": None}
+    html = commit.get("html_url")
+    html_url = html if isinstance(html, str) and html else None
+    raw_parents = commit.get("parents")
+    if not isinstance(raw_parents, list):
+        return {"ok": False, "reason": "merge commit response did not include a parents array",
+                "parent_count": None, "parents": None, "html_url": html_url}
+    parents: list[str] = []
+    for item in raw_parents:
+        sha = item.get("sha") if isinstance(item, dict) else None
+        if not isinstance(sha, str) or not sha:
+            return {"ok": False, "reason": "merge commit parent is missing sha",
+                    "parent_count": len(raw_parents), "parents": parents, "html_url": html_url}
+        parents.append(sha.lower())
+    expected = head.lower()
+    if len(parents) == 2 and parents[1] == expected:
+        return {"ok": True, "reason": None, "parent_count": 2, "parents": parents, "html_url": html_url}
+    shown = ", ".join(parents) if parents else "(none)"
+    return {"ok": False, "reason": (f"merge commit must have exactly 2 parents and parents[1] equal to head {expected}; "
+                                    f"got {len(parents)} ({shown})"),
+            "parent_count": len(parents), "parents": parents, "html_url": html_url}
+
+
 def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: str = "squash",
              message: str | None = None, title: str | None = None, ignore: str | None = None,
-             write: bool = False, client: Client | None = None) -> dict:
+             write: bool = False, client: Client | None = None, require_merge_commit: bool = False,
+             method_source: str | None = None) -> dict:
     """Verify, then (only with ``write=True``) merge a PR in one call.
 
     Preconditions: open, ``mergeable_state == "clean"``, head matches
@@ -1907,9 +2134,20 @@ def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: s
     The merge request always pins ``sha`` to the verified head. ``ignore`` is a
     regex of check names (e.g. ``(?i)copilot`` for the review bot) dropped
     before judging; they are listed under ``checks["ignored"]``.
+
+    ``require_merge_commit`` demands ``method == "merge"`` before any request.
+    After a write it GETs the merge commit and accepts it only when that commit
+    has exactly two parents and ``parents[1]`` is the verified head SHA.
     """
     if method not in MERGE_METHODS:
         raise GhOpsError(f"--method must be one of {', '.join(MERGE_METHODS)}")
+    if method_source is None:
+        method_source = "default" if method == "squash" else "cli"
+    if type(require_merge_commit) is not bool:
+        raise GhOpsError("--require-merge-commit must be a boolean")
+    if require_merge_commit and method != "merge":
+        raise GhOpsError(
+            f"--require-merge-commit requires method merge; resolved {method} from {method_source}")
     if min_checks < 1:
         raise GhOpsError("--min-checks must be at least 1; zero check runs never counts as green")
     try:
@@ -1950,7 +2188,9 @@ def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: s
     else:
         checks = {"ok": False, "reason": "not evaluated: --sha does not identify the PR head", "runs": []}
     result = {"ok": False, "dry_run": not write, "pre_merge": pre_merge, "checks": checks,
-              "merged": False, "merge_sha": None, "failures": failures}
+              "merged": False, "merge_sha": None, "failures": failures,
+              "merge_method": method, "merge_method_source": method_source,
+              "require_merge_commit": require_merge_commit}
     if failures:
         return result
     body: dict = {"sha": head, "merge_method": method}
@@ -1964,9 +2204,23 @@ def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: s
     response = client.request("PUT", path + "/merge", body, expect=(200, 405, 409))
     data = response.data if isinstance(response.data, dict) else {}
     merged = response.status == 200 and bool(data.get("merged"))
-    result.update(ok=merged, merged=merged, merge_sha=data.get("sha") if merged else None)
+    merge_sha = data.get("sha") if merged else None
+    result.update(ok=merged, merged=merged, merge_sha=merge_sha)
     if not merged:
         result["failures"] = [f"merge rejected: HTTP {response.status} {data.get('message', '')}".strip()]
+        return result
+    if not require_merge_commit:
+        return result
+    if not isinstance(merge_sha, str) or not merge_sha:
+        reason = "merge response did not include a commit sha"
+        result.update(ok=False, reason=reason, failures=[reason])
+        return result
+    commit = client.get(f"/repos/{repo}/commits/{_quote(merge_sha)}")
+    gate = merge_commit_parent_gate(commit, head)
+    result.update(parent_count=gate["parent_count"], parents=gate["parents"], html_url=gate["html_url"],
+                  merge_sha=merge_sha)
+    if not gate["ok"]:
+        result.update(ok=False, reason=gate["reason"], failures=[gate["reason"]])
     return result
 
 
@@ -3624,6 +3878,11 @@ def _render(command: str, result: dict) -> str:
         return (f"{'OK' if result['ok'] else 'NG'} run-cancel ({result['status']}) "
                 f"{result['repository']} run={result['run_id']} "
                 f"head={str(result.get('head_sha') or '')[:12]}{reason}")
+    if command == "branch-delete":
+        reason = f": {result['reason']}" if result.get("reason") else ""
+        return (f"{'OK' if result['ok'] else 'NG'} branch-delete ({result['status']}) "
+                f"{result['repository']} branch={result['branch']} "
+                f"tip={str(result.get('tip_sha') or '')[:12]}{reason}")
     if command == "pr-review":
         url = f" {result['url']}" if result.get("url") else ""
         reason = f": {result['reason']}" if result.get("reason") else ""
@@ -3646,11 +3905,26 @@ def _render(command: str, result: dict) -> str:
         reason = f": {result['reason']}" if result.get("reason") else ""
         return (f"{'OK' if result['ok'] else 'NG'} issue-edit ({result['status']}) "
                 f"{result['repository']}#{result['number']}{reason}")
+    if command == "pr-merge":
+        reason = result.get("reason") or "; ".join(result.get("failures") or [])
+        status = "OK" if result.get("ok") else "NG"
+        mode = "dry run" if result.get("dry_run") else "applied"
+        parts = [f"{status} pr-merge ({mode})",
+                 f"method={result.get('merge_method')} source={result.get('merge_method_source')}"]
+        if result.get("merge_sha"):
+            parts.append(f"merge_sha={result['merge_sha']}")
+        if result.get("parent_count") is not None:
+            parents = result.get("parents") or []
+            parts.append(f"parent_count={result['parent_count']}")
+            parts.append("parents=" + ",".join(parents))
+        if result.get("html_url"):
+            parts.append(f"html_url={result['html_url']}")
+        text = " ".join(parts)
+        return text + (f": {reason}" if reason else "")
     reason = result.get("reason") or "; ".join(result.get("failures", []))
     status = "OK" if result["ok"] else "NG"
     mode = "dry run" if result.get("dry_run") else "applied"
-    extra = f" merge_sha={result['merge_sha']}" if result.get("merge_sha") else ""
-    return f"{status} {command} ({mode}){extra}" + (f": {reason}" if reason else "")
+    return f"{status} {command} ({mode})" + (f": {reason}" if reason else "")
 
 
 def _read_body_exact(path: str) -> str:
@@ -3802,6 +4076,12 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
                    help="refuse unless the run's head SHA matches this SHA")
     p.add_argument("--write", action="store_true")
 
+    p = _command_parser(sub, "branch-delete", help="delete a branch ref after safety checks (planned unless --write)")
+    p.add_argument("repo"); p.add_argument("branch")
+    p.add_argument("--expect-tip-sha", metavar="SHA",
+                   help="refuse unless the branch tip SHA matches this SHA")
+    p.add_argument("--write", action="store_true")
+
     p = _command_parser(sub, "issue-comment", help="create a top-level PR conversation comment (needs --write)")
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--file", required=True, help="UTF-8 file containing the comment body (one trailing newline ignored)")
@@ -3830,7 +4110,13 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--sha", required=True)
     p.add_argument("--min-checks", type=int, default=1)
-    p.add_argument("--method", choices=MERGE_METHODS, default="squash")
+    p.add_argument("--method", choices=MERGE_METHODS, default=None,
+                   help="explicit merge method; otherwise policy, GH_OPS_MERGE_METHOD, else squash")
+    p.add_argument("--policy-file", default=None, metavar="PATH",
+                   help="JSON object mapping OWNER/REPO to merge, squash, or rebase "
+                        "(else GH_OPS_MERGE_POLICY_FILE)")
+    p.add_argument("--require-merge-commit", action="store_true",
+                   help="require method merge; after --write, the merge commit must have the head as parents[1]")
     p.add_argument("--ignore", default=r"(?i)copilot", metavar="REGEX",
                    help="drop check names matching REGEX before judging (default (?i)copilot; '' keeps all)")
     p.add_argument("--title")
@@ -4051,6 +4337,9 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
     if command == "run-cancel":
         return run_cancel(args.repo, args.run_id, expect_head_sha=args.expect_head_sha,
                           write=args.write, client=client)
+    if command == "branch-delete":
+        return branch_delete(args.repo, args.branch, expect_tip_sha=args.expect_tip_sha,
+                             write=args.write, client=client)
     if command == "issue-comment":
         return issue_comment_create(args.repo, args.number, body=_read_text(args.file),
                                     write=args.write, client=client)
@@ -4064,7 +4353,9 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
                                write=args.write, client=client)
     if command == "pr-merge":
         message = _read_text(args.message_file) if args.message_file else None
-        return pr_merge(args.repo, args.number, sha=args.sha, min_checks=args.min_checks, method=args.method,
+        resolved = resolve_merge_method(args.repo, method=args.method, policy_file=args.policy_file)
+        return pr_merge(args.repo, args.number, sha=args.sha, min_checks=args.min_checks, method=resolved["method"],
+                        method_source=resolved["source"], require_merge_commit=args.require_merge_commit,
                         title=args.title, message=message, ignore=args.ignore, write=args.write, client=client)
     if command == "git-commit":
         if args.push and not args.write:
