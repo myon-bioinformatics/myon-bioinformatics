@@ -32,5 +32,13 @@ function openMembership(snap){
  }
  return {count:complete?total:null,open};
 }
-const api={states,esc,summarize,validate,diff,openMembership};if(typeof module!=='undefined')module.exports=api;root.UnifiedModel=api;
+const mainFailed=new Set(['failure','timed_out','action_required','startup_failure']);
+function repoOverview(counts,runs){
+ const latest=new Map();
+ for(const r of runs||[]){if(!r||r.current_main!==true||typeof r.repository!=='string')continue;const old=latest.get(r.repository);if(!old||String(r.at||r.checked||'')>String(old.at||old.checked||''))latest.set(r.repository,r)}
+ const label=r=>mainFailed.has(r.conclusion)?'失敗':r.status!=='completed'||r.conclusion==null?'実行中':r.conclusion==='success'?'成功':r.conclusion==='cancelled'?'取消':r.conclusion==='skipped'?'スキップ':'不明';
+ const rows=(counts||[]).map(c=>{const run=latest.get(c.repository)||null;return {repository:c.repository,pull_requests:c.pull_requests??0,issues:c.issues??0,open_issues_count:c.open_issues_count??0,complete:c.complete===true,checked:c.checked||'',main_ci:run?{label:label(run),name:run.name||'',url:run.url||'',at:run.at||run.checked||''}:null}}).sort((a,b)=>(b.main_ci?.label==='失敗')-(a.main_ci?.label==='失敗')||a.repository.localeCompare(b.repository));
+ return {totals:{repositories:rows.length,pull_requests:rows.reduce((n,r)=>n+r.pull_requests,0),issues:rows.reduce((n,r)=>n+r.issues,0),main_failed:rows.filter(r=>r.main_ci?.label==='失敗').length},rows};
+}
+const api={states,esc,summarize,validate,diff,openMembership,repoOverview};if(typeof module!=='undefined')module.exports=api;root.UnifiedModel=api;
 })(typeof window==='undefined'?globalThis:window);
