@@ -263,6 +263,12 @@ printf '%s' '[{"path":"docs/note.md","encoding":"utf-8","content":"hello\n"},{"p
 A blob already listed in the fetched tree or uploaded earlier in the same
 commit is reused by SHA, including when the destination path differs.
 
+If the Git blob SHA is already known, an entry can contain only `path` and
+`blob_sha`. The full 40-hex SHA and byte size are verified from the destination
+branch tree. This copies the bytes under a new path without fetching or uploading
+the blob. If the SHA is absent from the returned tree (including a truncated
+listing), supply content instead. A mixed batch is validated before writing.
+
 The same blobs/tree/commit/ref sequence as a connector `create_tree` call, but planned
 first: each path is listed as `new`, `changed`, `unchanged`, `delete` or `absent` with
 its size and Git blob SHA, and a dry run issues no write. Like `file-put`, the default

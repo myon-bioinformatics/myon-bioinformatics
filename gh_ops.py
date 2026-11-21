@@ -2296,17 +2296,28 @@ def _commit_files_path(path: Any) -> str:
     return path
 
 
-def _stdin_commit_files(stream) -> dict[str, bytes]:
+@dataclass(frozen=True)
+class _BlobRef:
+    sha: str
+
+
+def _stdin_commit_files(stream) -> dict[str, bytes | _BlobRef]:
     rows = json.load(stream)
     if not isinstance(rows, list) or len(rows) > _COMMIT_FILES_MAX:
         raise GhOpsError(f"expected a JSON array of at most {_COMMIT_FILES_MAX} files")
     files = {}
     for row in rows:
-        if not isinstance(row, dict) or set(row) != {"path", "encoding", "content"}:
-            raise GhOpsError("each file requires path, encoding and content")
+        if not isinstance(row, dict) or set(row) not in ({"path", "encoding", "content"}, {"path", "blob_sha"}):
+            raise GhOpsError("expected path and either blob_sha or encoding and content")
         path = _commit_files_path(row["path"])
         if path in files:
             raise GhOpsError(f"duplicate repository path: {path}")
+        if "blob_sha" in row:
+            sha = row["blob_sha"]
+            if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+                raise GhOpsError(f"{path}: expected a full Git blob SHA")
+            files[path] = _BlobRef(sha.lower())
+            continue
         content = row["content"]
         if not isinstance(content, str):
             raise GhOpsError(f"{path}: content must be a string")
@@ -2352,6 +2363,8 @@ def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: 
     if set(files) & set(deletes):
         raise GhOpsError("a path cannot be both written and deleted")
     for path, data in files.items():
+        if isinstance(data, _BlobRef):
+            continue
         if not isinstance(data, bytes):
             raise GhOpsError(f"{path}: content must be bytes")
         if len(data) > _COMMIT_FILE_BYTES:
@@ -2374,13 +2387,23 @@ def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: 
     tree = client.get(f"/repos/{repo}/git/trees/{base_tree}", params={"recursive": "1"})
     existing = None if tree.get("truncated") else {
         entry["path"]: entry for entry in tree.get("tree") or [] if entry.get("type") == "blob"}
+    blob_sizes = {entry["sha"]: entry.get("size") for entry in tree.get("tree") or [] if entry.get("type") == "blob"}
     plan = []
     for path, data in sorted(files.items()):
-        sha = _git_blob_sha(data)
+        if isinstance(data, _BlobRef):
+            sha = data.sha
+            size = blob_sizes.get(sha)
+            if type(size) is not int or size < 0:
+                raise GhOpsError(f"{path}: blob {sha} is not verified in the destination tree; supply content")
+            if size > _COMMIT_FILE_BYTES:
+                raise GhOpsError(f"{path}: larger than {_COMMIT_FILE_BYTES} bytes")
+        else:
+            sha = _git_blob_sha(data)
+            size = len(data)
         before = None if existing is None else existing.get(path)
         change = ("unknown" if existing is None else "new" if before is None
                   else "unchanged" if before.get("sha") == sha else "changed")
-        plan.append({"path": path, "bytes": len(data), "blob_sha": sha, "change": change,
+        plan.append({"path": path, "bytes": size, "blob_sha": sha, "change": change,
                      "mode": (before or {}).get("mode", "100644")})
     for path in sorted(deletes):
         plan.append({"path": path, "delete": True,
@@ -2390,7 +2413,7 @@ def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: 
         return {**out, "ok": True, "changed": False, "reason": "unchanged"}
     if not write:
         return {**out, "ok": True, "changed": False}
-    known_blobs = {entry["sha"] for entry in tree.get("tree") or [] if entry.get("type") == "blob"}
+    known_blobs = set(blob_sizes)
     elements = []
     for item in plan:
         if item.get("delete"):
