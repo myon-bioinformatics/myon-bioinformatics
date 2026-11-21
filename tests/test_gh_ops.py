@@ -1694,3 +1694,89 @@ def test_cli_uses_os_environ_when_resolver_env_is_omitted(monkeypatch, tmp_path,
     assert gh_ops.resolve_merge_method(EXAMPLE) == {"method": "rebase", "source": "env"}
     monkeypatch.setenv("GH_OPS_MERGE_METHOD", "   ")
     assert gh_ops.resolve_merge_method(EXAMPLE) == {"method": "squash", "source": "default"}
+
+
+def _branch_routes(state):
+    """Routes for branch-delete against octo/demo; state tracks the ref."""
+    ref_path = "/repos/octo/demo/git/ref/heads/feat/x"
+
+    def get_ref(parts, body):
+        if state["present"]:
+            return reply({"ref": "refs/heads/feat/x", "object": {"sha": HEAD, "type": "commit"}})
+        return reply({"message": "Not Found"}, status=404)
+
+    def delete_ref(parts, body):
+        state["present"] = False
+        return reply(None, status=204)
+
+    return {
+        ("GET", ref_path): get_ref,
+        ("DELETE", "/repos/octo/demo/git/refs/heads/feat/x"): delete_ref,
+        ("GET", "/repos/octo/demo"): reply({"default_branch": "main"}),
+        ("GET", "/repos/octo/demo/pulls"): reply([]),
+        ("GET", "/repos/octo/demo/branches"): lambda parts, body: reply(
+            [{"name": "feat/x", "commit": {"sha": HEAD}}] if state["present"] else []),
+    }
+
+
+def test_branch_delete_plan_and_write():
+    state = {"present": True}
+    client, stub = client_for(_branch_routes(state))
+    planned = gh_ops.branch_delete(REPO, "feat/x", client=client)
+    assert planned["ok"] and planned["status"] == "would_delete" and planned["tip_sha"] == HEAD
+    assert "DELETE" not in stub.methods
+    done = gh_ops.branch_delete(REPO, "feat/x", expect_tip_sha=HEAD, write=True, client=client)
+    assert done["ok"] and done["status"] == "verified" and done["deleted"] is True
+    assert "DELETE" in stub.methods
+
+
+def test_branch_delete_already_absent_is_idempotent():
+    state = {"present": False}
+    client, stub = client_for(_branch_routes(state))
+    out = gh_ops.branch_delete(REPO, "feat/x", write=True, client=client)
+    assert out["ok"] and out["status"] == "already_absent" and out["deleted"] is False
+    assert "DELETE" not in stub.methods
+
+
+def test_branch_delete_refuses_default_branch_and_tip_mismatch():
+    routes = _branch_routes({"present": True})
+    routes[("GET", "/repos/octo/demo/git/ref/heads/main")] = reply(
+        {"ref": "refs/heads/main", "object": {"sha": HEAD, "type": "commit"}})
+    client, stub = client_for(routes)
+    out = gh_ops.branch_delete(REPO, "main", write=True, client=client)
+    assert not out["ok"] and out["status"] == "default_branch"
+    out = gh_ops.branch_delete(REPO, "feat/x", expect_tip_sha=OTHER, write=True, client=client)
+    assert not out["ok"] and out["status"] == "tip_mismatch"
+    assert "DELETE" not in stub.methods
+
+
+def test_branch_delete_refuses_open_pr_head():
+    routes = _branch_routes({"present": True})
+    routes[("GET", "/repos/octo/demo/pulls")] = reply([{"number": 7}])
+    client, stub = client_for(routes)
+    out = gh_ops.branch_delete(REPO, "feat/x", write=True, client=client)
+    assert not out["ok"] and out["status"] == "open_pr_head" and out["open_prs"] == [7]
+    assert "DELETE" not in stub.methods
+
+@pytest.mark.parametrize(("path", "payload"), [
+    ("/repos/octo/demo", {}),
+    ("/repos/octo/demo/pulls", [None]),
+])
+def test_branch_delete_requires_default_and_pr_evidence(path, payload):
+    routes = _branch_routes({"present": True})
+    routes[("GET", path)] = reply(payload)
+    client, stub = client_for(routes)
+    with pytest.raises(gh_ops.GhOpsError):
+        gh_ops.branch_delete(REPO, "feat/x", write=True, client=client)
+    assert "DELETE" not in stub.methods
+
+
+def test_branch_delete_checks_the_tip_again_before_write():
+    routes = _branch_routes({"present": True})
+    tips = iter([HEAD, OTHER])
+    routes[("GET", "/repos/octo/demo/git/ref/heads/feat/x")] = lambda *_: reply(
+        {"ref": "refs/heads/feat/x", "object": {"type": "commit", "sha": next(tips)}})
+    client, stub = client_for(routes)
+    result = gh_ops.branch_delete(REPO, "feat/x", expect_tip_sha=HEAD, write=True, client=client)
+    assert result["status"] == "tip_mismatch"
+    assert "DELETE" not in stub.methods
