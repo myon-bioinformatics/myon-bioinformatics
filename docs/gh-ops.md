@@ -204,9 +204,12 @@ allow a child-only path. Those checks stay in `gh_ops`, including the 40- and
 compare tip is still fetched into the monorepo object store before the split;
 the vendored guard would fetch it only into a temporary clone afterwards, and a
 squash join then fails the split. A failed `git subtree split` is
-`subtree_split_failed` with git's exit status and without git's stderr. The split
-and its filter-branch fallback share one timeout. The network push and the
-post-push read stay here.
+`subtree_split_failed` and includes one trimmed line of git stderr. A timeout
+stays `git_timeout` and is not reported as a generic split failure. The vendored
+split and its filter-branch fallback share one `--timeout` budget (the same
+number passed to `git_subtree_split`); a short budget can be used up by the
+split before the fallback starts. Other git commands each get that timeout on
+their own. The network push and the post-push read stay here.
 
 - The split must have the same tree as `<source>:<prefix>`. `git subtree split` can
   exit 0 with a stale SHA (git 2.47.3); then a filter-branch split in a temporary clone

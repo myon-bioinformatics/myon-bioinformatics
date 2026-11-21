@@ -3132,21 +3132,65 @@ def _subtree_available(cwd: Any, *, run: Callable[..., Any], timeout: float) -> 
     return gh_identity._git_subtree_available(cwd)
 
 
+class _StderrTee:
+    """Record bytes read from a git stderr pipe, then close the real pipe."""
+
+    def __init__(self, raw: Any, sink: bytearray) -> None:
+        self._raw = raw
+        self._sink = sink
+
+    def read(self, size: int = -1) -> bytes:
+        chunk = self._raw.read(size)
+        if chunk:
+            self._sink.extend(chunk)
+        return chunk
+
+    def close(self) -> None:
+        self._raw.close()
+
+
+def _split_failure_result(error: BaseException, stderr: str) -> dict:
+    """Map a vendored split failure to a fail-closed reason, keeping one stderr line."""
+    text = _one_line(stderr) if stderr else ""
+    if not text:
+        text = _one_line(str(error))
+    detail = text[-300:]
+    reason = "git_timeout" if "timed out" in str(error) else "subtree_split_failed"
+    return {"prefix": None, "source": None, "sha": None, "reason": reason, "detail": detail,
+            "fallback_used": False, "method": None, "warning": None}
+
+
 def subtree_split_verified(prefix: str, *, source: str = "HEAD", cwd: str = ".",
                            run: Callable[..., Any] = subprocess.run, timeout: float = 600.0) -> dict:
     """Read-only split from vendored ``gh_identity.git_subtree_split``.
 
     That public function owns the stale-split check, the filter-branch fallback,
-    and subtree-cache cleanup. ``run`` is unused here: callers still pass the
-    push runner, and only ls-remote, the compare-tip fetch, and the push use it.
-    A git failure becomes ``reason: subtree_split_failed`` so the push stays refused.
+    and subtree-cache cleanup. The split and the fallback share one timeout
+    budget. ``run`` is unused here: callers still pass the push runner, and only
+    ls-remote, the compare-tip fetch, and the push use it. A git failure stays
+    fail-closed. Timeouts keep reason ``git_timeout``. Other failures are
+    ``subtree_split_failed`` and include one trimmed line of git stderr.
     """
     del run
+    stderr_box: dict[str, bytearray] = {"buf": bytearray()}
+    original_spawn = gh_identity._git_spawn
+
+    def spawn(command: list[str], **kwargs: Any) -> Any:
+        proc = original_spawn(command, **kwargs)
+        box = bytearray()
+        stderr_box["buf"] = box
+        proc.stderr = _StderrTee(proc.stderr, box)
+        return proc
+
+    gh_identity._git_spawn = spawn
     try:
-        return gh_identity.git_subtree_split(cwd, prefix, source, timeout=timeout)
-    except gh_identity.GitInspectionError as error:
-        return {"prefix": None, "source": None, "sha": None, "reason": "subtree_split_failed",
-                "detail": str(error), "fallback_used": False, "method": None, "warning": None}
+        try:
+            return gh_identity.git_subtree_split(cwd, prefix, source, timeout=timeout)
+        except gh_identity.GitInspectionError as error:
+            stderr = stderr_box["buf"].decode("utf-8", "replace")
+            return _split_failure_result(error, stderr)
+    finally:
+        gh_identity._git_spawn = original_spawn
 
 
 def _subtree_ls_remote(cwd: Any, remote: str, refs: list[str], *, run: Callable[..., Any],
@@ -3217,19 +3261,33 @@ def _subtree_push_guards(cwd: str, split_sha: str, compare: dict | None, *, chil
     return {"compare_ref": ref, "compare_sha": tip, "child_only_paths": allowed}
 
 
+_SPLIT_GATE_KEYS = ("prefix_tree", "split_tree", "trees_match")
+
+
 def _subtree_push_split_tree_gate(cwd: Any, source: str, prefix: str, split_sha: str | None, *,
                                   run: Callable[..., Any], timeout: float) -> dict:
     """Re-validate via vendored ``_subtree_push_split_tree_gate`` immediately before push.
 
     That helper is private at the vendored pin. It raises ``gh_identity.Error``;
-    callers of subtree-push still see ``SubtreePushError``. ``run`` and ``timeout``
-    belong to the push runner and are not used for this read.
+    callers of subtree-push still see ``SubtreePushError``. A missing callable or a
+    return value that is not a dict with ``trees_match is True`` fails closed.
+    ``run`` and ``timeout`` belong to the push runner and are not used for this read.
     """
     del run, timeout
+    gate = getattr(gh_identity, "_subtree_push_split_tree_gate", None)
+    if not callable(gate):
+        raise SubtreePushError("stale_subtree_split", "vendored split tree gate is unavailable")
     try:
-        return gh_identity._subtree_push_split_tree_gate(cwd, source, prefix, split_sha)
+        check = gate(cwd, source, prefix, split_sha)
     except gh_identity.Error as error:
         raise SubtreePushError(str(error.code)) from None
+    except TypeError:
+        raise SubtreePushError("stale_subtree_split", "vendored split tree gate rejected the call") from None
+    if not isinstance(check, dict) or any(key not in check for key in _SPLIT_GATE_KEYS):
+        raise SubtreePushError("stale_subtree_split", "vendored split tree gate returned an unexpected shape")
+    if check.get("trees_match") is not True:
+        raise SubtreePushError("stale_subtree_split", "vendored split tree gate did not confirm the split tree")
+    return check
 
 
 def subtree_push_plan(prefix: str, remote: str, branch: str, *, source: str = "HEAD",
@@ -4158,7 +4216,9 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p.add_argument("--compare-ref", help="remote branch that must be an ancestor of the split (default: remote HEAD)")
     p.add_argument("--child-only-path", action="append", default=[], metavar="GLOB",
                    help="allow a path that exists only in the child (fnmatch; repeatable; default: none)")
-    p.add_argument("--timeout", type=float, default=600.0, help="seconds per git command (default: 600)")
+    p.add_argument("--timeout", type=float, default=600.0,
+                   help="seconds for each git command (default: 600); the vendored split and its "
+                        "filter-branch fallback share this one budget")
     p.add_argument("--write", action="store_true")
 
     p = _command_parser(sub, "git-push", help="push existing HEAD without a new commit; verify remote tip (needs --write)")
