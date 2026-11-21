@@ -430,5 +430,6 @@ def test_subtree_push_ls_remote_timeout_never_pushes(tmp_path):
         return subprocess.run(argv, **kwargs)
 
     with pytest.raises(g.SubtreePushError, match="git_timeout: git ls-remote"):
-        g.subtree_push("sub", str(child), "sync/x", cwd=str(repo), run=run, timeout=9)
+        # file:// is an absolute remote on Windows and POSIX; a drive-letter path is not.
+        g.subtree_push("sub", child.as_uri(), "sync/x", cwd=str(repo), run=run, timeout=9)
     assert not any(argv[1:2] == ["push"] or argv[1:3] == ["subtree", "push"] for argv in seen)
