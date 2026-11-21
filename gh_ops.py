@@ -2296,6 +2296,46 @@ def _commit_files_path(path: Any) -> str:
     return path
 
 
+@dataclass(frozen=True)
+class _BlobRef:
+    sha: str
+
+
+def _stdin_commit_files(stream) -> dict[str, bytes | _BlobRef]:
+    rows = json.load(stream)
+    if not isinstance(rows, list) or len(rows) > _COMMIT_FILES_MAX:
+        raise GhOpsError(f"expected a JSON array of at most {_COMMIT_FILES_MAX} files")
+    files = {}
+    for row in rows:
+        if not isinstance(row, dict) or set(row) not in ({"path", "encoding", "content"}, {"path", "blob_sha"}):
+            raise GhOpsError("expected path and either blob_sha or encoding and content")
+        path = _commit_files_path(row["path"])
+        if path in files:
+            raise GhOpsError(f"duplicate repository path: {path}")
+        if "blob_sha" in row:
+            sha = row["blob_sha"]
+            if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+                raise GhOpsError(f"{path}: expected a full Git blob SHA")
+            files[path] = _BlobRef(sha.lower())
+            continue
+        content = row["content"]
+        if not isinstance(content, str):
+            raise GhOpsError(f"{path}: content must be a string")
+        if row["encoding"] == "base64":
+            try:
+                data = base64.b64decode(content, validate=True)
+            except ValueError:
+                raise GhOpsError(f"{path}: invalid Base64") from None
+        elif row["encoding"] == "utf-8":
+            data = content.encode("utf-8")
+        else:
+            raise GhOpsError(f"{path}: encoding must be utf-8 or base64")
+        if len(data) > _COMMIT_FILE_BYTES:
+            raise GhOpsError(f"{path}: larger than {_COMMIT_FILE_BYTES} bytes")
+        files[path] = data
+    return files
+
+
 def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: tuple[str, ...] = (),
                  expect_head: str | None = None, write: bool = False, allow_default_branch: bool = False,
                  client: Client | None = None) -> dict:
@@ -2323,6 +2363,8 @@ def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: 
     if set(files) & set(deletes):
         raise GhOpsError("a path cannot be both written and deleted")
     for path, data in files.items():
+        if isinstance(data, _BlobRef):
+            continue
         if not isinstance(data, bytes):
             raise GhOpsError(f"{path}: content must be bytes")
         if len(data) > _COMMIT_FILE_BYTES:
@@ -2345,13 +2387,23 @@ def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: 
     tree = client.get(f"/repos/{repo}/git/trees/{base_tree}", params={"recursive": "1"})
     existing = None if tree.get("truncated") else {
         entry["path"]: entry for entry in tree.get("tree") or [] if entry.get("type") == "blob"}
+    blob_sizes = {entry["sha"]: entry.get("size") for entry in tree.get("tree") or [] if entry.get("type") == "blob"}
     plan = []
     for path, data in sorted(files.items()):
-        sha = _git_blob_sha(data)
+        if isinstance(data, _BlobRef):
+            sha = data.sha
+            size = blob_sizes.get(sha)
+            if type(size) is not int or size < 0:
+                raise GhOpsError(f"{path}: blob {sha} is not verified in the destination tree; supply content")
+            if size > _COMMIT_FILE_BYTES:
+                raise GhOpsError(f"{path}: larger than {_COMMIT_FILE_BYTES} bytes")
+        else:
+            sha = _git_blob_sha(data)
+            size = len(data)
         before = None if existing is None else existing.get(path)
         change = ("unknown" if existing is None else "new" if before is None
                   else "unchanged" if before.get("sha") == sha else "changed")
-        plan.append({"path": path, "bytes": len(data), "blob_sha": sha, "change": change,
+        plan.append({"path": path, "bytes": size, "blob_sha": sha, "change": change,
                      "mode": (before or {}).get("mode", "100644")})
     for path in sorted(deletes):
         plan.append({"path": path, "delete": True,
@@ -2361,6 +2413,7 @@ def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: 
         return {**out, "ok": True, "changed": False, "reason": "unchanged"}
     if not write:
         return {**out, "ok": True, "changed": False}
+    known_blobs = set(blob_sizes)
     elements = []
     for item in plan:
         if item.get("delete"):
@@ -2369,11 +2422,13 @@ def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: 
             continue
         if item["change"] == "unchanged":
             continue
-        blob = client.request("POST", f"/repos/{repo}/git/blobs",
-                              {"content": base64.b64encode(files[item["path"]]).decode("ascii"),
-                               "encoding": "base64"}, expect=(201,)).data
-        if (blob or {}).get("sha") != item["blob_sha"]:
-            return {**out, "reason": f"blob SHA mismatch for {item['path']}"}
+        if item["blob_sha"] not in known_blobs:
+            blob = client.request("POST", f"/repos/{repo}/git/blobs",
+                                  {"content": base64.b64encode(files[item["path"]]).decode("ascii"),
+                                   "encoding": "base64"}, expect=(201,)).data
+            if (blob or {}).get("sha") != item["blob_sha"]:
+                return {**out, "reason": f"blob SHA mismatch for {item['path']}"}
+            known_blobs.add(item["blob_sha"])
         elements.append({"path": item["path"], "mode": item["mode"], "type": "blob", "sha": item["blob_sha"]})
     new_tree = client.request("POST", f"/repos/{repo}/git/trees", {"base_tree": base_tree, "tree": elements},
                               expect=(201,)).data["sha"]
@@ -4315,7 +4370,9 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p = _command_parser(sub, "commit-files", help="ONE commit of several files via the Git Data API, no clone "
                                              "(planned unless --write; fast-forward only; verified)")
     p.add_argument("repo"); p.add_argument("--branch", required=True)
-    p.add_argument("--file", action="append", default=[], metavar="PATH[=LOCAL]",
+    inputs = p.add_mutually_exclusive_group()
+    inputs.add_argument("--stdin-json", action="store_true", help="read an array of path/encoding/content records from stdin")
+    inputs.add_argument("--file", action="append", default=[], metavar="PATH[=LOCAL]",
                    help="repository path, optionally =local file to read (default: the same path)")
     p.add_argument("--delete", action="append", default=[], metavar="PATH")
     p.add_argument("--message", required=True, help="commit message")
@@ -4492,7 +4549,7 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
         return fleet_issues(args.report, args.repo, severities=severities, close_resolved=args.close_resolved,
                             write=args.write, client=client)
     if command == "commit-files":
-        files = {}
+        files = _stdin_commit_files(sys.stdin.buffer) if args.stdin_json else {}
         for spec in args.file:
             path, _, local = spec.partition("=")
             files[path] = Path(local or path).read_bytes()

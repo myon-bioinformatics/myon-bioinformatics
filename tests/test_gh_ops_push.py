@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -35,6 +36,7 @@ class Remote:
     def __init__(self, files, default_branch="main"):
         self.default_branch = default_branch
         self.trees = {"t0": {path: gh_ops_gh_ops_commit_files._git_blob_sha(data) for path, data in files.items()}}
+        self.blob_sizes = {g._git_blob_sha(data): len(data) for data in files.values()}
         self.commits = {"c0": "t0"}
         self.head = "c0" * 20
         self.commits[self.head] = "t0"
@@ -54,9 +56,10 @@ class Remote:
         if "/git/trees/" in path and method == "GET":
             tree = self.trees[path.rsplit("/", 1)[1]]
             return ok({"truncated": self.truncated,
-                       "tree": [{"path": p, "type": "blob", "mode": "100644", "sha": s} for p, s in tree.items()]})
+                       "tree": [{"path": p, "type": "blob", "mode": "100644", "sha": s, "size": self.blob_sizes.get(s)} for p, s in tree.items()]})
         if path.endswith("/git/blobs"):
             data = base64.b64decode(body["content"])
+            self.blob_sizes[g._git_blob_sha(data)] = len(data)
             return ok({"sha": "0" * 40 if self.bad_blob else gh_ops_gh_ops_commit_files._git_blob_sha(data)}, 201)
         if path.endswith("/git/trees"):
             tree = dict(self.trees[body["base_tree"]])
@@ -155,6 +158,68 @@ def test_cli_reads_local_files(tmp_path, monkeypatch, capsys):
                         "--write"], client=remote.client()) == 0
     assert json.loads(capsys.readouterr().out)["verified"] is True
     assert gh_ops_gh_ops_commit_files.main(["commit-files", REPO, "--branch", "b", "--message", "m"], client=remote.client()) == 2
+
+
+def test_stdin_batch_reuses_blobs_across_paths(monkeypatch, capsys):
+    binary = bytes(range(256))
+    note = "\ufeff日本語\r\n"
+    remote = Remote({"original.md": note.encode()})
+    rows = [{"path": path, "encoding": "base64", "content": base64.b64encode(binary).decode()}
+            for path in ("first.bin", "second.bin")]
+    rows.append({"path": "copy.md", "encoding": "utf-8", "content": note})
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(json.dumps(rows).encode())))
+    assert g.main(["--json", "commit-files", REPO, "--branch", "feat", "--stdin-json",
+                   "--message", "batch", "--write"], client=remote.client()) == 0
+    assert json.loads(capsys.readouterr().out)["verified"]
+    assert remote.trees[remote.commits[remote.head]] == {
+        "original.md": g._git_blob_sha(note.encode()), "copy.md": g._git_blob_sha(note.encode()),
+        "first.bin": g._git_blob_sha(binary), "second.bin": g._git_blob_sha(binary)}
+    assert remote.calls.count(("POST", f"/repos/{REPO}/git/blobs")) == 1
+
+
+def test_stdin_blob_reference_uses_tree_size_and_skips_upload(monkeypatch, capsys):
+    remote = Remote({"old.bin": b"\x00\xff"})
+    sha = g._git_blob_sha(b"\x00\xff")
+    rows = [{"path": "new.bin", "blob_sha": sha.upper()}]
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(json.dumps(rows).encode())))
+    assert g.main(["--json", "commit-files", REPO, "--branch", "feat", "--stdin-json",
+                   "--message", "copy", "--write"], client=remote.client()) == 0
+    receipt = json.loads(capsys.readouterr().out)
+    assert receipt["verified"] and receipt["plan"][0]["bytes"] == 2
+    assert remote.trees[remote.commits[remote.head]]["new.bin"] == sha
+    assert all("/git/blobs" not in url for _, url in remote.calls)
+
+
+@pytest.mark.parametrize("size", [None, -1, g._COMMIT_FILE_BYTES + 1])
+def test_unverified_or_oversize_blob_never_writes(monkeypatch, size):
+    remote = Remote({"old.bin": b"hello"})
+    sha = g._git_blob_sha(b"hello")
+    if size is None:
+        sha = "a" * 40
+    else:
+        remote.blob_sizes[sha] = size
+    rows = [{"path": "inline", "encoding": "utf-8", "content": "one"}, {"path": "copy", "blob_sha": sha}]
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(json.dumps(rows).encode())))
+    assert g.main(["commit-files", REPO, "--branch", "feat", "--stdin-json",
+                   "--message", "batch", "--write"], client=remote.client()) == 2
+    assert all(method == "GET" for method, _ in remote.calls)
+
+
+@pytest.mark.parametrize("bad_row", [
+    {"path": "b", "blob_sha": "abc"},
+    {"path": "b", "blob_sha": "a" * 40, "content": "x", "encoding": "utf-8"},
+    {"path": "a", "encoding": "utf-8", "content": "duplicate"},
+    {"path": "b", "encoding": "base64", "content": "invalid!"},
+    {"path": "b", "encoding": "unknown", "content": ""},
+    {"path": "../outside", "encoding": "utf-8", "content": ""},
+])
+def test_invalid_stdin_batch_precedes_remote_calls(monkeypatch, bad_row):
+    rows = [{"path": "a", "encoding": "base64", "content": ""}, bad_row]
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(json.dumps(rows).encode())))
+    remote = Remote({})
+    assert g.main(["commit-files", REPO, "--branch", "feat", "--stdin-json",
+                   "--message", "batch", "--write"], client=remote.client()) == 2
+    assert remote.calls == []
 
 
 # ═══ · gh ops git push ═══════════════════════════════════════════════════════════════════════════════════
