@@ -233,7 +233,7 @@ class UnifiedOperationsTests(unittest.TestCase):
             (ui/'research-audit.json').write_text(json.dumps({'note': '</script><script>alert(2)</script>'}))
             (ui/'research-audit.js').write_text('/* research module */')
             (ui/'operations-data.json').write_text('[]')
-            for n in ('shared-ui.js','unified.css','unified-model.js','unified-app.js'):(ui/n).write_text('')
+            for n in ('shared-ui.js','audit-model.js','unified.css','unified-model.js','unified-app.js'):(ui/n).write_text('')
             write_workspace(snap,ev,{'weeks':[]},stage,root)
             self.assertNotIn('</script><script>alert', (stage/'workspace.html').read_text())
             self.assertIn('/* research module */', (stage/'workspace.html').read_text())

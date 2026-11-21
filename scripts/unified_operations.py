@@ -507,7 +507,8 @@ def write_workspace(snapshot, evidence, history, stage, source_root, previous=No
             research_script = ui / 'research-audit.js'
             content = content.replace('/*__RESEARCH__*/', research_script.read_text(encoding='utf-8') if research_script.exists() else '')
         if token == 'MODEL':
-            text = (ui / 'shared-ui.js').read_text(encoding='utf-8') + '\n' + text
+            text = '\n'.join([(ui / module).read_text(encoding='utf-8')
+                              for module in ('shared-ui.js', 'audit-model.js')] + [text])
         content = content.replace('/*__' + token + '__*/', text)
     encoded = json.dumps(data, ensure_ascii=False).replace('<', '\\u003c').replace('>', '\\u003e').replace('&', '\\u0026')
     content = content.replace('/*__DATA__*/', encoded)
