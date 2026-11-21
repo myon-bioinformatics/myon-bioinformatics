@@ -49,7 +49,7 @@ canonical promotion and compatibility tests.
 
 | Concern | Owner | Examples |
 |--------|--------|----------|
-| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `commit-files --write`, `pr-create --write`, `pr-merge --write`, `pr-retarget --write`, `run-rerun --write` |
+| Cross-repo GitHub REST reads, PR/CI observation, explicit writes | Parent `gh_ops.py` | `pr-observe`, `checks-wait`, `file-put --write`, `commit-files --write`, `pr-create --write`, `pr-merge --write`, `pr-retarget --write`, `run-rerun --write`, `branch-delete --write` |
 | Local git writes on an enrolled checkout (explicit paths only) | Parent `gh_ops.py` | `git-commit --message-file msg.txt path/to/file --write` (optional `--push` with `--write`) |
 | Subtree split push from a monorepo to a NEW child branch | Parent `gh_ops.py` | `subtree-push --prefix DIR --remote URL --branch sync/x` (plan), add `--write` to push |
 | GitHub Pages delivery evidence (deploy API + HTTP/bytes/text) | Parent `publish_check.py` | `publish_check.py --site … --repo OWNER/OWNER.github.io` |
@@ -403,6 +403,29 @@ python -S gh_ops.py run-cancel OWNER/REPO 123456789 --expect-head-sha "$(git rev
 `--expect-head-sha`. If the run is already `completed`, it returns `ok=True` and
 `status="already_completed"` without issuing a POST. Otherwise it plans or POSTs
 `/repos/OWNER/REPO/actions/runs/RUN_ID/cancel` (`202 Accepted`).
+
+## Delete a branch ref (`branch-delete`)
+
+```sh
+python -S gh_ops.py branch-delete OWNER/REPO feat/merged-work
+python -S gh_ops.py branch-delete OWNER/REPO feat/merged-work --expect-tip-sha "$(git rev-parse origin/feat/merged-work)" --write
+```
+
+`branch-delete` is the cleanup counterpart of `pr-create`/`pr-merge`: it removes
+a branch ref (for example after its PR merged) only after safety checks pass.
+Planning is the default; `--write` issues the DELETE.
+
+- The branch tip is captured first (`GET /repos/OWNER/REPO/git/ref/heads/BRANCH`)
+  and can be pinned with `--expect-tip-sha`. A bare 404 is ambiguous, so absence
+  is proven only by a complete branch listing that excludes the name (the same
+  rule as `variable-delete`). An already-absent branch is an idempotent success
+  (`status="already_absent"`), never an error.
+- The repository default branch is refused (`status="default_branch"`), and so
+  is a branch that any open pull request uses as its head
+  (`status="open_pr_head"`, with the PR numbers).
+- After the DELETE (`204`), absence is proven again before the receipt reports
+  `status="verified"`; a failed or uncertain verification is reported separately
+  from the mutation result, and nothing is retried blindly.
 
 ## Submit a pull request review (`pr-review`) and toggle draft state (`pr-ready`)
 
