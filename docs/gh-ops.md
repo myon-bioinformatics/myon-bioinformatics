@@ -192,9 +192,24 @@ python -S gh_ops.py subtree-push --root MONOREPO --prefix DIR --remote URL --bra
 python -S gh_ops.py subtree-push --root MONOREPO --prefix DIR --remote URL --branch sync/x --write  # push
 ```
 
-The decision logic is ported from gh_identity#77 (`cursor/subtree-stale-split-4489`,
-head `d43ceb5`). Once #77 is merged and `vendor/gh_identity.py` is repinned to it, the
-read-only checks switch to GHI's public functions and only the push stays here.
+The read-only split is vendored `gh_identity.git_subtree_split` (stale-split detection,
+filter-branch fallback, and subtree-cache cleanup). The pre-push tree gate calls the
+private `gh_identity._subtree_push_split_tree_gate` at this pin; there is no public
+function that only re-checks a split tree. Ancestor and path reads use
+`gh_identity._git_is_ancestor`, `_commit_root_tree`, and `_git_tree_paths`.
+`gh_identity._subtree_push_guards` is not called: with no compare ref it returns
+instead of failing, its remote-tip parser accepts only 40-hex SHAs, and it cannot
+allow a child-only path. Those checks stay in `gh_ops`, including the 40- and
+64-hex `ls-remote` parse that fails closed when `ls-remote` itself fails. The
+compare tip is still fetched into the monorepo object store before the split;
+the vendored guard would fetch it only into a temporary clone afterwards, and a
+squash join then fails the split. A failed `git subtree split` is
+`subtree_split_failed` and includes one trimmed line of git stderr. A timeout
+stays `git_timeout` and is not reported as a generic split failure. The vendored
+split and its filter-branch fallback share one `--timeout` budget (the same
+number passed to `git_subtree_split`); a short budget can be used up by the
+split before the fallback starts. Other git commands each get that timeout on
+their own. The network push and the post-push read stay here.
 
 - The split must have the same tree as `<source>:<prefix>`. `git subtree split` can
   exit 0 with a stale SHA (git 2.47.3); then a filter-branch split in a temporary clone
@@ -455,6 +470,10 @@ Planning is the default; `--write` issues the DELETE.
 - After the DELETE (`204`), absence is proven again before the receipt reports
   `status="verified"`; a failed or uncertain verification is reported separately
   from the mutation result, and nothing is retried blindly.
+- Branch existence ownership is transferred to `gh_identity.branch_ref`
+  (gh_identity #122/#123, including the complete-listing absence proof above).
+  The REST adapter supports injected clients and older recommended vendor
+  revisions that predate `branch_ref`.
 
 ## Submit a pull request review (`pr-review`) and toggle draft state (`pr-ready`)
 

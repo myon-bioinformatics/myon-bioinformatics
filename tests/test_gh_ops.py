@@ -1780,3 +1780,89 @@ def test_branch_delete_checks_the_tip_again_before_write():
     result = gh_ops.branch_delete(REPO, "feat/x", expect_tip_sha=HEAD, write=True, client=client)
     assert result["status"] == "tip_mismatch"
     assert "DELETE" not in stub.methods
+
+
+def test_branch_state_delegates_to_gh_identity_branch_ref(monkeypatch):
+    seen = {}
+
+    def fake_branch_ref(repository, branch, **kwargs):
+        seen["args"] = (repository, branch)
+        return {"exists": True, "sha": HEAD}
+
+    monkeypatch.setattr(gh_identity, "branch_ref", fake_branch_ref, raising=False)
+    assert gh_ops._branch_state(None, REPO, "feat/x") == ("present", HEAD)
+    assert seen["args"] == (REPO, "feat/x")
+    monkeypatch.setattr(gh_identity, "branch_ref",
+                        lambda repository, branch, **k: {"exists": False, "sha": None})
+    assert gh_ops._branch_state(None, REPO, "feat/x") == ("absent", None)
+
+    def boom(repository, branch, **k):
+        raise gh_identity.Error("permission_or_rate_limit")
+
+    monkeypatch.setattr(gh_identity, "branch_ref", boom)
+    with pytest.raises(gh_ops.GhOpsError):
+        gh_ops._branch_state(None, REPO, "feat/x")
+
+@pytest.mark.parametrize("payload", [None, [], "nope", {"exists": "yes"}, {"exists": 1}, {"exists": None}])
+def test_branch_state_rejects_a_non_bool_identity_result(monkeypatch, payload):
+    monkeypatch.setattr(gh_identity, "branch_ref", lambda *args, **kwargs: payload, raising=False)
+    with pytest.raises(gh_ops.GhOpsError, match="unexpected shape"):
+        gh_ops._branch_state(None, REPO, "feat/x")
+
+
+@pytest.mark.parametrize("sha", [None, 7, "abcd", "g" * 40, "a" * 39, "a" * 41])
+def test_branch_state_rejects_a_non_sha_identity_result(monkeypatch, sha):
+    monkeypatch.setattr(gh_identity, "branch_ref", lambda *args, **kwargs: {"exists": True, "sha": sha}, raising=False)
+    with pytest.raises(gh_ops.GhOpsError, match="unexpected shape"):
+        gh_ops._branch_state(None, REPO, "feat/x")
+
+
+def test_branch_state_rest_listing_proves_absence_and_rejects_bad_rows():
+    ref = "/repos/octo/demo/git/ref/heads/feat/x"
+    branches = "/repos/octo/demo/branches"
+    client, _ = client_for({("GET", ref): reply({"message": "no"}, 500)})
+    with pytest.raises(gh_ops.GhOpsError, match="HTTP 500"):
+        gh_ops._branch_state(client, REPO, "feat/x")
+    client, _ = client_for({
+        ("GET", ref): reply({"message": "missing"}, 404),
+        ("GET", branches): reply([{"name": "other", "commit": {"sha": HEAD}}]),
+    })
+    assert gh_ops._branch_state(client, REPO, "feat/x") == ("absent", None)
+    client, _ = client_for({
+        ("GET", ref): reply({"message": "missing"}, 404),
+        ("GET", branches): reply([{"name": "feat/x", "commit": {"sha": HEAD}}]),
+    })
+    assert gh_ops._branch_state(client, REPO, "feat/x") == ("present", HEAD)
+    bad_rows = (
+        [{"name": ""}],
+        [None],
+        [{"name": "feat/x", "commit": {"sha": HEAD}}, {"name": "feat/x", "commit": {"sha": OTHER}}],
+        [{"name": "feat/x", "commit": {"sha": "zz"}}],
+        [{"name": "feat/x", "commit": "no"}],
+    )
+    for rows in bad_rows:
+        client, _ = client_for({
+            ("GET", ref): reply({"message": "missing"}, 404),
+            ("GET", branches): reply(rows),
+        })
+        with pytest.raises(gh_ops.GhOpsError):
+            gh_ops._branch_state(client, REPO, "feat/x")
+    client, _ = client_for({("GET", ref): reply({"ref": "refs/heads/other", "object": {"type": "blob", "sha": HEAD}})})
+    with pytest.raises(gh_ops.GhOpsError, match="unexpected shape"):
+        gh_ops._branch_state(client, REPO, "feat/x")
+
+
+def test_branch_delete_cli_rejects_a_bad_repository_before_network():
+    proc = subprocess.run([sys.executable, "-S", str(SCRIPTS / "gh_ops.py"), "branch-delete", "not a repo", "feat"],
+                          capture_output=True, text=True, cwd=SCRIPTS)
+    assert proc.returncode == 2 and proc.stdout == ""
+    assert "repository must look like" in proc.stderr
+
+
+def test_branch_state_uses_verified_rest_lookup_with_older_vendor(monkeypatch):
+    monkeypatch.delattr(gh_identity, "branch_ref", raising=False)
+    routes = _branch_routes({"present": True})
+    client, stub = client_for(routes)
+    monkeypatch.setattr(gh_ops, "_client", lambda _: client)
+    assert gh_ops._branch_state(None, REPO, "feat/x") == ("present", HEAD)
+    assert stub.methods == ["GET"]

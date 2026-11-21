@@ -391,6 +391,15 @@ def test_missing_subtree_is_clear_error(world, monkeypatch):
     assert e.value.code == "subtree_unavailable"
 
 
+@pytest.mark.usefixtures("_isolated_git")
+def test_vendored_subtree_unavailable_is_not_ignored(world, monkeypatch):
+    """The availability wrapper must return the vendored answer, including False."""
+    monkeypatch.setattr(g.gh_identity, "_git_subtree_available", lambda *a, **k: False)
+    with pytest.raises(g.SubtreePushError) as e:
+        g.subtree_push("sub", str(world["child"]), "feature", cwd=str(world["mono"]))
+    assert e.value.code == "subtree_unavailable"
+
+
 # --- plan / write -------------------------------------------------------------------------
 
 @pytest.mark.usefixtures("_isolated_git")
@@ -432,6 +441,47 @@ def test_push_write_creates_new_branch_and_verifies(world):
     assert not (_git_dir(world["mono"]) / "subtree-cache").exists()
     with pytest.raises(ValueError, match="refs/heads/sync/one already exists"):
         g.subtree_push("sub", str(world["child"]), "sync/one", cwd=str(world["mono"]))
+
+
+@pytest.mark.usefixtures("_isolated_git")
+@needs_subtree
+def test_sha256_existing_branch_is_refused_before_push(world):
+    """A 64-hex tip still means the branch exists. Ignoring it would create over that branch."""
+    _seed_child(world)
+    sha256 = "ab" * 32
+
+    def override(argv, kwargs):
+        if argv[1:2] == ["ls-remote"]:
+            return _fake(argv, "ref: refs/heads/trunk\tHEAD\n" + ("1" * 40) + "\trefs/heads/trunk\n"
+                         + sha256 + "\trefs/heads/sync/sha256\n")
+        return None
+
+    spy = Spy(override)
+    with pytest.raises(ValueError, match="refs/heads/sync/sha256 already exists"):
+        g.subtree_push("sub", str(world["child"]), "sync/sha256", cwd=str(world["mono"]), run=spy)
+    assert not spy.pushes()
+
+
+@pytest.mark.usefixtures("_isolated_git")
+@needs_subtree
+def test_sha256_compare_tip_is_not_reported_missing(world):
+    """A 64-hex compare tip is resolved. Treating it as absent would skip the ancestor check's fetch."""
+    _seed_child(world)
+    sha256 = "cd" * 32
+
+    def override(argv, kwargs):
+        if argv[1:2] == ["ls-remote"]:
+            return _fake(argv, "ref: refs/heads/trunk\tHEAD\n" + ("1" * 40) + "\trefs/heads/trunk\n"
+                         + sha256 + "\trefs/heads/custom\n")
+        return None
+
+    spy = Spy(override)
+    with pytest.raises(g.SubtreePushError, match="git fetch") as exc:
+        g.subtree_push("sub", str(world["child"]), "sync/custom", compare_ref="custom",
+                       cwd=str(world["mono"]), run=spy)
+    assert exc.value.code == "git_failed"
+    assert exc.value.code != "compare_ref_not_found"
+    assert not spy.pushes()
 
 
 @pytest.mark.usefixtures("_isolated_git")
@@ -482,16 +532,24 @@ def test_push_blocked_when_child_trunk_not_ancestor(world, write, compare_ref):
 @pytest.mark.usefixtures("_isolated_git")
 def test_push_guard_lists_child_only_paths(world, monkeypatch):
     split = "a" * 40
-    monkeypatch.setattr(g, "_subtree_is_ancestor", lambda *a, **k: True)
-    monkeypatch.setattr(g, "_subtree_oid", lambda cwd, spec, **k: "split-tree" if spec.startswith(split) else "child-tree")
-    monkeypatch.setattr(g, "_subtree_tree_paths",
-                        lambda cwd, t, **k: {"a.py"} if t == "split-tree" else {"a.py", "only-on-child.txt"})
+    monkeypatch.setattr(g.gh_identity, "_git_is_ancestor", lambda *a, **k: True)
+    monkeypatch.setattr(g.gh_identity, "_commit_root_tree",
+                        lambda cwd, commit: "split-tree" if str(commit).startswith(split) else "child-tree")
+    monkeypatch.setattr(g.gh_identity, "_git_tree_paths",
+                        lambda cwd, tree, **k: {"a.py"} if tree == "split-tree" else {"a.py", "only-on-child.txt"})
     compare = {"ref": "trunk", "sha": "1" * 40}
     with pytest.raises(ValueError, match=r"only-on-child\.txt \(remote ref trunk\)"):
         g._subtree_push_guards(str(world["mono"]), split, compare, run=subprocess.run, timeout=30)
     out = g._subtree_push_guards(str(world["mono"]), split, compare, child_only_paths=("only-on-*",),
                                  run=subprocess.run, timeout=30)
     assert out["child_only_paths"] == ["only-on-child.txt"]
+    monkeypatch.setattr(g.gh_identity, "_commit_root_tree", lambda *a, **k: None)
+    with pytest.raises(ValueError, match=r"could not resolve trees for push guard \(remote ref trunk\)"):
+        g._subtree_push_guards(str(world["mono"]), split, compare, run=subprocess.run, timeout=30)
+    monkeypatch.setattr(g.gh_identity, "_commit_root_tree",
+                        lambda cwd, commit: "split-tree" if str(commit).startswith(split) else None)
+    with pytest.raises(ValueError, match=r"could not resolve trees for push guard \(remote ref trunk\)"):
+        g._subtree_push_guards(str(world["mono"]), split, compare, run=subprocess.run, timeout=30)
 
 
 @pytest.mark.usefixtures("_isolated_git")
@@ -510,6 +568,121 @@ def test_child_only_paths_refused_by_default_allowed_by_glob(world):
     assert out["push_guard"] == {"compare_ref": "trunk", "compare_sha": seeded, "child_only_paths": ["b.py"]}
 
 
+def _commit_tree(root, tree, message):
+    return subprocess.run(["git", "-C", str(root), "commit-tree", tree, "-m", message],
+                          check=True, capture_output=True, text=True, env=ENV).stdout.strip()
+
+
+@pytest.mark.usefixtures("_isolated_git")
+def test_split_tree_gate_contract_uses_commit_tree_only(tmp_path):
+    """The private gate's signature, keys, and mismatch code, with no git-subtree."""
+    import inspect
+    root = tmp_path / "mono"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    blob = subprocess.run(["git", "-C", str(root), "hash-object", "-w", "--stdin"],
+                          input=b"a = 1\n", check=True, capture_output=True, env=ENV).stdout.decode().strip()
+    prefix_tree = subprocess.run(["git", "-C", str(root), "mktree"],
+                                 input=f"100644 blob {blob}\ta.py\n", text=True,
+                                 check=True, capture_output=True, env=ENV).stdout.strip()
+    source_tree = subprocess.run(["git", "-C", str(root), "mktree"],
+                                 input=f"040000 tree {prefix_tree}\tsub\n", text=True,
+                                 check=True, capture_output=True, env=ENV).stdout.strip()
+    source = _commit_tree(root, source_tree, "source")
+    _git(root, "update-ref", "refs/heads/main", source)
+    split = _commit_tree(root, prefix_tree, "split")
+    other = _commit_tree(root, source_tree, "other")
+    signature = inspect.signature(g.gh_identity._subtree_push_split_tree_gate)
+    assert list(signature.parameters) == ["root", "source", "prefix", "split_sha"]
+    direct = g.gh_identity._subtree_push_split_tree_gate(str(root), source, "sub", split)
+    assert direct["trees_match"] is True
+    assert set(g._SPLIT_GATE_KEYS) <= set(direct)
+    assert direct["prefix_tree"] == direct["split_tree"] == prefix_tree
+    wrapped = g._subtree_push_split_tree_gate(str(root), source, "sub", split, run=subprocess.run, timeout=30)
+    assert wrapped["trees_match"] is True and wrapped["prefix_tree"] == prefix_tree
+    with pytest.raises(g.gh_identity.Error) as err:
+        g.gh_identity._subtree_push_split_tree_gate(str(root), source, "sub", other)
+    assert err.value.code == "stale_subtree_split"
+    with pytest.raises(g.SubtreePushError) as wrapped_err:
+        g._subtree_push_split_tree_gate(str(root), source, "sub", other, run=subprocess.run, timeout=30)
+    assert wrapped_err.value.code == "stale_subtree_split"
+
+
+@pytest.mark.usefixtures("_isolated_git")
+def test_split_tree_gate_fails_closed_when_the_private_api_changes(tmp_path, monkeypatch):
+    root = tmp_path / "mono"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    _commit(root, {"sub/a.py": "a = 1\n"}, "one")
+
+    def call():
+        return g._subtree_push_split_tree_gate(str(root), "HEAD", "sub", "a" * 40, run=subprocess.run, timeout=30)
+
+    monkeypatch.setattr(g.gh_identity, "_subtree_push_split_tree_gate", None, raising=False)
+    with pytest.raises(g.SubtreePushError, match="unavailable") as missing:
+        call()
+    assert missing.value.code == "stale_subtree_split"
+    monkeypatch.setattr(g.gh_identity, "_subtree_push_split_tree_gate", lambda *a, **k: (_ for _ in ()).throw(TypeError("x")))
+    with pytest.raises(g.SubtreePushError, match="rejected the call"):
+        call()
+    monkeypatch.setattr(g.gh_identity, "_subtree_push_split_tree_gate", lambda *a, **k: ["nope"])
+    with pytest.raises(g.SubtreePushError, match="unexpected shape"):
+        call()
+    monkeypatch.setattr(g.gh_identity, "_subtree_push_split_tree_gate", lambda *a, **k: {"trees_match": True})
+    with pytest.raises(g.SubtreePushError, match="unexpected shape"):
+        call()
+    monkeypatch.setattr(g.gh_identity, "_subtree_push_split_tree_gate",
+                        lambda *a, **k: {"prefix_tree": "a", "split_tree": "b", "trees_match": False})
+    with pytest.raises(g.SubtreePushError, match="did not confirm"):
+        call()
+
+
+def test_split_failure_keeps_one_stderr_line_and_timeout_reason():
+    failed = g._split_failure_result(g.gh_identity.GitInspectionError("git exited with status 1"),
+                                     "could not rev-parse\nsplit hash  \n")
+    assert failed["reason"] == "subtree_split_failed"
+    assert failed["detail"] == "could not rev-parse split hash"
+    assert "\n" not in failed["detail"]
+    blank = g._split_failure_result(g.gh_identity.GitInspectionError("git exited with status 128"), "  \n")
+    assert blank["reason"] == "subtree_split_failed" and blank["detail"] == "git exited with status 128"
+    timed = g._split_failure_result(g.gh_identity.GitInspectionError("git timed out after 1s"), "")
+    assert timed["reason"] == "git_timeout" and timed["detail"] == "git timed out after 1s"
+
+
+@pytest.mark.usefixtures("_isolated_git")
+def test_split_failure_records_real_git_stderr(tmp_path, monkeypatch):
+    root = tmp_path / "mono"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    _commit(root, {"sub/a.py": "a = 1\n"}, "one")
+    original = g.gh_identity._git_run
+
+    def run(where, args, **kwargs):
+        if list(args[:2]) == ["cat-file", "-t"]:
+            try:
+                original(where, ["rev-parse", "--verify", "--end-of-options", "does-not-exist"],
+                         ok=(0,), timeout=30)
+            except g.gh_identity.GitInspectionError:
+                pass
+            raise g.gh_identity.GitInspectionError("git exited with status 128")
+        return original(where, args, **kwargs)
+
+    monkeypatch.setattr(g.gh_identity, "_git_run", run)
+    out = g.subtree_split_verified("sub", cwd=str(root))
+    assert out["reason"] == "subtree_split_failed" and "fatal:" in out["detail"] and "\n" not in out["detail"]
+    monkeypatch.setattr(g.gh_identity, "_git_run", lambda *a, **k: (_ for _ in ()).throw(
+        g.gh_identity.GitInspectionError("git timed out after 1s")))
+    timed = g.subtree_split_verified("sub", cwd=str(root))
+    assert timed["reason"] == "git_timeout" and "timed out" in timed["detail"]
+
+
+def test_subtree_push_help_documents_the_shared_split_timeout():
+    proc = subprocess.run([sys.executable, "-S", str(SCRIPT), "subtree-push", "--help"],
+                          capture_output=True, text=True)
+    assert proc.returncode == 0
+    assert "filter-branch fallback share this one budget" in " ".join(proc.stdout.split())
+
+
 # --- stale split (mirrors test_subtree_stale_split.py) ------------------------------------
 
 @pytest.fixture
@@ -525,21 +698,24 @@ def stale_mono(tmp_path):
     return root, stale, child
 
 
-def _stale_split_override(stale):
-    def override(argv, kwargs):
-        if argv[1:3] == ["subtree", "split"]:
-            return _fake(argv, stale + "\n")
-        if argv[1:3] == ["subtree", "push"]:
-            raise AssertionError("git subtree push must not run")
-        return None
-    return override
+def _install_stale_split(monkeypatch, stale):
+    """Make vendored ``git_subtree_split`` see a stale ``git subtree split`` result."""
+    original = g.gh_identity._git_run
+
+    def run(root, args, **kwargs):
+        if list(args[:2]) == ["subtree", "split"]:
+            return ((stale + "\n").encode(), False, 0)
+        return original(root, args, **kwargs)
+
+    monkeypatch.setattr(g.gh_identity, "_git_run", run)
 
 
 @pytest.mark.usefixtures("_isolated_git")
 @needs_subtree
-def test_stale_subtree_split_corrected(stale_mono):
+def test_stale_subtree_split_corrected(stale_mono, monkeypatch):
     root, stale, _ = stale_mono
-    out = g.subtree_split_verified("sub", cwd=str(root), run=Spy(_stale_split_override(stale)))
+    _install_stale_split(monkeypatch, stale)
+    out = g.subtree_split_verified("sub", cwd=str(root))
     assert out["sha"] != stale and out["method"] == "filter-branch" and out["warning"] == "subtree_split_stale"
     assert out["trees_match"]
     assert _git(root, "rev-parse", out["sha"] + "^{tree}") == _git(root, "rev-parse", "HEAD:sub")
@@ -551,9 +727,10 @@ def test_stale_subtree_split_corrected(stale_mono):
 def test_tree_check_mutation_breaks_stale_detection(stale_mono, monkeypatch):
     """Mutation: with tree validation disabled the stale split is wrongly accepted."""
     root, stale, _ = stale_mono
-    monkeypatch.setattr(g, "_subtree_split_matches_prefix_tree",
+    _install_stale_split(monkeypatch, stale)
+    monkeypatch.setattr(g.gh_identity, "_subtree_split_matches_prefix_tree",
                         lambda *a, **k: {"prefix_tree": "a", "split_tree": "a", "trees_match": True})
-    out = g.subtree_split_verified("sub", cwd=str(root), run=Spy(_stale_split_override(stale)))
+    out = g.subtree_split_verified("sub", cwd=str(root))
     assert out["sha"] == stale
 
 
@@ -563,8 +740,9 @@ def test_stale_split_without_fallback_fails_closed(stale_mono, monkeypatch):
     root, stale, child = stale_mono
     _git(root, "push", "-q", str(child), f"{stale}:refs/heads/trunk")
     before_child = _refs(child)
-    monkeypatch.setattr(g, "_subtree_split_filter_branch", lambda *a, **k: None)
-    spy = Spy(_stale_split_override(stale))
+    _install_stale_split(monkeypatch, stale)
+    monkeypatch.setattr(g.gh_identity, "_subtree_split_filter_branch", lambda *a, **k: None)
+    spy = Spy()
     with pytest.raises(g.SubtreePushError) as err:
         g.subtree_push("sub", str(child), "sync/stale", write=True, cwd=str(root), run=spy)
     assert err.value.code == "stale_subtree_split"
@@ -576,19 +754,32 @@ def test_stale_split_without_fallback_fails_closed(stale_mono, monkeypatch):
 def test_fallback_result_is_revalidated(stale_mono, monkeypatch):
     """A fallback that returns a wrong-tree commit is still rejected by the final tree check."""
     root, stale, _ = stale_mono
-    monkeypatch.setattr(g, "_subtree_split_filter_branch", lambda *a, **k: stale)
-    out = g.subtree_split_verified("sub", cwd=str(root), run=Spy(_stale_split_override(stale)))
+    _install_stale_split(monkeypatch, stale)
+    monkeypatch.setattr(g.gh_identity, "_subtree_split_filter_branch", lambda *a, **k: stale)
+    out = g.subtree_split_verified("sub", cwd=str(root))
     assert out["sha"] is None and out["reason"] == "stale_subtree_split" and out["method"] == "filter-branch"
 
 
 @pytest.mark.usefixtures("_isolated_git")
 @needs_subtree
+def test_split_git_failure_refuses_the_push(world, monkeypatch):
+    _seed_child(world)
+    monkeypatch.setattr(g.gh_identity, "git_subtree_split",
+                        lambda *a, **k: (_ for _ in ()).throw(g.gh_identity.GitInspectionError("git exited with status 1")))
+    spy = Spy()
+    with pytest.raises(g.SubtreePushError, match="subtree_split_failed") as err:
+        g.subtree_push("sub", str(world["child"]), "sync/fail", write=True, cwd=str(world["mono"]), run=spy)
+    assert err.value.code == "subtree_split_failed" and not spy.pushes()
+
+
 def test_push_write_refuses_stale_split(world, monkeypatch):
-    split = _seed_child(world)
     mono, child = world["mono"], world["child"]
+    monkeypatch.setattr(g, "_subtree_available", lambda *a, **kw: True)
+    split = _git(mono, "commit-tree", "HEAD:sub", "-m", "child snapshot")
+    _git(mono, "push", "-q", str(child), f"{split}:refs/heads/trunk")
     monkeypatch.setattr(g, "subtree_split_verified", lambda prefix, **kw: {
         "sha": split, "reason": None, "method": "subtree", "warning": None})
-    monkeypatch.setattr(g, "_subtree_split_matches_prefix_tree",
+    monkeypatch.setattr(g.gh_identity, "_subtree_split_matches_prefix_tree",
                         lambda *a, **k: {"prefix_tree": "a" * 40, "split_tree": "b" * 40, "trees_match": False})
     spy = Spy()
     with pytest.raises(g.SubtreePushError) as err:
@@ -599,11 +790,12 @@ def test_push_write_refuses_stale_split(world, monkeypatch):
 
 @pytest.mark.usefixtures("_isolated_git")
 @needs_subtree
-def test_push_uses_validated_split_not_subtree_push(stale_mono):
+def test_push_uses_validated_split_not_subtree_push(stale_mono, monkeypatch):
     root, stale, child = stale_mono
     _git(root, "push", "-q", str(child), f"{stale}:refs/heads/trunk")
     good = g.subtree_split_verified("sub", cwd=str(root))["sha"]
-    spy = Spy(_stale_split_override(stale))
+    _install_stale_split(monkeypatch, stale)
+    spy = Spy()
     out = g.subtree_push("sub", str(child), "sync/x", write=True, cwd=str(root), run=spy)
     assert out["verified"]["ok"] and out["split_sha"] == good != stale
     assert _git(child, "rev-parse", "refs/heads/sync/x") == good
@@ -618,7 +810,7 @@ def test_push_revalidates_after_planning_and_never_writes_on_mismatch(world, mon
     _seed_child(world)
     mono, child = world["mono"], world["child"]
     before_child = _refs(child)
-    real_check, real_guard = g._subtree_split_matches_prefix_tree, g._subtree_push_guards
+    real_check, real_guard = g.gh_identity._subtree_split_matches_prefix_tree, g._subtree_push_guards
     planning_done, checks = False, []
 
     def guard(*a, **k):
@@ -633,7 +825,7 @@ def test_push_revalidates_after_planning_and_never_writes_on_mismatch(world, mon
         return {**result, "trees_match": False} if planning_done else result
 
     monkeypatch.setattr(g, "_subtree_push_guards", guard)
-    monkeypatch.setattr(g, "_subtree_split_matches_prefix_tree", check)
+    monkeypatch.setattr(g.gh_identity, "_subtree_split_matches_prefix_tree", check)
     spy = Spy()
     with pytest.raises(g.SubtreePushError) as err:
         g.subtree_push("sub", str(child), "sync/revalidate", write=True, cwd=str(mono), run=spy)
@@ -791,11 +983,12 @@ def test_squash_join_split_needs_child_tip_fetched_object_only(tmp_path, monkeyp
     assert subprocess.run(["git", "-C", str(mono), "cat-file", "-e", tip], env=ENV).returncode != 0
     before = _refs(mono)
     real = g._subtree_fetch_compare_tip
-    # Mutation: skipping the pre-split fetch reproduces "could not rev-parse split hash".
+    # Mutation: skipping the pre-split fetch makes the vendored split fail closed.
     monkeypatch.setattr(g, "_subtree_fetch_compare_tip", lambda *a, **k: False)
     with pytest.raises(g.SubtreePushError) as err:
         g.subtree_push_plan("sub", str(child), "sync/s", cwd=str(mono))
     assert err.value.code == "subtree_split_failed" and "split hash" in str(err.value)
+    assert "\n" not in str(err.value)
     monkeypatch.setattr(g, "_subtree_fetch_compare_tip", real)
     out = g.subtree_push_plan("sub", str(child), "sync/s", cwd=str(mono))
     assert out["compare_tip_fetched"] is True

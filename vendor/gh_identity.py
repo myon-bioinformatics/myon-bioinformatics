@@ -1,24 +1,37 @@
 #!/usr/bin/env python3
-"""gh_identity: stdlib-only GitHub operations with gh-first/urllib fallback."""
+"""gh_identity (ghi): stdlib-only, read-first observation of GitHub repositories, yours or anyone's.
+
+One file on purpose: other repositories vendor it and call its functions by name
+(from Node through vendor/py_launch.cjs). Sections, in file order (search "# <title>"):
+   1. Transport and budgets
+   2. 🌐 Repositories of any account
+   3. 🔀 Pull requests and reviews
+   4. 📄 Issues, content and search
+   5. ⚙️ Runs, variables and writes guarded by --write; refs and trees
+   6. ✅ Checks and status
+   7. ⚙️ Workflows, jobs, logs and artifacts
+   8. 🌿 Local Git
+   9. 🧾 Repository metadata primitives (checkout head, remote)
+  10. 🌲 Subtree sync between a monorepo and its split repositories
+  11. 📦 Vendored files across repositories
+  12. 🧭 Parent references, enrollment and action pins
+  13. 🪪 Identity API
+  14. 📍 Where am I
+  15. 📖 Orientation of any checkout (repo-overview), cross-project HTML round trip, workspace overview
+  16. 🔤 Files named after their repository, across the owner's repositories
+  17. ⌨️ CLI
+"""
 from __future__ import annotations
-from collections import Counter
-import base64,io,zipfile
-import argparse,fnmatch,json,os,re,shutil,signal,subprocess,sys,urllib.error,urllib.parse,urllib.request
-from datetime import datetime,timezone
-from html.parser import HTMLParser
-import hashlib
-import http.client
+import argparse, base64, contextlib, contextvars, fnmatch, functools, hashlib, http.client, importlib.util, inspect, io, json, math, os, re, shutil, signal, subprocess, sys, tempfile, threading, time, urllib.error, urllib.parse, urllib.request, zipfile
+from collections import Counter; from datetime import datetime, timezone; from html.parser import HTMLParser; from pathlib import Path, PurePosixPath
+
+
+# ---------------------------------------------------------------------------
+# Transport and budgets: request (gh first, urllib fallback), pagination, operation limits
+# ---------------------------------------------------------------------------
 API="https://api.github.com"; REPO=re.compile(r"^[\w.-]+/[\w.-]+$")
 class Error(RuntimeError):
  def __init__(self,code,uncertain=False): super().__init__(code); self.code=code; self.uncertain=uncertain
-import contextlib
-import contextvars
-import functools
-import inspect
-import math
-import threading
-import time
-import tempfile
 
 
 class _Budget:
@@ -181,9 +194,25 @@ def _next_page(path,headers,count):
  return parsed.path+"?"+urllib.parse.urlencode(query,doseq=True)
 
 def now(): return datetime.now(timezone.utc).isoformat()
+def _is_sha(value,*,oid=False):
+ """A full lowercase commit id: 40 hex (SHA-1); with oid=True also 64 hex (SHA-256 repositories)."""
+ return isinstance(value,str) and re.fullmatch(r"[0-9a-f]{64}|[0-9a-f]{40}" if oid else r"[0-9a-f]{40}",value) is not None
+def _when(value):
+ """ISO-8601 text (a trailing Z allowed) as a datetime; None when missing or malformed. Naive values are kept."""
+ if not isinstance(value,str):return None
+ try:return datetime.fromisoformat(value.replace("Z","+00:00"))
+ except ValueError:return None
 def repo(x):
  if not isinstance(x,str) or not REPO.fullmatch(x): raise ValueError("repo must be OWNER/REPO")
  return x
+_OWNER=re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})")
+def _owner(x):
+ if not isinstance(x,str) or not _OWNER.fullmatch(x): raise ValueError("invalid owner")
+ return x
+def _positive_identifier(value,label):
+ if isinstance(value,bool) or not isinstance(value,(int,str)) or not re.fullmatch(r"[0-9]+",str(value)) or int(value)<1:
+  raise ValueError("invalid "+label+" identifier")
+ return int(value)
 def token(): return os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN")
 def gh_available(): return shutil.which("gh") is not None
 def _gh(method,path,payload=None,timeout=30,mutating=False):
@@ -248,24 +277,254 @@ def pages_bounded(path,transport="auto",timeout=30,*,max_pages=20,requester=None
   if b is not None:b.charge("items",len(data))
   out.extend(data);path=_next_page(path,headers,len(data))
  return out,True,n
-def capabilities():
+
+
+# ---------------------------------------------------------------------------
+# 🌐 Repositories of any account: capabilities and quota, facts (licence, stars, health), releases, compare, inventories
+# ---------------------------------------------------------------------------
+def capabilities(rate_limit=False,transport="auto",timeout=30):
+ """Local tool facts; rate_limit=True adds one network read of the API quota (opt-in)."""
  versions=tool_versions(("git","gh"))
- return {"schema":"gh-identity-capabilities/1","observed_at":now(),"python":sys.version.split()[0],
-         "gh":gh_available(),"git":shutil.which("git") is not None,"token_present":bool(token()),
-         "git_version":versions.get("git"),"gh_version":versions.get("gh")}
-def repository(r,**k):
- r=repo(r);d=request("GET",f"repos/{r}",**k)
- return {"schema":"gh-identity-repository/1","repository":r,"id":d.get("id"),"default_branch":d.get("default_branch"),"visibility":d.get("visibility"),"archived":d.get("archived"),"url":d.get("html_url"),"observed_at":now()}
-def repositories(owner,transport="auto",timeout=30):
- xs=pages(f"users/{owner}/repos?sort=full_name",transport,timeout)
- rows=[{"full_name":x.get("full_name"),"archived":x.get("archived"),"updated_at":x.get("updated_at"),"url":x.get("html_url")} for x in xs]
- return {"schema":"gh-identity-repositories/1","owner":owner,"complete":True,"count":len(rows),"repositories":rows}
+ o={"schema":"gh-identity-capabilities/1","observed_at":now(),"python":sys.version.split()[0],
+    "gh":gh_available(),"git":shutil.which("git") is not None,"token_present":bool(token()),
+    "git_version":versions.get("git"),"gh_version":versions.get("gh")}
+ if rate_limit:
+  try:o["rate_limit"]=globals()["rate_limit"](transport=transport,timeout=timeout)
+  except Error as e:o["rate_limit"]={"error":e.code}
+ return o
+def rate_limit(transport="auto",timeout=30):
+ """API quota per resource (GET rate_limit is not charged against the quota). Read-only."""
+ d=request("GET","rate_limit",transport=transport,timeout=timeout)
+ resources=d.get("resources") if isinstance(d,dict) else None
+ if not isinstance(resources,dict):raise Error("invalid_json")
+ current=datetime.now(timezone.utc);out={}
+ for name in ("core","search","graphql"):
+  x=resources.get(name)
+  if not isinstance(x,dict):continue
+  reset=x.get("reset");at=seconds=None
+  if type(reset) is int and reset>=0:
+   try:
+    when=datetime.fromtimestamp(reset,timezone.utc)
+    at=when.isoformat();seconds=max(0,int((when-current).total_seconds()))
+   except (ValueError,OverflowError,OSError):pass
+  out[name]={"limit":x.get("limit"),"remaining":x.get("remaining"),"used":x.get("used"),
+             "reset_at":at,"resets_in_seconds":seconds}
+ core=out.get("core") or {}
+ # Anonymous REST reads share 60 requests/hour per address; any credential lifts the limit.
+ return {"schema":"gh-identity-rate-limit/1","authenticated":type(core.get("limit")) is int and core["limit"]>60,
+         "exhausted":sorted(k for k,v in out.items() if v["remaining"]==0),"resources":out,"observed_at":current.isoformat()}
+def _days_since(value,current=None):
+ """Whole days from an ISO-8601 timestamp until now; None when missing or malformed."""
+ t=_when(value)
+ if t is None or t.tzinfo is None:return None
+ return max(0,((current or datetime.now(timezone.utc))-t).days)
+def _count(d,key):
+ v=d.get(key);return v if type(v) is int and v>=0 else None
+def _repo_brief(d):
+ """Facts in every GitHub repository object (single GET and list rows alike); no extra request."""
+ lic=d.get("license") if isinstance(d.get("license"),dict) else {}
+ return {"stars":_count(d,"stargazers_count"),"forks":_count(d,"forks_count"),"license":lic.get("spdx_id"),
+         "language":d.get("language"),"pushed_at":d.get("pushed_at"),"fork":bool(d.get("fork"))}
+def _repo_facts(d):
+ """_repo_brief plus the facts a person checks before depending on someone else's repository."""
+ lic=d.get("license") if isinstance(d.get("license"),dict) else {}
+ parent=d.get("parent") if isinstance(d.get("parent"),dict) else {}
+ topics=d.get("topics")
+ return {"description":d.get("description"),"homepage":d.get("homepage") or None,**_repo_brief(d),
+         "license_name":lic.get("name"),"watchers":_count(d,"subscribers_count"),"open_issues":_count(d,"open_issues_count"),
+         "topics":[x for x in topics if isinstance(x,str)] if isinstance(topics,list) else [],
+         "size_kb":_count(d,"size"),"created_at":d.get("created_at"),"updated_at":d.get("updated_at"),
+         "parent":parent.get("full_name"),"template":bool(d.get("is_template")),"disabled":bool(d.get("disabled")),
+         "owner_type":(d.get("owner") or {}).get("type") if isinstance(d.get("owner"),dict) else None}
+REPO_INCLUDES=("health","fork-diff","languages","contributors","community","releases")
+def repository(r,*,include=(),stale_days=365,transport="auto",timeout=30):
+ """One repository: identity, licence (SPDX), stars and other facts from a single GET.
+
+ include: any of REPO_INCLUDES (or "all"); each costs extra requests and is reported
+ under its own key. A section that cannot be read is {"error": code}, not a failure.
+ """
+ r=repo(r)
+ if isinstance(include,str):include=(include,)
+ include=tuple(REPO_INCLUDES if "all" in include else dict.fromkeys(include))
+ if any(x not in REPO_INCLUDES for x in include):raise ValueError("include must be all or one of: "+", ".join(REPO_INCLUDES))
+ if type(stale_days) is not int or stale_days<1:raise ValueError("stale_days must be positive")
+ d=request("GET",f"repos/{r}",transport=transport,timeout=timeout)
+ if not isinstance(d,dict):raise Error("invalid_json")
+ o={"schema":"gh-identity-repository/1","repository":r,"id":d.get("id"),"default_branch":d.get("default_branch"),"visibility":d.get("visibility"),"archived":d.get("archived"),"url":d.get("html_url"),**_repo_facts(d)}
+ k={"transport":transport,"timeout":timeout}
+ sections={"health":lambda:_repo_health(r,o,stale_days,**k),"fork-diff":lambda:_repo_fork_diff(r,d,**k),
+           "languages":lambda:_repo_languages(r,**k),"contributors":lambda:_repo_contributors(r,**k),
+           "community":lambda:_repo_community(r,**k),
+           "releases":lambda:{x:v for x,v in releases(r,**k).items() if x in ("latest","releases","tags","complete")}}
+ for name in include:
+  try:o[name.replace("-","_")]=sections[name]()
+  except Error as e:o[name.replace("-","_")]={"error":e.code}
+ o["observed_at"]=now()
+ return o
+def _release_row(x):
+ assets=x.get("assets") if isinstance(x.get("assets"),list) else []
+ return {"tag":x.get("tag_name"),"name":x.get("name"),"published_at":x.get("published_at"),
+         "prerelease":bool(x.get("prerelease")),"draft":bool(x.get("draft")),"url":x.get("html_url"),
+         "assets":[{"name":a.get("name"),"size":a.get("size"),"downloads":a.get("download_count")} for a in assets if isinstance(a,dict)]}
+def releases(r,*,max_items=10,transport="auto",timeout=30):
+ """Newest releases and tags (one request each). latest = newest published, non-prerelease row fetched."""
+ r=repo(r)
+ if type(max_items) is not int or not 1<=max_items<=100:raise ValueError("max_items must be 1..100")
+ rel=request("GET",f"repos/{r}/releases?per_page={max_items}",transport=transport,timeout=timeout)
+ tag=request("GET",f"repos/{r}/tags?per_page={max_items}",transport=transport,timeout=timeout)
+ if not isinstance(rel,list) or not isinstance(tag,list):raise Error("invalid_json")
+ rows=[_release_row(x) for x in rel if isinstance(x,dict)]
+ tags=[{"name":x.get("name"),"sha":(x.get("commit") or {}).get("sha") if isinstance(x.get("commit"),dict) else None} for x in tag if isinstance(x,dict)]
+ latest=next((x for x in rows if not x["draft"] and not x["prerelease"]),None)
+ return {"schema":"gh-identity-releases/1","repository":r,"latest":latest,"releases":rows,"tags":tags,
+         "complete":len(rel)<max_items and len(tag)<max_items,"max_items":max_items,"observed_at":now()}
+def _repo_health(r,o,stale_days,transport="auto",timeout=30):
+ """Is this repository alive? archived/disabled, last push, newest release, CI on the default branch head."""
+ pushed=_days_since(o.get("pushed_at"))
+ status="archived" if o.get("archived") else "disabled" if o.get("disabled") else "unknown" if pushed is None else "stale" if pushed>stale_days else "active"
+ out={"status":status,"stale_days":stale_days,"days_since_push":pushed,"open_issues":o.get("open_issues"),
+      "latest_release":None,"days_since_release":None,"head_sha":None,"head_date":None,"ci_state":None}
+ try:
+  latest=releases(r,max_items=5,transport=transport,timeout=timeout)["latest"]
+  if latest:out["latest_release"]=latest["tag"];out["days_since_release"]=_days_since(latest["published_at"])
+ except Error as e:out["latest_release_error"]=e.code
+ branch=o.get("default_branch")
+ if isinstance(branch,str) and branch:
+  try:
+   head=request("GET",f"repos/{r}/commits/{urllib.parse.quote(branch,safe='')}",transport=transport,timeout=timeout)
+   sha=head.get("sha") if isinstance(head,dict) else None
+   if _is_sha(sha):
+    commit=head.get("commit") if isinstance(head.get("commit"),dict) else {}
+    out["head_sha"]=sha;out["head_date"]=(commit.get("committer") or {}).get("date") if isinstance(commit.get("committer"),dict) else None
+    checks=checks_for_sha(r,sha,transport=transport,timeout=timeout)
+    # The combined status endpoint aggregates the latest legacy status per context,
+    # including contexts beyond its first page. Check runs alone omit these CI systems.
+    legacy=request("GET",f"repos/{r}/commits/{sha}/status",transport=transport,timeout=timeout)
+    if (not isinstance(legacy,dict) or type(legacy.get("total_count")) is not int
+        or legacy["total_count"]<0 or legacy.get("state") not in ("success","pending","failure","error")):
+     raise Error("invalid_json")
+    check_state="none" if checks["count"]==0 and checks["complete"] else checks["state"]
+    legacy_state="none" if legacy["total_count"]==0 else {"success":"green","pending":"pending","failure":"failed","error":"failed"}[legacy["state"]]
+    states=(check_state,legacy_state)
+    out["ci_state"]=next((state for state in ("failed","incomplete","pending","green") if state in states),"none")
+  except Error as e:out["ci_error"]=e.code
+ return out
+def compare_refs(r,base,head,*,max_items=100,transport="auto",timeout=30):
+ """Compare two refs/SHAs (or cross-fork OWNER:BRANCH) via GitHub compare API (read-only)."""
+ r=repo(r)
+ for name,val in (("base",base),("head",head)):
+  if not isinstance(val,str) or not val.strip() or any(c in val for c in "\r\n\0") or ".." in val:
+   raise ValueError(f"invalid {name} ref")
+ if type(max_items) is not int or not 1<=max_items<=250:raise ValueError("max_items must be 1..250")
+ q=lambda x:":".join(urllib.parse.quote(p,safe="") for p in x.split(":",1))
+ c=request("GET",f"repos/{r}/compare/{q(base)}...{q(head)}?per_page={min(100,max_items)}",transport=transport,timeout=timeout)
+ if not isinstance(c,dict):raise Error("invalid_json")
+ raw_commits=c.get("commits") if isinstance(c.get("commits"),list) else []
+ raw_files=c.get("files") if isinstance(c.get("files"),list) else []
+ commits=[{"sha":x.get("sha"),"title":((x.get("commit") or {}).get("message") or "").split("\n",1)[0],
+           "author":((x.get("author") or {}).get("login") if isinstance(x.get("author"),dict) else None)
+                    or (((x.get("commit") or {}).get("author") or {}).get("name") if isinstance((x.get("commit") or {}).get("author"),dict) else None),
+           "date":(((x.get("commit") or {}).get("committer") or {}).get("date") if isinstance((x.get("commit") or {}).get("committer"),dict) else None)}
+          for x in raw_commits[:max_items] if isinstance(x,dict)]
+ files=[{"filename":f.get("filename"),"status":f.get("status"),"additions":_count(f,"additions"),
+         "deletions":_count(f,"deletions"),"changes":_count(f,"changes"),"blob_sha":f.get("sha"),
+         "previous_filename":f.get("previous_filename")}
+        for f in raw_files[:max_items] if isinstance(f,dict) and isinstance(f.get("filename"),str)]
+ total_commits=_count(c,"total_commits")
+ commits_complete=total_commits is not None and len(commits)==total_commits and len(raw_commits)<=max_items
+ files_complete=len(raw_files)<=max_items and len(raw_files)<300
+ return {"schema":"gh-identity-compare/1","repository":r,"base":base,"head":head,
+         "status":c.get("status"),"ahead_by":_count(c,"ahead_by"),"behind_by":_count(c,"behind_by"),
+         "total_commits":total_commits,
+         "base_sha":(c.get("base_commit") or {}).get("sha") if isinstance(c.get("base_commit"),dict) else None,
+         "head_sha":(raw_commits[-1].get("sha") if raw_commits and isinstance(raw_commits[-1],dict) else None),
+         "merge_base_sha":(c.get("merge_base_commit") or {}).get("sha") if isinstance(c.get("merge_base_commit"),dict) else None,
+         "commits":commits,"commits_count":len(commits),"commits_complete":commits_complete,
+         "files":files,"files_count":len(files),"files_complete":files_complete,
+         "url":c.get("html_url"),"observed_at":now()}
+def render_compare(o):
+ lines=[f"{o['repository']} {o['base']}...{o['head']} status={o['status']} ahead={o['ahead_by']} behind={o['behind_by']} commits={o['total_commits']} files={o['files_count']}"]
+ for c in o["commits"]:
+  lines.append(f"  commit {(c['sha'] or '?')[:8]} {c['title']}")
+ for f in o["files"]:
+  ren=f" (from {f['previous_filename']})" if f.get("previous_filename") else ""
+  lines.append(f"  {f['status'] or '?':9} +{f['additions'] or 0}/-{f['deletions'] or 0} {f['filename']}{ren}")
+ return "\n".join(lines)
+def _repo_fork_diff(r,d,transport="auto",timeout=30):
+ """Commits the fork's default branch is ahead of / behind its parent's default branch."""
+ parent=d.get("parent") if isinstance(d.get("parent"),dict) else None
+ if not d.get("fork") or parent is None:return {"fork":False}
+ base=parent.get("full_name");base_branch=parent.get("default_branch");branch=d.get("default_branch")
+ if not isinstance(base,str) or not REPO.fullmatch(base) or not isinstance(base_branch,str) or not isinstance(branch,str):raise Error("invalid_json")
+ c=compare_refs(base,base_branch,f"{r.split('/')[0]}:{branch}",max_items=1,transport=transport,timeout=timeout)
+ return {"fork":True,"parent":base,"parent_branch":base_branch,"branch":branch,
+         "ahead_by":c["ahead_by"],"behind_by":c["behind_by"],"status":c["status"]}
+def _repo_languages(r,transport="auto",timeout=30):
+ d=request("GET",f"repos/{r}/languages",transport=transport,timeout=timeout)
+ if not isinstance(d,dict):raise Error("invalid_json")
+ sizes={k:v for k,v in d.items() if isinstance(k,str) and type(v) is int and v>=0};total=sum(sizes.values())
+ rows=[{"name":k,"bytes":v,"percent":round(100*v/total,1) if total else 0.0} for k,v in sorted(sizes.items(),key=lambda kv:(-kv[1],kv[0]))]
+ return {"total_bytes":total,"languages":rows}
+def _repo_contributors(r,max_pages=5,top=5,transport="auto",timeout=30):
+ """Contributor count (anonymous included, bounded to max_pages*100) and the top accounts by commits."""
+ xs,complete,_n=pages_bounded(f"repos/{r}/contributors?anon=1",transport,timeout,max_pages=max_pages)
+ # Anonymous rows carry a name and e-mail; only account logins are reported.
+ named=[{"login":x["login"],"contributions":_count(x,"contributions")} for x in xs if isinstance(x,dict) and isinstance(x.get("login"),str)]
+ return {"count":len(xs),"complete":complete,"accounts":len(named),"top":named[:top]}
+def _repo_community(r,transport="auto",timeout=30):
+ d=request("GET",f"repos/{r}/community/profile",transport=transport,timeout=timeout)
+ if not isinstance(d,dict):raise Error("invalid_json")
+ files=d.get("files") if isinstance(d.get("files"),dict) else {}
+ return {"health_percentage":_count(d,"health_percentage"),"files":{k:v is not None for k,v in sorted(files.items()) if isinstance(k,str)}}
+def render_repository(o):
+ """Icon-first lines: one identity line, then one line per included section."""
+ def n(v):return "?" if v is None else str(v)
+ def day(v):return v[:10] if isinstance(v,str) else "?"
+ flags=[w for w,on in (("🗃 archived",o.get("archived")),("⛔ disabled",o.get("disabled")),("🧬 template",o.get("template")),
+                       ("🔱 fork of "+n(o.get("parent")),o.get("fork"))) if on]
+ lines=["  ".join([f"📦 {o['repository']}",f"⭐ {n(o.get('stars'))}",f"🍴 {n(o.get('forks'))}",f"📄 {o.get('license') or 'no licence'}",
+                   f"🗣 {o.get('language') or '?'}",f"🕒 {day(o.get('pushed_at'))}",*flags])]
+ def section(key,fn):
+  x=o.get(key)
+  if x is None:return
+  lines.append(f"⚠️ {key}: {x['error']}" if "error" in x else fn(x))
+ section("health",lambda x:"💓 "+" · ".join([x["status"],f"push {n(x['days_since_push'])}d",
+   f"release {x['latest_release']} {n(x['days_since_release'])}d" if x["latest_release"] else "no release",f"CI {x['ci_state'] or '?'}",f"issues {n(x['open_issues'])}"]))
+ section("fork_diff",lambda x:f"🔱 {x['parent']} +{n(x['ahead_by'])} -{n(x['behind_by'])}" if x["fork"] else "🔱 not a fork")
+ section("languages",lambda x:"🧩 "+(" · ".join(f"{y['name']} {y['percent']}%" for y in x["languages"][:5]) or "none"))
+ section("contributors",lambda x:f"👥 {x['count']}{'' if x['complete'] else '+'}"+("  "+" ".join(f"{y['login']}({n(y['contributions'])})" for y in x["top"]) if x["top"] else ""))
+ section("community",lambda x:f"📑 {n(x['health_percentage'])}%  "+" ".join(f"{k} {'✓' if v else '✗'}" for k,v in x["files"].items()))
+ section("releases",lambda x:"🏷️ "+(f"{x['latest']['tag']} ({day(x['latest']['published_at'])})" if x["latest"] else "no release")+f" · tags {len(x['tags'])}{'' if x['complete'] else '+'}")
+ return "\n".join(lines)
+def render_releases(o):
+ rows=[f"🏷️ {o['repository']}  latest {o['latest']['tag'] if o['latest'] else 'none'}"]
+ rows+=[f"{'🧪' if x['prerelease'] else '📝' if x['draft'] else '🚀'} {x['tag']}  {(x['published_at'] or '?')[:10]}  📎 {len(x['assets'])}" for x in o["releases"]]
+ rows+=[f"🔖 {x['name']}  {(x['sha'] or '?')[:7]}" for x in o["tags"]]
+ return "\n".join(rows)
+def _owner_bases(owner,kind):
+ if kind not in ("auto","user","org"):raise ValueError("kind must be auto, user or org")
+ return {"user":[f"users/{owner}/repos"],"org":[f"orgs/{owner}/repos"],"auto":[f"users/{owner}/repos",f"orgs/{owner}/repos"]}[kind]
+def repositories(owner,transport="auto",timeout=30,*,kind="auto"):
+ """Every repository listed for a user or an organisation (kind auto tries users/ then orgs/)."""
+ bases=_owner_bases(owner,kind)
+ for i,base in enumerate(bases):
+  try:xs=pages(base+"?sort=full_name",transport,timeout);break
+  except Error as e:
+   if e.code!="not_found_or_inaccessible" or i+1==len(bases):raise
+ rows=[{"full_name":x.get("full_name"),"archived":x.get("archived"),"updated_at":x.get("updated_at"),"url":x.get("html_url"),**_repo_brief(x)} for x in xs]
+ return {"schema":"gh-identity-repositories/1","owner":owner,"kind":base.split("/",1)[0],"complete":True,"count":len(rows),"repositories":rows}
+INVENTORY_FIELDS=("name","size-kb","run-count","updated-at","stars","forks","license","language","pushed-at")
 def repository_inventory(owner, *, fields=("name",), sort="name", order="asc",
-                         max_repos=30, max_pages=5, transport="auto", timeout=30):
- """Bounded public non-archived repository inventory; run counts are opt-in."""
+                         max_repos=30, max_pages=5, transport="auto", timeout=30,
+                         kind="auto", include_archived=False):
+ """Bounded public repository inventory of a user or organisation; run counts are opt-in.
+
+ Archived repositories are left out unless include_archived; every row says archived/fork.
+ """
  if not isinstance(owner,str) or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37})",owner):
   raise ValueError("invalid owner")
- allowed={"name","size-kb","run-count","updated-at"}
+ allowed=set(INVENTORY_FIELDS)
+ bases=_owner_bases(owner,kind);base=bases[0]
  if isinstance(fields,str):fields=tuple(x.strip() for x in fields.split(","))
  else:fields=tuple(fields)
  if not fields or any(x not in allowed for x in fields):raise ValueError("invalid fields")
@@ -275,20 +534,26 @@ def repository_inventory(owner, *, fields=("name",), sort="name", order="asc",
  need_counts="run-count" in fields or sort=="run-count"
  rows=[];page=1;exhausted=False;pages_fetched=0
  while page<=max_pages and len(rows)<max_repos:
-  data,_headers=_page("users/"+owner+"/repos?per_page=100&page="+str(page),
-                      transport=transport,timeout=timeout)
+  try:
+   data,_headers=_page(base+"?per_page=100&page="+str(page),
+                       transport=transport,timeout=timeout)
+  except Error as exc:
+   # kind auto: a name that is not a user may be an organisation (first page only).
+   if exc.code!="not_found_or_inaccessible" or page!=1 or base==bases[-1]:raise
+   base=bases[-1];continue
   if not isinstance(data,list) or len(data)>100:raise Error("invalid_json")
   _BUDGET.get().charge("items",len(data))
   pages_fetched+=1
   for item in data:
    if not isinstance(item,dict):raise Error("invalid_json")
-   if item.get("private") is not False or item.get("archived") is not False:continue
+   if item.get("private") is not False:continue
+   if item.get("archived") is not False and not (include_archived and item.get("archived") is True):continue
    name=item.get("name");full=item.get("full_name")
    if not isinstance(name,str) or full!=owner+"/"+name:raise Error("invalid_repository_identity")
    size=item.get("size")
    if type(size) is not int or size<0:size=None
    row={"name":name,"full_name":full,"size_kb":size,"updated_at":item.get("updated_at"),
-        "run_count":None,"run_count_status":"not_requested"}
+        "run_count":None,"run_count_status":"not_requested",**_repo_brief(item),"archived":item.get("archived") is True}
    rows.append(row)
    if len(rows)>=max_repos:break
   if len(data)<100 and len(rows)<max_repos:
@@ -307,17 +572,16 @@ def repository_inventory(owner, *, fields=("name",), sort="name", order="asc",
    if exc.code in ("authentication_required","permission_or_rate_limit","not_found_or_inaccessible"):
     row["run_count_status"]=exc.code
    else:raise
- keymap={"name":"name","size-kb":"size_kb","run-count":"run_count","updated-at":"updated_at"}
+ keymap={"name":"name","size-kb":"size_kb","run-count":"run_count","updated-at":"updated_at",
+         "stars":"stars","forks":"forks","license":"license","language":"language","pushed-at":"pushed_at"}
  key=keymap[sort]
  # Normalize timestamps to UTC before ordering; malformed values sort as missing.
  def sort_value(row):
   value=row[key]
-  if sort=="updated-at":
-   if not isinstance(value,str):return None
-   try:
-    parsed=datetime.fromisoformat(value.replace("Z","+00:00"))
-    if parsed.tzinfo is None:return None
-    return parsed.astimezone(timezone.utc)
+  if sort in ("updated-at","pushed-at"):
+   parsed=_when(value)
+   if parsed is None or parsed.tzinfo is None:return None
+   try:return parsed.astimezone(timezone.utc)
    except (ValueError,OverflowError):return None
   return value
  decorated=[(sort_value(row),row) for row in rows]
@@ -328,13 +592,19 @@ def repository_inventory(owner, *, fields=("name",), sort="name", order="asc",
  known.sort(key=lambda pair:pair[0],reverse=order=="desc")
  missing.sort(key=lambda row:row["name"])
  rows=[row for _,row in known]+missing
- return {"schema":"gh-identity-repository-inventory/1","owner":owner,"repositories":rows,
+ return {"schema":"gh-identity-repository-inventory/1","owner":owner,"kind":base.split("/",1)[0],
+         "include_archived":bool(include_archived),"repositories":rows,
          "count":len(rows),"complete":exhausted,"truncated":not exhausted,
          "limit_reason":None if exhausted else ("max_repos" if len(rows)>=max_repos else "max_pages"),
          "pages_fetched":pages_fetched,"sort":sort,"order":order,
          "sort_scope":"complete" if exhausted else "partial",
          "fields":list(fields),"measured_at":now()}
 
+
+
+# ---------------------------------------------------------------------------
+# 🔀 Pull requests and reviews: files, comments, review findings, threads, observations
+# ---------------------------------------------------------------------------
 def pr(r,n,**k):
  r=repo(r);d=request("GET",f"repos/{r}/pulls/{n}",**k)
  return {"schema":"gh-identity-pr/1","repository":r,"number":n,"state":d.get("state"),"draft":d.get("draft"),"merged":d.get("merged"),"mergeable":d.get("mergeable"),"mergeable_state":d.get("mergeable_state"),"head_sha":(d.get("head")or{}).get("sha"),"head_ref":(d.get("head")or{}).get("ref"),"base_sha":(d.get("base")or{}).get("sha"),"base_ref":(d.get("base")or{}).get("ref"),"url":d.get("html_url"),"observed_at":now()}
@@ -343,6 +613,59 @@ def _review_limits(n,max_items,max_pages):
  for value in (max_items,max_pages):
   if type(value) is not int or value<1:raise ValueError("limits must be positive integers")
  return n
+def pr_files(r,n,*,path=None,include_patch=False,patch_bytes=4000,max_items=100,max_pages=10,transport="auto",timeout=30):
+ """List changed files in a pull request with bounded pagination and optional bounded patch snippets."""
+ r=repo(r);n=_review_limits(n,max_items,max_pages)
+ if path is not None and (not isinstance(path,str) or not path.strip()):raise ValueError("invalid path filter")
+ if type(include_patch) is not bool:raise ValueError("include_patch must be bool")
+ if type(patch_bytes) is not int or not 1<=patch_bytes<=200_000:raise ValueError("patch_bytes must be 1..200000")
+ rows=[];seen=set();fetched=0;complete=False;limit_reason=None
+ url=f"repos/{r}/pulls/{n}/files?per_page=100&page=1"
+ while url and fetched<max_pages:
+  batch,headers=_page(url,transport,timeout);fetched+=1
+  if not isinstance(batch,list) or any(not isinstance(x,dict) for x in batch):raise Error("invalid_json")
+  _BUDGET.get().charge("items",len(batch))
+  consumed=0
+  for x in batch:
+   consumed+=1
+   fname=x.get("filename")
+   if not isinstance(fname,str) or not fname or fname in seen:raise Error("invalid_pr_files_response")
+   seen.add(fname)
+   if path is not None and not (fnmatch.fnmatchcase(fname,path) or fnmatch.fnmatchcase(fname.rsplit("/",1)[-1],path)):
+    continue
+   item={"filename":fname,"status":x.get("status"),"additions":_count(x,"additions"),
+         "deletions":_count(x,"deletions"),"changes":_count(x,"changes"),"blob_sha":x.get("sha"),
+         "previous_filename":x.get("previous_filename")}
+   if include_patch:
+    raw_patch=x.get("patch") if isinstance(x.get("patch"),str) else None
+    if raw_patch is not None:
+     encoded=raw_patch.encode("utf-8")
+     item["patch_truncated"]=len(encoded)>patch_bytes
+     item["patch"]=encoded[:patch_bytes].decode("utf-8",errors="ignore") if item["patch_truncated"] else raw_patch
+    else:
+     item["patch"]=None;item["patch_truncated"]=False
+   rows.append(item)
+   if len(rows)>=max_items:break
+  next_url=_next_page(url,headers,len(batch))
+  if len(rows)>=max_items and (consumed<len(batch) or next_url is not None):
+   limit_reason="max_items";break
+  if next_url is None:
+   complete=True;break
+  url=next_url
+ else:
+  if url is not None:limit_reason="max_pages"
+ return {"schema":"gh-identity-pr-files/1","repository":r,"number":n,"path_filter":path,
+         "files":rows,"count":len(rows),"pages_fetched":fetched,
+         "complete":complete,"truncated":not complete,"limit_reason":limit_reason,"observed_at":now()}
+def render_pr_files(o):
+ out=[f"{o['repository']}#{o['number']} files={o['count']}"+(f" filter={o['path_filter']}" if o.get("path_filter") else "")+(" (truncated)" if o.get("truncated") else "")]
+ for f in o["files"]:
+  ren=f" (from {f['previous_filename']})" if f.get("previous_filename") else ""
+  out.append(f"  {f['status'] or '?':9} +{f['additions'] or 0}/-{f['deletions'] or 0} {f['filename']}{ren}")
+  if f.get("patch"):
+   for line in f["patch"].splitlines():out.append("    "+line)
+   if f.get("patch_truncated"):out.append("    ... (patch truncated)")
+ return "\n".join(out)
 
 def _review_rest(path,transport,timeout,max_items,max_pages):
  if max_items is None and max_pages is None:
@@ -609,6 +932,11 @@ def pull_requests(r,state="open",max_items=100,max_pages=10,transport="auto",tim
   "count":len(rows),"pages_fetched":pages_fetched,"complete":exhausted,"truncated":not exhausted}
 
 
+
+
+# ---------------------------------------------------------------------------
+# 📄 Issues, content and search: bodies, HTML extraction, code/repository search
+# ---------------------------------------------------------------------------
 def _issue_row(d,expected_repo=None,expected_number=None,kind=None,body=False):
  if not isinstance(d,dict):raise Error("invalid_issue_identity")
  number=d.get("number");url=d.get("repository_url")
@@ -826,24 +1154,49 @@ def issues(r,state="open",max_items=100,max_pages=10,transport="auto",timeout=30
  return {"schema":"gh-identity-issue-discovery/1","repository":r,"state":state,"issues":rows,
          "count":len(rows),"pages_fetched":fetched,"complete":complete,"truncated":not complete}
 
+def _code_search_row(d):
+ if not isinstance(d,dict):raise Error("invalid_search_response")
+ rep=d.get("repository")
+ full=rep.get("full_name") if isinstance(rep,dict) else None
+ path=d.get("path");name=d.get("name");sha=d.get("sha")
+ if not isinstance(full,str) or not REPO.fullmatch(full) or not isinstance(path,str) or not path or not isinstance(name,str) or not isinstance(sha,str) or not re.fullmatch(r"[0-9a-fA-F]{40}",sha):
+  raise Error("invalid_search_response")
+ return {"repository":full,"kind":"code","path":path,"name":name,"sha":sha.lower(),"url":d.get("html_url")}
+
+def _repo_search_row(d):
+ if not isinstance(d,dict):raise Error("invalid_search_response")
+ full=d.get("full_name");rid=d.get("id")
+ if not isinstance(full,str) or not REPO.fullmatch(full) or type(rid) is not int or rid<1 or type(d.get("private")) is not bool:
+  raise Error("invalid_search_response")
+ return {"repository":full,"id":rid,"kind":"repo","private":d["private"],"visibility":d.get("visibility"),
+         "archived":bool(d.get("archived")),"default_branch":d.get("default_branch"),
+         "description":d.get("description"),"url":d.get("html_url"),**_repo_brief(d)}
+
 def search(query,kind="pr",sort="updated",order="desc",max_items=100,max_pages=10,transport="auto",timeout=30):
- """Bounded cross-repository Issue/PR search; never a fleet enumeration claim.
+ """Bounded cross-repository Issue/PR/code/repo search; never a fleet enumeration claim.
 
  Pass GitHub qualifiers (repo:, org:, user:, is:open/closed, label:, author:,
- head:, base:, is:merged/unmerged, draft:, created:, updated:) in query.
+ head:, base:, is:merged/unmerged, draft:, created:, updated:, path:, language:, topic:) in query.
  """
  if not isinstance(query,str) or not query.strip():raise ValueError("query is required")
- if kind not in ("pr","issue") or sort not in ("updated","created","comments","best-match") or order not in ("asc","desc"):
+ allowed_sorts={"pr":("updated","created","comments","best-match"),"issue":("updated","created","comments","best-match"),
+                "code":("updated","created","comments","stars","forks","best-match"),"repo":("updated","stars","forks","best-match")}
+ if kind not in allowed_sorts or sort not in allowed_sorts[kind] or order not in ("asc","desc"):
   raise ValueError("invalid search selection")
  for v in (max_items,max_pages):
   if type(v) is not int or v<1:raise ValueError("limits must be positive integers")
- effective=query.strip()+" is:"+kind
- params={"q":effective,"order":order,"per_page":100}
- if sort!="best-match":params["sort"]=sort
+ if kind=="code":
+  effective=query.strip();endpoint="search/code";params={"q":effective,"per_page":100};out_sort="best-match"
+ elif kind=="repo":
+  effective=query.strip();endpoint="search/repositories";params={"q":effective,"order":order,"per_page":100};out_sort=sort
+  if sort!="best-match":params["sort"]=sort
+ else:
+  effective=query.strip()+" is:"+kind;endpoint="search/issues";params={"q":effective,"order":order,"per_page":100};out_sort=sort
+  if sort!="best-match":params["sort"]=sort
  rows=[];seen=set();total=None;incomplete=False;complete=False;fetched=0;raw_count=0
  for page in range(1,min(max_pages,10)+1):
   params["page"]=page
-  data,_headers=_page("search/issues?"+urllib.parse.urlencode(params),transport,timeout);fetched+=1
+  data,_headers=_page(endpoint+"?"+urllib.parse.urlencode(params),transport,timeout);fetched+=1
   if not isinstance(data,dict) or type(data.get("total_count")) is not int or data["total_count"]<0 or type(data.get("incomplete_results")) is not bool or not isinstance(data.get("items"),list):raise Error("invalid_search_response")
   if total is not None and total!=data["total_count"]:raise Error("pagination_incomplete")
   total=data["total_count"];incomplete=incomplete or data["incomplete_results"];batch=data["items"]
@@ -851,18 +1204,41 @@ def search(query,kind="pr",sort="updated",order="desc",max_items=100,max_pages=1
   _BUDGET.get().charge("items",len(batch));raw_count+=len(batch)
   if raw_count>total:raise Error("pagination_incomplete")
   for d in batch:
-   row=_issue_row(d,kind=kind);key=(row["repository"].lower(),row["number"])
+   if kind=="code":
+    row=_code_search_row(d);key=(row["repository"].lower(),row["path"],row["sha"])
+   elif kind=="repo":
+    row=_repo_search_row(d);key=row["repository"].lower()
+   else:
+    row=_issue_row(d,kind=kind);key=(row["repository"].lower(),row["number"])
    if key in seen:raise Error("pagination_incomplete")
    seen.add(key)
    if len(rows)<max_items:rows.append(row)
   complete=not incomplete and len(rows)==total
   if complete or len(rows)>=max_items or len(batch)<100:break
- return {"schema":"gh-identity-search/1","kind":kind,"query":effective,"sort":sort,"order":order,
+ return {"schema":"gh-identity-search/1","kind":kind,"query":effective,"sort":out_sort,"order":order,
          "items":rows,"count":len(rows),"total_count":total,"pages_fetched":fetched,
          "incomplete_results":incomplete,"complete":complete,"truncated":not complete,
          "scope":"accessible_search_results","observed_at":now()}
 
+def render_search(o):
+ out=[]
+ for x in o.get("items") or []:
+  if x.get("kind")=="code":
+   out.append(f"{x['repository']}:{x['path']} {(x.get('sha') or '?')[:8]}")
+  elif x.get("kind")=="repo":
+   out.append(f"{x['repository']} stars={x.get('stars')} forks={x.get('forks')} lang={x.get('language') or '?'} {x.get('description') or ''}".rstrip())
+  else:
+   labels=f" [{','.join(x['labels'])}]" if x.get("labels") else ""
+   out.append(f"{x['repository']}#{x['number']} {x['state']}{labels} {x['title']}")
+ if o.get("truncated"):out.append(f"(truncated after {o['count']} of {o['total_count']})")
+ return "\n".join(out)
 
+
+
+
+# ---------------------------------------------------------------------------
+# ⚙️ Runs, variables and writes guarded by --write; refs and trees
+# ---------------------------------------------------------------------------
 def run_history(r,max_items=100,max_pages=10,head_sha=None,branch=None,event=None,transport="auto",timeout=30,exclude_events=()):
  r=repo(r)
  if not isinstance(max_items,int) or max_items<1:raise ValueError("max_items must be positive")
@@ -974,8 +1350,19 @@ def workflow_run_discovery(r, workflow_id, *, branch=None, head_sha=None, event=
 
 def runs(r,limit=20,transport="auto",timeout=30):
  r=repo(r);d=request("GET",f"repos/{r}/actions/runs?per_page={min(100,max(1,limit))}",transport=transport,timeout=timeout)
- ds=[{"run_id":x.get("id"),"attempt":x.get("run_attempt"),"status":x.get("status"),"conclusion":x.get("conclusion"),"head_sha":x.get("head_sha"),"event":x.get("event"),"url":x.get("html_url")} for x in (d.get("workflow_runs")or[])[:limit]]
+ ds=[{"run_id":x.get("id"),"attempt":x.get("run_attempt"),"name":x.get("name"),"head_branch":x.get("head_branch"),"status":x.get("status"),"conclusion":x.get("conclusion"),"head_sha":x.get("head_sha"),"event":x.get("event"),"url":x.get("html_url")} for x in (d.get("workflow_runs")or[])[:limit]]
  return {"schema":"gh-identity-runs/1","repository":r,"runs":ds}
+
+def render_runs(o):
+ lines=[]
+ for x in o.get("runs") or []:
+  res=x.get("conclusion") or x.get("status") or "?"
+  sha=(x.get("head_sha") or "?")[:8]
+  branch=f" {x['head_branch']}" if x.get("head_branch") else ""
+  name=f" {x['name']}" if x.get("name") else ""
+  lines.append(f"{x['run_id']} #{x.get('attempt') or 1} {res} {x.get('event') or '?'} {sha}{branch}{name}")
+ if o.get("truncated"):lines.append(f"(truncated after {o.get('count',len(lines))})")
+ return "\n".join(lines)
 def variable(r,name,transport="auto",timeout=30):
  r=repo(r);d=request("GET",f"repos/{r}/actions/variables/{urllib.parse.quote(name,safe='')}",transport=transport,timeout=timeout)
  return {"schema":"gh-identity-variable/1","repository":r,"name":d.get("name"),"value":d.get("value"),"updated_at":d.get("updated_at")}
@@ -1122,7 +1509,7 @@ def tree(r,ref="main",*,depth=1,exclude_dirs=(),exclude_files=(),transport="auto
   prefix,sha,level,ancestors=pending.pop()
   _BUDGET.get().charge("pages",1)
   d=request("GET",f"repos/{r}/git/trees/{sha}",transport=transport,timeout=timeout);requests+=1
-  if not isinstance(d,dict) or not isinstance(d.get("sha"),str) or re.fullmatch(r"[0-9a-f]{40}",d["sha"]) is None:
+  if not isinstance(d,dict) or not _is_sha(d.get("sha")):
    raise Error("invalid_tree_identity")
   if prefix and d["sha"]!=sha:raise Error("invalid_tree_identity")
   if d["sha"] in ancestors:raise Error("invalid_tree_cycle")
@@ -1137,7 +1524,7 @@ def tree(r,ref="main",*,depth=1,exclude_dirs=(),exclude_files=(),transport="auto
    if not isinstance(name,str) or not name or name in (".","..") or "/" in name or "\0" in name or name in seen:
     raise Error("invalid_tree_entry")
    seen.add(name)
-   if not isinstance(mode,str) or mode not in modes or entry.get("type")!=modes[mode][0] or not isinstance(ident,str) or re.fullmatch(r"[0-9a-f]{40}",ident) is None:
+   if not isinstance(mode,str) or mode not in modes or entry.get("type")!=modes[mode][0] or not _is_sha(ident):
     raise Error("invalid_tree_entry")
    path=prefix+name;kind=modes[mode][1]
    patterns=dirs if kind=="directory" else files
@@ -1176,6 +1563,11 @@ def source_identity(r,ref,path,transport="auto",timeout=30):
  if not isinstance(blob,str) or not re.fullmatch(r"[0-9a-fA-F]{40}",blob):raise Error("invalid_blob")
  if not isinstance(size,int) or size<0:raise Error("invalid_source_size")
  return {"schema":"gh-identity-source/1","repository":r,"ref":ref,"commit_sha":resolved["sha"],"path":path,"blob_sha":blob.lower(),"size":size,"type":"file","observed_at":now()}
+
+
+# ---------------------------------------------------------------------------
+# ✅ Checks and status: per SHA, per PR, waiting
+# ---------------------------------------------------------------------------
 def _min_checks(value):
  if not isinstance(value,int) or isinstance(value,bool) or value<1:raise ValueError("min_checks must be at least 1")
  return value
@@ -1469,18 +1861,52 @@ def observe_pr(r,n,min_checks=1,transport="auto",timeout=30):
  return {"schema":"gh-identity-pr-observation/1","repository":repo(r),"number":n,"head_sha":before["head_sha"],"base_sha":before["base_sha"],
   "state":before["state"],"draft":before["draft"],"mergeable":before["mergeable"],"checks":ch,"conversation":cs,"reviews":rs,
   "stale":before["head_sha"]!=after["head_sha"],"head_sha_after":after["head_sha"],"observed_at":now()}
+
+
+# ---------------------------------------------------------------------------
+# ⚙️ Workflows, jobs, logs and artifacts
+# ---------------------------------------------------------------------------
 def workflow(r,w,transport="auto",timeout=30):
  r=repo(r);d=request("GET",f"repos/{r}/actions/workflows/{urllib.parse.quote(str(w),safe='')}",transport=transport,timeout=timeout)
  return {"schema":"gh-identity-workflow/1","repository":r,"id":d.get("id"),"name":d.get("name"),"path":d.get("path"),"state":d.get("state"),"url":d.get("html_url"),"observed_at":now()}
 
+def workflows(r,*,max_items=100,max_pages=10,transport="auto",timeout=30):
+ """List Actions workflows of one repository with bounded pagination."""
+ r=repo(r)
+ for v in (max_items,max_pages):
+  if type(v) is not int or v<1:raise ValueError("limits must be positive integers")
+ rows=[];seen=set();page=1;exhausted=False;fetched=0;total=None
+ while page<=max_pages and len(rows)<max_items:
+  data,_headers=_page(f"repos/{r}/actions/workflows?per_page=100&page={page}",transport=transport,timeout=timeout)
+  fetched+=1
+  if not isinstance(data,dict) or not isinstance(data.get("workflows"),list):raise Error("invalid_json")
+  if total is None:total=data.get("total_count")
+  batch=data["workflows"]
+  _BUDGET.get().charge("items",len(batch))
+  consumed=0
+  for w in batch:
+   if not isinstance(w,dict) or type(w.get("id")) is not int or w["id"]<1:raise Error("invalid_workflow_identity")
+   if w["id"] in seen:raise Error("pagination_incomplete")
+   seen.add(w["id"]);consumed+=1
+   rows.append({"id":w["id"],"name":w.get("name"),"path":w.get("path"),"state":w.get("state"),"url":w.get("html_url")})
+   if len(rows)>=max_items:break
+  if len(batch)<100:
+   exhausted=consumed==len(batch) and (type(total) is not int or len(rows)==total)
+   break
+  page+=1
+ return {"schema":"gh-identity-workflows/1","repository":r,"workflows":rows,"count":len(rows),
+         "pages_fetched":fetched,"complete":exhausted,"truncated":not exhausted,"observed_at":now()}
+
+def render_workflows(o):
+ lines=[f"{w['id']} {w.get('state') or '?'} {w.get('path') or '?'} {w.get('name') or ''}".rstrip() for w in o.get("workflows") or []]
+ if o.get("truncated"):lines.append(f"(truncated after {o['count']})")
+ return "\n".join(lines)
+
 def run(r, run_id, attempt=None, transport="auto", timeout=30):
  """Read an exact Actions run and optionally one exact rerun attempt."""
  r=repo(r)
- def positive(x, label):
-  if isinstance(x,bool) or not str(x).isdigit() or int(x)<1:raise ValueError("invalid " + label + " identifier")
-  return int(x)
- run_id=positive(run_id, "run")
- if attempt is not None:attempt=positive(attempt, "attempt")
+ run_id=_positive_identifier(run_id, "run")
+ if attempt is not None:attempt=_positive_identifier(attempt, "attempt")
  path=f"repos/{r}/actions/runs/{run_id}"
  if attempt is not None:path+=f"/attempts/{attempt}"
  d=request("GET",path,transport=transport,timeout=timeout)
@@ -1497,12 +1923,8 @@ def run(r, run_id, attempt=None, transport="auto", timeout=30):
 def jobs(r, run_id, attempt=None, transport="auto", timeout=30):
  """Read all jobs and their steps for one Actions run or exact attempt."""
  r=repo(r)
- def ident(value):
-  if isinstance(value,bool) or not str(value).isdigit() or int(value)<1:
-   raise ValueError("invalid job lookup identifier")
-  return int(value)
- run_id=ident(run_id)
- if attempt is not None:attempt=ident(attempt)
+ run_id=_positive_identifier(run_id,"job lookup")
+ if attempt is not None:attempt=_positive_identifier(attempt,"job lookup")
  base=f"repos/{r}/actions/runs/{run_id}"
  if attempt is not None:base+=f"/attempts/{attempt}"
  rows=[];page=1;total=None
@@ -1535,10 +1957,16 @@ def jobs(r, run_id, attempt=None, transport="auto", timeout=30):
  return {"schema":"gh-identity-jobs/1","repository":r,"run_id":run_id,"attempt":attempt,
   "complete":True,"count":len(out),"jobs":out,"observed_at":now()}
 
-def _positive_identifier(value,label):
- if isinstance(value,bool) or not isinstance(value,(int,str)) or not re.fullmatch(r"[0-9]+",str(value)) or int(value)<1:
-  raise ValueError("invalid "+label+" identifier")
- return int(value)
+def render_jobs(o):
+ lines=[]
+ for j in o.get("jobs") or []:
+  res=j.get("conclusion") or j.get("status") or "?"
+  lines.append(f"{j['job_id']} {res} {j.get('name') or '?'}")
+  for s in j.get("steps") or []:
+   sres=s.get("conclusion") or s.get("status") or "?"
+   if sres not in ("success","skipped"):
+    lines.append(f"  step {s.get('number')}: {sres} {s.get('name') or '?'}")
+ return "\n".join(lines)
 
 def step_url(r,run_id,job_id,step_number,line=None):
  """Build a UI permalink from explicit identities; performs no observation."""
@@ -1939,6 +2367,93 @@ def job_log(r, run_id, job_id, *, attempt, max_bytes=1_000_000, redact=(), trans
             **result, "observed_at": now()}
 
 
+def failed_job_logs(r, run_id, *, attempt=None, max_jobs=5, max_bytes=200_000, tail_lines=200,
+                    redact=(), transport="auto", timeout=30):
+    """Read bounded, redacted log tails and failed steps for failed jobs in an Actions run."""
+    r = repo(r)
+    run_id = _positive_identifier(run_id, "run")
+    if attempt is not None:
+        attempt = _positive_identifier(attempt, "attempt")
+    if type(max_jobs) is not int or not 1 <= max_jobs <= 50:
+        raise ValueError("max_jobs must be 1..50")
+    if type(max_bytes) is not int or max_bytes < 1:
+        raise ValueError("max_bytes must be a positive integer")
+    if type(tail_lines) is not int or tail_lines < 1:
+        raise ValueError("tail_lines must be a positive integer")
+    if transport not in ("auto", "gh", "urllib"):
+        raise ValueError("bad transport")
+    redact = _log_redactions(redact)
+    budget = _BUDGET.get()
+    deadline = min(budget.deadline, time.monotonic() + timeout)
+    def remaining():
+        left = min(budget.remaining(), deadline - time.monotonic())
+        if left <= 0:
+            budget.fail("operation_timeout")
+        return left
+    observed_run = run(r, run_id, attempt=attempt, transport=transport, timeout=remaining())
+    actual_attempt = observed_run.get("attempt")
+    sha = observed_run.get("head_sha")
+    if (type(observed_run.get("run_id")) is not int or observed_run["run_id"] != run_id
+            or type(actual_attempt) is not int or actual_attempt < 1
+            or (attempt is not None and actual_attempt != attempt)
+            or not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha)):
+        raise Error("invalid_run_identity")
+    observation = jobs(r, run_id, attempt=actual_attempt, transport=transport, timeout=remaining())
+    bad = {"failure", "timed_out", "cancelled", "startup_failure", "action_required"}
+    failed = [j for j in observation["jobs"] if j.get("status") == "completed" and j.get("conclusion") in bad]
+    encoded = "/".join(urllib.parse.quote(part, safe="") for part in r.split("/"))
+    out_jobs = []
+    for job in failed[:max_jobs]:
+        jid = job["job_id"]
+        if not isinstance(job.get("head_sha"), str) or job["head_sha"].lower() != sha.lower():
+            raise Error("job_identity_mismatch")
+        failed_steps = []
+        for step in job.get("steps") or []:
+            if step.get("conclusion") in bad:
+                num = step.get("number")
+                if type(num) is not int or num < 1:
+                    raise Error("invalid_step_identity")
+                failed_steps.append({"number": num, "name": step.get("name"), "conclusion": step.get("conclusion"),
+                                     "url": step_url_from_jobs(observation, jid, num)})
+        entry = {"job_id": jid, "name": job.get("name"), "conclusion": job.get("conclusion"),
+                 "url": job.get("url"), "failed_steps": failed_steps}
+        try:
+            res = _download_job_log(f"repos/{encoded}/actions/jobs/{jid}/logs", max_bytes=max_bytes,
+                                    redact=redact, transport=transport, timeout=remaining())
+            text = res.get("text")
+            lines = text.splitlines() if isinstance(text, str) else []
+            tail = "\n".join(lines[-tail_lines:]) if isinstance(text, str) else None
+            entry.update(complete=res["complete"], truncated=res["truncated"], bytes_read=res["bytes_read"],
+                         text_sha256=res["text_sha256"], line_count=len(lines) if isinstance(text, str) else None,
+                         tail_lines=tail_lines, tail_truncated=len(lines) > tail_lines if isinstance(text, str) else False,
+                         tail=tail, redaction=res.get("redaction"))
+        except Error as exc:
+            if exc.code in ("pages_limit", "items_limit", "bytes_limit", "operation_timeout"):
+                raise
+            entry.update(complete=False, truncated=False, error=exc.code, tail=None)
+        out_jobs.append(entry)
+    complete = len(failed) <= max_jobs and all(x.get("complete") is True for x in out_jobs)
+    truncated = len(failed) > max_jobs or any(x.get("truncated") is True for x in out_jobs)
+    return {"schema": "gh-identity-failed-logs/1", "repository": r, "run_id": run_id, "attempt": actual_attempt,
+            "head_sha": sha.lower(), "run_status": observed_run.get("status"), "run_conclusion": observed_run.get("conclusion"),
+            "failed_job_count": len(failed), "count": len(out_jobs), "jobs": out_jobs,
+            "complete": complete, "truncated": truncated, "observed_at": now()}
+
+
+def render_failed_job_logs(o):
+    lines = [f"{o['repository']} run={o['run_id']} attempt={o['attempt']} head={(o.get('head_sha') or '?')[:8]} status={o.get('run_status')} conclusion={o.get('run_conclusion')} failed_jobs={o['failed_job_count']}"]
+    for j in o.get("jobs") or []:
+        steps = f" steps=[{', '.join(s.get('name') or str(s.get('number')) for s in j.get('failed_steps') or [])}]" if j.get("failed_steps") else ""
+        lines.append(f"=== job {j['job_id']} {j.get('name') or '?'} ({j.get('conclusion')}){steps} ===")
+        if j.get("error"):
+            lines.append(f"(error: {j['error']})")
+        elif j.get("truncated"):
+            lines.append(f"(log exceeded {j.get('bytes_read')} bytes)")
+        elif j.get("tail"):
+            lines.append(j["tail"])
+    return "\n".join(lines)
+
+
 def artifacts(r, run_id, *, max_items=100, max_pages=10, transport="auto", timeout=30):
     """List one run's artifacts; every row must belong to that run."""
     r = repo(r)
@@ -2036,6 +2551,11 @@ def gh_help(*parts,timeout=15):
  if p.returncode:raise Error("gh_failed")
  return p.stdout
 
+
+
+# ---------------------------------------------------------------------------
+# 🌿 Local Git: bounded inspection of a clone (status, files, diff, log, blame, grep)
+# ---------------------------------------------------------------------------
 def local_identity(*,cwd=None,identity=None,env=None):
  env=os.environ if env is None else env
  if identity is not None:
@@ -2067,7 +2587,6 @@ def compare_sha(local,remote_sha):
 
 # Local Git observations migrated from parent git_inspector.py (380d877).
 # Named read-only operations, bounded output; trusted checkout configuration.
-from pathlib import Path, PurePosixPath
 
 class GitInspectionError(RuntimeError):
     """A bounded read-only Git observation failed."""
@@ -2761,13 +3280,17 @@ def git_check_ignore(root=".", paths=(), *, max_paths=1000, max_bytes=1_000_000)
         })
     return {"records": ordered, "truncated": truncated}
 
+
+
+# ---------------------------------------------------------------------------
+# 🧾 Repository metadata primitives (checkout head, remote)
+# ---------------------------------------------------------------------------
 # Repository metadata: one checkout identity shared by every repository.
 # Git identity lives here; app-specific build data (sizes, screens) does not.
 REPOSITORY_METADATA_SCHEMA = "2.0"
 REPOSITORY_METADATA_V1_SCHEMA = "1.0"
 _RM_OWNER = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")
 _RM_NAME = re.compile(r"[A-Za-z0-9_.-]+")
-_RM_SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 _RM_TOOL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,31}")
 _RM_TOOL_VALUE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+ -]{0,31}")
 _RM_MEASUREMENTS = ("github_reported_size_bytes", "working_tree_bytes", "release_artifact_bytes")
@@ -2795,18 +3318,15 @@ def _rm_full_name(full_name):
 
 
 def _rm_sha(value, name="sha"):
-    if not isinstance(value, str) or not _RM_SHA.fullmatch(value.lower()):
+    if not _is_sha(value.lower() if isinstance(value, str) else value, oid=True):
         raise ValueError(name + " must be a full 40- or 64-hex commit SHA")
     return value.lower()
 
 
 def _rm_time(value, name):
-    if not isinstance(value, str):
+    parsed = _when(value)
+    if parsed is None:
         raise ValueError(name + " must be an ISO 8601 timestamp")
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as error:
-        raise ValueError(name + " must be an ISO 8601 timestamp") from error
     if parsed.tzinfo is None:
         raise ValueError(name + " must include a timezone")
     return value
@@ -2856,6 +3376,11 @@ def remote_repository(root=".", remote="origin"):
     return {"remote": remote, "full_name": None, "reason": "not_github"}
 
 
+
+
+# ---------------------------------------------------------------------------
+# 🌲 Subtree sync between a monorepo and its split repositories
+# ---------------------------------------------------------------------------
 def _git_subtree_available(root):
     """True when the contrib `git subtree` command is installed (exec-path or PATH)."""
     raw, _, _ = _git_run(root, ["--exec-path"], max_bytes=64 * 1024)
@@ -2888,7 +3413,7 @@ def _git_object_oid(root, spec):
     if code != 0:
         return None
     oid = _git_decode(raw).strip()
-    return oid if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", oid) else None
+    return oid if _is_sha(oid, oid=True) else None
 
 
 def _prefix_tree_at(root, source, prefix):
@@ -3013,7 +3538,7 @@ def git_subtree_split(root=".", prefix=None, revision="HEAD", *, timeout=600):
         raw, _, _ = _git_run(root, ["subtree", "split", "-q", "--prefix=" + prefix, source],
                              max_bytes=64 * 1024, timeout=max(0.001, deadline - time.monotonic()))
     sha = _git_decode(raw).strip().splitlines()[-1:] or [""]
-    if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", sha[0]):
+    if not _is_sha(sha[0], oid=True):
         raise GitInspectionError("unexpected git subtree output")
     subtree_sha = sha[0]
     check = _subtree_split_matches_prefix_tree(root, source, prefix, subtree_sha)
@@ -3666,6 +4191,11 @@ def split_preflight(root=".", prefix=None, revision="HEAD", *, timeout=600, max_
             "checks": checks, "ok": all(c["ok"] for c in checks), "reason": split["reason"]}
 
 
+
+
+# ---------------------------------------------------------------------------
+# 📦 Vendored files across repositories: locks, public GitHub reads, remote files, plans, duplicates
+# ---------------------------------------------------------------------------
 VENDOR_LOCK_SCHEMA = "vendor-lock/1"
 VENDOR_RULES_SCHEMA = "vendor-rules/1"
 _NOT_FOUND_CODES = ("not_found_or_inaccessible", "gh_not_found", "not_found", "http_404")
@@ -3907,7 +4437,7 @@ def public_github_branch_head(repository, branch="main", *, timeout=30, max_byte
 
 
 def _pinned_commit_ref(ref):
-    return isinstance(ref, str) and re.fullmatch(r"[0-9a-f]{40}", ref, re.I) and set(ref.lower()) != {"0"}
+    return isinstance(ref, str) and _is_sha(ref.lower()) and set(ref.lower()) != {"0"}
 
 
 _REMOTE_FILE_RAW_FALLBACK = frozenset({
@@ -3933,7 +4463,7 @@ def public_github_repository_check(repository, commit, *, branch="main", source=
     The commit must appear among recent commits on ``branch`` in the Atom feed.
     When ``source`` is set, the file at ``repository@commit:source`` must be readable from raw.githubusercontent.com.
     """
-    if not re.fullmatch(r"[0-9a-f]{40}", commit or "") or set(commit) == {"0"}:
+    if not _is_sha(commit) or set(commit) == {"0"}:
         raise ValueError("commit must be a 40-character lowercase hex SHA")
     recent = []
     atom = {"status": "unavailable", "recent_commits": recent, "in_recent": False}
@@ -3983,6 +4513,46 @@ def _remote_file(repository, path, commit, transport="auto", timeout=30, max_byt
     if git_blob_sha(data) != meta["sha"]:
         raise Error("blob_identity_mismatch")
     return data
+
+
+def remote_file(repository, path, ref="main", *, max_bytes=1_000_000, transport="auto", timeout=30):
+    """Read one regular file from repository@ref with blob SHA and SHA-256 verification (read-only)."""
+    r = repo(repository)
+    clean = _vendor_path(path)
+    if not isinstance(ref, str) or not ref.strip():
+        raise ValueError("ref is required")
+    if type(max_bytes) is not int or not 1 <= max_bytes <= 10_000_000:
+        raise ValueError("max_bytes must be 1..10000000")
+    commit = ref.lower() if re.fullmatch(r"[0-9a-fA-F]{40}", ref) else resolve_ref(r, ref, transport=transport, timeout=timeout)["sha"]
+    data = _remote_file(r, clean, commit, transport=transport, timeout=timeout, max_bytes=max_bytes)
+    binary = b"\x00" in data
+    text = None
+    if not binary:
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            binary = True
+    return {"schema": "gh-identity-file/1", "write": False, "repository": r, "ref": ref, "commit": commit,
+            "path": clean, "size": len(data), "blob_sha": git_blob_sha(data),
+            "sha256": hashlib.sha256(data).hexdigest(), "binary": binary, "text": text, "observed_at": now()}
+
+
+def render_remote_file(o):
+    if o.get("text") is not None:
+        return o["text"]
+    return f"{o['repository']}@{o['commit'][:12]}:{o['path']} binary size={o['size']} blob={o['blob_sha']}"
+
+
+def _license_spdx(repository, commit, transport="auto", timeout=30):
+    """SPDX id GitHub detects for repository@commit (NOASSERTION = unrecognised); None when unreadable."""
+    try:
+        d = request("GET", f"repos/{repo(repository)}/license?ref={urllib.parse.quote(commit, safe='')}",
+                    transport=transport, timeout=timeout)
+    except Error:
+        return None
+    lic = d.get("license") if isinstance(d, dict) else None
+    spdx = lic.get("spdx_id") if isinstance(lic, dict) else None
+    return spdx if isinstance(spdx, str) else None
 
 
 def _remote_exists(repository, path, commit, transport="auto", timeout=30):
@@ -4083,7 +4653,7 @@ def vendor_plan(root=".", candidates=(), rules=None, *, transport="auto", timeou
         reasons, d = [], {"candidate": text, "repository": repository, "source": source, "commit": ref}
         def skip(reason):
             reasons.append(reason)
-        if req["pinned_commit"] and not re.fullmatch(r"[0-9a-f]{40}", ref):
+        if req["pinned_commit"] and not _is_sha(ref):
             skip("not_pinned_to_commit")
         basename = source.rsplit("/", 1)[-1]
         if any(fnmatch.fnmatchcase(basename, p) or fnmatch.fnmatchcase(source, p) for p in parsed["deny_sources"]):
@@ -4115,6 +4685,7 @@ def vendor_plan(root=".", candidates=(), rules=None, *, transport="auto", timeou
         if body is not None and not reasons and req["license_sidecar"]:
             if _remote_exists(repository, "LICENSE", ref, transport, timeout):
                 d["license_destination"] = _vendor_destination(parsed, repository, "LICENSE", "license")[0]
+                d["license_spdx"] = _license_spdx(repository, ref, transport, timeout)
             else:
                 skip("license_missing")
         d["action"] = "skip" if reasons else "place"
@@ -4132,8 +4703,7 @@ def vendor_matrix(owner, repos=None, *, lock_paths=("vendor.lock.json", "tool/py
     pin_mismatch (one upstream source pinned at different commits) and the
     placement roots each consumer uses.
     """
-    if not isinstance(owner, str) or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})", owner):
-        raise ValueError("invalid owner")
+    _owner(owner)
     targets, redacted = _public_targets(owner, repos, include_forks=include_forks, transport=transport, timeout=timeout)
     names = [t["name"] for t in targets][:max_repos]
     edges, consumers, errors = [], {}, []
@@ -4185,8 +4755,7 @@ def owner_repositories(owner, *, include_forks=False, transport="auto", timeout=
     """Repositories listed by the API for user `owner` (type=owner, so org repos are not
     listed), filtered explicitly: visibility public, archived false, forks excluded
     unless include_forks. No repository names are hard-coded."""
-    if not isinstance(owner, str) or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})", owner):
-        raise ValueError("invalid owner")
+    _owner(owner)
     rows = pages(f"users/{owner}/repos?type=owner&sort=full_name", transport, timeout)
     out = []
     for x in rows:
@@ -4204,7 +4773,7 @@ def owner_repositories(owner, *, include_forks=False, transport="auto", timeout=
 
 def _repo_tree(full, branch, transport, timeout):
     head = request("GET", f"repos/{full}/commits/{urllib.parse.quote(branch, safe='')}", transport=transport, timeout=timeout)
-    if not isinstance(head, dict) or not re.fullmatch(r"[0-9a-f]{40}", str(head.get("sha"))):
+    if not isinstance(head, dict) or not _is_sha(head.get("sha")):
         raise Error("invalid_commit")
     d = request("GET", f"repos/{full}/git/trees/{head['sha']}?recursive=1", transport=transport, timeout=timeout)
     if not isinstance(d, dict) or not isinstance(d.get("tree"), list):
@@ -4376,6 +4945,11 @@ def render_vendor_markdown(o):
     return "\n".join(lines)
 
 
+
+
+# ---------------------------------------------------------------------------
+# 🧭 Parent references, enrollment and action pins
+# ---------------------------------------------------------------------------
 PARENT_REF_SCHEMA = "parent-pr-ref/1"
 PARENT_REF_PATHS = ("templates/parent-pr.ref.json", "parent-pr.ref.json")
 
@@ -4394,7 +4968,7 @@ def validate_parent_ref(ref):
         if type(ref.get(key)) is not int or ref[key] < 1:
             problems.append(key)
     c = ref.get("commit")
-    if not isinstance(c, str) or not re.fullmatch(r"[0-9a-f]{40}", c) or set(c) == {"0"}:
+    if not _is_sha(c) or set(c) == {"0"}:
         problems.append("commit")
     if "optional" in ref and not isinstance(ref["optional"], dict):
         problems.append("optional")
@@ -4492,7 +5066,7 @@ def load_child_heads(path):
         raise ValueError("expected child-heads/1")
     out = {}
     for name, row in data["heads"].items():
-        if not isinstance(row, dict) or not re.fullmatch(r"[0-9a-f]{40}", str(row.get("sha"))):
+        if not isinstance(row, dict) or not _is_sha(row.get("sha")):
             raise ValueError("invalid head entry")
         out[repo(name)] = row["sha"]
     return out
@@ -4614,7 +5188,7 @@ def _json_pins(path, document):
         if isinstance(node, dict):
             commit = node.get("commit") or node.get("sha")
             repository = node.get("repository") or key
-            if isinstance(repository, str) and isinstance(commit, str) and re.fullmatch(r"[0-9a-f]{40}", commit) \
+            if isinstance(repository, str) and _is_sha(commit) \
                     and set(commit) != {"0"}:
                 try:
                     name = _pin_repo(repository)
@@ -4831,6 +5405,31 @@ def render_fleet_status(o):
     return "\n".join(out)
 
 
+def _enrich_failed_checks(full, items, transport, timeout):
+    for item in items:
+        try:
+            job = request("GET", f"repos/{full}/actions/jobs/{item['id']}", transport=transport, timeout=timeout)
+            item["failed_steps"] = [s.get("name") for s in job.get("steps") or [] if s.get("conclusion") == "failure"]
+        except Error:
+            item["failed_steps"] = None
+        notes = request("GET", f"repos/{full}/check-runs/{item['id']}/annotations", transport=transport,
+                        timeout=timeout) or []
+        item["annotations"] = [
+            {"level": n.get("annotation_level"), "path": n.get("path"), "line": n.get("start_line"),
+             "message": " ".join((n.get("message") or "").split())[:300]}
+            for n in notes if n.get("annotation_level") in ("failure", "warning")
+            and not _FLEET_NOISE.search(" ".join((n.get("message") or "").split()))]
+
+
+def _render_failed_check_details(item, indent="     "):
+    out = []
+    for name in item.get("failed_steps") or []:
+        out.append(f"{indent}step: {name}")
+    for n in item.get("annotations") or []:
+        out.append(f"{indent}{n['level']}: {n['path']}:{n['line']} {n['message'][:200]}")
+    return out
+
+
 def fleet_checks(roots, *, ignore=FLEET_IGNORE, steps=False, transport="auto", timeout=30):
     """Checks of each clone's checked-out HEAD; with steps, failed job steps and failure/warning annotations."""
     if isinstance(roots, (str, os.PathLike)):
@@ -4844,7 +5443,8 @@ def fleet_checks(roots, *, ignore=FLEET_IGNORE, steps=False, transport="auto", t
                 raise ValueError("origin is not a GitHub remote")
             sha = checkout_head(root)["sha"]
             observed = checks_for_sha(full, sha, transport=transport, timeout=timeout)
-            kept = [c for c in observed["checks"] if c["name"] not in set(ignore)]
+            ignored = set(ignore)
+            kept = [c for c in observed["checks"] if c["name"] not in ignored]
             summary = summarize_checks(kept, len(kept)) if kept else {"state": "pending", "checks": []}
             failed = [c for c in kept if c["status"] == "completed"
                       and c["conclusion"] not in ("success", "skipped", "neutral")]
@@ -4852,19 +5452,7 @@ def fleet_checks(roots, *, ignore=FLEET_IGNORE, steps=False, transport="auto", t
                        pending=sum(c["status"] != "completed" for c in kept),
                        failed=[{"id": c["id"], "name": c["name"], "conclusion": c["conclusion"]} for c in failed])
             if steps:
-                for item in row["failed"]:
-                    try:
-                        job = request("GET", f"repos/{full}/actions/jobs/{item['id']}", transport=transport, timeout=timeout)
-                        item["failed_steps"] = [s.get("name") for s in job.get("steps") or [] if s.get("conclusion") == "failure"]
-                    except Error:
-                        item["failed_steps"] = None
-                    notes = request("GET", f"repos/{full}/check-runs/{item['id']}/annotations", transport=transport,
-                                    timeout=timeout) or []
-                    item["annotations"] = [
-                        {"level": n.get("annotation_level"), "path": n.get("path"), "line": n.get("start_line"),
-                         "message": " ".join((n.get("message") or "").split())[:300]}
-                        for n in notes if n.get("annotation_level") in ("failure", "warning")
-                        and not _FLEET_NOISE.search(" ".join((n.get("message") or "").split()))]
+                _enrich_failed_checks(full, row["failed"], transport, timeout)
         except (GitInspectionError, ValueError, Error) as error:
             row.update(state="error", error=str(getattr(error, "code", "")) or str(error))
         rows.append(row)
@@ -4882,10 +5470,7 @@ def render_fleet_checks(o):
         out.append(f"{r['state']:7} {r['repository']}@{r['sha'][:7]} runs={r['count']} pending={r['pending']} failed={len(r['failed'])}")
         for item in r["failed"]:
             out.append(f"   x {item['name']} ({item['conclusion']})")
-            for name in item.get("failed_steps") or []:
-                out.append(f"     step: {name}")
-            for n in item.get("annotations") or []:
-                out.append(f"     {n['level']}: {n['path']}:{n['line']} {n['message'][:200]}")
+            out += _render_failed_check_details(item, "     ")
     return "\n".join(out)
 
 
@@ -4901,7 +5486,7 @@ def parse_pr_check_targets(tokens, owner=None):
     return parse_status_targets(tokens)
 
 
-def _pr_checks_row(r, n, sha, pattern, show, transport, timeout):
+def _pr_checks_row(r, n, sha, pattern, show, transport, timeout, steps=False):
     observed = checks_for_sha(r, sha, transport=transport, timeout=timeout)
     kept = [c for c in observed["checks"] if not pattern.search(c["name"] or "")]
     by = dict(sorted(Counter(c["conclusion"] or "-" for c in kept).items()))
@@ -4912,13 +5497,17 @@ def _pr_checks_row(r, n, sha, pattern, show, transport, timeout):
         state = "failed"
     else:
         state = "green"
+    shown = [{"status": c["status"], "conclusion": c["conclusion"], "name": c["name"],
+              **({"id": c.get("id")} if steps else {})} for c in attention[:show]]
+    if steps and state != "pending":
+        _enrich_failed_checks(r, [x for x in shown if x["status"] == "completed" and x["conclusion"] not in _PR_CHECKS_OK and x.get("id") is not None], transport, timeout)
     return {"repository": r, "number": n, "head_sha": sha, "state": state, "total": len(kept), "by_conclusion": by,
             "ignored": len(observed["checks"]) - len(kept),
-            "attention": [{"status": c["status"], "conclusion": c["conclusion"], "name": c["name"]} for c in attention[:show]]}
+            "attention": shown}
 
 
 def pr_checks(tokens, *, owner=None, ignore=PR_CHECKS_IGNORE, wait=0, interval=30, delay=0, show=5,
-              transport="auto", timeout=30, sleep=None, clock=None):
+              steps=False, transport="auto", timeout=30, sleep=None, clock=None):
     """Check-runs on each PR's head, polled together until every PR is settled or wait runs out.
 
     A PR is settled when it has at least one kept check and all kept checks are
@@ -4953,7 +5542,7 @@ def pr_checks(tokens, *, owner=None, ignore=PR_CHECKS_IGNORE, wait=0, interval=3
             if row["state"] != "pending":
                 continue
             try:
-                rows[i] = _pr_checks_row(row["repository"], row["number"], row["head_sha"], pattern, show, transport, timeout)
+                rows[i] = _pr_checks_row(row["repository"], row["number"], row["head_sha"], pattern, show, transport, timeout, steps=steps)
             except (ValueError, Error) as error:
                 rows[i] = {**row, "state": "error", "error": str(getattr(error, "code", "")) or str(error)}
         elapsed = clock() - start
@@ -4975,7 +5564,9 @@ def render_pr_checks(o):
             continue
         counts = " ".join(f"{v} {k}" for k, v in r["by_conclusion"].items())
         out.append(f"## {name} {r['state']} total={r['total']} {counts}".rstrip())
-        out += [f"{c['status']} {c['conclusion'] or '-'} {c['name']}" for c in r["attention"]]
+        for c in r["attention"]:
+            out.append(f"{c['status']} {c['conclusion'] or '-'} {c['name']}")
+            out += _render_failed_check_details(c, "  ")
     return "\n".join(out)
 
 
@@ -5055,7 +5646,7 @@ def merge_preview(repository, numbers=None, *, all_open=False, base=None, pairs=
     for number in numbers:
         pr = request("GET", f"repos/{r}/pulls/{number}", transport=transport, timeout=30)
         head_sha = (pr.get("head") or {}).get("sha")
-        if not isinstance(head_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", head_sha):
+        if not _is_sha(head_sha):
             raise Error("invalid_pr_head_sha")
         prs.append({"number": number, "title": pr.get("title"), "state": pr.get("state"),
                     "base": (pr.get("base") or {}).get("ref"), "head_sha": head_sha})
@@ -5132,13 +5723,6 @@ def render_merge_preview(o):
 # Merge readiness: review findings that are easy to miss before merging.
 # ---------------------------------------------------------------------------
 _FINDING_ORDER = ("Must", "Blocking", "Should")
-
-
-def _when(text):
-    try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00")) if isinstance(text, str) else None
-    except ValueError:
-        return None
 
 
 def _ccr_review_threads(r, n, obs, *, transport, timeout):
@@ -5408,9 +5992,37 @@ def render_git_activity(o):
     return "\n".join(rows)
 
 
+
+
+# ---------------------------------------------------------------------------
+# 🪪 Identity API: repository / owner / PR / commit identities, first-parent checks (and the request double)
+# ---------------------------------------------------------------------------
 @contextlib.contextmanager
-def request_stub(handler):
-    """Temporarily replace GitHub `request` for tests (stdlib ContextVar)."""
+def request_stub(handler, calls=None):
+    """Temporarily replace GitHub `request` for tests (stdlib ContextVar).
+
+    handler is a callable shaped like `request`, or a routes dict {path: value} for
+    GET reads: an Exception value is raised, a missing path is Error(not_found_or_inaccessible).
+    calls, when a list, receives every requested path in order.
+    """
+    if isinstance(handler, dict):
+        routes = handler
+
+        def handler(method, path, **kwargs):
+            if method != "GET":
+                raise AssertionError(f"routes stub is read-only: {method} {path}")
+            if path not in routes:
+                raise Error("not_found_or_inaccessible")
+            value = routes[path]
+            if isinstance(value, BaseException):
+                raise value
+            return value
+    if calls is not None:
+        inner = handler
+
+        def handler(method, path, **kwargs):
+            calls.append(path)
+            return inner(method, path, **kwargs)
     token = _REQUEST.set(handler)
     try:
         yield
@@ -5434,11 +6046,50 @@ def repo_identity(repository, *, transport="auto", timeout=30):
     if not isinstance(branch, str) or not branch:
         raise Error("no_default_branch")
     head = request("GET", f"repos/{r}/commits/{urllib.parse.quote(branch, safe='')}", transport=transport, timeout=timeout)
-    if not isinstance(head, dict) or not re.fullmatch(r"[0-9a-f]{40}", str(head.get("sha"))):
+    if not isinstance(head, dict) or not _is_sha(head.get("sha")):
         raise Error("invalid_commit")
     return {"schema": "gh-identity-repo-identity/1", "write": False, "repository": r, "repository_id": d.get("id"),
             "visibility": visibility, "archived": bool(d.get("archived")), "fork": bool(d.get("fork")),
             "default_branch": branch, "head": head["sha"], "owner_type": (d.get("owner") or {}).get("type")}
+
+
+def branch_ref(repository, branch, *, transport="auto", timeout=30):
+    """Branch existence and tip SHA from one GET of the git ref.
+
+    A missing branch is a result ({"exists": False, "sha": None}), not an error;
+    other read failures raise. Read-only. A bare 404 is ambiguous (GitHub also
+    hides inaccessible repositories behind it), so absence is reported only
+    when a complete branch listing also excludes the branch; an inaccessible
+    or malformed listing raises instead.
+    """
+    r = repo(repository)
+    if not isinstance(branch, str) or not branch.strip():
+        raise ValueError("invalid branch")
+    try:
+        d = request("GET", f"repos/{r}/git/ref/heads/{urllib.parse.quote(branch, safe='/')}", transport=transport, timeout=timeout)
+    except Error as e:
+        if e.code == "not_found_or_inaccessible":
+            tips = {}
+            for row in pages(f"repos/{r}/branches", transport=transport, timeout=timeout):
+                name = row.get("name") if isinstance(row, dict) else None
+                if not isinstance(name, str) or not name or name in tips:
+                    raise Error("invalid_branch_listing")
+                commit = row.get("commit") if isinstance(row.get("commit"), dict) else {}
+                tips[name] = commit.get("sha")
+            if branch not in tips:
+                return {"schema": "gh-identity-branch/1", "write": False, "repository": r, "branch": branch,
+                        "exists": False, "sha": None, "observed_at": now()}
+            if not _is_sha(tips[branch]):
+                raise Error("invalid_ref")
+            return {"schema": "gh-identity-branch/1", "write": False, "repository": r, "branch": branch,
+                    "exists": True, "sha": tips[branch], "observed_at": now()}
+        raise
+    target = d.get("object") if isinstance(d, dict) else None
+    if (not isinstance(target, dict) or d.get("ref") != f"refs/heads/{branch}"
+            or target.get("type") != "commit" or not _is_sha(target.get("sha"))):
+        raise Error("invalid_ref")
+    return {"schema": "gh-identity-branch/1", "write": False, "repository": r, "branch": branch,
+            "exists": True, "sha": d["object"]["sha"], "observed_at": now()}
 
 
 def list_owner_repositories(owner, *, kind="auto", include_forks=False, include_archived=False,
@@ -5449,8 +6100,7 @@ def list_owner_repositories(owner, *, kind="auto", include_forks=False, include_
     At most max_pages pages are fetched; `complete` is False (truncated_reason
     "max_pages") when more pages remained.
     """
-    if not isinstance(owner, str) or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})", owner):
-        raise ValueError("invalid owner")
+    _owner(owner)
     if kind not in ("auto", "user", "org"):
         raise ValueError("kind must be auto, user or org")
     bases = {"user": [f"users/{owner}/repos?type=owner&sort=full_name"],
@@ -5480,7 +6130,7 @@ def list_owner_repositories(owner, *, kind="auto", include_forks=False, include_
                 continue
             seen.add(x["full_name"])
             rows.append({"full_name": x["full_name"], "repository_id": x.get("id"), "default_branch": x.get("default_branch"),
-                         "archived": bool(x.get("archived")), "fork": bool(x.get("fork"))})
+                         "archived": bool(x.get("archived")), **_repo_brief(x)})
         if rows or kind != "auto":
             break
     return {"schema": "gh-identity-owner-repositories/1", "write": False, "owner": owner, "kind": source or kind,
@@ -5510,7 +6160,7 @@ def pr_identity(repository, number, *, transport="auto", timeout=30):
 
 def commit_pulls(repository, sha, *, transport="auto", timeout=30):
     """Pull requests associated with a commit (GitHub /commits/{sha}/pulls). Read-only."""
-    if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+    if not _is_sha(sha):
         raise ValueError("sha must be 40 hex")
     r = repo(repository)
     rows = request("GET", f"repos/{r}/commits/{sha}/pulls?per_page=100", transport=transport, timeout=timeout)
@@ -5563,7 +6213,7 @@ def first_parent_check(repository, commit, *, branch=None, exact=False, transpor
     (e.g. a caller's own sanitized subprocess, or an offline test double).
     Raises Error("git_remote_unavailable") when the remote or branch cannot be fetched.
     """
-    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+    if not _is_sha(commit):
         raise ValueError("commit must be 40 hex")
     r = repo(repository)
     if not exact:
@@ -5606,6 +6256,11 @@ def first_parent_check(repository, commit, *, branch=None, exact=False, transpor
             raise Error("git_failed")
         return result(commit in set(listed.split()), None, branch)
 
+
+
+# ---------------------------------------------------------------------------
+# 📍 Where am I: local position, repository metadata v1, tool versions
+# ---------------------------------------------------------------------------
 def local_position(root="."):
     """Where am I: cwd, Git top level, checkout HEAD, change counts, GitHub remote.
 
@@ -5703,7 +6358,7 @@ def validate_repository_metadata_v1(record):
     head = record["head"]
     if not isinstance(head, dict) or set(head) != {"sha", "short_sha", "branch", "timestamp", "subject"}:
         raise ValueError("invalid head")
-    if not isinstance(head["sha"], str) or not _RM_SHA.fullmatch(head["sha"]):
+    if not _is_sha(head["sha"], oid=True):
         raise ValueError("sha must be lowercase full hex")
     if head["short_sha"] != head["sha"][:8]:
         raise ValueError("short_sha must be the first 8 characters of sha")
@@ -5765,6 +6420,340 @@ def write_repository_metadata(record, output_dir):
     return {"json": "repository-metadata.json", "jsonl": "repository-metadata.jsonl"}
 
 
+
+
+# ---------------------------------------------------------------------------
+# 📖 Orientation of any checkout (repo-overview), cross-project HTML round trip, workspace overview
+# ---------------------------------------------------------------------------
+# Repository orientation (was scripts/repo_overview.py, from browser-test-kit 61872b2d):
+# about, key files, then the file list, each bounded so the text fits a log or an agent context.
+OVERVIEW_KEY_FILES = (
+    "README*", "CLAUDE.md", "AGENTS.md", "CONTRIBUTING*",
+    "package.json", "pyproject.toml", "setup.cfg", "setup.py", "requirements*.txt", "Pipfile", "tox.ini",
+    "noxfile.py", "Makefile", "Dockerfile*", "docker-compose*.y*ml", "compose*.y*ml",
+    "playwright.config.*", "tsconfig.json", "vite.config.*", "go.mod", "Cargo.toml",
+    ".tool-versions", ".python-version", ".nvmrc", ".github/workflows/*.y*ml",
+)
+OVERVIEW_SKIP_DIRS = frozenset({".git", "node_modules", "__pycache__", ".venv", "venv", ".tox", ".mypy_cache",
+                                ".pytest_cache", ".ruff_cache", "dist", "build", "test-results", "playwright-report"})
+_OV_BADGE = re.compile(r"\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)|!\[[^\]]*\]\([^)]*\)")
+
+
+def _ov_skipped(relative):
+    return any(part in OVERVIEW_SKIP_DIRS for part in Path(relative).parts[:-1])
+
+
+def _ov_inside(root, path):
+    """True when ``path`` (symlinks resolved) stays under ``root``."""
+    try:
+        path.resolve().relative_to(root.resolve())
+    except (OSError, ValueError, RuntimeError):
+        return False
+    return True
+
+
+def _ov_package_description(root):
+    path = root / "package.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    description = data.get("description") if isinstance(data, dict) else None
+    return description.strip() if isinstance(description, str) and description.strip() else None
+
+
+def _ov_pyproject_description(root):
+    path = root / "pyproject.toml"
+    if not path.is_file():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = re.search(r'^\s*description\s*=\s*"([^"]*)"', text, re.MULTILINE)
+    return match.group(1).strip() if match and match.group(1).strip() else None
+
+
+def _ov_readme_paragraphs(text):
+    """README lines grouped into paragraphs; blank and heading lines (ATX or setext) separate them."""
+    def heading(line):
+        stripped = line.lstrip()
+        return stripped.startswith("#") or (len(stripped) >= 3 and set(stripped) <= {"=", "-"})
+    paragraphs = [[]]
+    for line in text.splitlines():
+        if not line.strip() or heading(line):
+            if paragraphs[-1]:
+                paragraphs.append([])
+        else:
+            paragraphs[-1].append(line.strip())
+    return [paragraph for paragraph in paragraphs if paragraph]
+
+
+def _ov_readme_paragraph(root, max_chars=300):
+    text = None
+    for path in sorted(root.glob("README*")):
+        if not path.is_file() or not _ov_inside(root, path):
+            continue
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue
+        if b"\0" in data[:4096]:
+            continue
+        text = data.decode("utf-8", "replace")
+        break
+    if text is None:
+        return None
+    for paragraph in _ov_readme_paragraphs(text):
+        if all(_OV_BADGE.sub("", line).strip() == "" for line in paragraph):
+            continue
+        return " ".join(paragraph)[:max_chars]
+    return None
+
+
+def repo_overview_about(root):
+    """The ``=== about ===`` section (package.json / pyproject.toml / README opening), or None."""
+    root = Path(root)
+    lines = [f"{label}: {text}" for label, text in (("package.json", _ov_package_description(root)),
+                                                     ("pyproject.toml", _ov_pyproject_description(root)),
+                                                     ("README", _ov_readme_paragraph(root))) if text]
+    return "\n".join(["=== about ===", *lines]) if lines else None
+
+
+def repo_overview_files(root):
+    """Repository files relative to ``root``, sorted, without dependency/cache/result directories."""
+    root = Path(root)
+    try:
+        inventory = git_ls_files(root, include_untracked=True)
+    except GitInspectionError:
+        files = set()
+        for directory, subdirs, names in os.walk(root):
+            subdirs[:] = [name for name in subdirs if name not in OVERVIEW_SKIP_DIRS]
+            files.update(Path(directory, name).relative_to(root).as_posix() for name in names)
+    else:
+        if inventory["truncated"]:
+            # A walk would include ignored files; never substitute it for a
+            # successful but incomplete Git observation or hide partial output.
+            raise RuntimeError("repository file inventory exceeds shared inspector limits")
+        files = set(inventory["paths"])
+    return sorted(path for path in files
+                  if not _ov_skipped(path) and (root / path).is_file() and _ov_inside(root, root / path))
+
+
+def _ov_glob_inside(pattern):
+    if Path(pattern).is_absolute() or ".." in Path(pattern).parts:
+        raise ValueError(f"key-file glob must stay inside ROOT: {pattern}")
+
+
+def _ov_key_files(root, patterns):
+    found = []
+    for pattern in patterns:
+        _ov_glob_inside(pattern)
+        for path in sorted(root.glob(pattern)):
+            relative = path.relative_to(root).as_posix()
+            if path.is_file() and _ov_inside(root, path) and relative not in found and not _ov_skipped(relative):
+                found.append(relative)
+    return found
+
+
+def _ov_render_file(root, relative, max_lines):
+    data = (root / relative).read_bytes()
+    if b"\0" in data[:4096]:
+        return f"=== {relative} (binary, {len(data)} bytes; not shown) ==="
+    lines = data.decode("utf-8", "replace").splitlines()
+    body = lines[:max_lines]
+    if len(lines) > max_lines:
+        body.append(f"[... truncated: showing {max_lines} of {len(lines)} lines (--max-lines)]")
+    return "\n".join([f"=== {relative} ({_ov_plural(len(lines), 'line')}) ===", *body])
+
+
+def _ov_plural(count, word):
+    return f"{count} {word}{'' if count == 1 else 's'}"
+
+
+def _ov_human_bytes(size):
+    for unit, threshold in (("GB", 1024 ** 3), ("MB", 1024 ** 2), ("KB", 1024)):
+        if size >= threshold:
+            return f"{round(size / threshold)} {unit}"
+    return f"{size} B"
+
+
+def _ov_stats_row(label, files, lines, size):
+    return f"{label}  {_ov_plural(files, 'file')}  {_ov_plural(lines, 'line')}  {_ov_human_bytes(size)}"
+
+
+def repo_overview_stats(root, top=15):
+    """The ``=== stats ===`` section: totals, then the top extensions by lines."""
+    root = Path(root)
+    per_extension = {}
+    total_files = total_lines = total_bytes = 0
+    for relative in repo_overview_files(root):
+        try:
+            data = (root / relative).read_bytes()
+        except OSError:
+            continue
+        entry = per_extension.setdefault(Path(relative).suffix or "(none)", {"files": 0, "lines": 0, "bytes": 0})
+        entry["files"] += 1
+        entry["bytes"] += len(data)
+        total_files += 1
+        total_bytes += len(data)
+        if b"\0" not in data[:4096]:
+            line_count = len(data.decode("utf-8", "replace").splitlines())
+            entry["lines"] += line_count
+            total_lines += line_count
+    ranked = sorted(per_extension.items(), key=lambda kv: (-kv[1]["lines"], kv[0]))
+    rows = ["=== stats ===", _ov_stats_row("total", total_files, total_lines, total_bytes)]
+    rows += [_ov_stats_row(extension, c["files"], c["lines"], c["bytes"]) for extension, c in ranked[:top]]
+    if len(ranked) > top:
+        rows.append(f"[... {len(ranked) - top} more extensions (top {top} shown)]")
+    return "\n".join(rows)
+
+
+def _ov_churn_path(path):
+    """Keep one display row per path; ordinary/Unicode paths stay readable."""
+    if any(ord(char) < 32 or ord(char) == 127 for char in path):
+        return json.dumps(path, ensure_ascii=False)
+    return path
+
+
+def repo_overview_churn(root, top, *, since=None):
+    """The ``=== churn ===`` section (top files by commit count), or a one-line note outside a work tree.
+
+    Commit count only approximates "important, recently touched": a file edited in many
+    tiny commits ranks above one rewritten once.
+    """
+    try:
+        history = git_log_numstat(Path(root), since=since or None)
+    except GitInspectionError:
+        return "not a git work tree; skipping --churn"
+    per_file = {}
+    for commit in history["commits"]:
+        date = commit["date"]
+        for file in commit["files"]:
+            added, deleted, path = file["added"], file["deleted"], file["path"]
+            if added is None or deleted is None:
+                continue
+            # Attribute a rename to its destination, without merging old-path
+            # history: the shared API retains orig_path for other consumers.
+            entry = per_file.setdefault(path, {"commits": 0, "added": 0, "deleted": 0, "last": date})
+            entry["commits"] += 1
+            entry["added"] += added
+            entry["deleted"] += deleted
+            entry["last"] = max(entry["last"], date)
+    ranked = sorted(per_file.items(), key=lambda kv: (-kv[1]["commits"], kv[0]))
+    rows = [f"=== churn ({_ov_plural(len(history['commits']), 'commit')} scanned) ==="]
+    rows += [f"  {_ov_plural(e['commits'], 'commit')}  +{e['added']}/-{e['deleted']}  {e['last']}  {_ov_churn_path(path)}"
+             for path, e in ranked[:top]]
+    if len(ranked) > top:
+        rows.append(f"[... {len(ranked) - top} more files (--churn {top} shows the top {top})]")
+    if history["truncated"]:
+        rows.append("[... history truncated by shared inspector limits "
+                    "(10,000 commits / 1,000,000 bytes); ranking covers complete scanned commits only]")
+    return "\n".join(rows)
+
+
+def repo_overview(root=".", *, max_lines=120, max_files=400, files=True, include=(), show_stats=False,
+                  churn_top=0, since=None):
+    """Bounded text orientation of any local checkout (yours or another project's).
+
+    ``=== about ===``, then key files (README, agent notes, build/test configuration) each
+    capped at max_lines, then up to max_files paths; optional stats and churn sections.
+    Raises ValueError for a missing directory, ``since`` without ``churn_top`` or a glob leaving ROOT.
+    """
+    root = Path(root)
+    if not root.is_dir():
+        raise ValueError(f"not a directory: {root}")
+    if type(max_lines) is not int or type(max_files) is not int or max_lines < 1 or max_files < 1 or churn_top < 0:
+        raise ValueError("max_lines and max_files must be at least 1")
+    if since is not None and not churn_top:
+        raise ValueError("--since needs --churn")
+    include = tuple(include)
+    for pattern in include:
+        _ov_glob_inside(pattern)
+    root = root.resolve()
+    sections = [x for x in (repo_overview_about(root),) if x]
+    sections += [_ov_render_file(root, relative, max_lines) for relative in _ov_key_files(root, OVERVIEW_KEY_FILES + include)]
+    if files:
+        paths = repo_overview_files(root)
+        shown = paths[:max_files]
+        if len(paths) > max_files:
+            shown.append(f"[... {len(paths) - max_files} more files (--max-files)]")
+        sections.append("\n".join([f"=== files ({len(paths)}) ===", *shown]))
+    if show_stats:
+        sections.append(repo_overview_stats(root))
+    if churn_top:
+        sections.append(repo_overview_churn(root, churn_top, since=since))
+    return "\n\n".join(sections)
+
+
+def _html_roundtrip_signature(node, pre=False):
+    # Formatting whitespace outside pre is not semantic; inline spacing is kept.
+    if node.kind == "text":
+        text = node.text if pre else re.sub(r"\s+", " ", node.text)
+        return ("text", text) if text.strip() or pre else None
+    pre = pre or node.tag == "pre"
+    children = [s for child in node.children or [] if (s := _html_roundtrip_signature(child, pre)) is not None]
+    # Table section wrappers are optional in HTML; compare cells and rows.
+    if node.tag in ("thead", "tbody", "tfoot"):
+        return ("group", children)
+    flat = []
+    for child in children:
+        flat.extend(child[1] if child[0] == "group" else [child])
+    attrs = {k: v for k, v in (node.attrs or {}).items() if k in ("href", "src", "alt", "start", "type", "checked")}
+    return (node.tag or "root", attrs, flat)
+
+
+HTML_ROUNDTRIP_CASES = {
+    "paragraph_link": '<p>日本語 &amp; <a href="https://github.com/example/repo">リンク</a></p>',
+    "heading_emphasis": "<h2>見出し</h2><p><strong>重要</strong>と<em>補足</em></p>",
+    "code": '<pre><code>def main():\n    return "#CSS &amp; HTML"\n</code></pre>',
+    "list": "<ul><li>一つ目</li><li>二つ目</li></ul>",
+    "quote": "<blockquote><p>引用です</p></blockquote>",
+    "table": "<table><thead><tr><th>名前</th><th>値</th></tr></thead><tbody><tr><td>A</td><td>10</td></tr></tbody></table>",
+}
+
+
+def html_roundtrip(markdown_module, web_ui_module=None):
+    """HTML → Markdown → HTML through another project's markdown.py (and optionally PySaiyanWeBoo).
+
+    Loads the explicitly supplied, trusted modules (no network). Per case: semantic_match
+    (structure, links, pre whitespace), markdown_stable (second conversion equal), and with
+    web_ui_module whether GHI extraction is unchanged after PySaiyanWeBoo wraps the fragment.
+    Not a byte-for-byte reversibility claim or a live GitHub layout test.
+    """
+    def load(name, file):
+        spec = importlib.util.spec_from_file_location(name, file)
+        if spec is None or spec.loader is None:
+            raise ValueError(f"not a Python module: {file}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        return module
+    markdown_module = Path(markdown_module)
+    md = load("roundtrip_markdown", markdown_module)
+    web = load("roundtrip_web_ui", Path(web_ui_module)) if web_ui_module else None
+    cases = []
+    for name, source in HTML_ROUNDTRIP_CASES.items():
+        markdown = md.html_to_markdown(source)
+        restored = md.markdown_to_html(markdown)
+        row = {"case": name,
+               "semantic_match": _html_roundtrip_signature(md.parse_html_dom(source)) == _html_roundtrip_signature(md.parse_html_dom(restored)),
+               "markdown_stable": markdown == md.html_to_markdown(restored), "web_ui_wrapper_match": None}
+        if web:
+            fragment = '<article id="probe-body">' + source + "</article>"
+            page = web.render_document(trusted_html=fragment, css="#probe-body { color: #abcdef; }",
+                                       stylesheets=web.shared_stylesheets("/assets"), scripts=web.shared_scripts("/assets"))
+            row["web_ui_wrapper_match"] = html_content(fragment, ["#probe-body"])["body"] == html_content(page, ["#probe-body"])["body"]
+        cases.append(row)
+    return {"schema": "gh-identity-html-roundtrip/1",
+            "markdown_sha256": hashlib.sha256(markdown_module.read_bytes()).hexdigest(),
+            "web_ui_sha256": hashlib.sha256(Path(web_ui_module).read_bytes()).hexdigest() if web_ui_module else None,
+            "ok": all(c["semantic_match"] and c["markdown_stable"] and c["web_ui_wrapper_match"] is not False for c in cases),
+            "cases": cases}
+
+
 def overview():
  """Best-effort read-only snapshot; unknown is never confused with zero."""
  out={"schema":"gh-identity-overview/1","environment":{"python":sys.version.split()[0],
@@ -5805,6 +6794,11 @@ def overview():
   except (OSError,ValueError,Error,GitInspectionError):pass
  return out
 
+
+
+# ---------------------------------------------------------------------------
+# 🔤 Files named after their repository, across the owner's repositories
+# ---------------------------------------------------------------------------
 REPO_NAME_EXTENSIONS = (".py", ".js", ".mjs", ".sh", ".dart")
 REPO_NAME_FLAGS = ("unregistered_source", "catalog_default_mismatch", "consumed_uncatalogued",
                    "fleet_missing", "needs_bundle")
@@ -5917,8 +6911,7 @@ def repo_name_files(owner, repos=None, *, parent=None, parent_ref="main", includ
     Python hits get a static import classification. Consumption comes from every
     vendor.lock.json in every scanned tree (nested ones included) plus the parent's
     vendor-consumers.json."""
-    if not isinstance(owner, str) or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})", owner):
-        raise ValueError("invalid owner")
+    _owner(owner)
     parent = repo(parent if parent is not None else owner + "/" + owner)
     if not isinstance(parent_ref, str) or not parent_ref:
         raise ValueError("parent_ref is required")
@@ -6028,6 +7021,11 @@ def repo_name_files(owner, repos=None, *, parent=None, parent_ref="main", includ
             "observed_at": now()}
 
 
+
+
+# ---------------------------------------------------------------------------
+# ⌨️ CLI
+# ---------------------------------------------------------------------------
 _CLI_PARSER=None
 def _argv_transport(argv):
  transport="auto"
@@ -6042,8 +7040,14 @@ def _cli_parser():
  global _CLI_PARSER
  if _CLI_PARSER is not None:return _CLI_PARSER
  a=argparse.ArgumentParser(allow_abbrev=False,epilog="Global options: --transport auto|gh|urllib, --max-pages N (100), --max-items N (10000), --max-bytes N (10000000), --timeout SECONDS (30). Limits are cumulative per operation.");s=a.add_subparsers(dest="cmd",required=True)
+ def positive(value):
+  number=int(value)
+  if number<1:raise argparse.ArgumentTypeError(f"must be at least 1, got {value}")
+  return number
+ x=s.add_parser("repo-overview",help="📖 bounded text orientation of any local checkout: about, key files, file list (--stats, --churn)");x.add_argument("root",nargs="?",default=".",help="repository directory (default: .)");x.add_argument("--max-lines",type=positive,default=120,help="lines shown per file");x.add_argument("--max-files",type=positive,default=400,help="paths listed");x.add_argument("--no-files",action="store_true",help="skip the file list");x.add_argument("--include",action="append",default=[],metavar="GLOB",help="extra key-file glob relative to ROOT (repeatable)");x.add_argument("--stats",action="store_true",help="per-extension file/line/byte stats");x.add_argument("--churn",type=positive,default=0,metavar="N",help="top N files by commit count (git work trees only)");x.add_argument("--since",metavar="WHEN",help="limit --churn to commits after WHEN, e.g. '3 months ago'")
+ x=s.add_parser("html-roundtrip",help="🔁 HTML→Markdown→HTML through a trusted markdown.py (optionally PySaiyanWeBoo wrapping); exit 1 on drift");x.add_argument("markdown_module");x.add_argument("--web-ui-module",help="trusted web_ui.py / pysaiyanweboo.py for the wrapper check")
  x=s.add_parser("html-content");x.add_argument("file");x.add_argument("--selector",action="append",required=True);x.add_argument("--source-kind",choices=("html","dom"),default="html");x.add_argument("--input-bytes",type=int,default=10_000_000);x.add_argument("--include-controls",action="store_true")
- s.add_parser("capabilities")
+ x=s.add_parser("capabilities",help="local tool facts; --rate-limit adds the API quota (remaining, reset)");x.add_argument("--rate-limit",action="store_true",help="one network read; shows whether a 403 is the quota or a permission")
  s.add_parser("overview",help="best-effort local and GitHub workspace summary (default)")
  for command in ("git-status", "git-files", "git-diff", "git-log", "git-numstat", "git-show", "git-blame", "git-grep", "git-ignore"):
   x=s.add_parser(command);x.add_argument("--root",default=".");x.add_argument("--output-bytes",type=int,default=1000000)
@@ -6058,7 +7062,7 @@ def _cli_parser():
  x=s.add_parser("git-switch");x.add_argument("--root",default=".");x.add_argument("branch",nargs="?",help='existing branch, or "-" for the previous branch');x.add_argument("-c","--create",metavar="NEW_BRANCH");x.add_argument("--write",action="store_true")
  x=s.add_parser("fleet-status",help="branch, upstream +ahead/-behind, changes of several clones (local; --fix-tracking plans upstream config, --write applies)");x.add_argument("roots",nargs="+");x.add_argument("--fix-tracking",action="store_true");x.add_argument("--write",action="store_true");x.add_argument("--text",action="store_true")
  x=s.add_parser("fleet-checks",allow_abbrev=False,help="checks of each clone's HEAD; --steps adds failed steps and failure/warning annotations (read-only)");x.add_argument("roots",nargs="+");x.add_argument("--steps",action="store_true");x.add_argument("--ignore",action="append",metavar="CHECK_NAME");x.add_argument("--wait",type=float,default=0);x.add_argument("--interval",type=float,default=30);x.add_argument("--text",action="store_true");x.add_argument("--poll-timeout",type=float,default=30,help=argparse.SUPPRESS)
- x=s.add_parser("pr-checks",help="check-runs on each PR head (OWNER/REPO#N, or REPO#N with --owner); --wait polls all together until settled; exit 0 green, 1 failed/error, 3 pending (read-only)");x.add_argument("targets",nargs="+",metavar="OWNER/REPO#N|OWNER/REPO|N");x.add_argument("--owner");x.add_argument("--ignore",default=PR_CHECKS_IGNORE,metavar="REGEX",help="drop check names matching REGEX (default (?i)copilot; empty keeps all)");x.add_argument("--wait",type=float,default=0);x.add_argument("--interval",type=float,default=30);x.add_argument("--delay",type=float,default=0,help="sleep before the first poll (CI start-up)");x.add_argument("--show",type=int,default=5,help="attention lines per PR");x.add_argument("--text",action="store_true");x.add_argument("--poll-timeout",type=float,default=30,help=argparse.SUPPRESS)
+ x=s.add_parser("pr-checks",help="check-runs on each PR head (OWNER/REPO#N, or REPO#N with --owner); --wait polls all together until settled; exit 0 green, 1 failed/error, 3 pending (read-only)");x.add_argument("targets",nargs="+",metavar="OWNER/REPO#N|OWNER/REPO|N");x.add_argument("--owner");x.add_argument("--ignore",default=PR_CHECKS_IGNORE,metavar="REGEX",help="drop check names matching REGEX (default (?i)copilot; empty keeps all)");x.add_argument("--wait",type=float,default=0);x.add_argument("--interval",type=float,default=30);x.add_argument("--delay",type=float,default=0,help="sleep before the first poll (CI start-up)");x.add_argument("--show",type=int,default=5,help="attention lines per PR");x.add_argument("--steps",action="store_true",help="add failed job steps and failure/warning annotations");x.add_argument("--text",action="store_true");x.add_argument("--poll-timeout",type=float,default=30,help=argparse.SUPPRESS)
  x=s.add_parser("merge-readiness",help="review findings (Must/Blocking/Should), changes requested, open threads and head moves to confirm before merging; exit 0 clear, 1 blocked, 3 attention");x.add_argument("repository");x.add_argument("number",type=int);x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
  x=s.add_parser("fleet-pr",help="open a PR for each clone's current branch, or report the open one (planned unless --write)");x.add_argument("roots",nargs="+");x.add_argument("--title",required=True);x.add_argument("--body-file",required=True);x.add_argument("--base",default="main");x.add_argument("--draft",action="store_true");x.add_argument("--write",action="store_true");x.add_argument("--text",action="store_true")
  x=s.add_parser("merge-trial",help="would REF merge into BASE in this clone? merge-tree only: no work-tree, index or ref change; exit 0 clean, 1 conflict, 3 object missing");x.add_argument("root");x.add_argument("ref");x.add_argument("--base",default="HEAD");x.add_argument("--git-timeout",type=float,default=120);x.add_argument("--text",action="store_true")
@@ -6084,17 +7088,21 @@ def _cli_parser():
  x=s.add_parser("commit-pulls",help="pull requests associated with a commit (read-only)");x.add_argument("repository");x.add_argument("sha")
  x=s.add_parser("first-parent",help="is commit on the default-branch first-parent history (API or exact git)");x.add_argument("repository");x.add_argument("commit");x.add_argument("--branch");x.add_argument("--exact",action="store_true",help="blob-less bare fetch (True/False only)");x.add_argument("--remote-base",default="https://github.com/");x.add_argument("--git-timeout",type=float,default=300)
  x=s.add_parser("repo-metadata",help="checkout repository metadata (v2 minimal, or v1 compatibility)");x.add_argument("--root",default=".");x.add_argument("--repository",default=os.environ.get("GITHUB_REPOSITORY"));x.add_argument("--format",choices=("v2","v1"),default="v2");x.add_argument("--source-sha");x.add_argument("--expected-sha");x.add_argument("--generated-at");x.add_argument("--tool",action="append",default=[],metavar="NAME",help="v1 only: observe an allowlisted tool version (python, git, gh, node, npm, npx)");x.add_argument("--output-dir")
- x=s.add_parser("repo");x.add_argument("repo")
+ x=s.add_parser("repo",help="one repository: licence (SPDX), stars, forks, topics, language, dates; --include adds health, fork-diff, languages, contributors, community, releases");x.add_argument("repo");x.add_argument("--include",action="append",default=[],choices=("all",)+REPO_INCLUDES,metavar="SECTION",help="repeatable; extra sections (extra requests): all "+" ".join(REPO_INCLUDES));x.add_argument("--stale-days",type=int,default=365,help="health: days without a push before status is stale");x.add_argument("--text",action="store_true")
+ x=s.add_parser("releases",help="newest releases (with assets) and tags of one repository (read-only)");x.add_argument("repo");x.add_argument("--limit",type=int,default=10);x.add_argument("--text",action="store_true")
+ x=s.add_parser("compare",help="compare two refs/SHAs (or cross-fork OWNER:BRANCH) via GitHub compare API (read-only)");x.add_argument("repo");x.add_argument("base");x.add_argument("head");x.add_argument("--limit",type=int,default=100);x.add_argument("--text",action="store_true")
+ x=s.add_parser("file",help="read one regular file from repository@ref with blob SHA and SHA-256 verification (read-only)");x.add_argument("repo");x.add_argument("path");x.add_argument("--ref",default="main");x.add_argument("--file-bytes",type=int,default=1_000_000);x.add_argument("--text",action="store_true",help="print decoded UTF-8 file text directly")
  x=s.add_parser("tree");x.add_argument("repo");x.add_argument("--ref",default="main")
  depth_args=x.add_mutually_exclusive_group();depth_args.add_argument("--depth",type=int,default=1);depth_args.add_argument("--recursive",action="store_true")
  x.add_argument("--exclude-dir",action="append",default=[]);x.add_argument("--exclude-file",action="append",default=[])
- x=s.add_parser("repos");x.add_argument("owner")
- x=s.add_parser("repo-inventory");x.add_argument("owner");x.add_argument("--fields",default="name");x.add_argument("--sort",choices=("name","size-kb","run-count","updated-at"),default="name");x.add_argument("--order",choices=("asc","desc"),default="asc");x.add_argument("--max-repos",type=int,default=30);x.add_argument("--page-limit",type=int,default=5)
+ x=s.add_parser("repos");x.add_argument("owner");x.add_argument("--kind",choices=("auto","user","org"),default="auto")
+ x=s.add_parser("repo-inventory");x.add_argument("owner");x.add_argument("--fields",default="name",help="comma-separated: "+",".join(INVENTORY_FIELDS));x.add_argument("--sort",choices=INVENTORY_FIELDS,default="name");x.add_argument("--kind",choices=("auto","user","org"),default="auto");x.add_argument("--include-archived",action="store_true");x.add_argument("--order",choices=("asc","desc"),default="asc");x.add_argument("--max-repos",type=int,default=30);x.add_argument("--page-limit",type=int,default=5)
  x=s.add_parser("issue");x.add_argument("repo");x.add_argument("number",type=int)
  x=s.add_parser("content");x.add_argument("repo");x.add_argument("kind",choices=("pr","issue","commit"));x.add_argument("identifier");x.add_argument("--field",action="append")
  x=s.add_parser("issues");x.add_argument("repo");x.add_argument("--state",choices=("open","closed","all"),default="open");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
- x=s.add_parser("search");x.add_argument("query");x.add_argument("--kind",choices=("pr","issue"),default="pr");x.add_argument("--sort",choices=("updated","created","comments","best-match"),default="updated");x.add_argument("--order",choices=("asc","desc"),default="desc");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10)
+ x=s.add_parser("search");x.add_argument("query");x.add_argument("--kind",choices=("pr","issue","code","repo"),default="pr");x.add_argument("--sort",choices=("updated","created","comments","stars","forks","best-match"),default="updated");x.add_argument("--order",choices=("asc","desc"),default="desc");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
  x=s.add_parser("prs");x.add_argument("repo");x.add_argument("--state",choices=("open","closed","all"),default="open");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
+ x=s.add_parser("pr-files",help="list changed files in a pull request with optional path glob and bounded patch (read-only)");x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("--path",help="fnmatch glob on path or basename");x.add_argument("--patch",action="store_true",help="include bounded unified diff patch per file");x.add_argument("--patch-bytes",type=int,default=4000);x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
  x=s.add_parser("get",help="read-only GET of one REST path with query options; e.g. get repos/O/R/pulls -q state=open --pick number --pick head.ref --text");x.add_argument("path");x.add_argument("-q","--query",action="append",default=[],metavar="KEY=VALUE");x.add_argument("--pick",action="append",default=[],metavar="FIELD");x.add_argument("--text",action="store_true")
  for command in ("read-comment","review","inline-comment"):
   x=s.add_parser(command,help="one comment body: URL, review REPO PR ID, or inline-comment REPO ID; text by default");x.add_argument("targets",nargs="+");x.add_argument("--json",action="store_true")
@@ -6103,9 +7111,10 @@ def _cli_parser():
  x=s.add_parser("reviews");x.add_argument("repo");x.add_argument("number",type=int)
  for command in ("inline-comments","review-threads","review-observations"):
   x=s.add_parser(command);x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10)
- x=s.add_parser("workflow-runs");x.add_argument("repo");x.add_argument("workflow_id");x.add_argument("--branch");x.add_argument("--head-sha");x.add_argument("--event");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--page-size",type=int,default=100);x.add_argument("--start-page",type=int,default=1);x.add_argument("--start-offset",type=int,default=0)
- x=s.add_parser("runs");x.add_argument("repo")
- x=s.add_parser("head-runs");x.add_argument("repo");x.add_argument("head_sha");x.add_argument("--event");x.add_argument("--exclude-event",action="append",default=[],help="e.g. dynamic (Copilot code review runs)");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10)
+ x=s.add_parser("workflows",help="list Actions workflows of one repository (read-only)");x.add_argument("repo");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
+ x=s.add_parser("workflow-runs");x.add_argument("repo");x.add_argument("workflow_id");x.add_argument("--branch");x.add_argument("--head-sha");x.add_argument("--event");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--page-size",type=int,default=100);x.add_argument("--start-page",type=int,default=1);x.add_argument("--start-offset",type=int,default=0);x.add_argument("--text",action="store_true")
+ x=s.add_parser("runs",help="recent Actions workflow runs; supports --branch, --head-sha, --event, --exclude-event, --limit, --text");x.add_argument("repo");x.add_argument("--branch");x.add_argument("--head-sha");x.add_argument("--event");x.add_argument("--exclude-event",action="append",default=[]);x.add_argument("--limit",type=int,default=20);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
+ x=s.add_parser("head-runs");x.add_argument("repo");x.add_argument("head_sha");x.add_argument("--event");x.add_argument("--exclude-event",action="append",default=[],help="e.g. dynamic (Copilot code review runs)");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
  x=s.add_parser("artifacts");x.add_argument("repo");x.add_argument("run_id",type=int)
  x=s.add_parser("artifact-file");x.add_argument("repo");x.add_argument("artifact_id",type=int);x.add_argument("member");x.add_argument("--file-bytes",type=int,default=10_000_000)
  x=s.add_parser("checks",help="check-runs of one or more SHAs; --text prints only what needs attention");x.add_argument("repo");x.add_argument("sha",nargs="+");x.add_argument("--min-checks",type=int,default=1);x.add_argument("--text",action="store_true")
@@ -6114,13 +7123,15 @@ def _cli_parser():
  x=s.add_parser("pr-status",help="compact status of PRs/Issues: OWNER/REPO N [N...] or OWNER/REPO#N ...");x.add_argument("targets",nargs="+",metavar="OWNER/REPO|N|OWNER/REPO#N");x.add_argument("--last",type=int,default=3);x.add_argument("--exclude-event",action="append",default=None,metavar="EVENT");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
  x=s.add_parser("workflow");x.add_argument("repo");x.add_argument("workflow_id")
  x=s.add_parser("run");x.add_argument("repo");x.add_argument("run_id",type=int);x.add_argument("--attempt",type=int)
- x=s.add_parser("jobs");x.add_argument("repo");x.add_argument("run_id",type=int);x.add_argument("--attempt",type=int)
+ x=s.add_parser("jobs");x.add_argument("repo");x.add_argument("run_id",type=int);x.add_argument("--attempt",type=int);x.add_argument("--text",action="store_true")
  x=s.add_parser("job-log");x.add_argument("repo");x.add_argument("run_id",type=int);x.add_argument("job_id",type=int);x.add_argument("--attempt",type=int,required=True);x.add_argument("--log-bytes",type=int,default=1_000_000);x.add_argument("--redact-env",action="append",default=[])
+ x=s.add_parser("failed-logs",help="redacted log tails and failed steps for failed jobs in an Actions run (read-only)");x.add_argument("repo");x.add_argument("run_id",type=int);x.add_argument("--attempt",type=int);x.add_argument("--max-jobs",type=int,default=5);x.add_argument("--log-bytes",type=int,default=200_000);x.add_argument("--tail",type=int,default=200);x.add_argument("--redact-env",action="append",default=[]);x.add_argument("--text",action="store_true")
  x=s.add_parser("step-url");x.add_argument("repo");x.add_argument("run_id",type=int);x.add_argument("job_id",type=int);x.add_argument("step_number",type=int);x.add_argument("--line",type=int)
  x=s.add_parser("variable-get");x.add_argument("repo");x.add_argument("name")
  x=s.add_parser("variable-set");x.add_argument("repo");x.add_argument("name");x.add_argument("value");x.add_argument("--write",action="store_true")
  x=s.add_parser("labels",help="add/remove existing labels on one Issue/PR (planned unless --write)");x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("--add",action="append",default=[],metavar="LABEL");x.add_argument("--remove",action="append",default=[],metavar="LABEL");x.add_argument("--write",action="store_true")
  x=s.add_parser("comment");x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("body",nargs="?");x.add_argument("--body-file");x.add_argument("--operation-key");x.add_argument("--sanitize-mentions",action="store_true");x.add_argument("--write",action="store_true")
+ for p in (a,*s.choices.values()):p.suggest_on_error=True  # 🤔 argparse 3.14+: "maybe you meant" for subcommands and choices; older Pythons ignore it
  _CLI_PARSER=a;return a
 def _main(argv=None):
  argv=list(sys.argv[1:] if argv is None else argv)
@@ -6131,7 +7142,7 @@ def _main(argv=None):
  try:ns=_cli_parser().parse_args(argv)
  except SystemExit as e:return int(e.code)
  try:
-  if ns.cmd=="capabilities":o=capabilities()
+  if ns.cmd=="capabilities":o=capabilities(rate_limit=ns.rate_limit,transport=transport)
   elif ns.cmd=="git-status":o=git_status(ns.root,max_bytes=ns.output_bytes)
   elif ns.cmd=="git-files":o=git_ls_files(ns.root,max_bytes=ns.output_bytes)
   elif ns.cmd=="git-diff":o=git_diff(ns.root,staged=ns.staged,base=ns.base,head=ns.head,path=ns.path,max_bytes=ns.output_bytes)
@@ -6159,7 +7170,7 @@ def _main(argv=None):
     o=fleet_checks(ns.roots,ignore=ignore,steps=ns.steps,transport=transport,timeout=ns.poll_timeout)
     if o["state"]!="pending" or time.monotonic()+ns.interval>deadline:break
     time.sleep(ns.interval)
-  elif ns.cmd=="pr-checks":o=pr_checks(ns.targets,owner=ns.owner,ignore=ns.ignore,wait=ns.wait,interval=ns.interval,delay=ns.delay,show=ns.show,transport=transport,timeout=ns.poll_timeout)
+  elif ns.cmd=="pr-checks":o=pr_checks(ns.targets,owner=ns.owner,ignore=ns.ignore,wait=ns.wait,interval=ns.interval,delay=ns.delay,show=ns.show,steps=ns.steps,transport=transport,timeout=ns.poll_timeout)
   elif ns.cmd=="merge-readiness":o=merge_readiness(ns.repository,ns.number,max_items=ns.limit,max_pages=ns.page_limit,transport=transport)
   elif ns.cmd=="fleet-pr":o=fleet_pr(ns.roots,ns.title,Path(ns.body_file).read_text(encoding="utf-8"),base=ns.base,draft=ns.draft,write=ns.write,transport=transport)
   elif ns.cmd=="subtree-sync-status":o=subtree_sync_status(ns.root,ns.prefix,ns.other_root,revision=ns.revision,other_ref=ns.other_ref,other_only_paths=ns.other_only_path,timeout=ns.timeout,mainline=ns.mainline)
@@ -6197,11 +7208,16 @@ def _main(argv=None):
     o=repository_metadata(ns.root,repository=ns.repository,source_sha=ns.source_sha,expected_sha=ns.expected_sha,generated_at=ns.generated_at)
    if ns.output_dir:write_repository_metadata(o,ns.output_dir)
   elif ns.cmd=="overview":o=overview()
-  elif ns.cmd=="repo":o=repository(ns.repo,transport=transport)
+  elif ns.cmd=="repo":o=repository(ns.repo,include=ns.include,stale_days=ns.stale_days,transport=transport)
+  elif ns.cmd=="releases":o=releases(ns.repo,max_items=ns.limit,transport=transport)
+  elif ns.cmd=="compare":o=compare_refs(ns.repo,ns.base,ns.head,max_items=ns.limit,transport=transport)
+  elif ns.cmd=="file":o=remote_file(ns.repo,ns.path,ns.ref,max_bytes=ns.file_bytes,transport=transport)
   elif ns.cmd=="tree":o=tree(ns.repo,ns.ref,depth=None if ns.recursive else ns.depth,exclude_dirs=ns.exclude_dir,exclude_files=ns.exclude_file,transport=transport)
-  elif ns.cmd=="repos":o=repositories(ns.owner,transport=transport)
-  elif ns.cmd=="repo-inventory":o=repository_inventory(ns.owner,fields=ns.fields,sort=ns.sort,order=ns.order,max_repos=ns.max_repos,max_pages=ns.page_limit,transport=transport)
+  elif ns.cmd=="repos":o=repositories(ns.owner,transport=transport,kind=ns.kind)
+  elif ns.cmd=="repo-inventory":o=repository_inventory(ns.owner,fields=ns.fields,sort=ns.sort,order=ns.order,max_repos=ns.max_repos,max_pages=ns.page_limit,transport=transport,kind=ns.kind,include_archived=ns.include_archived)
   elif ns.cmd=="issue":o=issue(ns.repo,ns.number,transport=transport)
+  elif ns.cmd=="repo-overview":o=repo_overview(ns.root,max_lines=ns.max_lines,max_files=ns.max_files,files=not ns.no_files,include=ns.include,show_stats=ns.stats,churn_top=ns.churn,since=ns.since)
+  elif ns.cmd=="html-roundtrip":o=html_roundtrip(ns.markdown_module,ns.web_ui_module)
   elif ns.cmd=="html-content":o=_html_content_file(ns.file,ns.selector,ns.source_kind,ns.input_bytes,ns.include_controls)
   elif ns.cmd=="content":
    identifier=ns.identifier if ns.kind=="commit" else int(ns.identifier)
@@ -6209,14 +7225,20 @@ def _main(argv=None):
    if ns.field is not None:o=select_content(o,ns.field)
   elif ns.cmd=="issues":o=issues(ns.repo,state=ns.state,max_items=ns.limit,max_pages=ns.page_limit,transport=transport)
   elif ns.cmd=="prs":o=pull_requests(ns.repo,state=ns.state,max_items=ns.limit,max_pages=ns.page_limit,transport=transport)
+  elif ns.cmd=="pr-files":o=pr_files(ns.repo,ns.number,path=ns.path,include_patch=ns.patch,patch_bytes=ns.patch_bytes,max_items=ns.limit,max_pages=ns.page_limit,transport=transport)
   elif ns.cmd=="search":o=search(ns.query,kind=ns.kind,sort=ns.sort,order=ns.order,max_items=ns.limit,max_pages=ns.page_limit,transport=transport)
   elif ns.cmd=="pr":o=pr(ns.repo,ns.number,transport=transport)
   elif ns.cmd=="comments":o=comments(ns.repo,ns.number,transport=transport)
   elif ns.cmd=="reviews":o=reviews(ns.repo,ns.number,transport=transport)
   elif ns.cmd in ("inline-comments","review-threads","review-observations"):
    o={"inline-comments":inline_comments,"review-threads":review_threads,"review-observations":review_observations}[ns.cmd](ns.repo,ns.number,max_items=ns.limit,max_pages=ns.page_limit,transport=transport)
+  elif ns.cmd=="workflows":o=workflows(ns.repo,max_items=ns.limit,max_pages=ns.page_limit,transport=transport)
   elif ns.cmd=="workflow-runs":o=workflow_run_discovery(ns.repo,ns.workflow_id,branch=ns.branch,head_sha=ns.head_sha,event=ns.event,max_items=ns.limit,max_pages=ns.page_limit,page_size=ns.page_size,start_page=ns.start_page,start_offset=ns.start_offset,transport=transport)
-  elif ns.cmd=="runs":o=runs(ns.repo,transport=transport)
+  elif ns.cmd=="runs":
+   if ns.head_sha is not None and not re.fullmatch(r"[0-9a-fA-F]{40}",ns.head_sha):raise ValueError("invalid head_sha")
+   if ns.branch or ns.head_sha or ns.event or ns.exclude_event or ns.limit>100:
+    o=run_history(ns.repo,max_items=ns.limit,max_pages=ns.page_limit,head_sha=ns.head_sha,branch=ns.branch,event=ns.event,transport=transport,exclude_events=ns.exclude_event)
+   else:o=runs(ns.repo,limit=ns.limit,transport=transport)
   elif ns.cmd=="head-runs":
    if not re.fullmatch(r"[0-9a-fA-F]{40}",ns.head_sha):raise ValueError("invalid head_sha")
    o=run_history(ns.repo,max_items=ns.limit,max_pages=ns.page_limit,head_sha=ns.head_sha,event=ns.event,transport=transport,exclude_events=ns.exclude_event)
@@ -6232,6 +7254,7 @@ def _main(argv=None):
   elif ns.cmd=="run":o=run(ns.repo,ns.run_id,attempt=ns.attempt,transport=transport)
   elif ns.cmd=="jobs":o=jobs(ns.repo,ns.run_id,attempt=ns.attempt,transport=transport)
   elif ns.cmd=="job-log":o=job_log(ns.repo,ns.run_id,ns.job_id,attempt=ns.attempt,max_bytes=ns.log_bytes,redact=_log_redact_env(ns.redact_env),transport=transport,timeout=_BUDGET.get().remaining())
+  elif ns.cmd=="failed-logs":o=failed_job_logs(ns.repo,ns.run_id,attempt=ns.attempt,max_jobs=ns.max_jobs,max_bytes=ns.log_bytes,tail_lines=ns.tail,redact=_log_redact_env(ns.redact_env),transport=transport,timeout=_BUDGET.get().remaining())
   elif ns.cmd=="step-url":o={"schema":"gh-identity-step-url/1","url":step_url(ns.repo,ns.run_id,ns.job_id,ns.step_number,ns.line)}
   elif ns.cmd=="variable-get":o=variable(ns.repo,ns.name,transport=transport)
   elif ns.cmd=="variable-set":o=set_variable(ns.repo,ns.name,ns.value,ns.write,transport)
@@ -6243,16 +7266,27 @@ def _main(argv=None):
    marker=f"<!-- gh-identity:{ns.operation_key} -->" if ns.operation_key else None
    o=post_comment(ns.repo,ns.number,ns.body,ns.write,marker,transport,sanitize_mentions=ns.sanitize_mentions)
  except (ValueError,Error,OSError,GitInspectionError) as e:
-  detail={"detail":str(e)} if isinstance(e,PinInputError) else {}
+  detail={"detail":str(e)} if isinstance(e,PinInputError) or ns.cmd=="repo-overview" else {}
   print(json.dumps({"status":"error","error":getattr(e,"code","git_inspection_failed" if isinstance(e,GitInspectionError) else "invalid_argument"),**detail}),file=sys.stderr);return 2
- if ns.cmd=="git-status" and not ns.json:
+ if ns.cmd=="repo-overview":print(o)
+ elif ns.cmd=="git-status" and not ns.json:
   text=render_git_status(o)
   if text:print(text)
  elif ns.cmd in ("read-comment","review","inline-comment") and not ns.json:print(o["body"])
  elif ns.cmd=="pr-status" and ns.text:print(render_status(o))
  elif ns.cmd=="checks" and ns.text:print(render_checks(o))
  elif ns.cmd in ("prs","issues") and ns.text:print(render_list(o))
+ elif ns.cmd=="pr-files" and ns.text:print(render_pr_files(o))
+ elif ns.cmd=="search" and ns.text:print(render_search(o))
+ elif ns.cmd=="compare" and ns.text:print(render_compare(o))
+ elif ns.cmd=="file" and ns.text:print(render_remote_file(o),end="" if (o.get("text") or "").endswith("\n") else "\n")
+ elif ns.cmd=="workflows" and ns.text:print(render_workflows(o))
+ elif ns.cmd in ("runs","head-runs","workflow-runs") and ns.text:print(render_runs(o))
+ elif ns.cmd=="jobs" and ns.text:print(render_jobs(o))
+ elif ns.cmd=="failed-logs" and ns.text:print(render_failed_job_logs(o))
  elif ns.cmd=="get" and ns.text:print(render_get(o))
+ elif ns.cmd=="repo" and ns.text:print(render_repository(o))
+ elif ns.cmd=="releases" and ns.text:print(render_releases(o))
  elif ns.cmd in ("vendor-lock-check","vendor-lock-verify-remote") and ns.markdown:print(render_vendor_markdown(o))
  elif ns.cmd=="pin-audit" and ns.text:print(render_pin_audit(o))
  elif ns.cmd=="merge-preview" and ns.text:print(render_merge_preview(o))
@@ -6265,6 +7299,7 @@ def _main(argv=None):
  elif ns.cmd=="merge-readiness" and ns.text:print(render_merge_readiness(o))
  elif ns.cmd=="duplicate-files" and ns.markdown:print(render_duplicates_markdown(o,top=ns.top))
  else:print(json.dumps(o,ensure_ascii=False))
+ if ns.cmd=="html-roundtrip":return 0 if o["ok"] else 1
  if ns.cmd=="duplicate-files":return 0 if o["complete"] else 1
  if ns.cmd=="repo-name-files":return 0 if o["complete"] else 1
  if ns.cmd=="pin-audit":return 0 if o["ok"] else 1
@@ -6279,7 +7314,7 @@ def _main(argv=None):
  if ns.cmd in ("vendor-lock-check","vendor-lock-verify-remote") and ns.ci_check:
   drift=any(r.get("upstream_changed") for r in o["files"])
   return 0 if o["ok"] and not drift else 1
- if ns.cmd in ("job-log","inline-comments","review-threads","review-observations"):return 0 if o["complete"] else 1
+ if ns.cmd in ("job-log","failed-logs","workflows","inline-comments","review-threads","review-observations","pr-files"):return 0 if o["complete"] else 1
  # Gate-style exit codes: 0 only when everything observed is complete and green.
  if ns.cmd in ("checks","head-runs","wait-checks"):return 0 if o["state"]=="green" else 1
  if ns.cmd in ("artifacts","artifact-file"):return 0 if o["complete"] else 1
@@ -6323,9 +7358,9 @@ def main(argv=None):
   return 2
 
 # One outer deadline/budget is shared across nested calls and gh fallback.
-for _name in ("_gh","_url","request","pages","repository","repositories","repository_inventory","pr","comments","reviews","inline_comments","review_threads","review_observations",
+for _name in ("_gh","_url","request","pages","repository","repositories","repository_inventory","rate_limit","releases","compare_refs","pr","pr_files","comments","reviews","inline_comments","review_threads","review_observations",
               "issue","content","content_from_hit","issues","search","pull_requests","run_history","workflow_run_discovery","runs","variable","set_variable","post_comment",
-              "resolve_ref","tree","source_identity","get","checks_for_sha","observe_pr","workflow","run","jobs","job_log","artifacts","artifact_file",
+              "resolve_ref","tree","source_identity","remote_file","get","checks_for_sha","observe_pr","workflow","workflows","run","jobs","job_log","failed_job_logs","artifacts","artifact_file",
               "pages_bounded","item_status","vendor_lock_verify_remote","vendor_matrix","owner_repositories","verify_parent_ref",
                "enrollment_progress","repo_identity","merge_preview","merge_readiness","fleet_checks","fleet_pr","list_owner_repositories","pr_identity","commit_pulls","first_parent_check","repo_name_files"):
  globals()[_name]=_bounded(globals()[_name])
