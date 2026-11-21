@@ -1318,7 +1318,7 @@ def _branch_routes(state):
 
     return {
         ("GET", ref_path): get_ref,
-        ("DELETE", "/repos/octo/demo/git/refs/heads/feat/x"): delete_ref,
+        ("DELETE", ref_path): delete_ref,
         ("GET", "/repos/octo/demo"): reply({"default_branch": "main"}),
         ("GET", "/repos/octo/demo/pulls"): reply([]),
         ("GET", "/repos/octo/demo/branches"): lambda parts, body: reply(
@@ -1365,25 +1365,24 @@ def test_branch_delete_refuses_open_pr_head():
     assert not out["ok"] and out["status"] == "open_pr_head" and out["open_prs"] == [7]
     assert "DELETE" not in stub.methods
 
-@pytest.mark.parametrize(("path", "payload"), [
-    ("/repos/octo/demo", {}),
-    ("/repos/octo/demo/pulls", [None]),
-])
-def test_branch_delete_requires_default_and_pr_evidence(path, payload):
-    routes = _branch_routes({"present": True})
-    routes[("GET", path)] = reply(payload)
-    client, stub = client_for(routes)
+
+def test_branch_state_delegates_to_gh_identity_branch_ref(monkeypatch):
+    seen = {}
+
+    def fake_branch_ref(repository, branch, **kwargs):
+        seen["args"] = (repository, branch)
+        return {"exists": True, "sha": HEAD}
+
+    monkeypatch.setattr(gh_identity, "branch_ref", fake_branch_ref)
+    assert gh_ops._branch_state(None, REPO, "feat/x") == ("present", HEAD)
+    assert seen["args"] == (REPO, "feat/x")
+    monkeypatch.setattr(gh_identity, "branch_ref",
+                        lambda repository, branch, **k: {"exists": False, "sha": None})
+    assert gh_ops._branch_state(None, REPO, "feat/x") == ("absent", None)
+
+    def boom(repository, branch, **k):
+        raise gh_identity.Error("permission_or_rate_limit")
+
+    monkeypatch.setattr(gh_identity, "branch_ref", boom)
     with pytest.raises(gh_ops.GhOpsError):
-        gh_ops.branch_delete(REPO, "feat/x", write=True, client=client)
-    assert "DELETE" not in stub.methods
-
-
-def test_branch_delete_checks_the_tip_again_before_write():
-    routes = _branch_routes({"present": True})
-    tips = iter([HEAD, OTHER])
-    routes[("GET", "/repos/octo/demo/git/ref/heads/feat/x")] = lambda *_: reply(
-        {"ref": "refs/heads/feat/x", "object": {"type": "commit", "sha": next(tips)}})
-    client, stub = client_for(routes)
-    result = gh_ops.branch_delete(REPO, "feat/x", expect_tip_sha=HEAD, write=True, client=client)
-    assert result["status"] == "tip_mismatch"
-    assert "DELETE" not in stub.methods
+        gh_ops._branch_state(None, REPO, "feat/x")

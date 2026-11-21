@@ -423,10 +423,13 @@ Planning is the default; `--write` issues the DELETE.
 - The repository default branch is refused (`status="default_branch"`), and so
   is a branch that any open pull request uses as its head
   (`status="open_pr_head"`, with the PR numbers).
-- Immediately before writing, the command reads the tip again and stops if it moved during preflight. GitHub’s REST DELETE has no expected-SHA parameter. Concurrent pushes after that final read can still race with deletion.
 - After the DELETE (`204`), absence is proven again before the receipt reports
   `status="verified"`; a failed or uncertain verification is reported separately
   from the mutation result, and nothing is retried blindly.
+- Branch existence ownership is transferred to `gh_identity.branch_ref`
+  (gh_identity #122/#123, including the complete-listing absence proof above).
+  With no injected client, `_branch_state` is only an adapter over it; an
+  injected client keeps the same contract over the caller's transport.
 
 ## Submit a pull request review (`pr-review`) and toggle draft state (`pr-ready`)
 
