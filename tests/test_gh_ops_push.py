@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -155,6 +156,38 @@ def test_cli_reads_local_files(tmp_path, monkeypatch, capsys):
                         "--write"], client=remote.client()) == 0
     assert json.loads(capsys.readouterr().out)["verified"] is True
     assert gh_ops_gh_ops_commit_files.main(["commit-files", REPO, "--branch", "b", "--message", "m"], client=remote.client()) == 2
+
+
+def test_stdin_batch_reuses_blobs_across_paths(monkeypatch, capsys):
+    binary = bytes(range(256))
+    note = "\ufeff日本語\r\n"
+    remote = Remote({"original.md": note.encode()})
+    rows = [{"path": path, "encoding": "base64", "content": base64.b64encode(binary).decode()}
+            for path in ("first.bin", "second.bin")]
+    rows.append({"path": "copy.md", "encoding": "utf-8", "content": note})
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(json.dumps(rows).encode())))
+    assert g.main(["--json", "commit-files", REPO, "--branch", "feat", "--stdin-json",
+                   "--message", "batch", "--write"], client=remote.client()) == 0
+    assert json.loads(capsys.readouterr().out)["verified"]
+    assert remote.trees[remote.commits[remote.head]] == {
+        "original.md": g._git_blob_sha(note.encode()), "copy.md": g._git_blob_sha(note.encode()),
+        "first.bin": g._git_blob_sha(binary), "second.bin": g._git_blob_sha(binary)}
+    assert remote.calls.count(("POST", f"/repos/{REPO}/git/blobs")) == 1
+
+
+@pytest.mark.parametrize("bad_row", [
+    {"path": "a", "encoding": "utf-8", "content": "duplicate"},
+    {"path": "b", "encoding": "base64", "content": "invalid!"},
+    {"path": "b", "encoding": "unknown", "content": ""},
+    {"path": "../outside", "encoding": "utf-8", "content": ""},
+])
+def test_invalid_stdin_batch_precedes_remote_calls(monkeypatch, bad_row):
+    rows = [{"path": "a", "encoding": "base64", "content": ""}, bad_row]
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(json.dumps(rows).encode())))
+    remote = Remote({})
+    assert g.main(["commit-files", REPO, "--branch", "feat", "--stdin-json",
+                   "--message", "batch", "--write"], client=remote.client()) == 2
+    assert remote.calls == []
 
 
 # ═══ · gh ops git push ═══════════════════════════════════════════════════════════════════════════════════

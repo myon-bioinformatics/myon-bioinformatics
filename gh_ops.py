@@ -2296,6 +2296,35 @@ def _commit_files_path(path: Any) -> str:
     return path
 
 
+def _stdin_commit_files(stream) -> dict[str, bytes]:
+    rows = json.load(stream)
+    if not isinstance(rows, list) or len(rows) > _COMMIT_FILES_MAX:
+        raise GhOpsError(f"expected a JSON array of at most {_COMMIT_FILES_MAX} files")
+    files = {}
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != {"path", "encoding", "content"}:
+            raise GhOpsError("each file requires path, encoding and content")
+        path = _commit_files_path(row["path"])
+        if path in files:
+            raise GhOpsError(f"duplicate repository path: {path}")
+        content = row["content"]
+        if not isinstance(content, str):
+            raise GhOpsError(f"{path}: content must be a string")
+        if row["encoding"] == "base64":
+            try:
+                data = base64.b64decode(content, validate=True)
+            except ValueError:
+                raise GhOpsError(f"{path}: invalid Base64") from None
+        elif row["encoding"] == "utf-8":
+            data = content.encode("utf-8")
+        else:
+            raise GhOpsError(f"{path}: encoding must be utf-8 or base64")
+        if len(data) > _COMMIT_FILE_BYTES:
+            raise GhOpsError(f"{path}: larger than {_COMMIT_FILE_BYTES} bytes")
+        files[path] = data
+    return files
+
+
 def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: tuple[str, ...] = (),
                  expect_head: str | None = None, write: bool = False, allow_default_branch: bool = False,
                  client: Client | None = None) -> dict:
@@ -2361,6 +2390,7 @@ def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: 
         return {**out, "ok": True, "changed": False, "reason": "unchanged"}
     if not write:
         return {**out, "ok": True, "changed": False}
+    known_blobs = {entry["sha"] for entry in tree.get("tree") or [] if entry.get("type") == "blob"}
     elements = []
     for item in plan:
         if item.get("delete"):
@@ -2369,11 +2399,13 @@ def commit_files(repo: str, branch: str, files: dict, message: str, *, deletes: 
             continue
         if item["change"] == "unchanged":
             continue
-        blob = client.request("POST", f"/repos/{repo}/git/blobs",
-                              {"content": base64.b64encode(files[item["path"]]).decode("ascii"),
-                               "encoding": "base64"}, expect=(201,)).data
-        if (blob or {}).get("sha") != item["blob_sha"]:
-            return {**out, "reason": f"blob SHA mismatch for {item['path']}"}
+        if item["blob_sha"] not in known_blobs:
+            blob = client.request("POST", f"/repos/{repo}/git/blobs",
+                                  {"content": base64.b64encode(files[item["path"]]).decode("ascii"),
+                                   "encoding": "base64"}, expect=(201,)).data
+            if (blob or {}).get("sha") != item["blob_sha"]:
+                return {**out, "reason": f"blob SHA mismatch for {item['path']}"}
+            known_blobs.add(item["blob_sha"])
         elements.append({"path": item["path"], "mode": item["mode"], "type": "blob", "sha": item["blob_sha"]})
     new_tree = client.request("POST", f"/repos/{repo}/git/trees", {"base_tree": base_tree, "tree": elements},
                               expect=(201,)).data["sha"]
@@ -4315,7 +4347,9 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p = _command_parser(sub, "commit-files", help="ONE commit of several files via the Git Data API, no clone "
                                              "(planned unless --write; fast-forward only; verified)")
     p.add_argument("repo"); p.add_argument("--branch", required=True)
-    p.add_argument("--file", action="append", default=[], metavar="PATH[=LOCAL]",
+    inputs = p.add_mutually_exclusive_group()
+    inputs.add_argument("--stdin-json", action="store_true", help="read an array of path/encoding/content records from stdin")
+    inputs.add_argument("--file", action="append", default=[], metavar="PATH[=LOCAL]",
                    help="repository path, optionally =local file to read (default: the same path)")
     p.add_argument("--delete", action="append", default=[], metavar="PATH")
     p.add_argument("--message", required=True, help="commit message")
@@ -4492,7 +4526,7 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
         return fleet_issues(args.report, args.repo, severities=severities, close_resolved=args.close_resolved,
                             write=args.write, client=client)
     if command == "commit-files":
-        files = {}
+        files = _stdin_commit_files(sys.stdin.buffer) if args.stdin_json else {}
         for spec in args.file:
             path, _, local = spec.partition("=")
             files[path] = Path(local or path).read_bytes()

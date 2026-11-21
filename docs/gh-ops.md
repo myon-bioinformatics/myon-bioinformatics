@@ -250,6 +250,19 @@ python -S gh_ops.py commit-files OWNER/REPO --branch my-branch --file docs/a.md 
 python -S gh_ops.py commit-files OWNER/REPO --branch my-branch --file docs/a.md --message "msg" --expect-head "$(git rev-parse origin/my-branch)" --write
 ```
 
+Use `--stdin-json` to pipe generated content directly into a single commit. The
+input is one JSON array with a repository path, encoding and string content per
+entry. Use `utf-8` for text or standard unwrapped `base64` for exact bytes.
+The example plans two files. Add `--write` to apply.
+
+```sh
+printf '%s' '[{"path":"docs/note.md","encoding":"utf-8","content":"hello\n"},{"path":"test.bin","encoding":"base64","content":"AP8="}]' |
+  python -S gh_ops.py commit-files OWNER/REPO --branch my-branch --stdin-json --message "Add fixtures"
+```
+
+A blob already listed in the fetched tree or uploaded earlier in the same
+commit is reused by SHA, including when the destination path differs.
+
 The same blobs/tree/commit/ref sequence as a connector `create_tree` call, but planned
 first: each path is listed as `new`, `changed`, `unchanged`, `delete` or `absent` with
 its size and Git blob SHA, and a dry run issues no write. Like `file-put`, the default
