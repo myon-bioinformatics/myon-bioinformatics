@@ -2773,15 +2773,14 @@ def sync_main(*, base: str = "main", remote: str = "origin", write: bool = False
     return {"ok": True, "branch": branch, "behind": behind, "merged": True, "head": new_head, "pushed": pushed}
 
 
-# --- subtree push: verified split SHA, new branch only (ported from gh_identity#77) ---------
+# --- subtree push: verified split SHA, new branch only --------------------------------------
 #
-# Decision logic ported from gh_identity#77 (branch cursor/subtree-stale-split-4489, head
-# d43ceb5): tree-validated split, filter-branch fallback, push guards, direct push of the
-# verified SHA (never `git subtree push`, which re-splits internally), post-push check.
-# TODO(gh_identity#77): once #77 is merged and vendor/gh_identity.py is repinned to it,
-# replace the read-only helpers below (_subtree_prefix .. _subtree_push_guards) with GHI's
-# public read-only functions and keep only the push + post-push verification here. Until
-# then everything here fails closed: any unexpected git result refuses the push.
+# Read-only split and tree checks come from the vendored gh_identity pin. Public
+# ``git_subtree_split`` owns the stale-split fallback. The pre-push tree gate and the
+# ancestor/path primitives are private at that pin (``_subtree_push_split_tree_gate``,
+# ``_git_is_ancestor``, ``_git_tree_paths``, ``_commit_root_tree``); there is no public
+# guard that only checks a caller-selected compare tip. Network push, the empty lease,
+# and the post-push read stay here. Any unexpected git result still refuses the push.
 
 _SUBTREE_OID_RE = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 _SUBTREE_PROTECTED_BRANCHES = ("main", "master")
@@ -2815,15 +2814,6 @@ def _subtree_git(cwd: Any, args: list[str], *, run: Callable[..., Any], timeout:
         tail = (done.stderr or "").strip()[-300:]
         raise SubtreePushError("git_failed", f"git {args[0]} exited {done.returncode}" + (f": {tail}" if tail else ""))
     return done
-
-
-def _subtree_prefix(prefix: Any) -> str:
-    return gh_identity._subtree_prefix(prefix)
-
-
-def _subtree_branch(branch: Any) -> str:
-    return gh_identity._subtree_branch(branch)
-
 
 
 def _subtree_remote(remote: Any) -> str:
@@ -2866,129 +2856,27 @@ def _subtree_commit_exists(cwd: Any, sha: str | None, *, run: Callable[..., Any]
     return done.returncode == 0 and done.stdout.strip() == "commit"
 
 
-def _subtree_split_matches_prefix_tree(cwd: Any, source: str, prefix: str, split_sha: str | None, *,
-                                       run: Callable[..., Any], timeout: float, split_root: Any = None) -> dict:
-    """``trees_match`` is True only when ``split_sha^{tree}`` equals ``source:<prefix>``."""
-    prefix_tree = _subtree_oid(cwd, f"{source}:{prefix}", run=run, timeout=timeout)
-    split_tree = (_subtree_oid(cwd if split_root is None else split_root, f"{split_sha}^{{tree}}", run=run,
-                               timeout=timeout) if split_sha else None)
-    return {"prefix_tree": prefix_tree, "split_tree": split_tree,
-            "trees_match": bool(prefix_tree and split_tree and prefix_tree == split_tree)}
-
-
-def _subtree_is_ancestor(cwd: Any, ancestor: str, descendant: str, *, run: Callable[..., Any],
-                         timeout: float) -> bool:
-    if not (_subtree_commit_exists(cwd, ancestor, run=run, timeout=timeout)
-            and _subtree_commit_exists(cwd, descendant, run=run, timeout=timeout)):
-        return False
-    done = _subtree_git(cwd, ["merge-base", "--is-ancestor", ancestor, descendant], run=run, timeout=timeout,
-                        ok=(0, 1))
-    return done.returncode == 0
-
-
-def _subtree_tree_paths(cwd: Any, tree: str, *, run: Callable[..., Any], timeout: float) -> set[str]:
-    done = _subtree_git(cwd, ["ls-tree", "-r", "-z", "--name-only", tree], run=run, timeout=timeout)
-    return {path for path in done.stdout.split("\0") if path}
-
-
 def _subtree_available(cwd: Any, *, run: Callable[..., Any], timeout: float) -> bool:
-    done = _subtree_git(cwd, ["--exec-path"], run=run, timeout=timeout, ok=tuple(range(256)))
-    exec_path = done.stdout.strip() if done.returncode == 0 else ""
-    if exec_path and os.path.isfile(os.path.join(exec_path, "git-subtree")):
-        return True
-    return shutil.which("git-subtree") is not None
-
-
-@contextlib.contextmanager
-def _subtree_cache_cleanup(cwd: Any, *, run: Callable[..., Any], timeout: float):
-    """git-subtree leaves $GIT_DIR/subtree-cache/<pid>; remove only what this call created."""
-    git_dir = Path(_subtree_git(cwd, ["rev-parse", "--absolute-git-dir"], run=run, timeout=timeout).stdout.strip())
-    cache = git_dir / "subtree-cache"
-    existed = cache.is_dir()
-    before = set(os.listdir(cache)) if existed else set()
-    try:
-        yield
-    finally:
-        if cache.is_dir() and not cache.is_symlink():
-            for name in set(os.listdir(cache)) - before:
-                shutil.rmtree(cache / name, ignore_errors=True)
-            if not existed:
-                with contextlib.suppress(OSError):
-                    cache.rmdir()
-
-
-def _subtree_split_filter_branch(cwd: Any, prefix: str, source: str, *, run: Callable[..., Any],
-                                 timeout: float) -> str | None:
-    """filter-branch in a temporary clone; import the result object-only (no refs, no FETCH_HEAD)."""
-    origin = _subtree_git(cwd, ["rev-parse", "--show-toplevel"], run=run, timeout=timeout).stdout.strip()
-    with tempfile.TemporaryDirectory(prefix="gh-ops-subtree-fb-") as directory:
-        clone = os.path.join(directory, "repo")
-        steps = (
-            (cwd, ["clone", "-q", "--no-hardlinks", origin, clone]),
-            (clone, ["fetch", "-q", "--no-write-fetch-head", "--no-tags", origin, source]),
-            (clone, ["checkout", "-q", "--detach", source]),
-            (clone, ["filter-branch", "-f", "--prune-empty", "--subdirectory-filter", prefix, "HEAD"]),
-        )
-        for where, args in steps:
-            env = {"FILTER_BRANCH_SQUELCH_WARNING": "1"} if args[0] == "filter-branch" else None
-            if _subtree_git(where, args, run=run, timeout=timeout, ok=(0, 1, 128), env=env).returncode != 0:
-                return None
-        fb = _subtree_oid(clone, "HEAD^{commit}", run=run, timeout=timeout)
-        if not fb or not _subtree_split_matches_prefix_tree(cwd, source, prefix, fb, run=run, timeout=timeout,
-                                                            split_root=clone)["trees_match"]:
-            return None
-        done = _subtree_git(cwd, ["fetch", "-q", "--no-write-fetch-head", "--no-tags", clone, fb], run=run,
-                            timeout=timeout, ok=(0, 1, 128))
-        if done.returncode != 0 or not _subtree_split_matches_prefix_tree(
-                cwd, source, prefix, fb, run=run, timeout=timeout)["trees_match"]:
-            return None
-        return fb
+    """Vendored availability check. ``run`` and ``timeout`` stay for existing callers."""
+    del run, timeout
+    return gh_identity._git_subtree_available(cwd)
 
 
 def subtree_split_verified(prefix: str, *, source: str = "HEAD", cwd: str = ".",
                            run: Callable[..., Any] = subprocess.run, timeout: float = 600.0) -> dict:
-    """Read-only ``git subtree split`` whose result must have the tree of ``source:<prefix>``.
+    """Read-only split from vendored ``gh_identity.git_subtree_split``.
 
-    ``git subtree split`` can exit 0 with a stale SHA (seen on git 2.47.3); then a
-    filter-branch split in a temporary clone is tried. Never passes --branch/--rejoin, so no
-    ref moves. ``sha`` is None (and ``reason`` set) when no tree-identical split exists.
+    That public function owns the stale-split check, the filter-branch fallback,
+    and subtree-cache cleanup. ``run`` is unused here: callers still pass the
+    push runner, and only ls-remote, the compare-tip fetch, and the push use it.
+    A git failure becomes ``reason: subtree_split_failed`` so the push stays refused.
     """
-    prefix = _subtree_prefix(prefix)
-    source = _subtree_oid(cwd, f"{_subtree_revision(source)}^{{commit}}", run=run, timeout=timeout)
-    if not source:
-        raise ValueError("revision not found")
-    base = {"prefix": prefix, "source": source, "fallback_used": False}
-    kind = _subtree_git(cwd, ["cat-file", "-t", f"{source}:{prefix}"], run=run, timeout=timeout, ok=(0, 1, 128))
-    if kind.returncode != 0 or kind.stdout.strip() != "tree":
-        return {**base, "sha": None, "reason": "prefix_not_found"}
-    if not _subtree_available(cwd, run=run, timeout=timeout):
-        return {**base, "sha": None, "reason": "subtree_unavailable"}
-    with _subtree_cache_cleanup(cwd, run=run, timeout=timeout):
-        done = _subtree_git(cwd, ["subtree", "split", "-q", f"--prefix={prefix}", source], run=run,
-                            timeout=timeout, ok=tuple(range(256)))
-    if done.returncode != 0:
-        return {**base, "sha": None, "reason": "subtree_split_failed",
-                "detail": (done.stderr or "").strip()[-300:]}
-    lines = done.stdout.strip().splitlines()
-    subtree_sha = lines[-1].strip() if lines else ""
-    if not _SUBTREE_OID_RE.fullmatch(subtree_sha):
-        return {**base, "sha": None, "reason": "subtree_split_failed", "detail": "unexpected git subtree output"}
-    check = _subtree_split_matches_prefix_tree(cwd, source, prefix, subtree_sha, run=run, timeout=timeout)
-    method, warning, sha = "subtree", None, subtree_sha
-    if not check["trees_match"]:
-        warning = "subtree_split_stale"
-        base["fallback_used"] = True
-        fb = _subtree_split_filter_branch(cwd, prefix, source, run=run, timeout=timeout)
-        if fb is None:
-            return {**base, "sha": None, "reason": "stale_subtree_split", "subtree_sha": subtree_sha,
-                    "warning": warning, "method": "subtree", **check}
-        method, sha = "filter-branch", fb
-    final = _subtree_split_matches_prefix_tree(cwd, source, prefix, sha, run=run, timeout=timeout)
-    if not final["trees_match"]:
-        return {**base, "sha": None, "reason": "stale_subtree_split", "subtree_sha": subtree_sha,
-                "warning": warning or "subtree_split_stale", "method": method, **final}
-    return {**base, "sha": sha, "reason": None, "method": method, "warning": warning,
-            "subtree_sha": subtree_sha if method != "subtree" else None, **final}
+    del run
+    try:
+        return gh_identity.git_subtree_split(cwd, prefix, source, timeout=timeout)
+    except gh_identity.GitInspectionError as error:
+        return {"prefix": None, "source": None, "sha": None, "reason": "subtree_split_failed",
+                "detail": str(error), "fallback_used": False, "method": None, "warning": None}
 
 
 def _subtree_ls_remote(cwd: Any, remote: str, refs: list[str], *, run: Callable[..., Any],
@@ -3031,24 +2919,28 @@ def _subtree_fetch_compare_tip(cwd: Any, remote: str, ref: str, tip: str, *, run
 
 def _subtree_push_guards(cwd: str, split_sha: str, compare: dict | None, *, child_only_paths: tuple[str, ...] = (),
                          run: Callable[..., Any], timeout: float) -> dict:
-    """Refuse when the remote compare tip is not an ancestor of split_sha or has paths the split lacks.
+    """Refuse a push that is not a descendant of the selected compare tip.
 
-    Same decisions as gh_identity#77 ``_subtree_push_guards``; ``child_only_paths`` (fnmatch,
-    default empty, i.e. identical to #77) can explicitly allow known child-only files.
+    Vendored ``gh_identity._subtree_push_guards`` is not used as-is: with no compare
+    ref it returns instead of failing, its ls-remote parser accepts only 40-hex tips,
+    and it rejects every child-only path. This keeps the hard failure, names the ref,
+    and honors ``child_only_paths`` (fnmatch, default empty, so the default matches
+    the vendored rejection). Ancestor and tree reads are the vendored primitives.
+    ``run`` and ``timeout`` stay on the signature for the surrounding push runner.
     """
+    del run, timeout
     if not compare:
         raise SubtreePushError("compare_ref_unavailable", "remote comparison ref is required for ancestor validation")
     ref, tip = compare["ref"], compare["sha"]
-    if not _subtree_is_ancestor(cwd, tip, split_sha, run=run, timeout=timeout):
+    if not gh_identity._git_is_ancestor(cwd, tip, split_sha):
         raise ValueError(f"remote ref {ref} is not an ancestor of the split commit")
-    split_tree = _subtree_oid(cwd, f"{split_sha}^{{tree}}", run=run, timeout=timeout)
-    child_tree = _subtree_oid(cwd, f"{tip}^{{tree}}", run=run, timeout=timeout)
+    split_tree = gh_identity._commit_root_tree(cwd, split_sha)
+    child_tree = gh_identity._commit_root_tree(cwd, tip)
     if not split_tree or not child_tree:
         raise ValueError(f"could not resolve trees for push guard (remote ref {ref})")
-    only_child = sorted(_subtree_tree_paths(cwd, child_tree, run=run, timeout=timeout)
-                        - _subtree_tree_paths(cwd, split_tree, run=run, timeout=timeout))
-    allowed = [p for p in only_child if any(fnmatch.fnmatchcase(p, g) for g in child_only_paths)]
-    refused = [p for p in only_child if p not in allowed]
+    only_child = sorted(gh_identity._git_tree_paths(cwd, child_tree) - gh_identity._git_tree_paths(cwd, split_tree))
+    allowed = [path for path in only_child if any(fnmatch.fnmatchcase(path, pattern) for pattern in child_only_paths)]
+    refused = [path for path in only_child if path not in allowed]
     if refused:
         raise ValueError("child-only paths not present in split: " + ", ".join(refused)
                          + f" (remote ref {ref})")
@@ -3057,11 +2949,17 @@ def _subtree_push_guards(cwd: str, split_sha: str, compare: dict | None, *, chil
 
 def _subtree_push_split_tree_gate(cwd: Any, source: str, prefix: str, split_sha: str | None, *,
                                   run: Callable[..., Any], timeout: float) -> dict:
-    """Re-validate the split tree immediately before ``git push`` of that commit."""
-    check = _subtree_split_matches_prefix_tree(cwd, source, prefix, split_sha or "", run=run, timeout=timeout)
-    if not split_sha or not check["trees_match"]:
-        raise SubtreePushError("stale_subtree_split")
-    return check
+    """Re-validate via vendored ``_subtree_push_split_tree_gate`` immediately before push.
+
+    That helper is private at the vendored pin. It raises ``gh_identity.Error``;
+    callers of subtree-push still see ``SubtreePushError``. ``run`` and ``timeout``
+    belong to the push runner and are not used for this read.
+    """
+    del run, timeout
+    try:
+        return gh_identity._subtree_push_split_tree_gate(cwd, source, prefix, split_sha)
+    except gh_identity.Error as error:
+        raise SubtreePushError(str(error.code)) from None
 
 
 def subtree_push_plan(prefix: str, remote: str, branch: str, *, source: str = "HEAD",
@@ -3074,12 +2972,12 @@ def subtree_push_plan(prefix: str, remote: str, branch: str, *, source: str = "H
     remote default branch and an existing branch; fetch the compare tip object-only;
     tree-validated split; ancestor + child-only path guards. Local refs never move.
     """
-    prefix = _subtree_prefix(prefix)
+    prefix = gh_identity._subtree_prefix(prefix)
     remote = _subtree_remote(remote)
-    branch = _subtree_branch(branch)
+    branch = gh_identity._subtree_branch(branch)
     source = _subtree_revision(source)
     if compare_ref is not None:
-        compare_ref = _subtree_branch(compare_ref)
+        compare_ref = gh_identity._subtree_branch(compare_ref)
     patterns = tuple(child_only_paths or ())
     if any(not isinstance(p, str) or not p or "\0" in p for p in patterns):
         raise ValueError("invalid child-only path pattern")
