@@ -1780,3 +1780,33 @@ def test_branch_delete_checks_the_tip_again_before_write():
     result = gh_ops.branch_delete(REPO, "feat/x", expect_tip_sha=HEAD, write=True, client=client)
     assert result["status"] == "tip_mismatch"
     assert "DELETE" not in stub.methods
+
+
+def test_branch_state_delegates_to_gh_identity_branch_ref(monkeypatch):
+    seen = {}
+
+    def fake_branch_ref(repository, branch, **kwargs):
+        seen["args"] = (repository, branch)
+        return {"exists": True, "sha": HEAD}
+
+    monkeypatch.setattr(gh_identity, "branch_ref", fake_branch_ref, raising=False)
+    assert gh_ops._branch_state(None, REPO, "feat/x") == ("present", HEAD)
+    assert seen["args"] == (REPO, "feat/x")
+    monkeypatch.setattr(gh_identity, "branch_ref",
+                        lambda repository, branch, **k: {"exists": False, "sha": None})
+    assert gh_ops._branch_state(None, REPO, "feat/x") == ("absent", None)
+
+    def boom(repository, branch, **k):
+        raise gh_identity.Error("permission_or_rate_limit")
+
+    monkeypatch.setattr(gh_identity, "branch_ref", boom)
+    with pytest.raises(gh_ops.GhOpsError):
+        gh_ops._branch_state(None, REPO, "feat/x")
+
+def test_branch_state_uses_verified_rest_lookup_with_older_vendor(monkeypatch):
+    monkeypatch.delattr(gh_identity, "branch_ref", raising=False)
+    routes = _branch_routes({"present": True})
+    client, stub = client_for(routes)
+    monkeypatch.setattr(gh_ops, "_client", lambda _: client)
+    assert gh_ops._branch_state(None, REPO, "feat/x") == ("present", HEAD)
+    assert stub.methods == ["GET"]

@@ -18,3 +18,8 @@ operational presentation, polling and explicit mutation workflow.
 This is an initial consolidation, not a claim that every gh_ops reader has been
 migrated. Comment export/full-body digest and selected-repo/count paths still have
 legacy adapters; their output contracts need separate compatibility work.
+
+Branch existence and tip identity for `gh_ops branch-delete` are also
+transferred: `gh_identity.branch_ref` owns the read (gh_identity #122) and the
+complete-listing absence proof (gh_identity #123). The parent uses that API at its #123 pin. Injected clients and older
+recommended vendor versions use the parent's validated REST lookup.

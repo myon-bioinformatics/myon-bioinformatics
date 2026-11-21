@@ -467,6 +467,10 @@ Planning is the default; `--write` issues the DELETE.
 - After the DELETE (`204`), absence is proven again before the receipt reports
   `status="verified"`; a failed or uncertain verification is reported separately
   from the mutation result, and nothing is retried blindly.
+- Branch existence ownership is transferred to `gh_identity.branch_ref`
+  (gh_identity #122/#123, including the complete-listing absence proof above).
+  The REST adapter supports injected clients and older recommended vendor
+  revisions that predate `branch_ref`.
 
 ## Submit a pull request review (`pr-review`) and toggle draft state (`pr-ready`)
 

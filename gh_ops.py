@@ -1142,13 +1142,29 @@ def run_cancel(repo: str, run_id: int, *, expect_head_sha: str | None = None,
     return {**out, "dry_run": False, "cancelled": True, "status": "requested", "mutation_status": "succeeded"}
 
 
-def _branch_state(client: Client, repo: str, branch: str) -> tuple[str, str | None]:
+def _branch_state(client: Client | None, repo: str, branch: str) -> tuple[str, str | None]:
     """Return ("present", tip_sha) or ("absent", None) for a branch.
 
-    A bare 404 is ambiguous (GitHub also hides inaccessible resources behind
-    it), so absence is proven only by a complete branch listing that excludes
-    the name, mirroring _variable_state.
+    Branch existence ownership is transferred to ``gh_identity.branch_ref``
+    (including its complete-listing absence proof: a bare 404 is ambiguous
+    because GitHub also hides inaccessible resources behind it). An injected
+    client or a vendor version predating branch_ref uses the REST adapter.
     """
+    read_ref = getattr(gh_identity, "branch_ref", None)
+    if client is None and read_ref is not None:
+        try:
+            result = read_ref(repo, branch)
+        except gh_identity.Error as error:
+            raise GhOpsError(error.code) from error
+        if not isinstance(result, dict) or type(result.get("exists")) is not bool:
+            raise GhOpsError("branch read-back has an unexpected shape")
+        if not result["exists"]:
+            return "absent", None
+        sha = result.get("sha")
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+            raise GhOpsError("branch read-back has an unexpected shape")
+        return "present", sha.lower()
+    client = _client(client)
     path = f"/repos/{repo}/git/ref/heads/{urllib.parse.quote(branch, safe='/')}"
     try:
         observed = client.get(path)
@@ -1193,7 +1209,7 @@ def branch_delete(repo: str, branch: str, *, expect_tip_sha: str | None = None,
     _validate_branch_name(branch, field="branch")
     if expect_tip_sha is not None:
         _sha(expect_tip_sha)
-    client, repo = _client(client), _repo(repo)
+    resolved, repo = _client(client), _repo(repo)
     path = f"/repos/{repo}/git/refs/heads/{urllib.parse.quote(branch, safe='/')}"
     base: dict[str, Any] = {"schema": "gh-ops-branch-delete/1", "repository": repo, "branch": branch}
     try:
@@ -1205,7 +1221,7 @@ def branch_delete(repo: str, branch: str, *, expect_tip_sha: str | None = None,
         return {**base, "ok": True, "dry_run": not write, "deleted": False, "tip_sha": None,
                 "status": "already_absent"}
     out: dict[str, Any] = {**base, "tip_sha": tip}
-    meta = client.get(f"/repos/{repo}")
+    meta = resolved.get(f"/repos/{repo}")
     default_branch = meta.get("default_branch") if isinstance(meta, dict) else None
     if not isinstance(default_branch, str) or not default_branch.strip():
         raise GhOpsError("repository read-back has no default branch")
@@ -1217,7 +1233,7 @@ def branch_delete(repo: str, branch: str, *, expect_tip_sha: str | None = None,
         return {**out, "ok": False, "dry_run": not write, "deleted": False, "status": "tip_mismatch",
                 "reason": f"branch tip SHA {str(tip)[:12]} does not match --expect-tip-sha {expect_tip_sha}"}
     owner = repo.split("/", 1)[0]
-    pulls = client.get(f"/repos/{repo}/pulls", params={"state": "open", "head": f"{owner}:{branch}"})
+    pulls = resolved.get(f"/repos/{repo}/pulls", params={"state": "open", "head": f"{owner}:{branch}"})
     if not isinstance(pulls, list) or any(not isinstance(row, dict) or type(row.get("number")) is not int for row in pulls):
         raise GhOpsError("open PR lookup returned an unexpected shape; incomplete response")
     open_prs = [row["number"] for row in pulls]
@@ -1232,7 +1248,7 @@ def branch_delete(repo: str, branch: str, *, expect_tip_sha: str | None = None,
         return {**out, "ok": False, "dry_run": False, "deleted": False, "status": "tip_mismatch",
                 "reason": "branch state changed during preflight"}
     try:
-        client.request("DELETE", path, expect=(204,))
+        resolved.request("DELETE", path, expect=(204,))
     except GhOpsError as error:
         return _mutation_error_receipt(
             out, error,
@@ -3075,7 +3091,7 @@ def _subtree_remote(remote: Any) -> str:
         raise ValueError("remote required")
     if not isinstance(remote, str) or not remote or "\n" in remote or remote.startswith("-"):
         raise ValueError("invalid remote")
-    if remote.startswith("/"):
+    if remote.startswith("/") or (os.name == "nt" and os.path.isabs(remote) and re.match(r"^[A-Za-z]:", remote)):
         return remote
     parts = urllib.parse.urlsplit(remote)
     if parts.scheme not in ("https", "file"):
