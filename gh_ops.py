@@ -42,7 +42,7 @@ on stdout for exit 2. Without it, errors stay on stderr and stdout stays empty.
 from __future__ import annotations
 
 import argparse, base64, contextlib, difflib, fnmatch, importlib.util, json, os, re, shutil, signal, subprocess, sys, tempfile, time, urllib.error, urllib.parse, urllib.request
-from dataclasses import dataclass, field; from datetime import datetime, timezone; from pathlib import Path; from typing import Any, Callable, Optional
+from dataclasses import dataclass, field; from datetime import datetime, timezone; from pathlib import Path; from typing import Any, Callable, Mapping, Optional
 
 def _load_adjacent_gh_identity():
     base = Path(__file__).resolve().parent
@@ -1895,9 +1895,126 @@ def pr_retarget(repo: str, number: int, base: str = "main", *, write: bool = Fal
     return out
 
 
+def _one_line(text: str) -> str:
+    return " ".join(str(text).split())
+
+
+def _blank_to_none(value: Any, label: str) -> str | None:
+    """Strip ``value``. ``None`` and whitespace-only strings are unset."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise GhOpsError(f"{label} must be a string")
+    return value.strip() or None
+
+
+def _merge_policy_path(policy_file: str | None, env: Mapping[str, str], *, explicit_method: bool) -> str | None:
+    """``--policy-file`` wins. The env file is ignored when ``--method`` is explicit."""
+    if policy_file is not None:
+        if not isinstance(policy_file, str):
+            raise GhOpsError("--policy-file must be a string")
+        path = policy_file.strip()
+        if not path:
+            raise GhOpsError("merge policy file path is empty")
+        return path
+    if explicit_method:
+        return None
+    raw = env.get("GH_OPS_MERGE_POLICY_FILE")
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise GhOpsError("GH_OPS_MERGE_POLICY_FILE must be a string")
+    return raw.strip() or None
+
+
+def _validate_merge_policy(payload: Any) -> dict[str, str]:
+    if not isinstance(payload, dict):
+        raise GhOpsError("merge policy must be a JSON object")
+    policy: dict[str, str] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str) or not _REPO_RE.fullmatch(key):
+            raise GhOpsError("merge policy key must look like OWNER/REPO")
+        if value not in MERGE_METHODS:
+            raise GhOpsError(f"merge policy value for {key} must be merge, squash, or rebase")
+        policy[key] = value
+    return policy
+
+
+def _load_merge_policy(path: str) -> dict[str, str]:
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError as error:
+        raise GhOpsError(_one_line(f"merge policy file: {error}")) from None
+    except UnicodeError:
+        raise GhOpsError("merge policy file is not valid UTF-8") from None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as error:
+        raise GhOpsError(_one_line(f"merge policy file is not valid JSON: {error.msg}")) from None
+    return _validate_merge_policy(payload)
+
+
+def resolve_merge_method(repo: str, *, method: str | None = None, policy_file: str | None = None,
+                         environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Resolve a ``pr-merge`` method and the source that selected it.
+
+    Precedence is explicit ``method``, then the policy entry for ``repo``,
+    then ``GH_OPS_MERGE_METHOD``, then ``squash``. Blank strings are unset.
+    ``policy_file`` (``--policy-file``) wins over ``GH_OPS_MERGE_POLICY_FILE``.
+    That environment file is not read when ``method`` is explicit and
+    ``policy_file`` is omitted. Policy values must be ``merge``, ``squash``,
+    or ``rebase``; a non-object document is rejected.
+    """
+    env = os.environ if environ is None else environ
+    repository = _repo(repo)
+    explicit = _blank_to_none(method, "--method")
+    path = _merge_policy_path(policy_file, env, explicit_method=explicit is not None)
+    policy = _load_merge_policy(path) if path else {}
+    if explicit is not None:
+        if explicit not in MERGE_METHODS:
+            raise GhOpsError(f"--method must be one of {', '.join(MERGE_METHODS)}")
+        return {"method": explicit, "source": "cli"}
+    if repository in policy:
+        return {"method": policy[repository], "source": "policy"}
+    env_method = _blank_to_none(env.get("GH_OPS_MERGE_METHOD"), "GH_OPS_MERGE_METHOD")
+    if env_method is not None:
+        if env_method not in MERGE_METHODS:
+            raise GhOpsError(f"GH_OPS_MERGE_METHOD must be one of {', '.join(MERGE_METHODS)}")
+        return {"method": env_method, "source": "env"}
+    return {"method": "squash", "source": "default"}
+
+
+def merge_commit_parent_gate(commit: Any, head: str) -> dict[str, Any]:
+    """Accept a merge commit only when it has two parents and ``parents[1]`` is ``head``."""
+    if not isinstance(commit, dict):
+        return {"ok": False, "reason": "merge commit response was not an object",
+                "parent_count": None, "parents": None, "html_url": None}
+    html = commit.get("html_url")
+    html_url = html if isinstance(html, str) and html else None
+    raw_parents = commit.get("parents")
+    if not isinstance(raw_parents, list):
+        return {"ok": False, "reason": "merge commit response did not include a parents array",
+                "parent_count": None, "parents": None, "html_url": html_url}
+    parents: list[str] = []
+    for item in raw_parents:
+        sha = item.get("sha") if isinstance(item, dict) else None
+        if not isinstance(sha, str) or not sha:
+            return {"ok": False, "reason": "merge commit parent is missing sha",
+                    "parent_count": len(raw_parents), "parents": parents, "html_url": html_url}
+        parents.append(sha.lower())
+    expected = head.lower()
+    if len(parents) == 2 and parents[1] == expected:
+        return {"ok": True, "reason": None, "parent_count": 2, "parents": parents, "html_url": html_url}
+    shown = ", ".join(parents) if parents else "(none)"
+    return {"ok": False, "reason": (f"merge commit must have exactly 2 parents and parents[1] equal to head {expected}; "
+                                    f"got {len(parents)} ({shown})"),
+            "parent_count": len(parents), "parents": parents, "html_url": html_url}
+
+
 def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: str = "squash",
              message: str | None = None, title: str | None = None, ignore: str | None = None,
-             write: bool = False, client: Client | None = None) -> dict:
+             write: bool = False, client: Client | None = None, require_merge_commit: bool = False,
+             method_source: str | None = None) -> dict:
     """Verify, then (only with ``write=True``) merge a PR in one call.
 
     Preconditions: open, ``mergeable_state == "clean"``, head matches
@@ -1907,9 +2024,20 @@ def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: s
     The merge request always pins ``sha`` to the verified head. ``ignore`` is a
     regex of check names (e.g. ``(?i)copilot`` for the review bot) dropped
     before judging; they are listed under ``checks["ignored"]``.
+
+    ``require_merge_commit`` demands ``method == "merge"`` before any request.
+    After a write it GETs the merge commit and accepts it only when that commit
+    has exactly two parents and ``parents[1]`` is the verified head SHA.
     """
     if method not in MERGE_METHODS:
         raise GhOpsError(f"--method must be one of {', '.join(MERGE_METHODS)}")
+    if method_source is None:
+        method_source = "default" if method == "squash" else "cli"
+    if type(require_merge_commit) is not bool:
+        raise GhOpsError("--require-merge-commit must be a boolean")
+    if require_merge_commit and method != "merge":
+        raise GhOpsError(
+            f"--require-merge-commit requires method merge; resolved {method} from {method_source}")
     if min_checks < 1:
         raise GhOpsError("--min-checks must be at least 1; zero check runs never counts as green")
     try:
@@ -1950,7 +2078,9 @@ def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: s
     else:
         checks = {"ok": False, "reason": "not evaluated: --sha does not identify the PR head", "runs": []}
     result = {"ok": False, "dry_run": not write, "pre_merge": pre_merge, "checks": checks,
-              "merged": False, "merge_sha": None, "failures": failures}
+              "merged": False, "merge_sha": None, "failures": failures,
+              "merge_method": method, "merge_method_source": method_source,
+              "require_merge_commit": require_merge_commit}
     if failures:
         return result
     body: dict = {"sha": head, "merge_method": method}
@@ -1964,9 +2094,23 @@ def pr_merge(repo: str, number: int, *, sha: str, min_checks: int = 1, method: s
     response = client.request("PUT", path + "/merge", body, expect=(200, 405, 409))
     data = response.data if isinstance(response.data, dict) else {}
     merged = response.status == 200 and bool(data.get("merged"))
-    result.update(ok=merged, merged=merged, merge_sha=data.get("sha") if merged else None)
+    merge_sha = data.get("sha") if merged else None
+    result.update(ok=merged, merged=merged, merge_sha=merge_sha)
     if not merged:
         result["failures"] = [f"merge rejected: HTTP {response.status} {data.get('message', '')}".strip()]
+        return result
+    if not require_merge_commit:
+        return result
+    if not isinstance(merge_sha, str) or not merge_sha:
+        reason = "merge response did not include a commit sha"
+        result.update(ok=False, reason=reason, failures=[reason])
+        return result
+    commit = client.get(f"/repos/{repo}/commits/{_quote(merge_sha)}")
+    gate = merge_commit_parent_gate(commit, head)
+    result.update(parent_count=gate["parent_count"], parents=gate["parents"], html_url=gate["html_url"],
+                  merge_sha=merge_sha)
+    if not gate["ok"]:
+        result.update(ok=False, reason=gate["reason"], failures=[gate["reason"]])
     return result
 
 
@@ -3748,11 +3892,26 @@ def _render(command: str, result: dict) -> str:
         reason = f": {result['reason']}" if result.get("reason") else ""
         return (f"{'OK' if result['ok'] else 'NG'} issue-edit ({result['status']}) "
                 f"{result['repository']}#{result['number']}{reason}")
+    if command == "pr-merge":
+        reason = result.get("reason") or "; ".join(result.get("failures") or [])
+        status = "OK" if result.get("ok") else "NG"
+        mode = "dry run" if result.get("dry_run") else "applied"
+        parts = [f"{status} pr-merge ({mode})",
+                 f"method={result.get('merge_method')} source={result.get('merge_method_source')}"]
+        if result.get("merge_sha"):
+            parts.append(f"merge_sha={result['merge_sha']}")
+        if result.get("parent_count") is not None:
+            parents = result.get("parents") or []
+            parts.append(f"parent_count={result['parent_count']}")
+            parts.append("parents=" + ",".join(parents))
+        if result.get("html_url"):
+            parts.append(f"html_url={result['html_url']}")
+        text = " ".join(parts)
+        return text + (f": {reason}" if reason else "")
     reason = result.get("reason") or "; ".join(result.get("failures", []))
     status = "OK" if result["ok"] else "NG"
     mode = "dry run" if result.get("dry_run") else "applied"
-    extra = f" merge_sha={result['merge_sha']}" if result.get("merge_sha") else ""
-    return f"{status} {command} ({mode}){extra}" + (f": {reason}" if reason else "")
+    return f"{status} {command} ({mode})" + (f": {reason}" if reason else "")
 
 
 def _read_body_exact(path: str) -> str:
@@ -3932,7 +4091,13 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p.add_argument("repo"); p.add_argument("number", type=int)
     p.add_argument("--sha", required=True)
     p.add_argument("--min-checks", type=int, default=1)
-    p.add_argument("--method", choices=MERGE_METHODS, default="squash")
+    p.add_argument("--method", choices=MERGE_METHODS, default=None,
+                   help="explicit merge method; otherwise policy, GH_OPS_MERGE_METHOD, else squash")
+    p.add_argument("--policy-file", default=None, metavar="PATH",
+                   help="JSON object mapping OWNER/REPO to merge, squash, or rebase "
+                        "(else GH_OPS_MERGE_POLICY_FILE)")
+    p.add_argument("--require-merge-commit", action="store_true",
+                   help="require method merge; after --write, the merge commit must have the head as parents[1]")
     p.add_argument("--ignore", default=r"(?i)copilot", metavar="REGEX",
                    help="drop check names matching REGEX before judging (default (?i)copilot; '' keeps all)")
     p.add_argument("--title")
@@ -4166,7 +4331,9 @@ def run_command(args: argparse.Namespace, client: Client | None = None) -> dict:
                                write=args.write, client=client)
     if command == "pr-merge":
         message = _read_text(args.message_file) if args.message_file else None
-        return pr_merge(args.repo, args.number, sha=args.sha, min_checks=args.min_checks, method=args.method,
+        resolved = resolve_merge_method(args.repo, method=args.method, policy_file=args.policy_file)
+        return pr_merge(args.repo, args.number, sha=args.sha, min_checks=args.min_checks, method=resolved["method"],
+                        method_source=resolved["source"], require_merge_commit=args.require_merge_commit,
                         title=args.title, message=message, ignore=args.ignore, write=args.write, client=client)
     if command == "git-commit":
         if args.push and not args.write:
