@@ -436,6 +436,47 @@ def test_push_write_creates_new_branch_and_verifies(world):
 
 @pytest.mark.usefixtures("_isolated_git")
 @needs_subtree
+def test_sha256_existing_branch_is_refused_before_push(world):
+    """A 64-hex tip still means the branch exists. Ignoring it would create over that branch."""
+    _seed_child(world)
+    sha256 = "ab" * 32
+
+    def override(argv, kwargs):
+        if argv[1:2] == ["ls-remote"]:
+            return _fake(argv, "ref: refs/heads/trunk\tHEAD\n" + ("1" * 40) + "\trefs/heads/trunk\n"
+                         + sha256 + "\trefs/heads/sync/sha256\n")
+        return None
+
+    spy = Spy(override)
+    with pytest.raises(ValueError, match="refs/heads/sync/sha256 already exists"):
+        g.subtree_push("sub", str(world["child"]), "sync/sha256", cwd=str(world["mono"]), run=spy)
+    assert not spy.pushes()
+
+
+@pytest.mark.usefixtures("_isolated_git")
+@needs_subtree
+def test_sha256_compare_tip_is_not_reported_missing(world):
+    """A 64-hex compare tip is resolved. Treating it as absent would skip the ancestor check's fetch."""
+    _seed_child(world)
+    sha256 = "cd" * 32
+
+    def override(argv, kwargs):
+        if argv[1:2] == ["ls-remote"]:
+            return _fake(argv, "ref: refs/heads/trunk\tHEAD\n" + ("1" * 40) + "\trefs/heads/trunk\n"
+                         + sha256 + "\trefs/heads/custom\n")
+        return None
+
+    spy = Spy(override)
+    with pytest.raises(g.SubtreePushError, match="git fetch") as exc:
+        g.subtree_push("sub", str(world["child"]), "sync/custom", compare_ref="custom",
+                       cwd=str(world["mono"]), run=spy)
+    assert exc.value.code == "git_failed"
+    assert exc.value.code != "compare_ref_not_found"
+    assert not spy.pushes()
+
+
+@pytest.mark.usefixtures("_isolated_git")
+@needs_subtree
 def test_push_refuses_remote_default_branch(world):
     _seed_child(world)
     with pytest.raises(ValueError, match="default branch trunk"):
