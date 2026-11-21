@@ -649,8 +649,10 @@ def test_split_git_failure_refuses_the_push(world, monkeypatch):
 
 
 def test_push_write_refuses_stale_split(world, monkeypatch):
-    split = _seed_child(world)
     mono, child = world["mono"], world["child"]
+    monkeypatch.setattr(g, "_subtree_available", lambda *a, **kw: True)
+    split = _git(mono, "commit-tree", "HEAD:sub", "-m", "child snapshot")
+    _git(mono, "push", "-q", str(child), f"{split}:refs/heads/trunk")
     monkeypatch.setattr(g, "subtree_split_verified", lambda prefix, **kw: {
         "sha": split, "reason": None, "method": "subtree", "warning": None})
     monkeypatch.setattr(g.gh_identity, "_subtree_split_matches_prefix_tree",
