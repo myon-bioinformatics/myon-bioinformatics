@@ -3091,7 +3091,7 @@ def _subtree_remote(remote: Any) -> str:
         raise ValueError("remote required")
     if not isinstance(remote, str) or not remote or "\n" in remote or remote.startswith("-"):
         raise ValueError("invalid remote")
-    if remote.startswith("/"):
+    if remote.startswith("/") or (os.name == "nt" and os.path.isabs(remote) and re.match(r"^[A-Za-z]:", remote)):
         return remote
     parts = urllib.parse.urlsplit(remote)
     if parts.scheme not in ("https", "file"):
