@@ -3,16 +3,16 @@
 
 Vendored as ``vendor/fleet_check.py``. Each child calls these from one
 ``tests/test_fleet.py`` instead of keeping per-repository copies of the same
-lock, parent pin, workflow, benchmark, Node parity and launcher tests. Checks raise
+lock, parent pin, workflow, benchmark, Node parity, launcher and script tests. Checks raise
 ``AssertionError`` naming the offending row; the helpers return plain data so
 the child keeps only its own expectations (pins, cases, messages).
 """
 from __future__ import annotations
 
-import functools, hashlib, json, os, re, shlex, shutil, signal, subprocess, sys, tempfile
+import ast, functools, hashlib, json, os, re, shlex, shutil, signal, subprocess, sys, tempfile
 from pathlib import Path
 
-__all__ = ["check_actions", "check_lock", "launcher_contract", "node", "node_parity", "parent_refs", "python_floor", "repo_root", "run_main", "vendor_staging", "workflow_job"]
+__all__ = ["check_actions", "check_lock", "check_scripts", "launcher_contract", "node", "node_parity", "parent_refs", "python_floor", "repo_root", "run_main", "script_facts", "vendor_staging", "workflow_job"]
 PARENT = "myon-bioinformatics/myon-bioinformatics"
 
 
@@ -20,6 +20,52 @@ def repo_root(start) -> Path:
     """Nearest directory at or above ``start`` that holds ``.github/workflows``."""
     start = Path(start).resolve()
     return next(p for p in (start, *start.parents) if (p / ".github/workflows").is_dir())
+
+
+def script_facts(path) -> dict:
+    """What a script says about itself, read without running it.
+
+    ``summary`` is the first line of its module docstring, or of a JS module's leading ``//`` / ``/*`` comment past
+    the shebang and imports ('' without one). ``argv``: it reads ``sys.argv`` itself. ``argparse``: it imports
+    ``argparse`` or ``cli_args``, so its ``--help`` is the declared one and safe to ask for (nothing else is run).
+    """
+    path = Path(path)
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if path.suffix != ".py":
+        lines = [line.strip() for line in text.splitlines()]
+        for i, line in enumerate(lines):
+            if line.startswith(("//", "/*")):   # a /** block may open on a line of its own: its first words count
+                block = lines[i:i + 1] if line.startswith("//") else lines[i:i + 1 + next((k for k, l in enumerate(lines[i:]) if "*/" in l), 0)]
+                words = next((w for w in (l.removeprefix("//").removeprefix("/*").lstrip("*").removesuffix("*/").strip() for l in block) if w), "")
+                return {"summary": words, "argv": False, "argparse": False}
+            if line and not line.startswith(("#!", "import ", "'use strict'", '"use strict"')):
+                break
+        return {"summary": "", "argv": False, "argparse": False}
+    tree = ast.parse(text)
+    nodes = list(ast.walk(tree))
+    names = {a.name.split(".")[-1] for n in nodes if isinstance(n, ast.Import) for a in n.names}
+    names |= {m for n in nodes if isinstance(n, ast.ImportFrom) for m in [(n.module or "").split(".")[-1], *(a.name for a in n.names)]}
+    argv = any(isinstance(n, ast.Attribute) and n.attr == "argv" and isinstance(n.value, ast.Name) and n.value.id == "sys" for n in nodes)
+    argv = argv or any(isinstance(n, ast.ImportFrom) and n.module == "sys" and any(a.name == "argv" for a in n.names) for n in nodes)
+    return {"summary": (ast.get_docstring(tree) or "").strip().split("\n", 1)[0], "argv": argv,
+            "argparse": bool(names & {"argparse", "cli_args"})}
+
+
+def check_scripts(root, patterns=("*.py", "*.mjs", "*.cjs", "scripts/*", "tools/*", "examples/*"), passthrough=()) -> dict:
+    """📝 Every script the globs match (.py / .mjs / .cjs) describes itself, and ⌨️ one that reads ``sys.argv``
+    declares its arguments with argparse or cli_args, except ``passthrough`` launchers that hand argv on untouched.
+
+    That is what the portfolio's script catalog reads instead of running anything. Returns ``script_facts`` by path.
+    """
+    root = Path(root)
+    found = {p.relative_to(root).as_posix(): script_facts(p) for pattern in patterns for p in sorted(root.glob(pattern))
+             if p.is_file() and p.suffix in (".py", ".mjs", ".cjs") and p.name not in ("conftest.py", "__init__.py")}
+    found = dict(sorted(found.items()))
+    undescribed = [path for path, facts in found.items() if not facts["summary"]]
+    undeclared = [path for path, facts in found.items() if facts["argv"] and not facts["argparse"] and path not in passthrough]
+    assert not undescribed, f"📝 no docstring / leading comment: {undescribed}"
+    assert not undeclared, f"⌨️ reads sys.argv without argparse or cli_args: {undeclared}"
+    return found
 
 
 def check_lock(root, lock="vendor.lock.json", commits=None, sources=None) -> dict:
