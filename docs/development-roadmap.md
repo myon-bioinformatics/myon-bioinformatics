@@ -1,6 +1,6 @@
 # 横断開発ロードマップ
 
-2026年11月22日に移管した7件を、元Issueの作成順に掲載する。チェック欄は実装・実測の残件を示す。完了時は対象コミット、検証条件、結果を該当欄に記録する。各節末の元Issueに詳細な受入条件、過去の測定、訂正履歴がある。
+2026年11月22日に移管した7件を、元Issueの作成順に掲載する。完了時は対象コミット、検証条件、結果を該当欄に記録する。旧Issueの実装案や対象数は、着手時点の利用先・採用データと照合する。前提が変わった場合は、元の記録へのリンクと、今も確認する必要がある振る舞いを残す。
 
 <a id="parent-56"></a>
 
@@ -9,12 +9,15 @@
 11月22日に親main `d2b0d62` で `python -m pytest -q tests/test_ci_status.py tests/test_vendor_stage.py` を実行。67件成功（サブテスト43件）。[対象コミット](https://github.com/myon-bioinformatics/myon-bioinformatics/commit/d2b0d627d61ff339337a6974d846b683c170ff6a)
 
 - [x] オンデマンドCI表示でrefをSHAに解決し、workflow・event・run・attempt・必須job・必須stepを照合する。実測と再現条件は下表を参照。対象コードは `ci_status.py` の `--verify-workflow`、回帰テストは `tests/test_expected_workflow.py`。
-- [x] 旧Issueの優先4経路を下表で照合した。親のGit観測は一時ディレクトリで未初期化・空の作業ツリー・未追跡ファイル・出力打ち切りを実測した。cleanは空の作業ツリーだけでtrue。未初期化は例外、打ち切りは `truncated=true, clean=false`。
+- [x] 旧Issueの優先4経路を下表で照合した。親のGit観測は一時ディレクトリで未初期化・空の作業ツリー・未追跡ファイル・出力打ち切りを実測した。変更を最後まで観測でき、変更が0件ならclean。未初期化は例外、打ち切りは `truncated=true, clean=false`。
 - [x] 親の既存テストで書き込みの応答喪失・再試行・重複検知を検証した。`tests/test_gh_ops_api.py -k 'retry or lost_response or uncertain'` は24件成功。dispatch後のGETを検証する `tests/test_gh_workflow.py` は80件成功。
-- [ ] gh_identityの追加採用や旧書き込み経路の削除は、利用元ごとに既存の契約、同等性テスト、実際の利用先を確認して判断する。
 - [x] 元Issueで指定されたmarkdown・ascii_artistについて、親の登録・推奨と実採用を照合し、固定ソース、Git blob、SHA-256、配置バイト、LICENSEを確認した。各リポジトリで正当な追加、欠落、誤出典、重複、改変を含む回帰7件が成功。
-- [ ] 他consumerの採用・共通Actionsの固定先を更新する際は、対象headのrun・artifactと互換性を個別に確認する。
-- [ ] Portfolioのメタデータ生成とLICENSEの移行、独立したブラウザ証跡、コメント要約の最初の利用先を確認する。要約に元コメントID、対象head、指摘と解消根拠を残す。
+- [ ] **Portfolioのメタデータ。** 現行の出力キー、detached HEADのSHA、コマンド欠落・失敗時のnull、stdout限定、診断文を公開しないことを維持する。旧案のIronmate生成器・契約モジュールは退役済み。共通化には現行のgh_identityが候補。採用する場合に固定元とLICENSEを検証し、Stagehandの参考用Artifactで同等性を測る。既存アダプターの回帰4件は成功。一般のCI合否をこの参考値に依存させない。[旧案](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/issues/28)・[退役記録](https://github.com/myon-bioinformatics/Ironmate/blob/9e6b5ed67c807213ee8847ba3294af2fc82929f6/docs/cleanup-stage-two.md)・[現行アダプター](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/8ff9a74a359b075ccb742dad0b7156be4c4ac8ec/scripts/stagehand_tooling_meta.py)
+- [ ] **ブラウザの証跡。** 親の証跡形式とエンジンの独立性は既存テスト5件で確認した。残件は親のPlaywright・Stagehand各runnerと、各runnerが生成した実際の画像・run・checkout SHAの照合。PortfolioのStagehandというworkflow名の中にはPlaywrightで撮影するjobがあり、撮影元はjobの実行コマンドで判断する。[親の契約](browser-evidence.md)・[撮影job](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/8ff9a74a359b075ccb742dad0b7156be4c4ac8ec/.github/workflows/stagehand-v4-reference.yml#L129)
+- [x] **コメント要約の利用先。** アーカイブ済みFlutterは候補から外す。mcp-toolcall-labの `issue_comments_digest` で親 #56の16件から直近2件の元コメントIDとURLを取得した。[実装](https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/dafcfac247b1b2f69e5f3f8ed49da61c7d3b5e97/src/mcp_toolcall_lab/github_ops_server.py#L218)・[測定記録](https://github.com/myon-bioinformatics/myon-bioinformatics/issues/56)
+- [ ] **コメント要約の残件。** 対象範囲（from/to）と元コメントIDを保持し、各指摘の重要度、対象head、解消の根拠を元の記述までたどれることを検証する。引用・コード例・旧headの「解消」を現headの解決として返さない。[元の要件](https://github.com/myon-bioinformatics/myon-bioinformatics/issues/71)
+
+gh_identityを追加採用する場合や、旧書き込み経路を削除する場合は、対象の利用元で同等性を検証する。共通Actionsの固定先を変更する場合も、そのheadのrun・artifactと互換性を確認する。採用の要否は利用元ごとに判断する。
 
 11月22日に `python -S ci_status.py --verify-workflow` を実行し、GitHubの公開APIを読み取った。gh_identityはworkflow `377074728`、event `pull_request`、ref `feat/artifact-file-commit-rows`、SHA `4ca9ee8f76b091c10abf7e32b52a4b12d00e1004`。必須jobは `Vendor locked baseline`、stepは `Verify and recreate locked vendor snapshot`。
 
@@ -111,7 +114,7 @@ P0、P1.1〜P1.3、P1.5のlinkcheck、P1.6のmarkdownスクリプトは統合済
 
 G2/G3は実装済み。G4で11月21日に保存回答を再集計した結果は `unverified=0`。新規モデル実行は引き続き保留。[G2/G3の実装](https://github.com/myon-bioinformatics/TalkCompress/pull/43)
 
-- [ ] G4の新規測定はseed 1/2/3 × 3テンプレートの最小9試行とし、対象別の成功率・再現手順を残す。話者1億人未満は0.9以上、以上は0.6以上、試行済みで成功率0は不可。必須形・採用形と `--status` を照合し、gateの有効化は別途判断する。
+- [ ] G4の新規測定では、その時点の採用形を基にseed 1/2/3 × 3テンプレートの最小9試行を行い、対象別の成功率・再現手順を残す。話者1億人未満は0.9以上、1億人以上は0.6以上、試行済みで成功率0は不可。11月22日に採用表を再生成したところ、オランダ語の8セルはすべて現在形で、英語の現在完了を表す必須形は、採用表からの算出値・保存済みリストともに0形だった。旧Issue #29の65セル・47形は当時の対象数。オランダ語の採用判定には既に往復評価が適用されており、他の対象への拡大は別途判断する。[旧対象との差分](https://github.com/myon-bioinformatics/TalkCompress/blob/bea8a88b71e6e988ca451ea1d76c2c4074d824bb/docs/nl_roundtrip_20261108.md)・[現行の採用判定](https://github.com/myon-bioinformatics/TalkCompress/blob/bea8a88b71e6e988ca451ea1d76c2c4074d824bb/scripts/tense_matrix.py#L907)
 - [ ] G1〜G8は箇条書き・固定スロット履歴・保持要素、構造化データ、tokenizer、キャッシュ、読み手別形式を同じ入力で評価する。識別子・URL・数値・否定・条件の保持と秘密情報の除去を確認する。
 - [ ] G9〜G14は古いtool結果の消去、サーバー側要約、焦点指定、必須集合の再注入を比較する。入力tokenの実測と推定、キャッシュ書き込み・読み出し費用、G4の品質を対応付ける。
 
