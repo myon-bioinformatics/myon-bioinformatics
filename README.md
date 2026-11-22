@@ -145,7 +145,7 @@ Treats explanations as propositions and tests them against counterexamples, with
 
 ### [DRAgoWing](https://github.com/myon-bioinformatics/DRAgoWing)
 
-Renders research records as Plotly.js HTML reports and proposition tables, with optional headless-Chrome PNG/SVG export and no Python plotting libraries.
+Renders research records as Plotly.js HTML reports and proposition tables from one standard-library file, with optional SVG drawn by the parent's standard-library plotly_min (no browser) and no Python plotting libraries.
 
 `baseball` `visualization` `plotly`
 
@@ -187,7 +187,7 @@ Lightweight, function-focused Markdown utilities built with the Python standard 
 
 ### [ascii_artist](https://github.com/myon-bioinformatics/ascii_artist)
 
-Python utilities for ASCII art generation, conversion, layout and text-based diagrams. CI-tested on Python 3.10–3.14.
+Python utilities for ASCII art generation, conversion, layout and text-based diagrams. CI-tested on Python 3.11–3.14.
 
 `ascii-art` `diagram` `single-file`
 
@@ -199,7 +199,7 @@ Error-triggered triage for Python, Node and CI failures: does nothing until some
 
 ### [nvd_nist_known_vulns](https://github.com/myon-bioinformatics/nvd_nist_known_vulns)
 
-Single-file, standard-library client for the NVD CVE API 2.0: fetches known vulnerabilities for CPE 2.3 names and emits deterministic JSON Lines. CI-tested on Python 3.9–3.14.
+Single-file, standard-library client for the NVD CVE API 2.0: fetches known vulnerabilities for CPE 2.3 names and emits deterministic JSON Lines. CI-tested on Python 3.11–3.14.
 
 `security` `cve` `cli`
 
@@ -211,7 +211,7 @@ Cross-browser testing reference kit: Playwright Node and Python lanes on Chromiu
 
 ### [PySaiyanWeBoo](https://github.com/myon-bioinformatics/PySaiyanWeBoo)
 
-Shared, build-free CSS themes, UI components and small JavaScript utilities for the static pages of these projects, including layout presets that switch without reloading.
+One standard-library Python module that builds the shared CSS themes, UI components and small browser modules for the static pages of these projects (all kept as Python data, build-free), including layout presets that switch without reloading.
 
 `css` `ui-components` `static-site`
 
