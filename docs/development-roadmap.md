@@ -85,7 +85,7 @@ LittleBitのc001候補生成・比較と年別バックテストはmain導入済
 
 子のshrink/py_launchはNagoyAction・QueRyu・DRAgoWing等に採用済み。[shared-tools.lock.json](https://github.com/myon-bioinformatics/Aoi/blob/main/shared-tools.lock.json)
 
-R001のF1〜F7は、11月22日に main `5f56353` の受付・PLAN/RESULTS・コードと照合して項目ごとに判定した（[Aoi #235](https://github.com/myon-bioinformatics/Aoi/pull/235)）。完了にできる項目は0件。F1・F2は提供元の訂正版待ち、F3は原資料の取得が前提、F5は計画が未固定、F6は条件を維持中、F7はDRAgoWingの機能追加待ち。次に動かせるのはF4で、引き継ぎパッケージ `aoi_pr3_stage_transitions.zip` の提供が要る。F1〜F7そのものは Aoi の `research/gpt-r001-score-allocation/PR3_FOLLOWUP.md` で追跡を続ける。
+R001のF1〜F7は、11月22日に main `5f56353` の受付・PLAN/RESULTS・コードと照合して項目ごとに判定した（[Aoi #235](https://github.com/myon-bioinformatics/Aoi/pull/235)）。完了にできる項目は0件。F1・F2は提供元の訂正版待ち、F3は原資料の取得が前提、F5は計画が未固定、F6は条件を維持中、F7はDRAgoWingの機能追加待ち。F4は引き継ぎパッケージ `aoi_pr3_stage_transitions.zip` が残っておらず、見送った（[Aoi #236](https://github.com/myon-bioinformatics/Aoi/pull/236)）。F1〜F7そのものは Aoi の `research/gpt-r001-score-allocation/PR3_FOLLOWUP.md` で追跡を続ける。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/Aoi/issues/30)
 
@@ -132,7 +132,7 @@ G6のtokenizer調査（`scripts/tokenizer_compat.py`、`docs/o200k-lookup/`）�
 - 変換系GUIのブラウザ化。対象リポジトリはアーカイブ済みで、紹介だけのデスクトップ変換アプリを延命しない。
 - Flutter（`flutter_navigation_basic`）へのmetadata/CI移行と、LittleBitのFlutter座標適用。対象はアーカイブ済み。復活する場合はDart/Flutterの挙動変更として別途承認が必要。
 - Aoiの `child_checks.py` を子へ強制採用すること。現行 `consumers` は空だが、shrink/py_launchは既に採用がある。採用先がないことを欠陥にしない。
-- 終了コード64・65・66の共通化。`child_checks.py` は0/1/2を使う。
+- 終了コード64・65・66の共通化。`child_checks.py` は0/1/2を使う。 Aoi の各サブツリーの中でリテラルを `EX_*` 定数に置き換える変更（[Aoi #234](https://github.com/myon-bioinformatics/Aoi/pull/234)）は別件で、子をまたぐ共通化ではない。
 - BrowserTestKitの `terminal_browser` に `--format` を足すこと。TTYラッパであり、構造化stdoutは契約にしない。
 - DRAgoWingのHTML描画器へ `--format json` を強制すること。一部のJSON入出力と `--forms` は既にある。
 - TalkCompress G9〜G14を実装義務にすること。Anthropicのcontext editingやサーバー側要約などは参考に留め、ローカル・キーなしの方針と切り離す。参考: [Context editing](https://platform.claude.com/docs/en/build-with-claude/context-editing)、[Token counting](https://platform.claude.com/docs/en/build-with-claude/token-counting)、[Explore the context window](https://code.claude.com/docs/en/context-window)
@@ -141,6 +141,7 @@ G6のtokenizer調査（`scripts/tokenizer_compat.py`、`docs/o200k-lookup/`）�
 - labの推論キャッシュ（完全一致・近似応答・再計算・エンジン固有KV）の区別と、TTL・失効・上限の横断検証。今回は照合していない。扱う時期は上と同じ。
 - mcp-toolcall-labのstub-front構想（Wikipedia MCP接続、ブラウザOpenAI往復など）を作業項目化すること。リンク管理のみ。[stub-front-roadmap](https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/main/docs/stub-front-roadmap.md)
 - LittleBitの未閲覧データでの独立確認。探索と年別バックテストは済み。未閲覧データを取る計画はない。
+- R001のF4（段階別遷移の実装・26テスト・集約証跡の取り込み）。引き継ぎパッケージが残っていない。計画は Aoi の `STAGE_TRANSITIONS_PLAN.md` に残るので、実装し直すと決めたときはそこから始める。
 - LibreChat / Open WebUIへのopt-in接続をラボ中核の完了条件にすること。メモは残すが必須にしない。
 
 <a id="remaining"></a>
@@ -156,6 +157,7 @@ G6のtokenizer調査（`scripts/tokenizer_compat.py`、`docs/o200k-lookup/`）�
 Pagesが無効の10件: `BlueProbe`、`BrowserTestKit`、`Err-o-RoadRunner`、`PythDRagoras`、`QueRyu`、`SakAnalytics`、`search_seq_including_spaces`、`TalkCompress`、`TaxOntOy`、`TopOntoLogy`。
 
 - [ ] 無効10件へPagesを展開する。各サイトの入力・結果・実行場所を記録し、スマートフォンだけで代表操作を完了できることを確認する。既存19件も、紹介だけのページを除き、同じ確認を続ける。
+  - 11月22日: 10件すべてに利用ガイド（`docs/guide.page.json`）と、cli_args などと同じ `pages.yml` を入れるPRを作った（[BlueProbe #62](https://github.com/myon-bioinformatics/BlueProbe/pull/62)、[BrowserTestKit #187](https://github.com/myon-bioinformatics/BrowserTestKit/pull/187)、[Err-o-RoadRunner #76](https://github.com/myon-bioinformatics/Err-o-RoadRunner/pull/76)、[PythDRagoras #56](https://github.com/myon-bioinformatics/PythDRagoras/pull/56)、[QueRyu #51](https://github.com/myon-bioinformatics/QueRyu/pull/51)、[SakAnalytics #54](https://github.com/myon-bioinformatics/SakAnalytics/pull/54)、[search_seq_including_spaces #87](https://github.com/myon-bioinformatics/search_seq_including_spaces/pull/87)、[TalkCompress #196](https://github.com/myon-bioinformatics/TalkCompress/pull/196)、[TaxOntOy #15](https://github.com/myon-bioinformatics/TaxOntOy/pull/15)、[TopOntoLogy #18](https://github.com/myon-bioinformatics/TopOntoLogy/pull/18)）。PRではページのビルドまで確認済み。配備には各リポジトリの Settings → Pages で Source を「GitHub Actions」にする必要があり、有効にしてからマージする。10件とも紹介のページで入力を持たないため、スマートフォンでの代表操作の確認は対象外。
 - [ ] 移管先の公開後に旧リンク・query・hashを検証する。入力の保存は利用者の選択とし、公開用の合成fixtureと分ける。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/issues/32)
@@ -165,6 +167,7 @@ Pagesが無効の10件: `BlueProbe`、`BrowserTestKit`、`Err-o-RoadRunner`、`P
 ### Aoiの研究記録
 
 - [ ] 研究登録の機械値を英語（`posthoc` / `preregistered` / `unknown`）にし、日本語表示は別ラベルにする。現行の `registration_status()` は「事後構成／事前登録／不明」を返す表示用ヘルパー。Aoiで小さなPRを予定する（この文書PRの範囲外）。
+  - 11月22日: 子の QueRyu に `registration_code`（`posthoc` / `preregistered` / `unknown`）を足した（[QueRyu #52](https://github.com/myon-bioinformatics/QueRyu/pull/52)）。表示ラベルを返す `registration_status` と、結果行の `registration` の日本語の値は変えていない。残りは Aoi の `queryu/` へのsubtree同期。
   - 着手時の注意（11月22日に確認）: 実装は子リポジトリ QueRyu の `ask/ask.py` にあり、Aoi 側はそのsubtree。結果行の `registration` は NagoyAction の受付テストが日本語の値で検査し、DRAgoWing は表示ラベルとして使う。子で先に変えてから Aoi へ同期する順になる。既存の値は残し、英語の機械値を別フィールドで足す形なら、利用側を壊さずに分離できる。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/Aoi/issues/30)
