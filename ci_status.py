@@ -8,10 +8,11 @@ organization (via the vendored gh_identity) and writes ``data.json`` plus a read
 Exit codes: 0 = observation succeeded (with --ci-check, all states are COMPLETE or
 NO CHECKS); 1 = --ci-check observed a non-passing state; 2 = observation or usage error.
 Observation errors take precedence over --ci-check failures. --json uses the same codes.
+Use --verify-workflow as the first argument for exact Actions workflow evidence.
 Both output formats include the UTC observation timestamp. Exception text is omitted
 unless ``--explain`` is set; that flag adds detail (token values removed) and hint.
 """
-import argparse, base64, datetime, graphlib, importlib.util, json, os, re, urllib.error, urllib.request
+import argparse, base64, datetime, graphlib, importlib.util, json, os, re, sys, urllib.error, urllib.request
 from html import escape
 from pathlib import Path; from urllib.parse import quote
 
@@ -852,7 +853,101 @@ def render(rows):
         for check in item["checks"]:
             print(f'  {check["status"]:10} {str(check["conclusion"] or "-"):12} {check["name"]}')
             
+def verify_workflow(name, workflow, head_sha, event, run_id, attempt, required_jobs=()):
+    """Read-only proof for one expected workflow and one explicitly chosen attempt."""
+    name = repository(name)
+    if not re.fullmatch(r"[0-9a-fA-F]{40}", head_sha):
+        raise ValueError("expected a full head SHA")
+    if not re.fullmatch(r"(?:[1-9][0-9]*|[A-Za-z0-9_.-]+\.ya?ml)", workflow):
+        raise ValueError("expected a workflow ID or YAML filename")
+    if not re.fullmatch(r"[a-z_]+", event) or run_id < 1 or attempt < 1:
+        raise ValueError("invalid event, run ID or attempt")
+    if len(set(required_jobs)) != len(required_jobs) or any(not job.strip() for job in required_jobs):
+        raise ValueError("required job names must be nonempty and unique")
+    sha = head_sha.lower()
+    report = dict(repository=name, workflow=workflow, head_sha=sha, event=event,
+                  run_id=run_id, attempt=attempt, required_jobs=list(required_jobs),
+                  observed_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
+    def finish(state, reason):
+        return dict(report, state=state, reason=reason)
+    try:
+        if ghi is None:
+            return finish("unknown", "observer_unavailable")
+        w = ghi.workflow(name, workflow)
+        wid = w.get("id")
+        path = w.get("path")
+        if (type(wid) is not int or wid < 1 or not isinstance(path, str)
+                or (str(wid) != workflow if workflow.isdigit() else Path(path).name != workflow)):
+            return finish("unknown", "workflow_identity_mismatch")
+        report.update(workflow_id=wid, workflow_path=path)
+        observed = ghi.run(name, run_id, attempt=attempt)
+        if (observed.get("workflow_id"), observed.get("run_id"), observed.get("attempt"),
+                observed.get("head_sha"), observed.get("event")) != (wid, run_id, attempt, sha, event):
+            return finish("unknown", "run_identity_mismatch")
+        report.update(run_status=observed.get("status"), run_conclusion=observed.get("conclusion"))
+        jobs = ghi.jobs(name, run_id, attempt=attempt)
+        rows = jobs.get("jobs")
+        if (jobs.get("complete") is not True or not isinstance(rows, list) or not rows
+                or jobs.get("count") != len(rows)
+                or (jobs.get("run_id"), jobs.get("attempt")) != (run_id, attempt)):
+            return finish("unknown", "incomplete_jobs")
+        if any((job.get("run_id"), job.get("attempt"), job.get("head_sha")) !=
+               (run_id, attempt, sha) for job in rows):
+            return finish("unknown", "job_identity_mismatch")
+        selected = []
+        for name in required_jobs:
+            matches = [job for job in rows if job.get("name") == name]
+            if len(matches) != 1:
+                return finish("unknown", "required_job_missing_or_ambiguous")
+            selected.extend(matches)
+        report["jobs"] = [{key: job.get(key) for key in ("job_id", "name", "status", "conclusion", "url")}
+                          for job in rows]
+        if observed.get("status") != "completed":
+            return finish("unknown", "run_not_completed")
+        conclusion = observed.get("conclusion")
+        failed = {"failure", "timed_out", "cancelled", "action_required", "startup_failure", "stale"}
+        if conclusion in failed:
+            return finish("failed", "run_did_not_pass")
+        if conclusion != "success":
+            return finish("unknown", "run_success_unverified")
+        if any(job.get("status") != "completed" or not job.get("conclusion") for job in rows):
+            return finish("unknown", "job_completion_unverified")
+        if any(job.get("status") == "completed" and job.get("conclusion") in failed for job in selected):
+            return finish("failed", "required_job_did_not_pass")
+        if any((job.get("status"), job.get("conclusion")) != ("completed", "success") for job in selected):
+            return finish("unknown", "required_job_success_unverified")
+        if any(job.get("conclusion") not in ("success", "skipped") for job in rows):
+            return finish("unknown", "unexpected_job_conclusion")
+        if not any(job.get("conclusion") == "success" for job in rows):
+            return finish("unknown", "no_successful_job_observed")
+        return finish("success", None)
+    except (RuntimeError, ValueError, OSError, AttributeError, TypeError):
+        return finish("unknown", "observation_error")
+
+
+def _verify_workflow_cli(argv):
+    p = argparse.ArgumentParser(prog="ci_status.py --verify-workflow",
+                                description="Verify one exact Actions attempt. Exit 0 success, 1 failed, 2 unknown or invalid.")
+    p.add_argument("repository", help="owner/repository")
+    p.add_argument("workflow", help="workflow numeric ID or YAML filename")
+    p.add_argument("--head-sha", required=True, help="expected Actions head SHA (40 hex characters)")
+    p.add_argument("--event", required=True, help="expected Actions event, e.g. pull_request or push")
+    p.add_argument("--run-id", required=True, type=int, help="exact Actions run ID")
+    p.add_argument("--attempt", required=True, type=int, help="exact attempt, not the latest attempt")
+    p.add_argument("--require-job", action="append", default=[], help="exact required job name (repeatable)")
+    a = p.parse_args(argv)
+    try:
+        report = verify_workflow(a.repository, a.workflow, a.head_sha, a.event, a.run_id, a.attempt, a.require_job)
+    except ValueError as exc:
+        p.error(str(exc))
+    print(json.dumps(report, ensure_ascii=False))
+    return {"success": 0, "failed": 1, "unknown": 2}[report["state"]]
+
+
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv and argv[0] == "--verify-workflow":
+        return _verify_workflow_cli(argv[1:])
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("repository", nargs="?")
     p.add_argument("--pr", type=int)

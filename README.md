@@ -464,6 +464,25 @@ PR's head), and the page is rendered from that `data.json` with the vendored `py
 
   An empty draft value removes that field; unrelated fields and the line order are kept.
 - `copilot-pull-request-reviewer` check runs are not counted as CI (`--ignore-checks` to change).
+To verify a specific Actions workflow rather than just observe commit checks, use
+`--verify-workflow` as the first argument. Specify the expected workflow (its
+numeric ID or YAML filename), Actions event and full head SHA, plus the exact
+run ID and attempt. Repeat `--require-job` for exact job names that must pass.
+
+```sh
+python -S ci_status.py --verify-workflow myon-bioinformatics/gh_identity 377074728 \
+  --head-sha 4ca9ee8f76b091c10abf7e32b52a4b12d00e1004 --event pull_request \
+  --run-id 44906180384 --attempt 2 --require-job 'Vendor locked baseline'
+```
+
+This mode prints JSON: exit 0 confirms the matched attempt and required jobs
+passed; exit 1 means verified non-passing evidence; exit 2 means unknown or
+invalid usage. A skipped required job is not a pass; unrequired skips are
+allowed, but contradictory job conclusions are unknown. Missing, mismatched or
+incomplete evidence is not substituted with another attempt or event. Actions
+head SHA describes the run/job metadata, not necessarily the commit checked
+out by every job. The existing `--ci-check` behavior is unchanged.
+
 - ⚖ 規約ずれ lists naming drift against the fleet conventions (`CONVENTIONS` in `ci_status.py`, the table
   recorded in `templates/README.md`: `ci.yml` = `CI`, `pages.yml` = `Pages`, job ids `resolve-vendor` /
   `vendor-locked` / `failure-identity`, kebab-case `docs/*.md`). The terminal form, exit 1 while anything drifts:
