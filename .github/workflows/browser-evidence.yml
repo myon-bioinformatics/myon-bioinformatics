@@ -22,11 +22,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26'
       - name: Install capture SDK and Chrome for Testing
@@ -34,10 +34,15 @@ jobs:
           SDK: ${{ matrix.package }}
         run: |
           npm install --prefix tools/browser --ignore-scripts --no-save --no-package-lock "$SDK"
-          npx --yes @puppeteer/browsers@2.10.4 install chrome@stable --path "$RUNNER_TEMP/browser"
-          chrome=$(find "$RUNNER_TEMP/browser" -type f -name chrome -print -quit)
-          test -x "$chrome"
-          echo "CHROME_BIN=$chrome" >> "$GITHUB_ENV"
+          if [[ "$SDK" == playwright@* ]]; then
+            tools/browser/node_modules/.bin/playwright install --with-deps --only-shell chromium
+          else
+            npx --yes @puppeteer/browsers@2.10.4 install chrome@156.0.8078.4 --path "$RUNNER_TEMP/browser"
+            chrome=$(find "$RUNNER_TEMP/browser" -type f -name chrome -print -quit)
+            test -x "$chrome"
+            "$chrome" --version
+            echo "CHROME_BIN=$chrome" >> "$GITHUB_ENV"
+          fi
       - name: Capture and verify screenshot from this checkout
         env:
           ENGINE: ${{ matrix.engine }}
@@ -61,7 +66,7 @@ jobs:
           assert manifest == expected
           print(json.dumps(expected))
           PY
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: browser-evidence-${{ matrix.engine }}-${{ github.run_attempt }}
           path: evidence/${{ matrix.engine }}/
