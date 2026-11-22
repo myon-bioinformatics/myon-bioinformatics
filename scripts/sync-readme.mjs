@@ -1,3 +1,4 @@
+// Rewrite README.md's synced blocks (header, profile, projects, footer) from myon-bioinformatics.github.io main.
 import { readFile, writeFile } from 'node:fs/promises';
 
 const CANONICAL_OWNER = 'myon-bioinformatics';

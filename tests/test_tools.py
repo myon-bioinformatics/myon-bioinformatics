@@ -576,6 +576,35 @@ def _lock_row(root: Path, where: str, data: bytes, commit: str = "a" * 40) -> di
             "sha256": __import__("hashlib").sha256(data).hexdigest()}
 
 
+def test_fleet_check_scripts_reads_descriptions_and_declared_arguments_without_running_them(tmp_path):
+    (tmp_path / "tools").mkdir()
+    files = {"tool.py": '"""Do one thing.\n\nMore."""\nimport argparse, sys\nargparse.ArgumentParser().parse_args(sys.argv[1:])\n',
+             "tools/hand.py": '"""Parse by hand."""\nimport sys\nopen("ran", "w")\nname = sys.argv[1]\n',
+             "tools/wrap.py": '"""Through cli_args."""\nfrom vendor.cli_args import parser\nfrom sys import argv\n',
+             "tools/launch.py": '"""Hand argv on."""\nimport os, sys\nos.execvp("x", sys.argv)\n',
+             "tools/plain.py": '"""No arguments at all."""\nprint(1)\n',
+             "tools/block.cjs": '"use strict";\n/**\n * Shared thing.\n */\n',
+             "tools/line.mjs": '#!/usr/bin/env node\nimport fs from "node:fs";\n\n// Facts.\n',
+             "conftest.py": "", "tools/notes.txt": "not a script"}
+    for path, text in files.items():
+        (tmp_path / path).write_text(text)
+    with pytest.raises(AssertionError, match=r"⌨️.*tools/hand\.py.*tools/launch\.py"):
+        fleet_check.check_scripts(tmp_path)
+    found = fleet_check.check_scripts(tmp_path, passthrough=("tools/launch.py", "tools/hand.py"))
+    assert sorted(found) == ["tool.py", "tools/block.cjs", "tools/hand.py", "tools/launch.py", "tools/line.mjs", "tools/plain.py", "tools/wrap.py"]
+    assert (found["tools/block.cjs"]["summary"], found["tools/line.mjs"]["summary"]) == ("Shared thing.", "Facts.")
+    assert found["tool.py"] == {"summary": "Do one thing.", "argv": True, "argparse": True}
+    assert found["tools/wrap.py"]["argparse"] and not found["tools/plain.py"]["argv"]
+    assert not (tmp_path / "ran").exists()                                   # 🔍 read, never run
+    (tmp_path / "tools/plain.py").write_text("print(1)\n")
+    with pytest.raises(AssertionError, match=r"📝.*tools/plain\.py"):
+        fleet_check.check_scripts(tmp_path, passthrough=("tools/launch.py", "tools/hand.py"))
+
+
+def test_fleet_check_scripts_holds_for_the_parent_itself():
+    fleet_check.check_scripts(ROOT, passthrough=("njs_launch.py",))      # forwards argv to node untouched
+
+
 def test_fleet_check_lock_verifies_bytes_and_accepted_commits(tmp_path):
     rows = [_lock_row(tmp_path, "python/vendor/a.py", b"print(1)\n"), _lock_row(tmp_path, "vendor/b.cjs", b"//\n", "b" * 40)]
     (tmp_path / "python").mkdir(exist_ok=True)
