@@ -23,7 +23,8 @@ def fake_gh(monkeypatch):
         elif method == "POST":
             data = {"workflow_run_id": 99}
         elif endpoint.endswith("/actions/runs/99"):
-            data = {"head_sha": TARGET, "status": "queued", "conclusion": None}
+            data = {"id": 99, "workflow_id": 7, "event": "workflow_dispatch",
+                    "head_sha": TARGET, "status": "queued", "conclusion": None}
         elif "/contents/" in endpoint:
             data = {"encoding": "base64", "content": base64.b64encode(YAML.encode()).decode()}
         elif "/commits/" in endpoint:
@@ -175,6 +176,29 @@ def test_run_observation_failure_preserves_dispatch(fake_gh, monkeypatch):
     result = gw.execute_workflow("o/r", "codeql.yml", apply=True)
     assert result["status"] == "observation_failed"
     assert result["run_id"] == 99 and result["failed_stage"] == "observe_run"
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("id", 100), ("id", None), ("workflow_id", 8), ("workflow_id", None),
+    ("event", "push"), ("event", None), ("head_sha", TARGET[:7]), ("head_sha", None),
+])
+def test_wrong_run_never_certifies_or_resends_dispatch(fake_gh, monkeypatch, field, value):
+    original = gw.subprocess.run
+
+    def run(argv, **kwargs):
+        obj = original(argv, **kwargs)
+        if argv[-1].endswith("/actions/runs/99"):
+            data = json.loads(obj.stdout)
+            data[field] = value
+            obj.stdout = json.dumps(data)
+        return obj
+
+    monkeypatch.setattr(gw.subprocess, "run", run)
+    result = gw.execute_workflow("o/r", "codeql.yml", "feature", apply=True)
+    assert result["status"] == "observation_failed"
+    assert result["run_id"] == 99 and result["error"] == "invalid_run_response"
+    assert "executed_sha" not in result and "sha_matches" not in result
+    assert sum("POST" in argv for argv, _ in fake_gh) == 1
 
 
 @pytest.mark.parametrize("repo,workflow,ref", [
