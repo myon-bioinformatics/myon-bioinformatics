@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const [engine, url, root, runId] = process.argv.slice(2);
+const [engine, url, root, runId, readySelector] = process.argv.slice(2);
 if (!['stagehand', 'playwright'].includes(engine) || !url || !root || !runId) {
-  throw new Error('Usage: node capture.mjs <stagehand|playwright> <url> <output-directory> <run-id>');
+  throw new Error('Usage: node capture.mjs <stagehand|playwright> <url> <output-directory> <run-id> [ready-selector]');
 }
 
 const project = fileURLToPath(new URL('../../', import.meta.url));
@@ -23,6 +23,9 @@ try {
       try {
         const page = await browser.context.newPage();
         await page.goto(url);
+        if (readySelector && !await page.waitForSelector(readySelector)) {
+          throw new Error('Capture page did not become ready');
+        }
         await page.screenshot({ path: screenshot });
       } finally {
         await sdk.close();
@@ -36,6 +39,7 @@ try {
     try {
       const page = await browser.newPage();
       await page.goto(url);
+      if (readySelector) await page.waitForSelector(readySelector);
       await page.screenshot({ path: screenshot });
     } finally {
       await browser.close();

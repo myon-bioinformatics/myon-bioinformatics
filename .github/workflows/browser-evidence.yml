@@ -29,7 +29,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26'
-      - name: Install capture SDK and Chrome for Testing
+      - name: Install capture SDK and browser dependencies
         env:
           SDK: ${{ matrix.package }}
         run: |
@@ -38,18 +38,20 @@ jobs:
             tools/browser/node_modules/.bin/playwright install --with-deps --only-shell chromium
           else
             google-chrome --version
+            sudo apt-get install -y fonts-noto-cjk
           fi
       - name: Capture and verify screenshot from this checkout
         env:
           ENGINE: ${{ matrix.engine }}
           EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
+          gzip -dc site/evidence/observations.json.gz > site/ui/evidence-data.json
           python3 -m http.server 8020 --bind 127.0.0.1 --directory site/ui &
           server=$!
           trap 'kill "$server"' EXIT
           url=http://127.0.0.1:8020/evidence.html
           curl -fsS --retry 10 --retry-connrefused "$url" -o /dev/null
-          node tools/browser/capture.mjs "$ENGINE" "$url" evidence "$GITHUB_RUN_ID"
+          node tools/browser/capture.mjs "$ENGINE" "$url" evidence "$GITHUB_RUN_ID" "#content .record"
           python3 - <<'PY'
           import json, os
           from pathlib import Path
