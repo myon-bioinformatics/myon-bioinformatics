@@ -65,7 +65,7 @@
 - モデルを起動しないアダプター試験87件、保守的な履歴圧縮core（#116）、履歴計測（#118）、固定GGUFでの圧縮前後比較基盤（#119）は実装済み。
 - CPUでの実GGUF測定は [compaction-gguf-benchmark.md](https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/main/docs/compaction-gguf-benchmark.md) に記録した（SmolLM2-135M、llama.cpp imageをSHA固定）。
 - ローカル確認: lab main `dafcfac` で `pytest tests/test_compaction.py` 93件成功。削除範囲に過去のユーザー指示があると圧縮を辞退すること、圧縮前後でツール名と引数が一致すること（決定的なCPU代替モデル）を含む。
-- lab mainにGGUFベンチを実行するワークフローはなく、上の文書の「Actions workflow」の記述は現状と合っていない。再測定するときに直す。
+- GGUFベンチを実行するワークフローは2026-11-06に削除済み（`4088c0d`）で、文書だけが「Actions workflow」を案内していた。文書をローカルのDocker実行に合わせた（[mcp-toolcall-lab #223](https://github.com/myon-bioinformatics/mcp-toolcall-lab/pull/223)）。
 - vendor追従: [PR #120](https://github.com/myon-bioinformatics/mcp-toolcall-lab/pull/120)（2026-10-14マージ。親由来のgh_opsへ再同期しgit_inspectorを削除）と [PR #121](https://github.com/myon-bioinformatics/mcp-toolcall-lab/pull/121)（共有JUnit collector pin）は統合済み。現行 `vendor.lock.json` に親の `gh_ops.py` と `gh_identity.py`、PySaiyanWeBooが入る。[PR #221](https://github.com/myon-bioinformatics/mcp-toolcall-lab/pull/221) で文書の固定先記載を現状に合わせた。
 - xprobeへのLittleBit入力生成の採用判断は完了。
 
@@ -84,6 +84,8 @@ BlueProbe同期とJUnit固定先更新はmainに統合済み。[BlueProbe同期]
 LittleBitのc001候補生成・比較と年別バックテストはmain導入済み。追加識別力は当該設定では未観測。未閲覧データでの独立確認はデータ計画がないため[見送った項目](#見送った項目)へ移した。
 
 子のshrink/py_launchはNagoyAction・QueRyu・DRAgoWing等に採用済み。[shared-tools.lock.json](https://github.com/myon-bioinformatics/Aoi/blob/main/shared-tools.lock.json)
+
+R001のF1〜F7は、11月22日に main `5f56353` の受付・PLAN/RESULTS・コードと照合して項目ごとに判定した（[Aoi #235](https://github.com/myon-bioinformatics/Aoi/pull/235)）。完了にできる項目は0件。F1・F2は提供元の訂正版待ち、F3は原資料の取得が前提、F5は計画が未固定、F6は条件を維持中、F7はDRAgoWingの機能追加待ち。次に動かせるのはF4で、引き継ぎパッケージ `aoi_pr3_stage_transitions.zip` の提供が要る。F1〜F7そのものは Aoi の `research/gpt-r001-score-allocation/PR3_FOLLOWUP.md` で追跡を続ける。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/Aoi/issues/30)
 
@@ -105,6 +107,8 @@ LittleBitのc001候補生成・比較と年別バックテストはmain導入済
 P0（共有Node launcherのNode 24更新）、P1.1 NVD、P1.2 yourself、P1.3 xprobe、P1.5 NagoyAction linkcheck、P1.6 markdownスクリプトは統合済み。ascii_artistの製品CLI（`python ascii_artist.py COMMAND ...`）もある。
 
 共有契約はcli_argsに置く。`--format` を正とし、`--json` は `--format json` の糖衣。[cli_args #59](https://github.com/myon-bioinformatics/cli_args/pull/59)・[markdown #158](https://github.com/myon-bioinformatics/markdown/pull/158)・[調査記録（2026-11-07）](https://github.com/myon-bioinformatics/cli_args/blob/main/docs/cli-argument-patterns.md)
+
+調査の再実行（11月22日、[cli_args #61](https://github.com/myon-bioinformatics/cli_args/pull/61)）: 公開・非アーカイブ29件のクローンに `scripts/survey_cli_surfaces.py` を実行し、調査表を更新した。パーサーを作る `.py` は376件で、29件すべてに1つ以上ある。`--format` を持つファイルは27、choicesがちょうど `text|json` のものは3。調査が `ArgumentParser` のサブクラスと `cli_args.make_parser` を数えておらず、共有契約を採用したCLIなど7件を見落としていたので、同じPRで直した。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/cli_args/issues/29)
 
@@ -161,7 +165,7 @@ Pagesが無効の10件: `BlueProbe`、`BrowserTestKit`、`Err-o-RoadRunner`、`P
 ### Aoiの研究記録
 
 - [ ] 研究登録の機械値を英語（`posthoc` / `preregistered` / `unknown`）にし、日本語表示は別ラベルにする。現行の `registration_status()` は「事後構成／事前登録／不明」を返す表示用ヘルパー。Aoiで小さなPRを予定する（この文書PRの範囲外）。
-- [ ] R001のF1〜F7は、既存の受付・PLAN/RESULTSドキュメントで項目ごとに判定する。実装を広げず、欠けているFだけを指名する。 F1〜F7のチェックリストは Aoi の `research/gpt-r001-score-allocation/PR3_FOLLOWUP.md` にある。
+  - 着手時の注意（11月22日に確認）: 実装は子リポジトリ QueRyu の `ask/ask.py` にあり、Aoi 側はそのsubtree。結果行の `registration` は NagoyAction の受付テストが日本語の値で検査し、DRAgoWing は表示ラベルとして使う。子で先に変えてから Aoi へ同期する順になる。既存の値は残し、英語の機械値を別フィールドで足す形なら、利用側を壊さずに分離できる。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/Aoi/issues/30)
 
@@ -181,9 +185,8 @@ Pagesが無効の10件: `BlueProbe`、`BrowserTestKit`、`Err-o-RoadRunner`、`P
 
 P1.4〜P1.10の残りとP2〜P4は、2026-10-23の調査をそのまま実装せず、現行ソースで再確認してから進める。
 
-- [ ] `cli_args` の `scripts/survey_cli_surfaces.py` を、公開29件の現状で再実行し、調査表を更新する。
-  - 部分結果（ローカル確認。静的調査ではなく実行による）: NagoyAction `fff1cde`、BrowserTestKit `f974ca0`、PySaiyanWeBoo `9f5a730`、gh_identity `3111c17` の入口とサブコマンド計127件のうち126件で、`--help` は終了0・標準出力、不明な引数は終了2・標準エラー。例外の `btk.py check-png` は存在しないファイルにtracebackを出していた（[BrowserTestKit #185](https://github.com/myon-bioinformatics/BrowserTestKit/pull/185) で修正）。ヘルプ文のない引数は概算でgh_identity 260（88サブコマンド中74）、btk.py 53（18中11）、nagoyaction.py 8（9中2）。旧Issueが名指しした `twin_parity.py`、`collection-cli.cjs`、`tool/flow_diagram.py`、`web_ui.py` は現行mainにない。
 - [ ] エージェントが実際に呼ぶ面だけ、`--format json` を正、`--json` を糖衣として足す。対象の候補はNagoyActionの残りサブコマンド、PySaiyanWeBooのhelp整備、gh_identityのhelp穴埋め（`--format` の既存意味と衝突させない）。`uv run pytest` を `python -m pytest` に強制しない。
+  - 実行による確認（11月22日、ローカル確認）: NagoyAction `fff1cde`、BrowserTestKit `f974ca0`、PySaiyanWeBoo `9f5a730`、gh_identity `3111c17` の入口とサブコマンド計127件のうち126件で、`--help` は終了0・標準出力、不明な引数は終了2・標準エラー。例外の `btk.py check-png` は存在しないファイルにtracebackを出していた（[BrowserTestKit #185](https://github.com/myon-bioinformatics/BrowserTestKit/pull/185) で修正）。ヘルプ文のない引数は概算でgh_identity 260（88サブコマンド中74）、btk.py 53（18中11）、nagoyaction.py 8（9中2）。旧Issueが名指しした `twin_parity.py`、`collection-cli.cjs`、`tool/flow_diagram.py`、`web_ui.py` は現行mainにない。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/cli_args/issues/29)
 
