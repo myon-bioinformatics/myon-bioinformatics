@@ -213,8 +213,11 @@ def execute_workflow(repo, workflow, ref=None, *, apply=False, inputs=None, time
         receipt["run_url"] = "https://github.com/" + repo + "/actions/runs/" + str(run_id)
         stage = "observe_run"
         run = _api(repo, "actions/runs/" + str(run_id), timeout=timeout)
-        if (not isinstance(run, dict) or not isinstance(run.get("head_sha"), str)
-                or not isinstance(run.get("status"), str) or "conclusion" not in run):
+        if (not isinstance(run, dict) or type(run.get("id")) is not int or run["id"] != run_id
+                or type(run.get("workflow_id")) is not int or run["workflow_id"] != receipt["workflow_id"]
+                or run.get("event") != "workflow_dispatch"
+                or not isinstance(run.get("head_sha"), str) or not re.fullmatch(r"[0-9a-f]{40}", run["head_sha"])
+                or not isinstance(run.get("status"), str) or not run["status"] or "conclusion" not in run):
             raise WorkflowError("invalid_run_response")
         receipt.update(executed_sha=run["head_sha"], run_status=run["status"], conclusion=run["conclusion"])
         receipt["sha_matches"] = run["head_sha"] == receipt["target_sha"]

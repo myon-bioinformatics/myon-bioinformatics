@@ -9,8 +9,11 @@
 11月22日に親main `d2b0d62` で `python -m pytest -q tests/test_ci_status.py tests/test_vendor_stage.py` を実行。67件成功（サブテスト43件）。[対象コミット](https://github.com/myon-bioinformatics/myon-bioinformatics/commit/d2b0d627d61ff339337a6974d846b683c170ff6a)
 
 - [x] オンデマンドCI表示でrefをSHAに解決し、workflow・event・run・attempt・必須job・必須stepを照合する。実測と再現条件は下表を参照。対象コードは `ci_status.py` の `--verify-workflow`、回帰テストは `tests/test_expected_workflow.py`。
-- [ ] consumerごとにGit観測の所有先、gh_identityの読み取り・書き込み経路、移行段階を確認する。取得失敗をclean扱いしない。書き込みの再試行では重複と応答不明時の状態を検証する。
-- [ ] vendor登録・推奨・実採用を照合する。必須ファイル、出典、SHA、実バイト、LICENSEを検査し、正当な追加ファイルも試す。共通Actions更新では対象headのrun・artifactを確認する。
+- [x] 旧Issueの優先4経路を下表で照合した。親のGit観測は一時ディレクトリで未初期化・空の作業ツリー・未追跡ファイル・出力打ち切りを実測した。cleanは空の作業ツリーだけでtrue。未初期化は例外、打ち切りは `truncated=true, clean=false`。
+- [x] 親の既存テストで書き込みの応答喪失・再試行・重複検知を検証した。`tests/test_gh_ops_api.py -k 'retry or lost_response or uncertain'` は24件成功。dispatch後のGETを検証する `tests/test_gh_workflow.py` は80件成功。
+- [ ] gh_identityの追加採用や旧書き込み経路の削除は、利用元ごとに既存の契約、同等性テスト、実際の利用先を確認して判断する。
+- [x] 元Issueで指定されたmarkdown・ascii_artistについて、親の登録・推奨と実採用を照合し、固定ソース、Git blob、SHA-256、配置バイト、LICENSEを確認した。各リポジトリで正当な追加、欠落、誤出典、重複、改変を含む回帰7件が成功。
+- [ ] 他consumerの採用・共通Actionsの固定先を更新する際は、対象headのrun・artifactと互換性を個別に確認する。
 - [ ] Portfolioのメタデータ生成とLICENSEの移行、独立したブラウザ証跡、コメント要約の最初の利用先を確認する。要約に元コメントID、対象head、指摘と解消根拠を残す。
 
 11月22日に `python -S ci_status.py --verify-workflow` を実行し、GitHubの公開APIを読み取った。gh_identityはworkflow `377074728`、event `pull_request`、ref `feat/artifact-file-commit-rows`、SHA `4ca9ee8f76b091c10abf7e32b52a4b12d00e1004`。必須jobは `Vendor locked baseline`、stepは `Verify and recreate locked vendor snapshot`。
@@ -22,6 +25,22 @@
 | 同じ再実行に存在しないstepを指定 | 必須step欠落 | 2 |
 | 同じ再実行にevent `push` を指定 | 実際のeventと不一致 | 2 |
 | [親のキャンセル済みrun](https://github.com/myon-bioinformatics/myon-bioinformatics/actions/runs/43540609240)、push、attempt 1 | 元のSHA `9144124` でcancelled。観測時のmain `38ff0af` を指定するとSHA不一致 | 1 / 2 |
+
+CI表示の実装は[親 #324](https://github.com/myon-bioinformatics/myon-bioinformatics/pull/324)で統合した。以下は11月22日に確認したGit/GitHub操作の利用先。
+
+| 利用元 | 確認できた経路・測定条件 |
+|---|---|
+| 親 | `git_inspector.status` は固定したgh_identityの `git_status` を呼ぶ。明示的な書き込みはgh_ops、Actionsの起動はgh_workflowが担当。[既存dispatch](https://github.com/myon-bioinformatics/myon-bioinformatics/actions/runs/44840371647)のGET応答を保存し、送信を模擬して再生した。元データは成功。run ID・workflow ID・event・SHA長を個別に変えた4件はすべて観測失敗で、模擬POSTは各1回。 |
+| Ironmate | gh_ops・gh_identity・gh_workflowがlockにある。旧PR・コメントのラッパーは退役済み。固定したgh_opsのhelpと、隣接するgh_identityを使うgit pushのdry-runを実行し2件成功。[テスト](https://github.com/myon-bioinformatics/Ironmate/blob/9e6b5ed67c807213ee8847ba3294af2fc82929f6/tests/test_tooling.py#L578) |
+| BrowserTestKit | 現行lockにgh_ops・gh_identity・git_inspectorの配布行は0件。旧ブラウザ用コピーの移行は過去の記録として扱う。[対象lock](https://github.com/myon-bioinformatics/BrowserTestKit/blob/34f8f7ad2f1b43251688ec983b8e64abad634843/vendor.lock.json) |
+| mcp-toolcall-lab | 固定したgh_opsを使うMCPサーバーを起動し、FastMCPクライアントの `tools/list` で15件を取得。PR状態、コメント要約、CI、URL等の読み取りを公開し、書き込みツールの登録は0件。[アダプター](https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/dafcfac247b1b2f69e5f3f8ed49da61c7d3b5e97/src/mcp_toolcall_lab/github_ops_server.py#L141) |
+
+親の `vendor_lock_reconcile.py --consumer ... --lock ...` に各mainのlockを渡して再集計した。2件とも登録の欠落・余分な登録は0件、同一ソースで推奨と採用の固定先が異なるものは各1件。固定先のソースと配置ファイルのバイト照合は別途実行した。
+
+| 検証したmain | 固定ソースと配置の一致 | 実装PRのCIに帰属したArtifact |
+|---|---:|---|
+| [markdown `2ce6832`](https://github.com/myon-bioinformatics/markdown/commit/2ce6832dbe49895c8f06b6fc725579ca16ff8f53) | 8/8 | [run 44962733429](https://github.com/myon-bioinformatics/markdown/actions/runs/44962733429) の18件。全件でrun IDとPR head `a2f0c5a` が一致 |
+| [ascii_artist `4234488`](https://github.com/myon-bioinformatics/ascii_artist/commit/4234488306901d8ead9fc9a098f610e049374800) | 7/7 | [run 44997723139](https://github.com/myon-bioinformatics/ascii_artist/actions/runs/44997723139) の17件。全件でrun IDとPR head `4f15df3` が一致 |
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/myon-bioinformatics/issues/56)
 

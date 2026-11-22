@@ -53,7 +53,10 @@ yield `dispatched_run_unresolved`; no newest-run heuristic is used. In that
 status, `target_sha` is only the pre-dispatch observation and is not an executed
 SHA. The receipt includes a separate `ref_sha_after` observation where possible;
 that also does not establish which SHA executed. `executed_sha` is recorded only
-from the exact returned run ID. Run observation is a single GET and does not
+after the GET response matches the dispatch run ID, workflow ID and
+`workflow_dispatch` event and supplies a full commit SHA. An identity mismatch
+preserves the dispatch run ID and reports `observation_failed`. The wrapper
+sends a single dispatch request. Run observation is a single GET and does not
 wait for CI to finish. `conclusion: null` means the run has no measured
 conclusion yet; dispatch acceptance is not CI green.
 
