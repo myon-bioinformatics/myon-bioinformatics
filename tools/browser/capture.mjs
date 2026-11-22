@@ -16,12 +16,17 @@ const directory = await mkdtemp(path.join(root, '.' + engine + '-'));
 try {
   const screenshot = path.resolve(directory, 'screenshot.png');
   if (engine === 'stagehand') {
-    const { localBrowser } = await import('@browserbasehq/stagehand');
+    const { localBrowser, Stagehand } = await import('@browserbasehq/stagehand');
     const browser = await localBrowser.launch({ headless: true, executablePath });
     try {
-      const page = await browser.context.newPage();
-      await page.goto(url);
-      await page.screenshot({ path: screenshot });
+      const sdk = await Stagehand.create({ browser });
+      try {
+        const page = await browser.context.newPage();
+        await page.goto(url);
+        await page.screenshot({ path: screenshot });
+      } finally {
+        await sdk.close();
+      }
     } finally {
       await browser.close();
     }
