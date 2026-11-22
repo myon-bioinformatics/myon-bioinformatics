@@ -161,7 +161,7 @@ class StatusTests(unittest.TestCase):
                     (("ERROR", "COMPLETE"), 2),
                 ]:
                     with self.subTest(json=json_mode, check=check_mode, states=states):
-                        def observe(name, pr):
+                        def observe(name, pr, *, ref=None):
                             state = dict(zip(("one", "two"), states))[name]
                             if state == "ERROR":
                                 raise RuntimeError("API unavailable")

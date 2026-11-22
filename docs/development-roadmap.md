@@ -8,10 +8,20 @@
 
 11月22日に親main `d2b0d62` で `python -m pytest -q tests/test_ci_status.py tests/test_vendor_stage.py` を実行。67件成功（サブテスト43件）。[対象コミット](https://github.com/myon-bioinformatics/myon-bioinformatics/commit/d2b0d627d61ff339337a6974d846b683c170ff6a)
 
-- [ ] CI表示で ref、run、attempt、job、step の対応と欠落を検証する。再実行・複数イベント・古いheadでの取消を区別し、期待するjobの欠落を成功扱いしない。
+- [x] オンデマンドCI表示でrefをSHAに解決し、workflow・event・run・attempt・必須job・必須stepを照合する。実測と再現条件は下表を参照。対象コードは `ci_status.py` の `--verify-workflow`、回帰テストは `tests/test_expected_workflow.py`。
 - [ ] consumerごとにGit観測の所有先、gh_identityの読み取り・書き込み経路、移行段階を確認する。取得失敗をclean扱いしない。書き込みの再試行では重複と応答不明時の状態を検証する。
 - [ ] vendor登録・推奨・実採用を照合する。必須ファイル、出典、SHA、実バイト、LICENSEを検査し、正当な追加ファイルも試す。共通Actions更新では対象headのrun・artifactを確認する。
 - [ ] Portfolioのメタデータ生成とLICENSEの移行、独立したブラウザ証跡、コメント要約の最初の利用先を確認する。要約に元コメントID、対象head、指摘と解消根拠を残す。
+
+11月22日に `python -S ci_status.py --verify-workflow` を実行し、GitHubの公開APIを読み取った。gh_identityはworkflow `377074728`、event `pull_request`、ref `feat/artifact-file-commit-rows`、SHA `4ca9ee8f76b091c10abf7e32b52a4b12d00e1004`。必須jobは `Vendor locked baseline`、stepは `Verify and recreate locked vendor snapshot`。
+
+| 実行条件 | 観測 | 終了コード |
+|---|---|---:|
+| [初回・step 6](https://github.com/myon-bioinformatics/gh_identity/actions/runs/44906180384/job/136852159700#step:6) | run失敗。対象stepはスキップ | 1 |
+| [再実行・step 6](https://github.com/myon-bioinformatics/gh_identity/actions/runs/44906180384/job/136865385160#step:6) | run・必須job・stepがすべて成功 | 0 |
+| 同じ再実行に存在しないstepを指定 | 必須step欠落 | 2 |
+| 同じ再実行にevent `push` を指定 | 実際のeventと不一致 | 2 |
+| [親のキャンセル済みrun](https://github.com/myon-bioinformatics/myon-bioinformatics/actions/runs/43540609240)、push、attempt 1 | 元のSHA `9144124` でcancelled。観測時のmain `38ff0af` を指定するとSHA不一致 | 1 / 2 |
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/myon-bioinformatics/issues/56)
 

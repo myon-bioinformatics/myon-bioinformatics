@@ -15,14 +15,18 @@ IDENTITY = dict(run_id=12, attempt=1, head_sha=SHA)
 @pytest.fixture
 def evidence(monkeypatch):
     ghi = Mock()
+    ghi.step_url_from_jobs = ci_status.ghi.step_url_from_jobs
+    ghi.resolve_ref.return_value = {"sha": SHA}
     ghi.workflow.return_value = dict(id=34, path=".github/workflows/ci.yml")
     ghi.run.return_value = dict(**IDENTITY, workflow_id=34, event="pull_request",
                                 status="completed", conclusion="success")
     rows = [
-        dict(**IDENTITY, job_id=56, name="test", status="completed", conclusion="success"),
+        dict(**IDENTITY, job_id=56, name="test", status="completed", conclusion="success",
+             steps=[dict(name="unit", number=4, status="completed", conclusion="success")]),
         dict(**IDENTITY, job_id=57, name="optional", status="completed", conclusion="skipped"),
     ]
-    ghi.jobs.return_value = dict(complete=True, count=len(rows), run_id=12, attempt=1, jobs=rows)
+    ghi.jobs.return_value = dict(schema="gh-identity-jobs/1", repository="myon-bioinformatics/gh_identity",
+                                 complete=True, count=len(rows), run_id=12, attempt=1, jobs=rows)
     monkeypatch.setattr(ci_status, "ghi", ghi)
     return ghi
 
@@ -53,6 +57,68 @@ def test_exact_failed_attempt(evidence, capsys):
     evidence.run.return_value["conclusion"] = "failure"
     assert ci_status.main(ARGS) == 1
     assert json.loads(capsys.readouterr().out)["reason"] == "run_did_not_pass"
+
+
+def test_resolve_ref_and_report_step_permalink(evidence, capsys):
+    args = list(ARGS)
+    args[3:5] = ["--ref", "feature/one"]
+    assert ci_status.main(args + ["--require-step", "test", "unit"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["ref_sha"] == result["head_sha"] == SHA
+    evidence.resolve_ref.assert_called_once_with("myon-bioinformatics/gh_identity", "feature/one")
+    assert result["steps"] == [dict(job="test", job_id=56, name="unit", number=4, status="completed",
+                                    conclusion="success", url="https://github.com/myon-bioinformatics/"
+                                    "gh_identity/actions/runs/12/job/56#step:4")]
+
+
+def test_moved_ref_excludes_old_cancelled_run(evidence, capsys):
+    evidence.resolve_ref.return_value = {"sha": "b" * 40}
+    evidence.run.return_value["conclusion"] = "cancelled"
+    assert ci_status.main(ARGS + ["--ref", "main"]) == 2
+    assert json.loads(capsys.readouterr().out)["reason"] == "ref_sha_mismatch"
+    evidence.run.assert_not_called()
+
+
+def test_check_observation_resolves_explicit_ref_once(evidence, capsys):
+    evidence.checks_for_sha.return_value = {"complete": True, "checks": []}
+    assert ci_status.main(["gh_identity", "--ref", "feature/one", "--json"]) == 0
+    row, = json.loads(capsys.readouterr().out)["repositories"]
+    assert (row["target"], row["head_sha"]) == ("feature/one", SHA)
+    evidence.checks_for_sha.assert_called_once_with("myon-bioinformatics/gh_identity", SHA)
+    evidence.resolve_ref.assert_called_once_with("myon-bioinformatics/gh_identity", "feature/one")
+
+
+def test_pr_and_ref_are_exclusive(evidence):
+    with pytest.raises(SystemExit) as exc:
+        ci_status.main(["gh_identity", "--ref", "main", "--pr", "12"])
+    assert exc.value.code == 2
+    evidence.resolve_ref.assert_not_called()
+
+
+@pytest.mark.parametrize(("case", "exit_code", "reason"), [
+    ("missing", 2, "required_step_missing_or_ambiguous"),
+    ("duplicate_name", 2, "required_step_missing_or_ambiguous"),
+    ("duplicate_number", 2, "observation_error"),
+    ("skipped", 2, "required_step_success_unverified"),
+    ("in_progress", 2, "required_step_success_unverified"),
+    ("failure", 1, "required_step_did_not_pass"),
+])
+def test_required_step_is_scoped_to_job(evidence, capsys, case, exit_code, reason):
+    job, other = evidence.jobs.return_value["jobs"]
+    step = job["steps"][0]
+    other["steps"] = [dict(step)]
+    if case == "missing":
+        job["steps"] = []
+    elif case == "duplicate_name":
+        job["steps"].append(dict(step, number=5))
+    elif case == "duplicate_number":
+        job["steps"].append(dict(step, name="other"))
+    elif case == "in_progress":
+        step.update(status=case, conclusion=None)
+    else:
+        step["conclusion"] = case
+    assert ci_status.main(ARGS + ["--require-step", "test", "unit"]) == exit_code
+    assert json.loads(capsys.readouterr().out)["reason"] == reason
 
 
 @pytest.mark.parametrize(("case", "reason"), [
