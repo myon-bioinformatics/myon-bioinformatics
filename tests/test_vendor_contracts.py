@@ -116,6 +116,9 @@ REFRESHED_FIXTURES.update(LATEST_FIXTURES)
 
 
 REFRESH_20261119 = json.loads((ROOT / "tests/fixtures/parent-child-refresh-20261119.json").read_text())
+# Reviewed observations newer than that refresh (child_reobservations.json "refreshed", same shape as its
+# adopted rows) supersede its snapshot for the same child; the 11/19 snapshots themselves stay unchanged.
+LATEST_REFRESH = {**REFRESH_20261119["adopted"], **REOBSERVED.get("refreshed", {})}
 
 
 def assert_reviewed_or_advanced(heads, name, reviewed_sha):
@@ -1143,11 +1146,11 @@ def test_mcp_prior_pswb_transition_keeps_same_frozen_lock():
 # ═══ · pswb consumer migration ═══════════════════════════════════════════════════════════════════════════
 # Canonical PSWB consumers keep old observations strict and new locks exact.
 
-@pytest.mark.parametrize("name", REFRESH_20261119["adopted"])
+@pytest.mark.parametrize("name", LATEST_REFRESH)
 def test_refreshed_observation_matches_merged_lock(name):
     registry = json.loads((ROOT / "vendor-consumers.json").read_text())
     heads = sync.validate_child_heads(json.loads((ROOT / "child-heads.json").read_text()))
-    snapshot = REFRESH_20261119["adopted"][name]
+    snapshot = LATEST_REFRESH[name]
     observed = heads["heads"][name]
     assert_reviewed_or_advanced(heads, name, snapshot["sha"])
     assert observed["repository_id"] == snapshot["repository_id"]
@@ -1166,7 +1169,7 @@ def test_current_transitions_and_aoi_observation_are_consistent():
         assert sync._transition_digest(consumers.get_consumer(registry, row['consumer'])) == row['target_consumer_sha256']
     name = 'myon-bioinformatics/Aoi'
     assert name not in {row['consumer'] for row in transitions['transitions']}
-    snapshot = REFRESH_20261119["adopted"][name]
+    snapshot = LATEST_REFRESH[name]
     assert_reviewed_or_advanced(heads, name, snapshot['sha'])
     assert heads['heads'][name]['repository_id'] == snapshot['repository_id']
     assert sync._transition_digest(snapshot['lock']) == snapshot['lock_sha256']
