@@ -37,11 +37,7 @@ jobs:
           if [[ "$SDK" == playwright@* ]]; then
             tools/browser/node_modules/.bin/playwright install --with-deps --only-shell chromium
           else
-            npx --yes @puppeteer/browsers@2.10.4 install chrome@156.0.8078.4 --path "$RUNNER_TEMP/browser"
-            chrome=$(find "$RUNNER_TEMP/browser" -type f -name chrome -print -quit)
-            test -x "$chrome"
-            "$chrome" --version
-            echo "CHROME_BIN=$chrome" >> "$GITHUB_ENV"
+            google-chrome --version
           fi
       - name: Capture and verify screenshot from this checkout
         env:
