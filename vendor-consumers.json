@@ -429,6 +429,11 @@
           "source": "scripts/fetch_module.py",
           "destination": "vendor/fetch_module.py",
           "license": "vendor/Aoi-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "fleet_check.py",
+          "destination": "vendor/fleet_check.py"
         }
       ]
     },
@@ -484,6 +489,11 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "py_launch.cjs",
           "destination": "vendor/py_launch.cjs"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "fleet_check.py",
+          "destination": "vendor/fleet_check.py"
         }
       ]
     },
@@ -570,6 +580,11 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "tools/stdlib_min/httpx_min.py",
           "destination": "mindeps/httpx_min.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "fleet_check.py",
+          "destination": "vendor/fleet_check.py"
         }
       ]
     },
