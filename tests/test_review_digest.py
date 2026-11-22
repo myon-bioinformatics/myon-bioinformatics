@@ -18,9 +18,11 @@ def test_attribution_links_exact_finding_and_keeps_recent_source():
     first = comment(10, f"from: gpt / to: maintainers\nhead: {OLD}\n## Blocking\n- fix src/x.py #31\n- fix #32")
     second = comment(20, f"from: dev\nto: reviewers\nhead: {HEAD}\nResolved: issuecomment-10[2] run/987 passed")
     a, b = digest([first, second], HEAD, keep=1)["comments"]
+    assert a["revision_mentions"] == [{"context": f"head: {OLD}", "shas": [OLD]}]
     assert (a["from"], a["to"], a["head"], a["covers"]) == ("gpt", "maintainers", OLD, [10])
     assert "src/x.py" in a["identifiers"] and "#31" in a["identifiers"]
     assert [f["severity"] for f in a["findings"]] == ["Blocking", "Blocking"]
+    assert a["severity_counts"] == {"Blocking": 2}
     assert a["findings"][0]["reported_resolution"] is None
     assert a["findings"][1]["reported_resolution"] == {
         "covers": [20], "url": second["html_url"], "head": HEAD, "evidence": "run/987 passed"}
@@ -32,6 +34,7 @@ def test_old_head_quotes_examples_and_ambiguous_heads_do_not_resolve():
     bodies = [f"head: {OLD}\n{mark}", f"head: {HEAD[:8]}\n{mark}", f"head: {OLD}\nhead: {HEAD}\n{mark}",
               f"head: {HEAD}\n> {mark}", f"head: {HEAD}\n~~~~\n```\n{mark}\n~~~~",
               f"head: {HEAD}\n    {mark}", f"head: {HEAD}\n<!--\n{mark}\n-->",
+              f"head: `{HEAD}`\nexample `multi-line\n{mark}\nend`",
               f"head: {HEAD}\n<blockquote>\n{mark}\n</blockquote>", f"head: {HEAD}\n`{mark}`", f"head: {HEAD}\n解消", f"head: {HEAD}\n{mark.replace('[1]', '[2]')}"]
     rows = [comment(1, "Should: reproduce")] + [comment(i, body) for i, body in enumerate(bodies, 2)]
     result = digest(rows, HEAD, keep=0)["comments"]
