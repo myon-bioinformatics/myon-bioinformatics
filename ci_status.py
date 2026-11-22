@@ -53,10 +53,17 @@ def repository(name):
         raise ValueError("invalid repository")
     return "/".join(parts)
 
-def observe(name, pr=None):
+def observe(name, pr=None, *, ref=None):
     name = repository(name)
     base = "/repos/" + name
-    if pr is not None:
+    if ghi is None:
+        raise RuntimeError("GHI unavailable")
+    if ref is not None:
+        if pr is not None or not ref.strip():
+            raise ValueError("explicit ref requires a nonempty ref and no PR")
+        sha = ghi.resolve_ref(name, ref)["sha"]
+        target = ref
+    elif pr is not None:
         pull = get(base + "/pulls/" + str(pr))
         sha = pull["head"]["sha"]
         target = "PR #" + str(pr)
@@ -65,8 +72,6 @@ def observe(name, pr=None):
         ref = meta["default_branch"]
         sha = get(base + "/git/ref/heads/" + quote(ref, safe=""))["object"]["sha"]
         target = ref
-    if ghi is None:
-        raise RuntimeError("GHI unavailable")
     observation = ghi.checks_for_sha(name, sha)
     if not observation["complete"]:
         raise RuntimeError("check pagination incomplete")
@@ -853,10 +858,15 @@ def render(rows):
         for check in item["checks"]:
             print(f'  {check["status"]:10} {str(check["conclusion"] or "-"):12} {check["name"]}')
             
-def verify_workflow(name, workflow, head_sha, event, run_id, attempt, required_jobs=()):
+def verify_workflow(name, workflow, head_sha, event, run_id, attempt, required_jobs=(),
+                    *, ref=None, required_steps=()):
     """Read-only proof for one expected workflow and one explicitly chosen attempt."""
     name = repository(name)
-    if not re.fullmatch(r"[0-9a-fA-F]{40}", head_sha):
+    if ref is not None and (not isinstance(ref, str) or not ref.strip()):
+        raise ValueError("expected a nonempty ref")
+    if head_sha is None and ref is None:
+        raise ValueError("supply --ref or --head-sha")
+    if head_sha is not None and not re.fullmatch(r"[0-9a-fA-F]{40}", head_sha):
         raise ValueError("expected a full head SHA")
     if not re.fullmatch(r"(?:[1-9][0-9]*|[A-Za-z0-9_.-]+\.ya?ml)", workflow):
         raise ValueError("expected a workflow ID or YAML filename")
@@ -864,7 +874,13 @@ def verify_workflow(name, workflow, head_sha, event, run_id, attempt, required_j
         raise ValueError("invalid event, run ID or attempt")
     if len(set(required_jobs)) != len(required_jobs) or any(not job.strip() for job in required_jobs):
         raise ValueError("required job names must be nonempty and unique")
-    sha = head_sha.lower()
+    steps_by_job = {}
+    for job_name, step_name in required_steps:
+        steps = steps_by_job.setdefault(job_name, [])
+        if not job_name.strip() or not step_name.strip() or step_name in steps:
+            raise ValueError("required job/step pairs must be nonempty and unique")
+        steps.append(step_name)
+    sha = head_sha.lower() if head_sha is not None else None
     report = dict(repository=name, workflow=workflow, head_sha=sha, event=event,
                   run_id=run_id, attempt=attempt, required_jobs=list(required_jobs),
                   observed_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
@@ -873,6 +889,13 @@ def verify_workflow(name, workflow, head_sha, event, run_id, attempt, required_j
     try:
         if ghi is None:
             return finish("unknown", "observer_unavailable")
+        if ref is not None:
+            report["ref"] = ref
+            resolved = ghi.resolve_ref(name, ref)
+            report["ref_sha"] = resolved["sha"]
+            if sha is not None and sha != resolved["sha"]:
+                return finish("unknown", "ref_sha_mismatch")
+            sha = report["head_sha"] = resolved["sha"]
         w = ghi.workflow(name, workflow)
         wid = w.get("id")
         path = w.get("path")
@@ -883,6 +906,8 @@ def verify_workflow(name, workflow, head_sha, event, run_id, attempt, required_j
         observed = ghi.run(name, run_id, attempt=attempt)
         if (observed.get("workflow_id"), observed.get("run_id"), observed.get("attempt"),
                 observed.get("head_sha"), observed.get("event")) != (wid, run_id, attempt, sha, event):
+            report["observed_run"] = {key: observed.get(key) for key in
+                                      ("workflow_id", "run_id", "attempt", "head_sha", "event", "status", "conclusion")}
             return finish("unknown", "run_identity_mismatch")
         report.update(run_status=observed.get("status"), run_conclusion=observed.get("conclusion"))
         jobs = ghi.jobs(name, run_id, attempt=attempt)
@@ -895,11 +920,24 @@ def verify_workflow(name, workflow, head_sha, event, run_id, attempt, required_j
                (run_id, attempt, sha) for job in rows):
             return finish("unknown", "job_identity_mismatch")
         selected = []
-        for name in required_jobs:
-            matches = [job for job in rows if job.get("name") == name]
+        step_evidence = []
+        if steps_by_job:
+            report["required_steps"] = [{"job": job, "name": step}
+                                        for job, names in steps_by_job.items() for step in names]
+            report["steps"] = step_evidence
+        for job_name in dict.fromkeys([*required_jobs, *steps_by_job]):
+            matches = [job for job in rows if job.get("name") == job_name]
             if len(matches) != 1:
                 return finish("unknown", "required_job_missing_or_ambiguous")
-            selected.extend(matches)
+            job = matches[0]
+            selected.append(job)
+            for step_name in steps_by_job.get(job_name, ()):
+                matches = [step for step in job.get("steps", []) if step.get("name") == step_name]
+                if len(matches) != 1:
+                    return finish("unknown", "required_step_missing_or_ambiguous")
+                step = matches[0]
+                url = ghi.step_url_from_jobs(jobs, job["job_id"], step.get("number"))
+                step_evidence.append(dict(step, job=job_name, job_id=job["job_id"], url=url))
         report["jobs"] = [{key: job.get(key) for key in ("job_id", "name", "status", "conclusion", "url")}
                           for job in rows]
         if observed.get("status") != "completed":
@@ -916,6 +954,11 @@ def verify_workflow(name, workflow, head_sha, event, run_id, attempt, required_j
             return finish("failed", "required_job_did_not_pass")
         if any((job.get("status"), job.get("conclusion")) != ("completed", "success") for job in selected):
             return finish("unknown", "required_job_success_unverified")
+        for step in step_evidence:
+            if step.get("status") == "completed" and step.get("conclusion") in failed:
+                return finish("failed", "required_step_did_not_pass")
+        if any((step.get("status"), step.get("conclusion")) != ("completed", "success") for step in step_evidence):
+            return finish("unknown", "required_step_success_unverified")
         if any(job.get("conclusion") not in ("success", "skipped") for job in rows):
             return finish("unknown", "unexpected_job_conclusion")
         if not any(job.get("conclusion") == "success" for job in rows):
@@ -930,14 +973,18 @@ def _verify_workflow_cli(argv):
                                 description="Verify one exact Actions attempt. Exit 0 success, 1 failed, 2 unknown or invalid.")
     p.add_argument("repository", help="owner/repository")
     p.add_argument("workflow", help="workflow numeric ID or YAML filename")
-    p.add_argument("--head-sha", required=True, help="expected Actions head SHA (40 hex characters)")
+    p.add_argument("--head-sha", help="expected Actions head SHA (40 hex characters)")
+    p.add_argument("--ref", help="resolve a branch or tag once; with --head-sha require both to match")
     p.add_argument("--event", required=True, help="expected Actions event, e.g. pull_request or push")
     p.add_argument("--run-id", required=True, type=int, help="exact Actions run ID")
     p.add_argument("--attempt", required=True, type=int, help="exact attempt, not the latest attempt")
     p.add_argument("--require-job", action="append", default=[], help="exact required job name (repeatable)")
+    p.add_argument("--require-step", nargs=2, action="append", default=[], metavar=("JOB", "STEP"),
+                   help="require this exact job and its named step to pass (repeatable)")
     a = p.parse_args(argv)
     try:
-        report = verify_workflow(a.repository, a.workflow, a.head_sha, a.event, a.run_id, a.attempt, a.require_job)
+        report = verify_workflow(a.repository, a.workflow, a.head_sha, a.event, a.run_id, a.attempt,
+                                 a.require_job, ref=a.ref, required_steps=a.require_step)
     except ValueError as exc:
         p.error(str(exc))
     print(json.dumps(report, ensure_ascii=False))
@@ -950,7 +997,9 @@ def main(argv=None):
         return _verify_workflow_cli(argv[1:])
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("repository", nargs="?")
-    p.add_argument("--pr", type=int)
+    target = p.add_mutually_exclusive_group()
+    target.add_argument("--pr", type=int)
+    target.add_argument("--ref", help="observe checks at the resolved branch, tag or commit")
     p.add_argument("--refresh", action="store_true", help="Force fresh API observation (default already fresh)")
     p.add_argument("--json", action="store_true")
     p.add_argument("--explain", action="store_true",
@@ -969,6 +1018,8 @@ def main(argv=None):
     p.add_argument("--conventions", action="store_true",
                    help="Report naming drift (workflow files / names, ci.yml job ids, docs/*.md) against templates/README.md; exit 1 when any")
     a = p.parse_args(argv)
+    if a.ref is not None and (not a.ref.strip() or not a.repository or a.audit or a.conventions):
+        p.error("--ref requires a repository in check observation mode")
     if a.conventions and not a.audit:
         names = None if a.all_repos else [x.strip() for x in a.repos.split(",") if x.strip()]
         report = conventions(names)
@@ -992,7 +1043,7 @@ def main(argv=None):
     errors = []
     for name in names:
         try:
-            rows.append(observe(name, a.pr))
+            rows.append(observe(name, a.pr, ref=a.ref))
         except (ValueError, KeyError, RuntimeError, OSError) as exc:
             item = {"repository": name, "error": type(exc).__name__}
             if a.explain:
