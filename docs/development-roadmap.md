@@ -11,6 +11,8 @@
 
 リポジトリ名は現行の公開名を使う（`web-ui` は [PySaiyanWeBoo](https://github.com/myon-bioinformatics/PySaiyanWeBoo)、`browser-test-kit` は [BrowserTestKit](https://github.com/myon-bioinformatics/BrowserTestKit)）。
 
+「ローカル確認」と書いた結果は、11月22日に Linux x86_64、Node 26.13.1、Chrome for Testing 153.0.8010.12（headless）、各リポジトリのuv環境で実行した。Playwright同梱のFirefox・WebKitは導入できない環境のため、結果はChromiumに限る。
+
 <a id="completed"></a>
 
 ## 完了
@@ -52,6 +54,8 @@
 
 最初のHTML抽出（貼り付けとファイル選択、本文・見出し・リンク、同一入力での再抽出、結果の保存）は公開済み。[HTML文書取込](https://myon-bioinformatics.github.io/tools/html-import/)（HTTP 200）。契約とdesktop/mobileの検証は [docs/html-import.md](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/main/docs/html-import.md)。
 
+ローカル確認: portfolio main `e940a5c` で `tests/html-import.spec.js` 10件成功。デスクトップと390×844・タッチのエミュレーションの両方で、貼り付け、ファイル選択、条件変更、結果JSONの保存、同一入力の再取得の一致を確かめた。`tests/test_site.py` は49件成功・1件スキップ。19/29の集計はGitHub公開APIの `has_pages` でも一致した。
+
 [元Issueと受入条件](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/issues/32)
 
 <a id="lab-122"></a>
@@ -60,6 +64,8 @@
 
 - モデルを起動しないアダプター試験87件、保守的な履歴圧縮core（#116）、履歴計測（#118）、固定GGUFでの圧縮前後比較基盤（#119）は実装済み。
 - CPUでの実GGUF測定は [compaction-gguf-benchmark.md](https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/main/docs/compaction-gguf-benchmark.md) に記録した（SmolLM2-135M、llama.cpp imageをSHA固定）。
+- ローカル確認: lab main `dafcfac` で `pytest tests/test_compaction.py` 93件成功。削除範囲に過去のユーザー指示があると圧縮を辞退すること、圧縮前後でツール名と引数が一致すること（決定的なCPU代替モデル）を含む。
+- lab mainにGGUFベンチを実行するワークフローはなく、上の文書の「Actions workflow」の記述は現状と合っていない。再測定するときに直す。
 - vendor追従: [PR #120](https://github.com/myon-bioinformatics/mcp-toolcall-lab/pull/120)（2026-10-14マージ。親由来のgh_opsへ再同期しgit_inspectorを削除）と [PR #121](https://github.com/myon-bioinformatics/mcp-toolcall-lab/pull/121)（共有JUnit collector pin）は統合済み。現行 `vendor.lock.json` に親の `gh_ops.py` と `gh_identity.py`、PySaiyanWeBooが入る。[PR #221](https://github.com/myon-bioinformatics/mcp-toolcall-lab/pull/221) で文書の固定先記載を現状に合わせた。
 - xprobeへのLittleBit入力生成の採用判断は完了。
 
@@ -73,6 +79,8 @@ BlueProbe同期とJUnit固定先更新はmainに統合済み。[BlueProbe同期]
 
 未解釈入力はmainの契約として定着している。Q5「P121 は 2026 年で確かめられた？」は `unread_spans=[{start:7,end:20,raw_text:"2026 年で確かめられた"}]` を保ち、`parse_status=undetermined` のまま既知回答・キャッシュで確定回答にしない。[queryu/ask/ask.py](https://github.com/myon-bioinformatics/Aoi/blob/main/queryu/ask/ask.py)・[test_queryu_ask.py](https://github.com/myon-bioinformatics/Aoi/blob/main/queryu/tests/test_queryu_ask.py)
 
+ローカル確認: Aoi main `5f56353` で `pytest queryu/tests/test_queryu_ask.py pythdragoras/tests/test_registration_audit.py nagoyaction/tests/test_inbox.py -k "q5 or unread or unknown_conditions or cache or registration or regist or posthoc or prereg"` 60件成功。Q5は直接・既知回答・キャッシュ・両方の4経路で判定不能のまま、受付の受領記録にも同じ原文と範囲が残る。
+
 LittleBitのc001候補生成・比較と年別バックテストはmain導入済み。追加識別力は当該設定では未観測。未閲覧データでの独立確認はデータ計画がないため[見送った項目](#見送った項目)へ移した。
 
 子のshrink/py_launchはNagoyAction・QueRyu・DRAgoWing等に採用済み。[shared-tools.lock.json](https://github.com/myon-bioinformatics/Aoi/blob/main/shared-tools.lock.json)
@@ -85,8 +93,8 @@ LittleBitのc001候補生成・比較と年別バックテストはmain導入済
 
 - 環境項目の記録と比較: [PR #182](https://github.com/myon-bioinformatics/BrowserTestKit/pull/182)
 - Windows・macOS Chromiumでのloopback通信断と復旧: [PR #183](https://github.com/myon-bioinformatics/BrowserTestKit/pull/183)・[OS別の実行結果](https://github.com/myon-bioinformatics/BrowserTestKit/actions/runs/44915995188)
-- HTTPエラー・遅延、権限の付与・解除、ファイル送受信の限定fixture: `btk.py scenario`。[契約](https://github.com/myon-bioinformatics/BrowserTestKit/blob/main/docs/rea-observation.md)
-- 保存するURL証跡からquery・fragmentを除く方針はPythonとNodeの入口で共有。Python経路の回帰は済み。
+- HTTPエラー・遅延、権限の付与・解除、ファイル送受信の限定fixture: `btk.py scenario`。[契約](https://github.com/myon-bioinformatics/BrowserTestKit/blob/main/docs/rea-observation.md) Linuxの3エンジンは main `f974ca0` のCIで成功（[run 44999087770](https://github.com/myon-bioinformatics/BrowserTestKit/actions/runs/44999087770)）。
+- 保存するURL証跡からquery・fragmentを除く方針はPythonとNodeの入口で共有。ローカル確認: main `f974ca0` で16件成功。PythonとNode 26.13.1の両入口で、初回・goto後の保存JSON、compare、エラー出力に値が残らない。FirefoxとWebKitは未実行。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/BrowserTestKit/issues/117)
 
@@ -108,7 +116,7 @@ G2/G3は実装済み（`shared/hist_state.py`、`shared/keep_check.py`）。[G2/
 
 G4は現在の話者1億人未満の採用18形（cs 8・nl 8・pl 2）をQwen2.5-1.5Bで新規測定した。各形3テンプレート×3 seedで162/162試行完了。復元はcs 3/72、nl 3/72、pl 0/18。正答率0.9に達した形は0/18。採用判定用fixtureは従来のまま。この測定は当該モデルと対象言語に限る。[入力・回答・採点・再現手順](https://github.com/myon-bioinformatics/TalkCompress/pull/192)・[ライブ測定](https://github.com/myon-bioinformatics/TalkCompress/blob/main/docs/measurements/g4-live.md)
 
-G6のtokenizer調査（`scripts/tokenizer_compat.py`、`docs/o200k-lookup/`）と、G8の読み手向け確認（`scripts/ai_readability.py`）は部分的に存在する。
+G6のtokenizer調査（`scripts/tokenizer_compat.py`、`docs/o200k-lookup/`）と、G8の読み手向け確認（`scripts/ai_readability.py`）は部分的に存在する。 G1〜G14の候補ごとの現在地は、TalkCompressのREADMEに表で置く（[TalkCompress #194](https://github.com/myon-bioinformatics/TalkCompress/pull/194)）。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/TalkCompress/issues/40)
 
@@ -125,6 +133,8 @@ G6のtokenizer調査（`scripts/tokenizer_compat.py`、`docs/o200k-lookup/`）�
 - DRAgoWingのHTML描画器へ `--format json` を強制すること。一部のJSON入出力と `--forms` は既にある。
 - TalkCompress G9〜G14を実装義務にすること。Anthropicのcontext editingやサーバー側要約などは参考に留め、ローカル・キーなしの方針と切り離す。参考: [Context editing](https://platform.claude.com/docs/en/build-with-claude/context-editing)、[Token counting](https://platform.claude.com/docs/en/build-with-claude/token-counting)、[Explore the context window](https://code.claude.com/docs/en/context-window)
 - GPU/NPUでの推論評価。機材と比較基準を用意できるまで行わない。
+- GGUF測定へのcold/warm時間・ピークRSSの追記。ベンチのコードと再現手順は残るが、今回の環境はDockerを起動できず再実行していない。圧縮をproxyへ組み込むと決めたときに測る。
+- labの推論キャッシュ（完全一致・近似応答・再計算・エンジン固有KV）の区別と、TTL・失効・上限の横断検証。今回は照合していない。扱う時期は上と同じ。
 - mcp-toolcall-labのstub-front構想（Wikipedia MCP接続、ブラウザOpenAI往復など）を作業項目化すること。リンク管理のみ。[stub-front-roadmap](https://github.com/myon-bioinformatics/mcp-toolcall-lab/blob/main/docs/stub-front-roadmap.md)
 - LittleBitの未閲覧データでの独立確認。探索と年別バックテストは済み。未閲覧データを取る計画はない。
 - LibreChat / Open WebUIへのopt-in接続をラボ中核の完了条件にすること。メモは残すが必須にしない。
@@ -151,7 +161,7 @@ Pagesが無効の10件: `BlueProbe`、`BrowserTestKit`、`Err-o-RoadRunner`、`P
 ### Aoiの研究記録
 
 - [ ] 研究登録の機械値を英語（`posthoc` / `preregistered` / `unknown`）にし、日本語表示は別ラベルにする。現行の `registration_status()` は「事後構成／事前登録／不明」を返す表示用ヘルパー。Aoiで小さなPRを予定する（この文書PRの範囲外）。
-- [ ] R001のF1〜F7は、既存の受付・PLAN/RESULTSドキュメントで項目ごとに判定する。実装を広げず、欠けているFだけを指名する。
+- [ ] R001のF1〜F7は、既存の受付・PLAN/RESULTSドキュメントで項目ごとに判定する。実装を広げず、欠けているFだけを指名する。 F1〜F7のチェックリストは Aoi の `research/gpt-r001-score-allocation/PR3_FOLLOWUP.md` にある。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/Aoi/issues/30)
 
@@ -159,10 +169,9 @@ Pagesが無効の10件: `BlueProbe`、`BrowserTestKit`、`Err-o-RoadRunner`、`P
 
 ### BrowserTestKitの操作
 
-- [ ] 子フレームとopen shadow rootを区別し、再描画後はlocatorを再取得する。現行は件数を比較するが、中身は `not_entered`。
-- [ ] 初回・goto後の保存JSONからquery・fragment値が漏れないことを、Node 26以降の入口で再確認する（任意。Python経路は済み）。`package.json` の `engines.node` は `>=26`。
+- [ ] 子フレームとopen shadow rootを区別し、再描画後はlocatorを再取得する。現行は件数を比較するが、中身は `not_entered`。 件数と一覧のテスト9件は main `f974ca0` で成功（ローカル確認）。BrowserTestKit側にも残件として記録した（[BrowserTestKit #185](https://github.com/myon-bioinformatics/BrowserTestKit/pull/185)）。
 
-移動後のセッション再観測、headed、任意のStagehandとAndroidは実行範囲を明記する。操作CLIの契約安定後にtransportの要否を判断する。Stagehandは必須にしない。
+移動後のセッション再観測、headed、任意のStagehandとAndroidは実行範囲を明記する。操作CLIの契約安定後にtransportの要否を判断する。Stagehandは必須にしない。 それぞれの再開条件は BrowserTestKit の `docs/page-inspect-platform-scenarios.md` に記録した（#185）。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/BrowserTestKit/issues/117)
 
@@ -173,6 +182,7 @@ Pagesが無効の10件: `BlueProbe`、`BrowserTestKit`、`Err-o-RoadRunner`、`P
 P1.4〜P1.10の残りとP2〜P4は、2026-10-23の調査をそのまま実装せず、現行ソースで再確認してから進める。
 
 - [ ] `cli_args` の `scripts/survey_cli_surfaces.py` を、公開29件の現状で再実行し、調査表を更新する。
+  - 部分結果（ローカル確認。静的調査ではなく実行による）: NagoyAction `fff1cde`、BrowserTestKit `f974ca0`、PySaiyanWeBoo `9f5a730`、gh_identity `3111c17` の入口とサブコマンド計127件のうち126件で、`--help` は終了0・標準出力、不明な引数は終了2・標準エラー。例外の `btk.py check-png` は存在しないファイルにtracebackを出していた（[BrowserTestKit #185](https://github.com/myon-bioinformatics/BrowserTestKit/pull/185) で修正）。ヘルプ文のない引数は概算でgh_identity 260（88サブコマンド中74）、btk.py 53（18中11）、nagoyaction.py 8（9中2）。旧Issueが名指しした `twin_parity.py`、`collection-cli.cjs`、`tool/flow_diagram.py`、`web_ui.py` は現行mainにない。
 - [ ] エージェントが実際に呼ぶ面だけ、`--format json` を正、`--json` を糖衣として足す。対象の候補はNagoyActionの残りサブコマンド、PySaiyanWeBooのhelp整備、gh_identityのhelp穴埋め（`--format` の既存意味と衝突させない）。`uv run pytest` を `python -m pytest` に強制しない。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/cli_args/issues/29)
