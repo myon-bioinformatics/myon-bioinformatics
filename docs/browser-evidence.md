@@ -1,8 +1,18 @@
 # Browser evidence: parent-owned contract (Issue #56)
 
-This is the first **contract-only** increment. It does not yet install or run
-Playwright or Stagehand. Engine execution adapters and real-browser CI are
-separate follow-ups, and must be verified before consumer deletion.
+The `Browser capture evidence` workflow captures the checked-out evidence page
+with each SDK, waits for its saved records to render and publishes separate PNG
+and manifest pairs. The Stagehand lane uses a local SDK browser session and
+requires no model credentials. Run either engine locally after installing its
+SDK under `tools/browser` and starting the page you want to capture.
+
+```sh
+node tools/browser/capture.mjs stagehand http://localhost:8000/evidence.html build/browser run-123 '#content .record'
+```
+
+Use a new output directory per run. The optional final argument waits for a
+page-specific selector. Each engine publishes its subdirectory only after the PNG
+validates. The manifest records the actual local checkout SHA.
 
 - `browser_evidence.py` is stdlib-only, accepts one existing PNG screenshot
   produced by either engine, and records engine, run ID, checkout SHA, relative

@@ -530,3 +530,27 @@ python -S gh_ops.py issue-edit OWNER/REPO 88 --append-body-file note.md --state 
   `_apply_append_body` with `pr-edit` for idempotent `--append-body-file`
   updates, supports `--state` (`open`/`closed`) and `--state-reason`
   (`completed`/`not_planned`/`reopened`), and verifies updated fields on readback.
+
+### Source-linked review digest (Issue #71)
+
+Save full REST comments and pass the actual PR head to the offline reader.
+
+```sh
+python -S gh_ops.py issue-comments OWNER/REPO NUMBER --save thread.json
+python -S scripts/review_digest.py thread.json --head FULL_HEAD_SHA --keep 2
+```
+
+Each row carries its original comment ID in `covers`, URL, from/to headers, declared head,
+identifiers and numbered findings. The newest two bodies are kept verbatim by default.
+The compact previews returned by `ghi pr-status` omit the original body and cannot be
+used as resolution evidence. For an explicit resolution, put these lines in a subsequent
+comment (the number in brackets addresses one finding, starting at 1).
+
+```text
+head: FULL_HEAD_SHA
+Resolved: issuecomment-123456[2] regression test passed in run 987654
+```
+
+The reader links this statement to that finding only when the declaration names the
+requested full head. `reported_resolution` attributes a statement to its source
+comment. CI results, approvals and thread resolution remain separate observations.
