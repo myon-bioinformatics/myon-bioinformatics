@@ -159,7 +159,7 @@ def recorded_before_reobservation():
 # are excluded from the frozen-baseline comparison until the baseline is re-observed.
 POST_BASELINE_ENROLLMENTS = {
     # pillow_min.py moved from Ironmate's root to the parent's tools/stdlib_min/ (#293); Ironmate locks it from here.
-    "myon-bioinformatics/Ironmate": {"vendor/fetch_module.py", "vendor/Aoi-LICENSE", "vendor/pillow_min.py"},
+    "myon-bioinformatics/Ironmate": {"vendor/fetch_module.py", "vendor/Aoi-LICENSE", "vendor/pillow_min.py", "vendor/fleet_check.py"},
     # The parent audit dashboard (ci_status.py --audit --html) renders through the vendored pysaiyanweboo.py.
     "myon-bioinformatics/myon-bioinformatics": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
     "myon-bioinformatics/mcp-toolcall-lab": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
@@ -167,6 +167,8 @@ POST_BASELINE_ENROLLMENTS = {
     **{f"myon-bioinformatics/{name}": {"vendor/fleet_check.py"} for name in (
         "yourself", "nvd_nist_known_vulns", "ascii_artist", "cli_args", "gh_identity")},
     "myon-bioinformatics/search_seq_including_spaces": {"vendor/fleet_check.py", "vendor/myon-bioinformatics-LICENSE"},
+    # check_scripts (parent #328): PySaiyanWeBoo and Ironmate (above) lock it after the parent registers it.
+    "myon-bioinformatics/PySaiyanWeBoo": {"vendor/fleet_check.py"},
 }
 
 
@@ -212,17 +214,28 @@ def before_replacements(registry, name, lock):
     return registry
 
 
+def before_later_enrollments(registry, name, lock):
+    """``registry`` without ``name``'s POST_BASELINE_ENROLLMENTS that its reviewed ``lock`` predates.
+
+    A reviewed refresh may still predate a later, explicitly listed addition.
+    Once the reviewed lock adopts that path, it is checked normally.
+    """
+    adopted = {e["destination"] for e in lock["files"]} if lock else set()
+    drop = POST_BASELINE_ENROLLMENTS.get(name, set()) - adopted
+    if drop:
+        registry = copy.deepcopy(registry)
+        consumer = next(c for c in registry["consumers"] if c["repository"] == name)
+        consumer["entries"] = [e for e in consumer["entries"]
+                               if e["destination"] not in drop and e.get("license") not in drop]
+    return registry
+
+
 def baseline_registry(registry):
     registry = pre_refresh_registry(registry)
     for consumer in registry["consumers"]:
         name = consumer["repository"]
         fixture = REFRESHED_FIXTURES.get(name, FIXTURES.get(name))
-        adopted = {e["destination"] for e in fixture["lock"]["files"]} if fixture else set()
-        # A reviewed refresh may still predate a later, explicitly listed addition.
-        # Once the refreshed fixture adopts that path, it is checked normally.
-        drop = POST_BASELINE_ENROLLMENTS.get(name, set()) - adopted
-        consumer["entries"] = [e for e in consumer["entries"]
-                               if e["destination"] not in drop and e.get("license") not in drop]
+        registry = before_later_enrollments(registry, name, fixture["lock"] if fixture else None)
     return registry
 
 
@@ -252,6 +265,7 @@ def test_observed_lock_topology_and_immutable_revision(name):
             "lock_sha256": "b2cf9a4d57ac53d46b84a350e6743900898b8675e600f67a18b480373d81c1f0",
             "lock": json.loads((ROOT / "tests/fixtures/ironmate-stdlib-pillow-min-235.lock.json").read_text()),
         }
+        registry = before_later_enrollments(registry, name, fixture["lock"])
     else:
         registry = baseline_registry(json.loads((ROOT / "vendor-consumers.json").read_text()))
         fixture = LATEST_FIXTURES.get(name, ROLLOUT_FIXTURES.get(name, REFRESHED_FIXTURES.get(name, FIXTURES[name])))
@@ -1139,7 +1153,7 @@ def test_refreshed_observation_matches_merged_lock(name):
     assert observed["repository_id"] == snapshot["repository_id"]
     lock = sync.validate(snapshot["lock"])
     assert sync._transition_digest(lock) == snapshot["lock_sha256"]
-    assert consumers.compare(registry, lock, name)["matches"]
+    assert consumers.compare(before_later_enrollments(registry, name, lock), lock, name)["matches"]
     if name != sync.PARENT_REPOSITORY:
         assert all(row["ref"] == row["commit"] for row in lock["files"])
 

@@ -80,8 +80,8 @@ def test_retired_sources_are_not_proposed_for_reenrollment():
         rows = [x for x in result['rows'] if x['tool_repository'] ==
                 'myon-bioinformatics/myon-bioinformatics' and x['source'] == source]
         assert len(rows) == 1 and rows[0]['action'] == 'skipped'
-    assert result['counts']['registered'] == 30   # + vendor/pillow_min.py from tools/stdlib_min/
-    assert result['counts']['skipped'] == 21
+    assert result['counts']['registered'] == 31   # + vendor/pillow_min.py from tools/stdlib_min/, + vendor/fleet_check.py
+    assert result['counts']['skipped'] == 20   # fleet_check.py moved to registered
     py_launch = [x for x in result['rows'] if x['source'] == 'py_launch.cjs']
     assert len(py_launch) == 1
     assert py_launch[0]['action'] == 'registered'
@@ -102,6 +102,7 @@ def test_web_ui_flow_workspace_lock_is_not_accepted_after_the_move_to_ascii_arti
     assert {x['repository'] for x in result['unexpected']} == {'myon-bioinformatics/PySaiyanWeBoo'}
     assert sorted((x['repository'], x['source']) for x in result['missing']) == [
         ('myon-bioinformatics/ascii_artist', 'examples/pr-flow.json'),
+        ('myon-bioinformatics/myon-bioinformatics', 'fleet_check.py'),
         ('myon-bioinformatics/myon-bioinformatics', 'tools/stdlib_min/pillow_min.py')]
 
 
