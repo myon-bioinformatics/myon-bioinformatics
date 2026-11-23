@@ -215,12 +215,6 @@ One standard-library Python module that builds the shared CSS themes, UI compone
 
 `css` `ui-components` `static-site`
 
-### [flutter_navigation_basic](https://github.com/myon-bioinformatics/flutter_navigation_basic)
-
-Multi-platform Flutter app (Web, iOS, Android, macOS) with 198 routed screens on a reusable foundation (themes, routes, shared widgets, URL parameters); the Flutter Web build is published on GitHub Pages and checked with Playwright screenshots.
-
-`flutter` `dart` `multi-platform`
-
 ### [mcp-toolcall-lab](https://github.com/myon-bioinformatics/mcp-toolcall-lab)
 
 Reproducible experiments on how LLMs discover and call MCP tools: a FastMCP server with deterministic mock tools, Open WebUI and LibreChat as clients under test, protocol tests and an anti-pattern catalog.
@@ -248,6 +242,7 @@ Experiments in short expressions that keep their meaning for a given reader: whi
 * [convert_img_fmt_to_webp-GUI-](https://github.com/myon-bioinformatics/convert_img_fmt_to_webp-GUI-)
 * [cumlative_usage](https://github.com/myon-bioinformatics/cumlative_usage)
 * [FluidFullSpeedSimulation](https://github.com/myon-bioinformatics/FluidFullSpeedSimulation)
+* [flutter_navigation_basic](https://github.com/myon-bioinformatics/flutter_navigation_basic)
 * [GitHub_api_Template](https://github.com/myon-bioinformatics/GitHub_api_Template)
 * [HelpYouBuildServer](https://github.com/myon-bioinformatics/HelpYouBuildServer)
 * [image_ext_converter_gui](https://github.com/myon-bioinformatics/image_ext_converter_gui)
@@ -466,6 +461,18 @@ PR's head), and the page is rendered from that `data.json` with the vendored `py
 - `copilot-pull-request-reviewer` check runs are not counted as CI (`--ignore-checks` to change).
 Use `python -S ci_status.py OWNER/REPO --ref REF --json` to observe checks for
 a branch, tag or commit. The report includes the SHA resolved for this observation.
+
+While waiting on several pull requests, `--format brief` prints one line per target:
+counts by icon and each failed check by name. `REPO#PR` picks a pull request per entry.
+
+```sh
+python -S ci_status.py --repos 'Aoi#251,BlueProbe#70,BrowserTestKit' --format brief
+# Aoi PR #251 FAILED | ⏳×12 ✅×13 ❌pytest (Python 3.12)×1
+# BlueProbe PR #70 COMPLETE | ✅×11
+# BrowserTestKit main COMPLETE | ✅×13
+```
+
+`--ci-check` still exits 1 until every target is COMPLETE or NO CHECKS, so a shell loop can wait on it.
 
 For a specific Actions attempt, use `--verify-workflow` as the first argument.
 Specify the workflow ID or YAML filename, event, run ID and attempt. Supply

@@ -852,6 +852,23 @@ def _detail(exc):
     return text[:500]
 
 
+def brief(item):
+    """One line for one target: ⏳ running, ✅ passed, ⏭️ skipped, 🚫 cancelled as counts, then each failed check by name."""
+    counts, failed = {}, {}
+    for check in item["checks"]:
+        conclusion = check["conclusion"]
+        if conclusion in ("failure", "timed_out", "action_required", "startup_failure"):
+            failed[check["name"]] = failed.get(check["name"], 0) + 1
+            continue
+        icon = ("⏳" if check["status"] != "completed" else "✅" if conclusion == "success"
+                else "🚫" if conclusion in ("cancelled", "stale") else "⏭️")
+        counts[icon] = counts.get(icon, 0) + 1
+    parts = [f"{icon}×{counts[icon]}" for icon in ("⏳", "✅", "⏭️", "🚫") if icon in counts]
+    parts += [f"❌{name}×{number}" for name, number in failed.items()]
+    name = item["repository"].removeprefix(OWNER + "/")
+    return f'{name} {item["target"]} {item["state"]} | {" ".join(parts) or "—"}'
+
+
 def render(rows):
     for item in rows:
         print(f'{item["repository"]}  {item["target"]}  {item["state"]}  {item["completed"]}/{item["total"]}  {item["head_sha"][:8]}')
@@ -996,18 +1013,19 @@ def main(argv=None):
     if argv and argv[0] == "--verify-workflow":
         return _verify_workflow_cli(argv[1:])
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("repository", nargs="?",help="OWNER/REPO (default: the all-repositories view of --repos)")
+    p.add_argument("repository", nargs="?",help="OWNER/REPO or REPO#PR (default: the all-repositories view of --repos)")
     target = p.add_mutually_exclusive_group()
     target.add_argument("--pr", type=int,help="PR number in REPOSITORY")
     target.add_argument("--ref", help="observe checks at the resolved branch, tag or commit")
     p.add_argument("--refresh", action="store_true", help="Force fresh API observation (default already fresh)")
-    p.add_argument("--format", choices=("text", "json"), default="text", help="output format (default: text)")
+    p.add_argument("--format", choices=("text", "brief", "json"), default="text",
+                   help="output format (default: text). brief prints one line per target: counts by icon and the failed checks by name")
     p.add_argument("--json", action="store_const", const="json", dest="format",help="print JSON instead of text")
     p.add_argument("--explain", action="store_true",
                    help="include detail and hint on observation errors; default omits exception text")
     p.add_argument("--ci-check", action="store_true", help="Exit with 1 if any observed repository state is not COMPLETE or NO CHECKS")
     p.add_argument("--repos", default="Ironmate,flutter_navigation_basic,markdown,ascii_artist",
-                   help="Comma-separated repositories for the all-repositories view")
+                   help="Comma-separated repositories for the all-repositories view; REPO#PR observes that pull request")
     p.add_argument("--audit", action="store_true",
                    help="Snapshot every open PR/Issue of the organization (or --repos when --all-repos is not given) into data.json and a read-only index.html")
     p.add_argument("--all-repos", action="store_true", help="With --audit: enumerate the owner's non-archived repositories instead of --repos")
@@ -1043,8 +1061,9 @@ def main(argv=None):
     rows = []
     errors = []
     for name in names:
+        name, _, number = name.partition("#")  # REPO#PR: several pull requests in one call
         try:
-            rows.append(observe(name, a.pr, ref=a.ref))
+            rows.append(observe(name, int(number) if number else a.pr, ref=a.ref))
         except (ValueError, KeyError, RuntimeError, OSError) as exc:
             item = {"repository": name, "error": type(exc).__name__}
             if a.explain:
@@ -1057,6 +1076,11 @@ def main(argv=None):
               "repositories": rows, "errors": errors}
     if a.format == "json":
         print(json.dumps(output, ensure_ascii=False, indent=2))
+    elif a.format == "brief":
+        for item in rows:
+            print(brief(item))
+        for error in errors:
+            print(f'{error["repository"]} UNKNOWN | ❓{error["error"]}')
     else:
         print(f'Observed at: {output["observed_at"]}')
         render(rows)

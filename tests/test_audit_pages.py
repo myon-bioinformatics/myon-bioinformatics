@@ -24,13 +24,11 @@ def snapshot(at='2026-11-08T00:00:00+00:00'):
 
 class GuideBacklinkAbsenceTests(unittest.TestCase):
     def test_observatory_page_does_not_include_guide_backlinks(self):
-        from scripts.add_guide_backlinks import GITHUB_LABEL, NAV_LABEL, PORTFOLIO_LABEL, PORTFOLIO_URL, nav_html
         page = build.observatory_page()
-        self.assertNotIn(nav_html("example/widget"), page)
-        self.assertNotIn(f'aria-label="{NAV_LABEL}"', page)
-        self.assertNotIn(f'href="{PORTFOLIO_URL}"', page)
-        self.assertNotIn(PORTFOLIO_LABEL, page)
-        self.assertNotIn(f">{GITHUB_LABEL}</a>", page)
+        self.assertNotIn('data-ui-back', page)                 # the guide nav (pysaiyanweboo back_nav_html)
+        self.assertNotIn('aria-label="関連リンク"', page)
+        self.assertNotIn('href="https://myon-bioinformatics.github.io/"', page)
+        self.assertNotIn('ポートフォリオ', page)
 
 
 class IntegrationSummaryTests(unittest.TestCase):
