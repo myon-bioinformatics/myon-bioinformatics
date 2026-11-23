@@ -170,8 +170,9 @@ POST_BASELINE_ENROLLMENTS = {
     **{f"myon-bioinformatics/{name}": {"vendor/fleet_check.py"} for name in (
         "yourself", "nvd_nist_known_vulns", "ascii_artist", "cli_args", "gh_identity")},
     "myon-bioinformatics/search_seq_including_spaces": {"vendor/fleet_check.py", "vendor/myon-bioinformatics-LICENSE"},
-    # check_scripts (parent #328): PySaiyanWeBoo and Ironmate (above) lock it after the parent registers it.
-    "myon-bioinformatics/PySaiyanWeBoo": {"vendor/fleet_check.py"},
+    # check_scripts (parent #328): PySaiyanWeBoo and Ironmate (above) lock it after the parent registers it;
+    # Aoi locks it first and the parent registers and re-observes it together.
+    **{f"myon-bioinformatics/{name}": {"vendor/fleet_check.py"} for name in ("PySaiyanWeBoo", "Aoi")},
 }
 
 

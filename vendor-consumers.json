@@ -580,6 +580,11 @@
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "tools/stdlib_min/httpx_min.py",
           "destination": "mindeps/httpx_min.py"
+        },
+        {
+          "repository": "myon-bioinformatics/myon-bioinformatics",
+          "source": "fleet_check.py",
+          "destination": "vendor/fleet_check.py"
         }
       ]
     },
