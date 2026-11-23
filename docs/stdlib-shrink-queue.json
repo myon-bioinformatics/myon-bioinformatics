@@ -585,7 +585,7 @@
           "selectolax independent HTML5 parity oracle; must not replace it with same stdlib parser being tested",
           "pinned lab source for optional integration tests"
         ],
-        "minimum_boundary": "HTMLParser core and Aoi blueprobe_min already stdlib. not CSS rendering/JS execution/HTML5 browser DOM; optional html_source omitted from Aoi bundle because of cycle; no need to invent another core replacement",
+        "minimum_boundary": "HTMLParser core is already stdlib in the single file blueprobe.py (Aoi stopped bundling it on 2026-11-23). not CSS rendering/JS execution/HTML5 browser DOM; no need to invent another core replacement",
         "evidence": [
           {
             "path": "pyproject.toml",
