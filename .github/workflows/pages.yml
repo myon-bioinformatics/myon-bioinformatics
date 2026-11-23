@@ -30,9 +30,7 @@ on:
       - tests/test_audit_pages.py
       - tests/test_audit_model.cjs
       - tests/test_workflows.py
-      - tests/test_add_guide_backlinks.py
       - tests/fixtures/guide-backlinks/**
-      - scripts/add_guide_backlinks.py
       - .github/workflows/pages.yml
       - .github/workflows/reusable-pages-static.yml
   schedule:
