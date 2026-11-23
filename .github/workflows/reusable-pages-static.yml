@@ -35,7 +35,7 @@ concurrency:
 
 env:
   # The one pin for every guide page; move it here and re-pin the callers.
-  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@187102817d4955234d4edc1d3bd681edc59dc198"
+  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@3403f2fbf65f633bc1018ddf67d817a0f8e4905c"
 
 jobs:
   build:
@@ -63,7 +63,7 @@ jobs:
           ARTIFACT_PATH: ${{ inputs.artifact_path }}
         run: |
           mkdir -p "$ARTIFACT_PATH"
-          uv run --no-project --with "$WEB_UI" python -m web_ui --page "$GUIDE_PAGE" > "$ARTIFACT_PATH/index.html"
+          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$GUIDE_PAGE" > "$ARTIFACT_PATH/index.html"
           read -r -a pairs <<< "$GUIDE_ASSETS"
           for pair in "${pairs[@]}"; do
             cp "${pair%%=*}" "$ARTIFACT_PATH/${pair#*=}"

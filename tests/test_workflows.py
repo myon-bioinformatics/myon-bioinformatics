@@ -1005,7 +1005,7 @@ def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
            "GUIDE_PAGE": "docs/guide.page.json", "GUIDE_ASSETS": "icon.png=favicon.png", "ARTIFACT_PATH": "_site"}
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
     assert (tmp_path / "_site/index.html").read_text(encoding="utf-8").strip() == \
-        "rendered run --no-project --with pinned python -m web_ui --page docs/guide.page.json"
+        "rendered run --no-project --with pinned python -m pysaiyanweboo --page docs/guide.page.json"
     assert (tmp_path / "_site/favicon.png").read_bytes() == b"icon"
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env={**env, "GUIDE_ASSETS": ""}, check=True)
 
