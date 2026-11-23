@@ -74,8 +74,8 @@
         "body": "提供内容: 標準ライブラリだけで動く単一ファイルを生成し、数値の基本統計、2組の比較、境界・epsilonの確認をCLIで利用できます。母標準偏差を明示し、ゼロ基準の増減率はnullと理由を返します。\n\n検証: 生成ファイルの隔離実行と正常・不正入力のunittestを実施。wheel経由のuv tool installと実行を確認。生成ディレクトリからの直接インストールはオフライン環境のビルド依存不足で未確認です。\n\n残作業: Aoi連携、CSV入力、数列の収束判定、フル機能の統合検証。Draftのまま維持します。"
       }
     },
-    "OneLinearNumerousMemo": {
-      "readme": "https://github.com/myon-bioinformatics/OneLinearNumerousMemo/blob/main/README.md",
+    "OneLaunchNumerousModules": {
+      "readme": "https://github.com/myon-bioinformatics/OneLaunchNumerousModules/blob/main/README.md",
       "blob_sha": "da1c007c2c3912c0e5ed269680dd7b4feb17029f"
     }
   }

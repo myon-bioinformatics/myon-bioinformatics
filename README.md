@@ -256,7 +256,7 @@ Experiments in short expressions that keep their meaning for a given reader: whi
 * [myon-bioinformatics.github.io](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io)
 * [niconicoSearchAPI_Template](https://github.com/myon-bioinformatics/niconicoSearchAPI_Template)
 * [oci-cost-analysis](https://github.com/myon-bioinformatics/oci-cost-analysis)
-* [OneLinearNumerousMemo](https://github.com/myon-bioinformatics/OneLinearNumerousMemo)
+* [OneLaunchNumerousModules](https://github.com/myon-bioinformatics/OneLaunchNumerousModules)
 * [OnTautoLogy](https://github.com/myon-bioinformatics/OnTautoLogy)
 * [ONTO](https://github.com/myon-bioinformatics/ONTO)
 * [python3nmap_GUI_for_Beginners](https://github.com/myon-bioinformatics/python3nmap_GUI_for_Beginners)
@@ -305,20 +305,20 @@ Python 3.11+ を基本とし、JavaScript を使う入口は Node 26。Python �
 
 | プロジェクト | 役割 | 前提 | 期待出力・失敗時の確認 |
 | --- | --- | --- | --- |
-| [olnm](https://github.com/myon-bioinformatics/OneLinearNumerousMemo#readme) | シェル作業・計算・標準ライブラリツールの共通入口 | Linux / WSL の bash・zsh、Python 3.11+、uv。Git ソース取得には Git と通信 | `42`。見つからなければ `uv tool list` / `uv tool update-shell`。引用符なしの乗算は `mul` を使う |
+| [olnm](https://github.com/myon-bioinformatics/OneLaunchNumerousModules#readme) | シェル作業・計算・標準ライブラリツールの共通入口 | Linux / WSL の bash・zsh、Python 3.11+、uv。Git ソース取得には Git と通信 | `42`。見つからなければ `uv tool list` / `uv tool update-shell`。引用符なしの乗算は `mul` を使う |
 | [TalkCompress](https://github.com/myon-bioinformatics/TalkCompress#readme) | 共有規則に応じた表現の短縮と品質評価 | Python 3.11+、uv、clone 済みのリポジトリ | 下の例は `ASAP`。失敗時は cwd・入力・`uv sync --locked` を確認。実トークン計測は tokenizer の取得・キャッシュ、描画は browser group を確認 |
 
 ### olnm
 
 ```sh
-uv tool install 'git+https://github.com/myon-bioinformatics/OneLinearNumerousMemo.git@main'
+uv tool install 'git+https://github.com/myon-bioinformatics/OneLaunchNumerousModules.git@main'
 olnm calc 6 mul 7
 ```
 
 登録せず実行する場合：
 
 ```sh
-uvx --from 'git+https://github.com/myon-bioinformatics/OneLinearNumerousMemo.git@main' olnm calc 6 mul 7
+uvx --from 'git+https://github.com/myon-bioinformatics/OneLaunchNumerousModules.git@main' olnm calc 6 mul 7
 ```
 
 どちらも `42`。`main` は更新されるため、再現時は `@main` を確認済みの完全SHAに置き換える。Node は `--engine node` を使う場合だけ必要。`calc 6 * 7` はシェルが `*` を展開するため、`mul` / `pow` / `lpar` / `rpar` を使う。CLI登録だけでは裸の `calc` は使えない。
@@ -328,9 +328,9 @@ eval "$(command olnm init bash)"
 calc 6 mul 7
 ```
 
-zsh は `init zsh`。更新は `uv tool upgrade one-linear-numerous-memo`、削除は `uv tool uninstall one-linear-numerous-memo`。ローカルcloneから導入した場合は、そのcloneで `git pull --ff-only` → `uv tool install --force .`。固定SHAは再指定して導入する。更新後は init を再読み込みし、削除時は rc の init 行も除く。`~/.olnm` のデータは残る。
+zsh は `init zsh`。更新は `uv tool upgrade one-launch-numerous-modules`、削除は `uv tool uninstall one-launch-numerous-modules`。ローカルcloneから導入した場合は、そのcloneで `git pull --ff-only` → `uv tool install --force .`。固定SHAは再指定して導入する。更新後は init を再読み込みし、削除時は rc の init 行も除く。`~/.olnm` のデータは残る。
 
-親の [Pages 実行手順](https://myon-bioinformatics.github.io/myon-bioinformatics/#ops)で前提・期待出力・確認記録を一覧表示する。詳細な導入・uv add・環境別の分岐は [既存の利用・検証ガイド](https://myon-bioinformatics.github.io/OneLinearNumerousMemo/)へ。
+親の [Pages 実行手順](https://myon-bioinformatics.github.io/myon-bioinformatics/#ops)で前提・期待出力・確認記録を一覧表示する。詳細な導入・uv add・環境別の分岐は [既存の利用・検証ガイド](https://myon-bioinformatics.github.io/OneLaunchNumerousModules/)へ。
 
 ### TalkCompress
 
