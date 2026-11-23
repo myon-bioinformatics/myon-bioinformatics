@@ -1008,7 +1008,7 @@ def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
            "GUIDE_ASSETS": "icon.png=favicon.png icon.png=assets/brand/icon.png docs/demos=demos"}
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
     assert (tmp_path / "_site/index.html").read_text(encoding="utf-8").strip() == \
-        "rendered run --no-project --with pinned python -m web_ui --page docs/guide.page.json"
+        "rendered run --no-project --with pinned python -m pysaiyanweboo --page docs/guide.page.json"
     assert (tmp_path / "_site/favicon.png").read_bytes() == b"icon"
     assert (tmp_path / "_site/assets/brand/icon.png").read_bytes() == b"icon"  # A nested NAME gets its folder.
     assert (tmp_path / "_site/demos/D01.gif").read_bytes() == b"gif"  # A folder SOURCE is copied whole.
