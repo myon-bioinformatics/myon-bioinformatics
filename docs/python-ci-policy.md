@@ -4,7 +4,7 @@ Runtime support and development tooling have separate floors. The parent vendor
 utilities retain their Python 3.9 standard-library contract; `gh_workflow.py`
 retains Python 3.10+. The `stdlib-runtime` jobs use `python -S` and `unittest`,
 without installing third-party packages. They exercise offline locked vendor
-materialization, tamper rejection, minpy bundle regeneration/execution, and
+materialization, tamper rejection, `fleet_check.check_imports`, and
 workflow-trigger parsing at the applicable floor.
 
 Pytest/development jobs use Python 3.11 or newer. The main regression matrix runs

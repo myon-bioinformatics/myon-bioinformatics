@@ -1,5 +1,5 @@
 """Offline runtime behavior checks; run with python -S on Python 3.9/3.10."""
-import hashlib, json, subprocess, sys, tempfile, unittest
+import hashlib, json, sys, tempfile, unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,15 +19,11 @@ class StdlibRuntimeTests(unittest.TestCase):
         fixture["facts"] = {}
         self.assertEqual(runtime_plan.plan(manifest, "stdlib-core", fixture)["static_requirements_status"], "unknown")
 
-    def test_minpy_deep_dependency_cycles(self):
-        from tools import minpy
-        limit = sys.getrecursionlimit()
-        nodes = ["n%06d" % i for i in range(max(1500, limit + 100))]
-        edges = {left: {right} for left, right in zip(nodes, nodes[1:])}
-        self.assertEqual(minpy._cycles(edges), [])
-        edges[nodes[-1]] = {nodes[0]}
-        self.assertEqual(minpy._cycles(edges), [tuple(nodes)])
-        self.assertEqual(sys.getrecursionlimit(), limit)
+    def test_fleet_check_imports_follows_stdlib_tools(self):
+        import fleet_check
+        found = fleet_check.check_imports(ROOT, "vendor_sync.py")
+        self.assertIn("vendor_sync.py", found["modules"])
+        self.assertEqual(found["external"], {})
 
     def test_vendor_materialization_and_rejection(self):
         data = b"VALUE = 42\n"
@@ -46,18 +42,6 @@ class StdlibRuntimeTests(unittest.TestCase):
             (root / "vendor/runtime.py").write_bytes(b"tampered\n")
             with self.assertRaises(ValueError):
                 vendor_sync.synchronize("vendor.lock.json", root, "check")
-
-    def test_minpy_bundle_executes(self):
-        fixture = ROOT / "tests/fixtures/minpy_widget"
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / "app_min.py"
-            subprocess.run([sys.executable, "-S", str(ROOT / "tools/minpy.py"), "bundle",
-                            "--root", str(fixture), "--entry", "app.py", "--repository", "example/widget",
-                            "--commit", "a" * 40, "--skip-head-check", "--output", str(output)], check=True, timeout=30)
-            subprocess.run([sys.executable, "-S", str(ROOT / "tools/minpy.py"), "check",
-                            "--bundle", str(output), "--root", str(fixture), "--skip-head-check"], check=True, timeout=30)
-            subprocess.run([sys.executable, "-S", "-c",
-                            "import runpy,sys; assert runpy.run_path(sys.argv[1])['VALUE'] == 3", str(output)], check=True, timeout=30)
 
     @unittest.skipIf(sys.version_info < (3, 10), "workflow wrapper requires Python 3.10+")
     def test_workflow_trigger_behavior(self):

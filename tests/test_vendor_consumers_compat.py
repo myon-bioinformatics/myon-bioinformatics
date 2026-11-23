@@ -109,10 +109,7 @@ def test_actual_historical_tool_registry_matrix(snapshots, documents, mode,
             assert output["matches"] is True
             assert output["missing"] == []
             assert output["unexpected"] == []
-            if tool_version == "new":
-                assert output["bundle_mismatch"] == []
-            else:
-                assert "bundle_mismatch" not in output  # historical output contract
+            assert "bundle_mismatch" not in output  # same output contract as the historical tool
 
 
 def test_old_and_new_registry_ironmate_topology_and_lock_metadata(snapshots, documents):

@@ -4,8 +4,7 @@
 standard-library-only Python entry into a project that `uv tool install` can
 install. It replaces the per-child builders (`build_stdlib_tool.py`,
 `scripts/build_single_file.py`, `tools/build_uv_tool.py`, ...) that each Aoi
-child carried. It is stdlib only and lives next to [`tools/minpy.py`](minpy.md),
-the parent's other single-file tool.
+child carried. It is stdlib only.
 
 ## What it does
 
@@ -89,7 +88,7 @@ alone does not verify those paths.
 
 - Packaging only. When a child has to *generate* its single file first (splicing
   canonical modules, as SakAnalytics, PythDRagoras, QueRyu and Err-o-RoadRunner do),
-  that generation stays in the child for now (or moves to `tools/minpy.py`), and the
+  that generation stays in the child, and the
   generated file is then passed to this builder.
 - Runtime dependencies are always empty. Building the installed wheel uses
   `setuptools>=68` from the index, as the child builders did.

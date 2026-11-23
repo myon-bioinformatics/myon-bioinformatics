@@ -159,7 +159,6 @@ def test_compare_reports_topology_only():
         "matches": True,
         "missing": [],
         "unexpected": [],
-        "bundle_mismatch": [],
     }
 
     value["files"].pop()

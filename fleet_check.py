@@ -12,7 +12,7 @@ from __future__ import annotations
 import ast, functools, hashlib, json, os, re, shlex, shutil, signal, subprocess, sys, tempfile
 from pathlib import Path
 
-__all__ = ["check_actions", "check_lock", "check_scripts", "launcher_contract", "node", "node_parity", "parent_refs", "python_floor", "repo_root", "run_main", "script_facts", "vendor_staging", "workflow_job"]
+__all__ = ["check_actions", "check_imports", "check_lock", "check_scripts", "launcher_contract", "node", "node_parity", "parent_refs", "python_floor", "repo_root", "run_main", "script_facts", "vendor_staging", "workflow_job"]
 PARENT = "myon-bioinformatics/myon-bioinformatics"
 
 
@@ -65,6 +65,82 @@ def check_scripts(root, patterns=("*.py", "*.mjs", "*.cjs", "scripts/*", "tools/
     undeclared = [path for path, facts in found.items() if facts["argv"] and not facts["argparse"] and path not in passthrough]
     assert not undescribed, f"📝 no docstring / leading comment: {undescribed}"
     assert not undeclared, f"⌨️ reads sys.argv without argparse or cli_args: {undeclared}"
+    return found
+
+
+def _stdlib_names() -> frozenset:
+    names = getattr(sys, "stdlib_module_names", None)   # Python 3.10+; 3.9 falls back to the stdlib directory
+    if names is None:
+        import sysconfig
+        lib = Path(sysconfig.get_paths()["stdlib"])
+        names = {p.stem if p.suffix == ".py" else p.name for p in lib.iterdir() if p.suffix == ".py" or (p / "__init__.py").is_file()}
+    return frozenset(names) | frozenset(sys.builtin_module_names) | {"__future__"}
+
+
+def check_imports(root, entry, allow=(), paths=(".",)) -> dict:
+    """🔍 Follow ``entry``'s imports through this repository (best effort, read without running) and fail on any
+    third-party import that is not in ``allow``.
+
+    Same-repository modules are looked up next to the importing file and under ``paths`` (relative to ``root``).
+    Not counted: imports under ``if TYPE_CHECKING:`` or ``if __name__ == "__main__":`` (script-only), and in a ``try``
+    whose handlers catch ``ImportError`` (optional). ``importlib.import_module("literal")`` is followed; a non-literal
+    one or ``__import__`` is only listed. Returns ``{"modules": [...], "external": {name: ["file:line"]}, "dynamic": [...]}``.
+    """
+    root = Path(root).resolve()
+    stdlib, allow = _stdlib_names(), set(allow)
+    modules, external, dynamic, queue = set(), {}, [], [root / entry]
+
+    def find(name, near):
+        parts = name.split(".")
+        for base in (near, *(root / p for p in paths)):
+            for cand in (base.joinpath(*parts[:-1], parts[-1] + ".py"), base.joinpath(*parts, "__init__.py")):
+                if cand.is_file():
+                    return cand
+        return None
+
+    def counted(chain):   # chain: the import node, then its ancestors
+        for child, p in zip(chain, chain[1:]):
+            if isinstance(p, ast.If) and child in p.body and re.search(r"TYPE_CHECKING|__name__\W+==\W+.__main__.", ast.unparse(p.test)):
+                return False
+            if isinstance(p, ast.Try) and child in p.body and any(
+                    h.type is None or re.search(r"\b(ImportError|ModuleNotFoundError)\b", ast.unparse(h.type)) for h in p.handlers):
+                return False
+        return True
+
+    while queue:
+        path = queue.pop()
+        rel = path.relative_to(root).as_posix()
+        if rel in modules:
+            continue
+        modules.add(rel)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
+        parent = {c: n for n in ast.walk(tree) for c in ast.iter_child_nodes(n)}
+        for node in ast.walk(tree):
+            near, names = path.parent, []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                for _ in range(max(node.level - 1, 0)):   # relative: resolve against the package directory
+                    near = near.parent
+                head = node.module or ""
+                names = [head] * bool(head) + [f"{head}.{a.name}".lstrip(".") for a in node.names]
+            elif isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(node.func, "id", "")) in ("import_module", "__import__"):
+                arg = node.args[0] if node.args else None
+                if getattr(node.func, "attr", getattr(node.func, "id", "")) == "import_module" and isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                    names = [arg.value]
+                else:
+                    dynamic.append(f"{rel}:{node.lineno}")
+            chain = [node]
+            while chain[-1] in parent:
+                chain.append(parent[chain[-1]])
+            for name in names:
+                hit = find(name, near) or find(name.split(".")[0], near)
+                if hit:
+                    queue.append(hit)
+                elif getattr(node, "level", 0) == 0 and name.split(".")[0] not in stdlib | allow and counted(chain):
+                    external.setdefault(name.split(".")[0], []).append(f"{rel}:{node.lineno}")
+    found = {"modules": sorted(modules), "external": {k: sorted(set(v)) for k, v in sorted(external.items())}, "dynamic": sorted(dynamic)}
+    assert not found["external"], f"🔍 third-party imports reached from {entry}: {found['external']}"
     return found
 
 
