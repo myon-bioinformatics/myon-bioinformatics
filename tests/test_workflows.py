@@ -1001,11 +1001,16 @@ def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
     (tmp_path / "bin/uv").write_text("#!/bin/sh\necho \"rendered $*\"\n", encoding="utf-8")
     (tmp_path / "bin/uv").chmod(0o755)
     (tmp_path / "icon.png").write_bytes(b"icon")
+    (tmp_path / "docs/demos").mkdir(parents=True)
+    (tmp_path / "docs/demos/D01.gif").write_bytes(b"gif")
     env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
-           "GUIDE_PAGE": "docs/guide.page.json", "GUIDE_ASSETS": "icon.png=favicon.png", "ARTIFACT_PATH": "_site"}
+           "GUIDE_PAGE": "docs/guide.page.json", "ARTIFACT_PATH": "_site",
+           "GUIDE_ASSETS": "icon.png=favicon.png icon.png=assets/brand/icon.png docs/demos=demos"}
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
     assert (tmp_path / "_site/index.html").read_text(encoding="utf-8").strip() == \
         "rendered run --no-project --with pinned python -m web_ui --page docs/guide.page.json"
     assert (tmp_path / "_site/favicon.png").read_bytes() == b"icon"
+    assert (tmp_path / "_site/assets/brand/icon.png").read_bytes() == b"icon"  # A nested NAME gets its folder.
+    assert (tmp_path / "_site/demos/D01.gif").read_bytes() == b"gif"  # A folder SOURCE is copied whole.
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env={**env, "GUIDE_ASSETS": ""}, check=True)
 

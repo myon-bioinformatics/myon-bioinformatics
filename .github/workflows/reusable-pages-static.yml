@@ -18,7 +18,7 @@ on:
         type: string
         default: ""
       guide_assets:
-        description: "Optional files copied next to the guide, as space-separated SOURCE=NAME pairs (for example docs/brand/icon.png=icon.png)"
+        description: "Optional files or folders copied next to the guide, as space-separated SOURCE=NAME pairs (for example docs/brand/icon.png=icon.png docs/demos=demos)"
         required: false
         type: string
         default: ""
@@ -66,7 +66,9 @@ jobs:
           uv run --no-project --with "$WEB_UI" python -m web_ui --page "$GUIDE_PAGE" > "$ARTIFACT_PATH/index.html"
           read -r -a pairs <<< "$GUIDE_ASSETS"
           for pair in "${pairs[@]}"; do
-            cp "${pair%%=*}" "$ARTIFACT_PATH/${pair#*=}"
+            target="$ARTIFACT_PATH/${pair#*=}"
+            mkdir -p "$(dirname "$target")"
+            cp -R "${pair%%=*}" "$target"
           done
       - if: inputs.build != ''
         name: Build
