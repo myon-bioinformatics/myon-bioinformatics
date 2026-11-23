@@ -56,14 +56,27 @@ jobs:
           python-version: "3.15"
           enable-cache: false
       - if: inputs.guide_page != ''
+        name: Checkout the guide back-link helper
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: myon-bioinformatics/myon-bioinformatics
+          ref: ${{ github.workflow_sha }}
+          path: .reusable-pages-static
+          persist-credentials: false
+          sparse-checkout: scripts/add_guide_backlinks.py
+          sparse-checkout-cone-mode: false
+      - if: inputs.guide_page != ''
         name: Build the guide
         env:
           GUIDE_PAGE: ${{ inputs.guide_page }}
           GUIDE_ASSETS: ${{ inputs.guide_assets }}
           ARTIFACT_PATH: ${{ inputs.artifact_path }}
+          GUIDE_REPOSITORY: ${{ github.repository }}
+          GUIDE_NAV_SCRIPT: ${{ github.workspace }}/.reusable-pages-static/scripts/add_guide_backlinks.py
         run: |
           mkdir -p "$ARTIFACT_PATH"
           uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$GUIDE_PAGE" > "$ARTIFACT_PATH/index.html"
+          python3 -S "$GUIDE_NAV_SCRIPT" --repository "$GUIDE_REPOSITORY" --in-place "$ARTIFACT_PATH/index.html"
           read -r -a pairs <<< "$GUIDE_ASSETS"
           for pair in "${pairs[@]}"; do
             target="$ARTIFACT_PATH/${pair#*=}"
