@@ -72,6 +72,16 @@ class StatusTests(unittest.TestCase):
                 checks.assert_called_once_with("myon-bioinformatics/Ironmate", "b" * 40)
                 self.assertEqual(item["target"], branch)
 
+    def test_a_finished_pull_request_is_marked_in_its_target(self):
+        # Its checks stay green after the merge, so the target has to say that nobody is waiting on it.
+        for pull, target in (({"state": "open", "merged_at": None}, "PR #7"),
+                             ({"state": "closed", "merged_at": "2026-11-23T13:38:28Z"}, "PR #7 🟣merged"),
+                             ({"state": "closed", "merged_at": None}, "PR #7 ⚫closed")):
+            with self.subTest(target=target):
+                with patch.object(ci, "get", return_value={**pull, "head": {"sha": "c" * 40}}), patch.object(
+                        ci.ghi, "checks_for_sha", return_value={"complete": True, "checks": []}):
+                    self.assertEqual(ci.observe("Ironmate", 7)["target"], target)
+
     def test_json_cli(self):
         with patch.object(ci, "observe", return_value={"repository": "o/r", "checks": []}):
             out = io.StringIO()

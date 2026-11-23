@@ -473,6 +473,7 @@ python -S ci_status.py --repos 'Aoi#251,BlueProbe#70,BrowserTestKit' --format br
 ```
 
 `--ci-check` still exits 1 until every target is COMPLETE or NO CHECKS, so a shell loop can wait on it.
+A pull request that is no longer open is marked `🟣merged` or `⚫closed` after its number, because its checks look the same as before.
 
 For a specific Actions attempt, use `--verify-workflow` as the first argument.
 Specify the workflow ID or YAML filename, event, run ID and attempt. Supply
