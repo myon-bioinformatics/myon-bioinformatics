@@ -157,7 +157,10 @@ G6のtokenizer調査（`scripts/tokenizer_compat.py`、`docs/o200k-lookup/`）�
 全公開・非アーカイブリポジトリへのPages展開は、2026年11月22日に29件すべてで完了した（[済み分](#pages-32-done)）。完了条件としては維持し、リポジトリが増えたときに同じ形で入れる。
 
 - [ ] 入力を持つ既存のサイトで、入力・結果・実行場所を記録し、スマートフォンだけで代表操作を完了できることを確認する。紹介だけのページは対象外。
-- [ ] 移管先の公開後に旧リンク・query・hashを検証する。入力の保存は利用者の選択とし、公開用の合成fixtureと分ける。
+  - 11月23日: ポートフォリオの2つのツールは確認済み。公開サイト（main `4b88aca`）に対する受入テストが72件成功した（[実行記録](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/actions/runs/45120652946)、GitHub Actions 上の Chromium と WebKit）。HTML取り込みは幅390・タッチありの設定で「貼り付け→抽出→条件変更→ダウンロード→消去」が通る。実機ではなくエミュレーション。
+  - 残り: 入力欄を持つほかの公開ページ（DRAgoWing のヒートマップ、OnTautoLogy の `site/`、親の監査ページ `site/ui/`、PySaiyanWeBoo の `index.html`）はスマートフォン幅での操作を確認していない。
+- [x] 移管先の公開後に旧リンク・query・hashを検証する。入力の保存は利用者の選択とし、公開用の合成fixtureと分ける。
+  - 11月23日: 上と同じ[実行記録](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/actions/runs/45120652946)で確認した。ポートフォリオのトップから旧ツールと新ツールへのリンクが見える。移管した mcp-toolcall-lab のページは `?view=niconico` と `#wiki`・`#niconico` で同じ画面が開く。HTML取り込みは入力を保存しない（操作後も `localStorage` と `sessionStorage` は0件）。テストの入力は `tests/fixtures/html-import/cases.json` の合成データで、利用者の入力とは別。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/issues/32)
 
@@ -176,7 +179,7 @@ G6のtokenizer調査（`scripts/tokenizer_compat.py`、`docs/o200k-lookup/`）�
 
 ### BrowserTestKitの操作
 
-- [ ] 子フレームとopen shadow rootを区別し、再描画後はlocatorを再取得する。現行は件数を比較するが、中身は `not_entered`。 件数と一覧のテスト9件は main `f974ca0` で成功（ローカル確認）。BrowserTestKit側にも残件として記録した（[BrowserTestKit #185](https://github.com/myon-bioinformatics/BrowserTestKit/pull/185)）。
+- [ ] 子フレームとopen shadow rootを区別し、再描画後はlocatorを再取得する。現行は件数を比較するが、中身は `not_entered`。 中へ入るときに何を出すか（件数だけか、中の操作対象までか）は未決（11月23日）。 件数と一覧のテスト9件は main `f974ca0` で成功（ローカル確認）。BrowserTestKit側にも残件として記録した（[BrowserTestKit #185](https://github.com/myon-bioinformatics/BrowserTestKit/pull/185)）。
 
 移動後のセッション再観測、headed、任意のStagehandとAndroidは実行範囲を明記する。操作CLIの契約安定後にtransportの要否を判断する。Stagehandは必須にしない。 それぞれの再開条件は BrowserTestKit の `docs/page-inspect-platform-scenarios.md` に記録した（#185）。
 
@@ -192,6 +195,7 @@ P1.4〜P1.10の残りとP2〜P4は、2026-10-23の調査をそのまま実装せ
   - 実行による確認（11月22日、ローカル確認）: NagoyAction `fff1cde`、BrowserTestKit `f974ca0`、PySaiyanWeBoo `9f5a730`、gh_identity `3111c17` の入口とサブコマンド計127件のうち126件で、`--help` は終了0・標準出力、不明な引数は終了2・標準エラー。例外の `btk.py check-png` は存在しないファイルにtracebackを出していた（[BrowserTestKit #185](https://github.com/myon-bioinformatics/BrowserTestKit/pull/185) で修正）。ヘルプ文のない引数は概算でgh_identity 260（88サブコマンド中74）、btk.py 53（18中11）、nagoyaction.py 8（9中2）。旧Issueが名指しした `twin_parity.py`、`collection-cli.cjs`、`tool/flow_diagram.py`、`web_ui.py` は現行mainにない。
   - 11月23日: Aoi の子の単一ファイル入口で `help=` のない `add_argument` を埋めた（AST で数えて、nagoyaction.py 39→0 [NagoyAction #63](https://github.com/myon-bioinformatics/NagoyAction/pull/63)、queryu.py 11→0 [QueRyu #53](https://github.com/myon-bioinformatics/QueRyu/pull/53)、blueprobe.py 7→0 [BlueProbe #63](https://github.com/myon-bioinformatics/BlueProbe/pull/63)、sakanalytics.py 6→0 [SakAnalytics #55](https://github.com/myon-bioinformatics/SakAnalytics/pull/55)、dragowing.py 1→0 [DRAgoWing #66](https://github.com/myon-bioinformatics/DRAgoWing/pull/66)）。pythdragoras.py（9件）は [PythDRagoras #57](https://github.com/myon-bioinformatics/PythDRagoras/pull/57) で埋めたが、ファイルのバイトが Aoi の LittleBit holdout の来歴（`holdout.provenance.json`）の SHA-256 とずれたため [#59](https://github.com/myon-bioinformatics/PythDRagoras/pull/59) で取り消した。来歴の再記録が承認されたら入れ直す。続けて gh_identity.py 332→0（[gh_identity #131](https://github.com/myon-bioinformatics/gh_identity/pull/131)、88 サブコマンドの `--help` が終了0、pytest 1325件成功）、Ironmate の15本 87→0（[Ironmate #252](https://github.com/myon-bioinformatics/Ironmate/pull/252)、CI 22件成功）。エージェントが呼ぶ面（NagoyAction・gh_identity・PySaiyanWeBoo・btk.py）は 0 になった。
   - 11月23日（続き）: 残りも埋めた。親の15本 198→0（[#345](https://github.com/myon-bioinformatics/myon-bioinformatics/pull/345)）、TopOntoLogy 26（[#21](https://github.com/myon-bioinformatics/TopOntoLogy/pull/21)）、OneLaunchNumerousModules 21（[#25](https://github.com/myon-bioinformatics/OneLaunchNumerousModules/pull/25)）、TaxOntOy 19（[#18](https://github.com/myon-bioinformatics/TaxOntOy/pull/18)）、OnTautoLogy 17（[#47](https://github.com/myon-bioinformatics/OnTautoLogy/pull/47)）、ascii_artist 8（[#87](https://github.com/myon-bioinformatics/ascii_artist/pull/87)）、xprobe 7（[#65](https://github.com/myon-bioinformatics/xprobe/pull/65)）、search_seq_including_spaces 7（[#90](https://github.com/myon-bioinformatics/search_seq_including_spaces/pull/90)）、Aoi 4（[#243](https://github.com/myon-bioinformatics/Aoi/pull/243)）、yourself 4（[#75](https://github.com/myon-bioinformatics/yourself/pull/75)）、memo 4（[#6](https://github.com/myon-bioinformatics/memo/pull/6)）、ONTO 3（[#15](https://github.com/myon-bioinformatics/ONTO/pull/15)）、cli_args 2（[#63](https://github.com/myon-bioinformatics/cli_args/pull/63)）、Err-o-RoadRunner 2（[#80](https://github.com/myon-bioinformatics/Err-o-RoadRunner/pull/80)）、markdown 1（[#163](https://github.com/myon-bioinformatics/markdown/pull/163)）。ルート直下の .py を AST で数えた残りは cli_args の1件（宣言表の行で、意図して残す）と pythdragoras.py の9件（上記の来歴の承認待ち）だけ。
+  - 11月23日（形式）: NagoyAction で `--format text|json` を足し、`--format json` を正、`--json` を短い書き方にした（親・`doctor`・`show`・`run`・`linkcheck`、[NagoyAction #67](https://github.com/myon-bioinformatics/NagoyAction/pull/67)）。`--json` だけを持つ残りは TalkCompress 5、BlueProbe 3、SakAnalytics 2、QueRyu 1、親 7（`add_argument` の数）。gh_identity は `commit-files` の `--format` が別の意味を持つので足していない。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/cli_args/issues/29)
 
@@ -199,6 +203,7 @@ P1.4〜P1.10の残りとP2〜P4は、2026-10-23の調査をそのまま実装せ
 
 ### TalkCompressの圧縮と往復評価
 
-- [ ] G4の品質gate（正答率0.9）の有効化を検討する。測定自体は完了済み。採用fixtureとgateは、この文書の更新では変更しない。
+- [x] G4の品質gate（正答率0.9）の有効化を検討する。測定自体は完了済み。採用fixtureとgateは、この文書の更新では変更しない。
+  - 11月23日の判断: 有効化しない。実測では採用18形のうち0.9に達した形が0件（チェコ語3/72、オランダ語3/72、ポーランド語0/18、Qwen2.5-1.5B、[測定記録](https://github.com/myon-bioinformatics/TalkCompress/blob/main/docs/measurements/g4-live.md)）。いま有効にすると採用形がすべて落ち、1つのモデルの結果で採用を決めることになる。再開条件: 同じ手順で0.9に達する形が出たとき、または本番の選定に使うモデルが決まったとき。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/TalkCompress/issues/40)
