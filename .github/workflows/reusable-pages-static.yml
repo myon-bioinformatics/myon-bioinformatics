@@ -35,7 +35,7 @@ concurrency:
 
 env:
   # The one pin for every guide page; move it here and re-pin the callers.
-  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@3403f2fbf65f633bc1018ddf67d817a0f8e4905c"
+  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@a821355536a65b035c5780b68ca474771386dc29"
 
 jobs:
   build:
@@ -56,40 +56,17 @@ jobs:
           python-version: "3.15"
           enable-cache: false
       - if: inputs.guide_page != ''
-        name: Checkout the guide back-link helper
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          path: .reusable-pages-static
-          persist-credentials: false
-          sparse-checkout: scripts/add_guide_backlinks.py
-          sparse-checkout-cone-mode: false
-      - if: inputs.guide_page != ''
-        name: Record the helper checkout identity
-        env:
-          JOB_WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
-          JOB_WORKFLOW_SHA: ${{ job.workflow_sha }}
-          CALLER_REPOSITORY: ${{ github.repository }}
-          CALLER_WORKFLOW_SHA: ${{ github.workflow_sha }}
-        run: |
-          printf 'job.workflow_repository=%s\n' "$JOB_WORKFLOW_REPOSITORY"
-          printf 'job.workflow_sha=%s\n' "$JOB_WORKFLOW_SHA"
-          printf 'github.repository=%s\n' "$CALLER_REPOSITORY"
-          printf 'github.workflow_sha=%s\n' "$CALLER_WORKFLOW_SHA"
-      - if: inputs.guide_page != ''
         name: Build the guide
         env:
           GUIDE_PAGE: ${{ inputs.guide_page }}
           GUIDE_ASSETS: ${{ inputs.guide_assets }}
           ARTIFACT_PATH: ${{ inputs.artifact_path }}
           GUIDE_REPOSITORY: ${{ github.repository }}
-          GUIDE_NAV_SCRIPT: ${{ github.workspace }}/.reusable-pages-static/scripts/add_guide_backlinks.py
         run: |
           mkdir -p "$ARTIFACT_PATH"
-          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$GUIDE_PAGE" > "$ARTIFACT_PATH/index.html"
-          python3 -S "$GUIDE_NAV_SCRIPT" --repository "$GUIDE_REPOSITORY" --in-place "$ARTIFACT_PATH/index.html"
-          python3 -S "$GUIDE_NAV_SCRIPT" --repository "$GUIDE_REPOSITORY" --check "$ARTIFACT_PATH/index.html"
+          # 🏠 portfolio · 🐙 repository: the way back comes from the pinned renderer (back_nav_html).
+          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$GUIDE_PAGE" --repository "$GUIDE_REPOSITORY" > "$ARTIFACT_PATH/index.html"
+          grep -qF 'data-ui-back' "$ARTIFACT_PATH/index.html"
           read -r -a pairs <<< "$GUIDE_ASSETS"
           for pair in "${pairs[@]}"; do
             target="$ARTIFACT_PATH/${pair#*=}"
