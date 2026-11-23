@@ -169,7 +169,9 @@ POST_BASELINE_ENROLLMENTS = {
     # Shared child checks (parent #292/#294); the adopters are re-observed in child_reobservations.json.
     **{f"myon-bioinformatics/{name}": {"vendor/fleet_check.py"} for name in (
         "yourself", "nvd_nist_known_vulns", "ascii_artist", "cli_args", "gh_identity")},
-    "myon-bioinformatics/search_seq_including_spaces": {"vendor/fleet_check.py", "vendor/myon-bioinformatics-LICENSE"},
+    # + PythDRagoras for the alignment metrics (search_seq #83), registered at the 11/23 refresh.
+    "myon-bioinformatics/search_seq_including_spaces": {"vendor/fleet_check.py", "vendor/myon-bioinformatics-LICENSE",
+                                                        "vendor/pythdragoras.py", "vendor/pythdragoras-LICENSE"},
     # check_scripts (parent #328): PySaiyanWeBoo and Ironmate (above) lock it after the parent registers it;
     # Aoi locks it first and the parent registers and re-observes it together.
     **{f"myon-bioinformatics/{name}": {"vendor/fleet_check.py"} for name in ("PySaiyanWeBoo", "Aoi")},
