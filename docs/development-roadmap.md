@@ -165,8 +165,9 @@ G6のtokenizer調査（`scripts/tokenizer_compat.py`、`docs/o200k-lookup/`）�
 
 ### Aoiの研究記録
 
-- [ ] 研究登録の機械値を英語（`posthoc` / `preregistered` / `unknown`）にし、日本語表示は別ラベルにする。現行の `registration_status()` は「事後構成／事前登録／不明」を返す表示用ヘルパー。Aoiで小さなPRを予定する（この文書PRの範囲外）。
+- [x] 研究登録の機械値を英語（`posthoc` / `preregistered` / `unknown`）にし、日本語表示は別ラベルにする。現行の `registration_status()` は「事後構成／事前登録／不明」を返す表示用ヘルパー。Aoiで小さなPRを予定する（この文書PRの範囲外）。
   - 11月22日: 子の QueRyu に `registration_code`（`posthoc` / `preregistered` / `unknown`）を足し、QueRyu の main に入った（[QueRyu #52](https://github.com/myon-bioinformatics/QueRyu/pull/52)）。表示ラベルを返す `registration_status` と、結果行の `registration` の日本語の値は変えていない。残りは Aoi の `queryu/` へのsubtree同期。
+  - 11月23日: Aoi の `queryu/` へ squash なしの `git subtree pull` で同期した（QueRyu main `fbfdb7b`、[Aoi #241](https://github.com/myon-bioinformatics/Aoi/pull/241)）。同じバイトを写していた [Aoi #239](https://github.com/myon-bioinformatics/Aoi/pull/239) も #241 に含めた。Aoi main `cd9589c` に入る前の #241 の head で CI 33件成功（pytest は Python 3.11〜3.15）。残りの5つの子も同じ PR で取り込んだ（PythDRagoras は #58 の手前 `fbd948c`。親の pin の切り替えがそろうのを待つ）。
   - 着手時の注意（11月22日に確認）: 実装は子リポジトリ QueRyu の `ask/ask.py` にあり、Aoi 側はそのsubtree。結果行の `registration` は NagoyAction の受付テストが日本語の値で検査し、DRAgoWing は表示ラベルとして使う。子で先に変えてから Aoi へ同期する順になる。既存の値は残し、英語の機械値を別フィールドで足す形なら、利用側を壊さずに分離できる。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/Aoi/issues/30)
@@ -189,6 +190,7 @@ P1.4〜P1.10の残りとP2〜P4は、2026-10-23の調査をそのまま実装せ
 
 - [ ] エージェントが実際に呼ぶ面だけ、`--format json` を正、`--json` を糖衣として足す。対象の候補はNagoyActionの残りサブコマンド、PySaiyanWeBooのhelp整備、gh_identityのhelp穴埋め（`--format` の既存意味と衝突させない）。`uv run pytest` を `python -m pytest` に強制しない。
   - 実行による確認（11月22日、ローカル確認）: NagoyAction `fff1cde`、BrowserTestKit `f974ca0`、PySaiyanWeBoo `9f5a730`、gh_identity `3111c17` の入口とサブコマンド計127件のうち126件で、`--help` は終了0・標準出力、不明な引数は終了2・標準エラー。例外の `btk.py check-png` は存在しないファイルにtracebackを出していた（[BrowserTestKit #185](https://github.com/myon-bioinformatics/BrowserTestKit/pull/185) で修正）。ヘルプ文のない引数は概算でgh_identity 260（88サブコマンド中74）、btk.py 53（18中11）、nagoyaction.py 8（9中2）。旧Issueが名指しした `twin_parity.py`、`collection-cli.cjs`、`tool/flow_diagram.py`、`web_ui.py` は現行mainにない。
+  - 11月23日: Aoi の子の単一ファイル入口で `help=` のない `add_argument` を埋めた（AST で数えて、nagoyaction.py 39→0 [NagoyAction #63](https://github.com/myon-bioinformatics/NagoyAction/pull/63)、queryu.py 11→0 [QueRyu #53](https://github.com/myon-bioinformatics/QueRyu/pull/53)、blueprobe.py 7→0 [BlueProbe #63](https://github.com/myon-bioinformatics/BlueProbe/pull/63)、sakanalytics.py 6→0 [SakAnalytics #55](https://github.com/myon-bioinformatics/SakAnalytics/pull/55)、dragowing.py 1→0 [DRAgoWing #66](https://github.com/myon-bioinformatics/DRAgoWing/pull/66)）。pythdragoras.py（9件）は [PythDRagoras #57](https://github.com/myon-bioinformatics/PythDRagoras/pull/57) で埋めたが、ファイルのバイトが Aoi の LittleBit holdout の来歴（`holdout.provenance.json`）の SHA-256 とずれたため [#59](https://github.com/myon-bioinformatics/PythDRagoras/pull/59) で取り消した。来歴の再記録が承認されたら入れ直す。残る大きいものは gh_identity（AST で332）、Ironmate（87）。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/cli_args/issues/29)
 
