@@ -1058,7 +1058,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=None,
         help="GitHub ref for default enforce policy (else GITHUB_REF)",
     )
-    parser.add_argument("--json", action="store_true", help="Print JSON report on stdout")
+    parser.add_argument("--format", choices=("text", "json"), default="text", help="output format (default: text)")
+    parser.add_argument("--json", action="store_const", const="json", dest="format", help="Print JSON report on stdout")
     parser.add_argument("--output", type=Path, help="Also save the unmodified JSON report, including failed audits")
     parser.add_argument(
         "--require-complete", action="store_true",
@@ -1123,13 +1124,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if args.fleet:
         emit_fleet_annotations(report)
-        if args.json:
+        if args.format == "json":
             print(json.dumps(report, indent=2, sort_keys=True))
         else:
             sys.stdout.write(render_fleet_text(report))
     else:
         emit_annotations(report)
-        if args.json:
+        if args.format == "json":
             print(json.dumps(report, indent=2, sort_keys=True))
         else:
             sys.stdout.write(render_text(report))

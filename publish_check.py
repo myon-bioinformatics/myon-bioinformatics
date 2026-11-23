@@ -172,7 +172,8 @@ def main(argv: list[str] | None = None, get=fetch, api=github_json, sleep=time.s
     parser.add_argument("--wait", type=float, default=0, help="retry for up to this many seconds")
     parser.add_argument("--interval", type=float, default=15,help="seconds between retries while --wait lasts (default: %(default)s)")
     parser.add_argument("--no-bust", action="store_true", help="do not add a cache-busting query")
-    parser.add_argument("--json", action="store_true",
+    parser.add_argument("--format", choices=("text", "json"), default="text", help="output format (default: text)")
+    parser.add_argument("--json", action="store_const", const="json", dest="format",
                         help="print one JSON object instead of text lines")
     args = parser.parse_args(argv)
     if not args.targets and not args.repo:
@@ -194,7 +195,7 @@ def main(argv: list[str] | None = None, get=fetch, api=github_json, sleep=time.s
         1: "At least one check failed or is stale. Read checks[].line. A successful deploy alone does not prove the served bytes changed.",
         3: "HTTP was unreachable (DNS, proxy, or timeout) and the other checks passed. Retry when the host resolves.",
     }
-    if args.json:
+    if args.format == "json":
         print(json.dumps({
             "ok": code == 0,
             "exit_code": code,

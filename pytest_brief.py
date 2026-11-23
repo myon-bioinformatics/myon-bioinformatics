@@ -79,7 +79,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--requirements", help="requirements file (default: tests/requirements.txt if present)")
     parser.add_argument("--tail", type=int, default=15, help="lines shown when pytest could not run")
     parser.add_argument("--python", default=sys.executable, help="interpreter for pip and pytest")
-    parser.add_argument("--json", action="store_true",
+    parser.add_argument("--format", choices=("text", "json"), default="text", help="output format (default: text)")
+    parser.add_argument("--json", action="store_const", const="json", dest="format",
                         help="print one JSON object instead of text lines")
     parser.epilog = ("Exit codes: pytest's own (0 passed, 1 failed), "
                      "3 a requirement failed to resolve or install so pytest did not run, "
@@ -99,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
             installed = list(need)
             if need:
                 subprocess.run(pip + requirements, capture_output=True, text=True, check=True)
-                if not args.json:
+                if args.format != "json":
                     print("installed: " + ", ".join(need))
         except (OSError, subprocess.CalledProcessError, ValueError, KeyError, TypeError) as exc:
             message = f"pytest_brief: dependency resolution/install failed: {exc}"
@@ -108,7 +109,7 @@ def main(argv: list[str] | None = None) -> int:
             if isinstance(exc, subprocess.CalledProcessError):
                 tail_lines = (exc.stdout + exc.stderr).strip().splitlines()[-args.tail:]
                 print("\n".join(tail_lines), file=sys.stderr)
-            if args.json:
+            if args.format == "json":
                 print(json.dumps({
                     "ok": False,
                     "exit_code": 3,
@@ -122,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     done = subprocess.run([args.python, "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider", *pytest_args],
                           capture_output=True, text=True, env=env)
     lines = brief(done.stdout + done.stderr, done.returncode, args.tail)
-    if args.json:
+    if args.format == "json":
         payload = {"ok": done.returncode == 0, "exit_code": done.returncode,
                    "installed": installed, "lines": lines, "hint": ""}
         if done.returncode != 0:

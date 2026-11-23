@@ -249,7 +249,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", default=DEFAULT_VERSION)
     parser.add_argument("--requires-python", default=DEFAULT_REQUIRES_PYTHON)
     parser.add_argument("--description")
-    parser.add_argument("--json", action="store_true", help="print the build summary as JSON")
+    parser.add_argument("--format", choices=("text", "json"), default="text", help="output format (default: text)")
+    parser.add_argument("--json", action="store_const", const="json", dest="format", help="print the build summary as JSON")
     args = parser.parse_args(argv)
     try:
         result = build(args.entries, args.out, command=args.command, scripts=args.script,
@@ -259,7 +260,7 @@ def main(argv: list[str] | None = None) -> int:
     except (UvToolBuildError, OSError) as exc:
         print(f"uv_tool_build: error: {exc}", file=sys.stderr)
         return 1
-    if args.json:
+    if args.format == "json":
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         print(f"wrote {result['out']} ({', '.join(result['scripts'])}); install: uv tool install {result['out']}")

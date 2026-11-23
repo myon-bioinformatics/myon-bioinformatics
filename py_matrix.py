@@ -66,12 +66,13 @@ def main(argv: list[str] | None = None, *, which: Callable[[str], str | None] = 
     parser.add_argument("--with", dest="packages", action="append", help="package for uv --with (default: pytest)")
     parser.add_argument("--timeout", type=float, default=300.0, help="seconds per version (default: 300)")
     parser.add_argument("--tail", type=int, default=15, help="output lines shown for a failing version")
-    parser.add_argument("--json", action="store_true", help="print one JSON object instead of text lines")
+    parser.add_argument("--format", choices=("text", "json"), default="text", help="output format (default: text)")
+    parser.add_argument("--json", action="store_const", const="json", dest="format", help="print one JSON object instead of text lines")
     args = parser.parse_args(argv)
     if which("uv") is None:
         message = "error: uv not found; install uv or run pytest under each interpreter directly"
         print(message, file=sys.stderr)
-        if args.json:
+        if args.format == "json":
             print(json.dumps({
                 "ok": False,
                 "exit_code": 2,
@@ -85,10 +86,10 @@ def main(argv: list[str] | None = None, *, which: Callable[[str], str | None] = 
         passed, lines = run_version(version, args.packages or ["pytest"], pytest_args, timeout=args.timeout,
                                     tail=args.tail, run=run)
         rows.append({"version": version, "passed": passed, "lines": lines})
-        if not args.json:
+        if args.format != "json":
             print("\n".join(lines), flush=True)
     ok = all(row["passed"] for row in rows)
-    if args.json:
+    if args.format == "json":
         payload = {"ok": ok, "exit_code": 0 if ok else 1, "versions": rows, "hint": ""}
         if not ok:
             payload["hint"] = "A version failed or timed out. Read versions[].lines. Exit 2 means uv is missing or the arguments are invalid."
