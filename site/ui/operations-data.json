@@ -23,14 +23,14 @@
   },
   {
     "id": "ops:02:OneLinearNumerousMemo",
-    "repo": "OneLinearNumerousMemo",
+    "repo": "OneLaunchNumerousModules",
     "title": "olnm：導入・引用符なしの計算",
     "scope": "main",
     "input": "空白区切りの数式 / argv / stdin",
     "output": "calc 6 mul 7 → 42（終了0）",
     "dep": "Python 3.11+。Linux / WSL の bash・zsh。uv と Git（Gitソース導入）。Nodeエンジンのみ Node 26",
     "failure": "olnmが見つからなければ uv tool list / uv tool update-shell。* はシェルが展開するので mul / pow / lpar / rpar を使う。tool install の対象は単一.pyではなくプロジェクト。Python import は uv add が別途必要。",
-    "command": "uv tool install 'git+https://github.com/myon-bioinformatics/OneLinearNumerousMemo.git@main'\nolnm calc 6 mul 7",
+    "command": "uv tool install 'git+https://github.com/myon-bioinformatics/OneLaunchNumerousModules.git@main'\nolnm calc 6 mul 7",
     "note": "2026-11-13：Python 3.12 / python3 -S olnm.py calc 6 mul 7 → 42、終了0。OLNM_TEST_UV=1 の既存TestUvLifecycleは2件成功。隔離したローカルソースでtool install・uvx・再インストール・uv add/remove・uninstallを確認。Git URLの導入は未検証。",
     "current": "単一olnm.pyのシェル・Python共通入口。基本ランタイムのPython外部依存はゼロ。",
     "target": "olnmの使い方はこのカードに集約し、詳細分岐は既存のolnm Pagesへ。",
@@ -42,8 +42,8 @@
     "execution": "計算例：実行確認済み / Git導入：未検証",
     "source_sha": "e64c8ad501d73aa64ca0f82fa7a55d91db2a7c6e",
     "pr": null,
-    "guide_url": "https://myon-bioinformatics.github.io/OneLinearNumerousMemo/",
-    "maintenance": "# 登録せず実行（42）\nuvx --from 'git+https://github.com/myon-bioinformatics/OneLinearNumerousMemo.git@main' olnm calc 6 mul 7\n\n# シェル関数（導入後、bashで実行。zshは init zsh）\neval \"$(command olnm init bash)\"\ncalc 6 mul 7\n\n# 更新：Gitの@mainから導入した場合\nuv tool upgrade one-linear-numerous-memo\n# 更新後に init を再読み込みする\n\n# ローカルcloneから導入した場合、そのcloneで実行\ngit pull --ff-only\nuv tool install --force .\n\n# 削除（必要なときだけ実行）\nuv tool uninstall one-linear-numerous-memo\n\nmain参照は更新される。再現時は完全SHAを指定する。SHA固定の更新は新しい完全SHAを指定して uv tool install --force。削除時はrcのinit行も除き、新しいターミナルを開く。~/.olnm のデータは残る。"
+    "guide_url": "https://myon-bioinformatics.github.io/OneLaunchNumerousModules/",
+    "maintenance": "# 登録せず実行（42）\nuvx --from 'git+https://github.com/myon-bioinformatics/OneLaunchNumerousModules.git@main' olnm calc 6 mul 7\n\n# シェル関数（導入後、bashで実行。zshは init zsh）\neval \"$(command olnm init bash)\"\ncalc 6 mul 7\n\n# 更新：Gitの@mainから導入した場合\nuv tool upgrade one-launch-numerous-modules\n# 更新後に init を再読み込みする\n\n# ローカルcloneから導入した場合、そのcloneで実行\ngit pull --ff-only\nuv tool install --force .\n\n# 削除（必要なときだけ実行）\nuv tool uninstall one-launch-numerous-modules\n\nmain参照は更新される。再現時は完全SHAを指定する。SHA固定の更新は新しい完全SHAを指定して uv tool install --force。削除時はrcのinit行も除き、新しいターミナルを開く。~/.olnm のデータは残る。"
   },
   {
     "id": "ops:03:BlueProbe",
