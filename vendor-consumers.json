@@ -518,6 +518,12 @@
           "source": "fleet_check.py",
           "destination": "vendor/fleet_check.py",
           "license": "vendor/myon-bioinformatics-LICENSE"
+        },
+        {
+          "repository": "myon-bioinformatics/PythDRagoras",
+          "source": "pythdragoras.py",
+          "destination": "vendor/pythdragoras.py",
+          "license": "vendor/pythdragoras-LICENSE"
         }
       ]
     },
