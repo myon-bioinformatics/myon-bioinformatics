@@ -1,7 +1,6 @@
 name: Update README stats
 
 on:
-  workflow_dispatch:
   schedule:
     - cron: '37 0 * * *'
   push:

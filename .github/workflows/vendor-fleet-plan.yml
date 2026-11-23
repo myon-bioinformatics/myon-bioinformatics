@@ -31,7 +31,6 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/vendor-fleet-plan.yml"
-  workflow_dispatch:
 
 permissions:
   contents: read

@@ -1,7 +1,6 @@
 name: Vendor consumer lock reconciliation
 
 on:
-  workflow_dispatch:
   schedule:
     - cron: "30 0 * * 1"  # weekly read-only drift report (Monday 00:30 UTC = 09:30 JST)
   pull_request:
@@ -76,7 +75,7 @@ jobs:
             --output reports/vendor-lock-reconciliation.json
           )
           # PRs validate the proposed parent baseline, including coordinated
-          # child relocations. Main/dispatch still observe actual live main.
+          # child relocations. Main and scheduled runs still observe actual live main.
           if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             args+=(--heads child-heads.json)
           fi
@@ -101,8 +100,8 @@ jobs:
 
   duplicate-files:
     name: Cross-repository duplicate files (read only)
-    # PR/push validate the adapter offline; scheduled/manual runs use the verified lock.
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # PR/push validate the adapter offline; scheduled runs use the verified lock.
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

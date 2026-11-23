@@ -7,7 +7,6 @@ on:
       - "docs/actions-lock-pilot.md"
       - "actions-lock-tool.json"
       - "scripts/install_actions_lock.py"
-  workflow_dispatch:
 permissions:
   contents: read
 jobs:

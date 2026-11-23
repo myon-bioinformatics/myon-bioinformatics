@@ -5,7 +5,6 @@ on:
       - browser_evidence.py
       - tools/browser/**
       - .github/workflows/browser-evidence.yml
-  workflow_dispatch:
 
 permissions:
   contents: read
