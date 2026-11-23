@@ -4,7 +4,8 @@
     "2026-11-15: Ironmate (flow contract from ascii_artist, Ironmate #223 / parent #259) was audited at its merged main ce252bc (vendor_sync.py check: no changed paths; vendor_consumers.compare: desired contract matches; repository id unchanged) and re-observed in child-heads.json. Its adopted lock equals tests/fixtures/ironmate-flow-ascii-artist.lock.json byte for byte. The retired transition and the head it was bound to stay here; historical fixtures are unchanged.",
     "2026-11-15: six fleet_check adopters (yourself #68/#69, nvd_nist_known_vulns #61/#62, ascii_artist #79/#80, cli_args #53/#54, gh_identity #119/#121, search_seq_including_spaces #70/#71; parent #292/#294; the second PR re-pins the first-parent merge 6c29503) were audited at their merged main (vendor_sync.py check: no changed paths; vendor_consumers.compare: matches with the fleet_check.py entries) and re-observed in child-heads.json. Their adopted locks are inline here (lock) rather than separate fixture files. Three adopters stay at their recorded heads for now: flutter_navigation_basic (#248), whose reviewed locked CI workflow non-dart.yml changed in other PRs since its recorded head; xprobe (#58), whose registry row is the target of a retired njs_launch transition that these tests still exercise, and Err-o-RoadRunner (#69), whose live lock also holds an unregistered Aoi vendor/uv_tool_build.py row.",
     "2026-11-18: Ironmate (#235) was audited at its merged main 2087012 (vendor_consumers.compare: parent registry matches the lock after pillow_min moved to the parent's tools/stdlib_min/; repository id unchanged) and re-observed in child-heads.json. The #235 lock is tests/fixtures/ironmate-stdlib-pillow-min-235.lock.json. The #223 adopted row, retired transition, and earlier heads stay here so frozen observation-transition tests keep their target contract; historical fixtures are unchanged.",
-    "2026-11-22: PySaiyanWeBoo #162 and Ironmate #250 lock vendor/fleet_check.py (parent 64db25e, #328) after parent #333 registered it. Each merged main was checked: vendor_sync.py check has no changed paths and vendor_consumers._compare_exact matches the registry with the new entry; repository ids unchanged. child-heads.json records those heads. Their locks are inline under refreshed: observations newer than tests/fixtures/parent-child-refresh-20261119.json, in the same shape as its adopted rows; the older snapshots stay there unchanged."
+    "2026-11-22: PySaiyanWeBoo #162 and Ironmate #250 lock vendor/fleet_check.py (parent 64db25e, #328) after parent #333 registered it. Each merged main was checked: vendor_sync.py check has no changed paths and vendor_consumers._compare_exact matches the registry with the new entry; repository ids unchanged. child-heads.json records those heads. Their locks are inline under refreshed: observations newer than tests/fixtures/parent-child-refresh-20261119.json, in the same shape as its adopted rows; the older snapshots stay there unchanged.",
+    "2026-11-23: Aoi #233 locks vendor/fleet_check.py (parent 64db25e, #328); the parent registers it and re-observes Aoi in the same change, since Aoi's CI only checks its vendored bytes and does not read the parent registry (the 11/15 order). Its merged main 93735d3 was checked: vendor_sync.py check has no changed paths and vendor_consumers._compare_exact matches the registry with the new entry; repository id unchanged. child-heads.json records that head and its lock is inline under refreshed."
   ],
   "recorded": {
     "heads": {
@@ -1512,6 +1513,125 @@
             "destination": "vendor/pillow_min.py",
             "blob_sha": "d3d8e986ac5492f822c017ab7d9d5aa482e877a0",
             "sha256": "3ef0bf0743934aebd39c6baf11ca20e9db6190486ec409ffe993da840cc63942"
+          },
+          {
+            "repository": "myon-bioinformatics/myon-bioinformatics",
+            "ref": "64db25eb0fd9025dbe3cbcbced8b88a39ecb9266",
+            "commit": "64db25eb0fd9025dbe3cbcbced8b88a39ecb9266",
+            "source": "fleet_check.py",
+            "destination": "vendor/fleet_check.py",
+            "blob_sha": "e464c95809c288029d6b3a8562cf65214205de33",
+            "sha256": "2906b1583593567816abd91d24367bd6db14cef61c35e5abe17bd46cc64ad140"
+          }
+        ]
+      }
+    },
+    "myon-bioinformatics/Aoi": {
+      "sha": "93735d3c9b2429326557ca6e47baa7d6ca167b56",
+      "repository_id": 1402862784,
+      "pull_number": 233,
+      "lock_sha256": "2bdb884742ca8bf5d40fc2fb0f7e34f754140aca14d5e2820627f290792b27e0",
+      "lock": {
+        "schema": "vendor-lock/1",
+        "files": [
+          {
+            "repository": "myon-bioinformatics/markdown",
+            "ref": "e8d97fdc21d16f2cf9581bcfbd41bb39ec446023",
+            "commit": "e8d97fdc21d16f2cf9581bcfbd41bb39ec446023",
+            "source": "markdown.py",
+            "destination": "vendor/markdown.py",
+            "blob_sha": "9294cabc0d72f457cc2a563812bc31f5848167b4",
+            "sha256": "56e41cac2e1708b9ffc2c85ed62eac7ec9dd500b48a4c3687dfab13479e0ba7b"
+          },
+          {
+            "repository": "myon-bioinformatics/markdown",
+            "ref": "aa5bccfcaf11f17473c7f1ff502509dfa1547660",
+            "commit": "aa5bccfcaf11f17473c7f1ff502509dfa1547660",
+            "source": "LICENSE",
+            "destination": "vendor/markdown-LICENSE",
+            "blob_sha": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
+            "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
+          },
+          {
+            "repository": "myon-bioinformatics/myon-bioinformatics",
+            "ref": "384f5dd532076062f7833038764e9a62322c387c",
+            "commit": "384f5dd532076062f7833038764e9a62322c387c",
+            "source": "py_launch.cjs",
+            "destination": "vendor/py_launch.cjs",
+            "blob_sha": "4a35b158b4a4cbd3a5d672ded1337a138a44bbd2",
+            "sha256": "f900e2662e7065a087897f4b927815d34a81f0e9ca811c0412151b38a218a501"
+          },
+          {
+            "repository": "myon-bioinformatics/myon-bioinformatics",
+            "ref": "d77b295112008928659fb5f2e7ae22f969838980",
+            "commit": "d77b295112008928659fb5f2e7ae22f969838980",
+            "source": "tools/uv_tool_build.py",
+            "destination": "vendor/uv_tool_build.py",
+            "blob_sha": "98d9e6fc55624e5341371ca828b59d0a0897e5f6",
+            "sha256": "1309ff9277b5dd3a67b5b54645a3dfdda58eed3cbe1db775f7fc57630e2833ce"
+          },
+          {
+            "repository": "myon-bioinformatics/myon-bioinformatics",
+            "ref": "a19b39d521de2ea69325080d3e87de9547f55106",
+            "commit": "a19b39d521de2ea69325080d3e87de9547f55106",
+            "source": "tools/stdlib_min/numpy_min.py",
+            "destination": "shrink/numpy_min.py",
+            "blob_sha": "8dbd26bc91084cb94f34b19e65aa50a27c9fe0e8",
+            "sha256": "7c1f86ebb012ad355db3f690bea39916aa7d927967b519dfaf5acf54879c5a4c"
+          },
+          {
+            "repository": "myon-bioinformatics/myon-bioinformatics",
+            "ref": "a19b39d521de2ea69325080d3e87de9547f55106",
+            "commit": "a19b39d521de2ea69325080d3e87de9547f55106",
+            "source": "tools/stdlib_min/numpy_linalg_min.py",
+            "destination": "shrink/numpy_linalg_min.py",
+            "blob_sha": "63aa0f9cdea8ab39c80e957a6ab12206bdb62290",
+            "sha256": "346bca19a4f3d2671cb2ff1fef2fba11db3d6194a8cf3249b9243516a03cbe33"
+          },
+          {
+            "repository": "myon-bioinformatics/myon-bioinformatics",
+            "ref": "8621a1025ecc330f6d2d0bcca5a9d11b80fb8716",
+            "commit": "8621a1025ecc330f6d2d0bcca5a9d11b80fb8716",
+            "source": "tools/stdlib_min/polars_min.py",
+            "destination": "shrink/polars_min.py",
+            "blob_sha": "370bcfc158749a44c2ba6b9588eeffc0f56abc17",
+            "sha256": "ccb23fbfe013d22c59436acbd0c8ad27a5bb64bd30df1f5c22f0956c1d416149"
+          },
+          {
+            "repository": "myon-bioinformatics/myon-bioinformatics",
+            "ref": "a19b39d521de2ea69325080d3e87de9547f55106",
+            "commit": "a19b39d521de2ea69325080d3e87de9547f55106",
+            "source": "tools/stdlib_min/biopython_min.py",
+            "destination": "pkgmin/biopython_min.py",
+            "blob_sha": "21d42f91067a51ca7da865c2c75eb247b1dffc0d",
+            "sha256": "a01d7f3d8e0849c7543e0cdbec64ceebcc431d58628dbbf684c0ce1b360ec29c"
+          },
+          {
+            "repository": "myon-bioinformatics/myon-bioinformatics",
+            "ref": "a19b39d521de2ea69325080d3e87de9547f55106",
+            "commit": "a19b39d521de2ea69325080d3e87de9547f55106",
+            "source": "tools/stdlib_min/requests_min.py",
+            "destination": "pkgmin/requests_min.py",
+            "blob_sha": "0b884942b445a63fc473ac31f74e3fb7778bc6d1",
+            "sha256": "95712548619ea0c30654538cbf61687e7393d1accc126fa9a88631b55df6b301"
+          },
+          {
+            "repository": "myon-bioinformatics/myon-bioinformatics",
+            "ref": "a19b39d521de2ea69325080d3e87de9547f55106",
+            "commit": "a19b39d521de2ea69325080d3e87de9547f55106",
+            "source": "tools/stdlib_min/tqdm_min.py",
+            "destination": "pkgmin/tqdm_min.py",
+            "blob_sha": "c538481bf0375771850fa682e54ea2418a54fda4",
+            "sha256": "ba799521d12c332c1505080e12c1887c2ae3ebf110c5ce30069892858a213b98"
+          },
+          {
+            "repository": "myon-bioinformatics/myon-bioinformatics",
+            "ref": "a19b39d521de2ea69325080d3e87de9547f55106",
+            "commit": "a19b39d521de2ea69325080d3e87de9547f55106",
+            "source": "tools/stdlib_min/httpx_min.py",
+            "destination": "mindeps/httpx_min.py",
+            "blob_sha": "e2452063aaa36699d56911d0c31811d221a8e49b",
+            "sha256": "eeb9c7789b355528ae1c8d16ec63afb6562aa19c14e67e21bcaf42753108df78"
           },
           {
             "repository": "myon-bioinformatics/myon-bioinformatics",
