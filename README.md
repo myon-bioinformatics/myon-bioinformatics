@@ -215,12 +215,6 @@ One standard-library Python module that builds the shared CSS themes, UI compone
 
 `css` `ui-components` `static-site`
 
-### [flutter_navigation_basic](https://github.com/myon-bioinformatics/flutter_navigation_basic)
-
-Multi-platform Flutter app (Web, iOS, Android, macOS) with 198 routed screens on a reusable foundation (themes, routes, shared widgets, URL parameters); the Flutter Web build is published on GitHub Pages and checked with Playwright screenshots.
-
-`flutter` `dart` `multi-platform`
-
 ### [mcp-toolcall-lab](https://github.com/myon-bioinformatics/mcp-toolcall-lab)
 
 Reproducible experiments on how LLMs discover and call MCP tools: a FastMCP server with deterministic mock tools, Open WebUI and LibreChat as clients under test, protocol tests and an anti-pattern catalog.
@@ -248,6 +242,7 @@ Experiments in short expressions that keep their meaning for a given reader: whi
 * [convert_img_fmt_to_webp-GUI-](https://github.com/myon-bioinformatics/convert_img_fmt_to_webp-GUI-)
 * [cumlative_usage](https://github.com/myon-bioinformatics/cumlative_usage)
 * [FluidFullSpeedSimulation](https://github.com/myon-bioinformatics/FluidFullSpeedSimulation)
+* [flutter_navigation_basic](https://github.com/myon-bioinformatics/flutter_navigation_basic)
 * [GitHub_api_Template](https://github.com/myon-bioinformatics/GitHub_api_Template)
 * [HelpYouBuildServer](https://github.com/myon-bioinformatics/HelpYouBuildServer)
 * [image_ext_converter_gui](https://github.com/myon-bioinformatics/image_ext_converter_gui)
