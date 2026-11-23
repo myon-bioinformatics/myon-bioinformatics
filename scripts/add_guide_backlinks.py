@@ -72,15 +72,28 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository", required=True, help="calling repository as OWNER/REPO")
     parser.add_argument("--in-place", action="store_true", help="rewrite FILE instead of writing stdout")
+    parser.add_argument("--check", action="store_true", help="verify FILE already contains the back-links")
     parser.add_argument("file", nargs="?", help="rendered HTML (stdin when omitted)")
     args = parser.parse_args(argv)
+    if args.in_place and args.check:
+        parser.error("cannot combine --in-place and --check")
     if args.in_place and not args.file:
         parser.error("--in-place requires FILE")
+    if args.check and not args.file:
+        parser.error("--check requires FILE")
     try:
         if args.file:
             document = Path(args.file).read_text(encoding="utf-8")
         else:
             document = sys.stdin.read()
+        nav = nav_html(args.repository)
+        if args.check:
+            if nav not in document:
+                print("add_guide_backlinks: missing back-links", file=sys.stderr)
+                return 1
+            sys.stdout.write("portfolio={0}\n".format(PORTFOLIO_URL))
+            sys.stdout.write("github={0}\n".format(github_repository_url(args.repository)))
+            return 0
         result = inject(document, args.repository)
     except (ValueError, OSError) as error:
         print("add_guide_backlinks: {0}".format(error), file=sys.stderr)

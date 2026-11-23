@@ -137,6 +137,37 @@ def test_cli_reads_stdin_in_process(capsys, monkeypatch):
     assert nav_html("example/widget") in capsys.readouterr().out
 
 
+def test_cli_check_accepts_injected_html_and_rejects_a_bare_page(tmp_path, capsys):
+    source = tmp_path / "index.html"
+    source.write_text(GUIDE, encoding="utf-8")
+    result = _run(["--repository", "example/widget", "--check", str(source)])
+    assert result.returncode == 1
+    assert "missing back-links" in result.stderr
+    assert main(["--repository", "example/widget", "--check", str(source)]) == 1
+    assert "missing back-links" in capsys.readouterr().err
+    assert main(["--repository", "example/widget", "--in-place", str(source)]) == 0
+    capsys.readouterr()
+    result = _run(["--repository", "example/widget", "--check", str(source)], check=True)
+    assert result.stdout.splitlines() == [
+        f"portfolio={PORTFOLIO_URL}",
+        f"github={github_repository_url('example/widget')}",
+    ]
+    assert main(["--repository", "example/widget", "--check", str(source)]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        f"portfolio={PORTFOLIO_URL}",
+        f"github={github_repository_url('example/widget')}",
+    ]
+    result = _run(["--repository", "example/widget", "--in-place", "--check", str(source)])
+    assert result.returncode == 2
+    with pytest.raises(SystemExit) as exited:
+        main(["--repository", "example/widget", "--in-place", "--check", str(source)])
+    assert exited.value.code == 2
+    capsys.readouterr()
+    with pytest.raises(SystemExit) as exited:
+        main(["--repository", "example/widget", "--check"])
+    assert exited.value.code == 2
+
+
 def test_audit_dashboard_html_does_not_include_guide_backlinks():
     page = build.observatory_page()
     nav = nav_html("example/widget")

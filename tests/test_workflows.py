@@ -989,6 +989,7 @@ def test_pages_guide_inputs_reach_the_shell_through_env_and_the_renderer_is_pinn
                             "GUIDE_REPOSITORY": "${{ github.repository }}",
                             "GUIDE_NAV_SCRIPT": "${{ github.workspace }}/.reusable-pages-static/scripts/add_guide_backlinks.py"}
     assert "python3 -S \"$GUIDE_NAV_SCRIPT\" --repository \"$GUIDE_REPOSITORY\" --in-place \"$ARTIFACT_PATH/index.html\"" in guide["run"]
+    assert "python3 -S \"$GUIDE_NAV_SCRIPT\" --repository \"$GUIDE_REPOSITORY\" --check \"$ARTIFACT_PATH/index.html\"" in guide["run"]
     assert re.fullmatch(r"pysaiyanweboo @ git\+https://github\.com/myon-bioinformatics/PySaiyanWeBoo@[0-9a-f]{40}", doc["env"]["WEB_UI"])
 
 
@@ -1025,18 +1026,27 @@ def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env={**env, "GUIDE_ASSETS": ""}, check=True)
 
 
-def test_pages_guide_helper_is_checked_out_from_the_workflow_commit():
+def test_pages_guide_helper_is_checked_out_from_the_called_workflow():
     _, build, _ = _pages()
     helper = next(s for s in build["steps"] if s.get("name") == "Checkout the guide back-link helper")
     assert helper["if"] == "inputs.guide_page != ''"
     assert helper["uses"] == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+    assert "github.workflow_sha" not in yaml.safe_dump(helper)
     assert helper["with"] == {
-        "repository": "myon-bioinformatics/myon-bioinformatics",
-        "ref": "${{ github.workflow_sha }}",
+        "repository": "${{ job.workflow_repository }}",
+        "ref": "${{ job.workflow_sha }}",
         "path": ".reusable-pages-static",
         "persist-credentials": False,
         "sparse-checkout": "scripts/add_guide_backlinks.py",
         "sparse-checkout-cone-mode": False,
+    }
+    identity = next(s for s in build["steps"] if s.get("name") == "Record the helper checkout identity")
+    assert identity["if"] == "inputs.guide_page != ''" and "${{" not in identity["run"]
+    assert identity["env"] == {
+        "JOB_WORKFLOW_REPOSITORY": "${{ job.workflow_repository }}",
+        "JOB_WORKFLOW_SHA": "${{ job.workflow_sha }}",
+        "CALLER_REPOSITORY": "${{ github.repository }}",
+        "CALLER_WORKFLOW_SHA": "${{ github.workflow_sha }}",
     }
 
 
@@ -1046,4 +1056,24 @@ def test_parent_audit_dashboard_does_not_render_a_guide_page():
     assert deploy["uses"] == "./.github/workflows/reusable-pages-static.yml"
     assert deploy["with"] == {"artifact_path": "site/dist", "build": "python3 -S scripts/build_audit_pages.py"}
     assert "guide_page" not in deploy["with"]
+    assert doc["jobs"]["deploy"]["if"] == "github.event_name != 'pull_request'"
+
+
+def test_parent_validates_guide_backlinks_by_calling_the_reusable_workflow():
+    pages = ROOT / ".github/workflows/pages.yml"
+    source = pages.read_text(encoding="utf-8")
+    assert "workflow_dispatch" not in source
+    doc = yaml.safe_load(source)
+    job = doc["jobs"]["guide-backlinks"]
+    assert job["if"] == "github.event_name == 'pull_request'"
+    assert job["uses"] == "./.github/workflows/reusable-pages-static.yml"
+    assert job.get("permissions") == {"contents": "read"}
+    assert job["with"] == {
+        "artifact_path": "_site",
+        "guide_page": "tests/fixtures/guide-backlinks/guide.page.json",
+    }
+    fixture = ROOT / job["with"]["guide_page"]
+    assert fixture.is_file()
+    assert "myon-bioinformatics.github.io" not in fixture.read_text(encoding="utf-8")
+    assert "https://github.com/" not in fixture.read_text(encoding="utf-8")
 
