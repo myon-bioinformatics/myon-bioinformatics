@@ -156,9 +156,10 @@ G6のtokenizer調査（`scripts/tokenizer_compat.py`、`docs/o200k-lookup/`）�
 
 全公開・非アーカイブリポジトリへのPages展開は、2026年11月22日に29件すべてで完了した（[済み分](#pages-32-done)）。完了条件としては維持し、リポジトリが増えたときに同じ形で入れる。
 
-- [ ] 入力を持つ既存のサイトで、入力・結果・実行場所を記録し、スマートフォンだけで代表操作を完了できることを確認する。紹介だけのページは対象外。
+- [x] 入力を持つ既存のサイトで、入力・結果・実行場所を記録し、スマートフォンだけで代表操作を完了できることを確認する。紹介だけのページは対象外。
   - 11月23日: ポートフォリオの2つのツールは確認済み。公開サイト（main `4b88aca`）に対する受入テストが72件成功した（[実行記録](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/actions/runs/45120652946)、GitHub Actions 上の Chromium と WebKit）。HTML取り込みは幅390・タッチありの設定で「貼り付け→抽出→条件変更→ダウンロード→消去」が通る。実機ではなくエミュレーション。
   - 残り: 入力欄を持つほかの公開ページ（DRAgoWing のヒートマップ、OnTautoLogy の `site/`、親の監査ページ `site/ui/`、PySaiyanWeBoo の `index.html`）はスマートフォン幅での操作を確認していない。
+  - 11月23日（残りのページ）: 上の4つを確認した。各リポジトリの main を手元で配信し、BrowserTestKit の `observe --profile iphone --touch --step …`（幅390、タッチあり、Chromium headless）で代表操作がすべて `done`。PySaiyanWeBoo `index.html`（`3403f2f`、乱数シードとまばたきのボタンをタップ）、OnTautoLogy `site/atlas/view.html`（`79cb147`、絞り込みに入力して次へ・前へ）と `site/third-design/index.html`（ナビをタップ）、親 `site/ui/compaction.html`（`98a0e61`、タブ切り替え）と `site/ui/evidence.html`（検索に入力して表示切り替え）、DRAgoWing のヒートマップ（`29260a9`、段階数を入力して描画、`scene.json` と `heatmap.svg` のリンクが出る）。公開URLではなく main の手元配信で、実機ではなくエミュレーション。実機での確認は行っていない。
 - [x] 移管先の公開後に旧リンク・query・hashを検証する。入力の保存は利用者の選択とし、公開用の合成fixtureと分ける。
   - 11月23日: 上と同じ[実行記録](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/actions/runs/45120652946)で確認した。ポートフォリオのトップから旧ツールと新ツールへのリンクが見える。移管した mcp-toolcall-lab のページは `?view=niconico` と `#wiki`・`#niconico` で同じ画面が開く。HTML取り込みは入力を保存しない（操作後も `localStorage` と `sessionStorage` は0件）。テストの入力は `tests/fixtures/html-import/cases.json` の合成データで、利用者の入力とは別。
 
