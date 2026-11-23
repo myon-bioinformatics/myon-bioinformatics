@@ -1146,7 +1146,7 @@ def _script_stub(top: str, entry_file: str) -> str:
         + entry_file
         + " with the companion tool."
     )
-    return "raise ImportError(" + json.dumps(message) + ")"
+    return "raise ImportError(" + _python_literal(message) + ")"
 
 
 def _rewrite_source(
@@ -1342,10 +1342,26 @@ def _render_from(node: ast.ImportFrom, modules: set[str], prefix: str) -> str | 
     return "from " + prefix + "." + node.module + " import " + ", ".join(rendered)
 
 
+_SURROGATE_PAIR = re.compile(r"(?<!\\)((?:\\\\)*)\\u(d[89ab][0-9a-f]{2})\\u(d[c-f][0-9a-f]{2})")
+
+
+def _python_literal(text: str) -> str:
+    """An ASCII string literal that Python reads back as ``text``.
+
+    ``json.dumps`` writes a character above U+FFFF as a surrogate pair. JSON joins the pair when read; Python
+    reads the two escapes as two lone surrogates, which cannot be compiled or encoded. Each pair becomes one
+    ``\\UXXXXXXXX`` escape. Text without such characters comes out exactly as ``json.dumps`` writes it.
+    """
+    def join(found: re.Match) -> str:
+        high, low = int(found.group(2), 16), int(found.group(3), 16)
+        return found.group(1) + "\\U%08x" % (0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00))
+    return _SURROGATE_PAIR.sub(join, json.dumps(text, ensure_ascii=True))
+
+
 def _sources_literal(sources: dict[str, str]) -> str:
     lines = ["{"]
     for name in sorted(sources):
-        lines.append("    " + json.dumps(name) + ": " + json.dumps(sources[name], ensure_ascii=True) + ",")
+        lines.append("    " + _python_literal(name) + ": " + _python_literal(sources[name]) + ",")
     lines.append("}")
     return "\n".join(lines)
 
