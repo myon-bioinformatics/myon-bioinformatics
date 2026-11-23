@@ -91,4 +91,7 @@ jobs:
           printf '%s  %s\n' "$sha256" "$tmpdir/$archive" | sha256sum --check --status
           tar -xzf "$tmpdir/$archive" -C "$tmpdir" actionlint
           chmod +x "$tmpdir/actionlint"
-          "$tmpdir/actionlint" -color "${files[@]}"
+          # actionlint 1.7.12's job context predates GitHub.com job.workflow_* (Contexts reference).
+          "$tmpdir/actionlint" -color \
+            -ignore 'property "workflow_(repository|sha|ref|file_path)" is not defined in object type' \
+            "${files[@]}"

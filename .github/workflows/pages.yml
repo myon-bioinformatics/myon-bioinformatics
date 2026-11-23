@@ -76,9 +76,13 @@ jobs:
           --out /tmp/audit-live-smoke
   guide-backlinks:
     # Pull requests only: on the default branch this would upload and deploy the fixture.
+    # pages/id-token write is required to call the reusable workflow (it declares a deploy
+    # job); that job stays skipped here because this is a pull request and build is unset.
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
+      pages: write
+      id-token: write
     uses: ./.github/workflows/reusable-pages-static.yml
     with:
       artifact_path: _site

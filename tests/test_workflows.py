@@ -46,6 +46,8 @@ def test_native_actionlint_is_pinned_and_fails_closed():
     assert "docker run" not in script
     assert "curl --fail" in script
     assert '"${files[@]}"' in script
+    assert "-ignore" in script
+    assert "workflow_(repository|sha|ref|file_path)" in script
     assert "trap 'rm -rf" in script
     assert not re.search(r"\b(latest|main)\b", script)
     result = subprocess.run(["bash", "-n"], input=script, text=True, capture_output=True)
@@ -1067,7 +1069,7 @@ def test_parent_validates_guide_backlinks_by_calling_the_reusable_workflow():
     job = doc["jobs"]["guide-backlinks"]
     assert job["if"] == "github.event_name == 'pull_request'"
     assert job["uses"] == "./.github/workflows/reusable-pages-static.yml"
-    assert job.get("permissions") == {"contents": "read"}
+    assert job.get("permissions") == {"contents": "read", "pages": "write", "id-token": "write"}
     assert job["with"] == {
         "artifact_path": "_site",
         "guide_page": "tests/fixtures/guide-backlinks/guide.page.json",
