@@ -467,6 +467,18 @@ PR's head), and the page is rendered from that `data.json` with the vendored `py
 Use `python -S ci_status.py OWNER/REPO --ref REF --json` to observe checks for
 a branch, tag or commit. The report includes the SHA resolved for this observation.
 
+While waiting on several pull requests, `--format brief` prints one line per target:
+counts by icon and each failed check by name. `REPO#PR` picks a pull request per entry.
+
+```sh
+python -S ci_status.py --repos 'Aoi#251,BlueProbe#70,BrowserTestKit' --format brief
+# Aoi PR #251 FAILED | ⏳×12 ✅×13 ❌pytest (Python 3.12)×1
+# BlueProbe PR #70 COMPLETE | ✅×11
+# BrowserTestKit main COMPLETE | ✅×13
+```
+
+`--ci-check` still exits 1 until every target is COMPLETE or NO CHECKS, so a shell loop can wait on it.
+
 For a specific Actions attempt, use `--verify-workflow` as the first argument.
 Specify the workflow ID or YAML filename, event, run ID and attempt. Supply
 `--head-sha`, `--ref`, or both to check that the ref resolves to the expected SHA.

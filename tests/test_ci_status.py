@@ -180,6 +180,33 @@ class StatusTests(unittest.TestCase):
                             self.assertEqual(payload["schema"], "ci-observation/1")
                             self.assertEqual(len(payload["errors"]), states.count("ERROR"))
 
+    def test_brief_is_one_line_per_target_with_failed_checks_by_name(self):
+        def check(name, status, conclusion):
+            return {"id": 1, "name": name, "status": status, "conclusion": conclusion, "url": None}
+
+        item = {"repository": ci.OWNER + "/Aoi", "target": "PR #251", "head_sha": "0" * 40, "state": "FAILED",
+                "completed": 5, "total": 6,
+                "checks": [check("lint", "completed", "success"), check("build", "in_progress", None),
+                           check("pytest (Python 3.12)", "completed", "failure"), check("deploy", "completed", "skipped"),
+                           check("pytest (Python 3.12)", "completed", "timed_out"), check("old", "completed", "cancelled")]}
+        self.assertEqual(ci.brief(item), "Aoi PR #251 FAILED | ⏳×1 ✅×1 ⏭️×1 🚫×1 ❌pytest (Python 3.12)×2")
+        self.assertEqual(ci.brief({**item, "state": "NO CHECKS", "checks": []}), "Aoi PR #251 NO CHECKS | —")
+
+        seen = []
+
+        def observe(name, pr, *, ref=None):
+            seen.append((name, pr))
+            if name == "broken":
+                raise RuntimeError("API unavailable")
+            return {**item, "repository": name, "target": f"PR #{pr}" if pr else "main", "state": "COMPLETE", "checks": item["checks"][:1]}
+
+        out = io.StringIO()
+        with patch.object(ci, "observe", side_effect=observe), redirect_stdout(out):
+            self.assertEqual(ci.main(["--repos", "one#7,two,broken#3", "--format", "brief"]), 2)
+        self.assertEqual(seen, [("one", 7), ("two", None), ("broken", 3)])  # REPO#PR picks the pull request per entry.
+        self.assertEqual(out.getvalue().splitlines(),
+                         ["one PR #7 COMPLETE | ✅×1", "two main COMPLETE | ✅×1", "broken UNKNOWN | ❓RuntimeError"])
+
     def test_plain_check_is_not_an_alias(self):
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
             ci.main(["Ironmate", "--check"])
