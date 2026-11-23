@@ -1,0 +1,12 @@
+{
+  "schema": "web-ui-page/1",
+  "title": "Guide back-link fixture",
+  "theme": "auto",
+  "description": "Minimal spec used to run the shared guide back-link checkout on a pull request.",
+  "blocks": [
+    {
+      "type": "text",
+      "text": "This fixture declares no portfolio or GitHub links of its own."
+    }
+  ]
+}

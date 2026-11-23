@@ -46,6 +46,8 @@ def test_native_actionlint_is_pinned_and_fails_closed():
     assert "docker run" not in script
     assert "curl --fail" in script
     assert '"${files[@]}"' in script
+    assert "-ignore" in script
+    assert "workflow_(repository|sha|ref|file_path)" in script
     assert "trap 'rm -rf" in script
     assert not re.search(r"\b(latest|main)\b", script)
     result = subprocess.run(["bash", "-n"], input=script, text=True, capture_output=True)
@@ -985,7 +987,11 @@ def test_pages_guide_inputs_reach_the_shell_through_env_and_the_renderer_is_pinn
     guide = next(s for s in build["steps"] if s.get("name") == "Build the guide")
     assert guide["if"] == "inputs.guide_page != ''" and "${{" not in guide["run"]
     assert guide["env"] == {"GUIDE_PAGE": "${{ inputs.guide_page }}", "GUIDE_ASSETS": "${{ inputs.guide_assets }}",
-                            "ARTIFACT_PATH": "${{ inputs.artifact_path }}"}
+                            "ARTIFACT_PATH": "${{ inputs.artifact_path }}",
+                            "GUIDE_REPOSITORY": "${{ github.repository }}",
+                            "GUIDE_NAV_SCRIPT": "${{ github.workspace }}/.reusable-pages-static/scripts/add_guide_backlinks.py"}
+    assert "python3 -S \"$GUIDE_NAV_SCRIPT\" --repository \"$GUIDE_REPOSITORY\" --in-place \"$ARTIFACT_PATH/index.html\"" in guide["run"]
+    assert "python3 -S \"$GUIDE_NAV_SCRIPT\" --repository \"$GUIDE_REPOSITORY\" --check \"$ARTIFACT_PATH/index.html\"" in guide["run"]
     assert re.fullmatch(r"pysaiyanweboo @ git\+https://github\.com/myon-bioinformatics/PySaiyanWeBoo@[0-9a-f]{40}", doc["env"]["WEB_UI"])
 
 
@@ -995,22 +1001,81 @@ def test_a_pull_request_pages_build_cannot_cancel_a_default_branch_deploy():
 
 
 def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
+    from scripts.add_guide_backlinks import GITHUB_LABEL, PORTFOLIO_LABEL, PORTFOLIO_URL, github_repository_url, nav_html
     _, build, _ = _pages()
     guide = next(s for s in build["steps"] if s.get("name") == "Build the guide")
     (tmp_path / "bin").mkdir()
-    (tmp_path / "bin/uv").write_text("#!/bin/sh\necho \"rendered $*\"\n", encoding="utf-8")
+    (tmp_path / "bin/uv").write_text(
+        "#!/bin/sh\nprintf '%s' '<main class=\"ui-page\"><h1 class=\"ui-title\">Guide</h1></main>'\n",
+        encoding="utf-8")
     (tmp_path / "bin/uv").chmod(0o755)
     (tmp_path / "icon.png").write_bytes(b"icon")
     (tmp_path / "docs/demos").mkdir(parents=True)
     (tmp_path / "docs/demos/D01.gif").write_bytes(b"gif")
     env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
            "GUIDE_PAGE": "docs/guide.page.json", "ARTIFACT_PATH": "_site",
-           "GUIDE_ASSETS": "icon.png=favicon.png icon.png=assets/brand/icon.png docs/demos=demos"}
+           "GUIDE_ASSETS": "icon.png=favicon.png icon.png=assets/brand/icon.png docs/demos=demos",
+           "GUIDE_REPOSITORY": "example/widget",
+           "GUIDE_NAV_SCRIPT": str(ROOT / "scripts/add_guide_backlinks.py")}
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
-    assert (tmp_path / "_site/index.html").read_text(encoding="utf-8").strip() == \
-        "rendered run --no-project --with pinned python -m pysaiyanweboo --page docs/guide.page.json"
+    html = (tmp_path / "_site/index.html").read_text(encoding="utf-8")
+    assert html.startswith('<main class="ui-page">' + nav_html("example/widget"))
+    assert f'href="{PORTFOLIO_URL}"' in html and PORTFOLIO_LABEL in html
+    assert f'href="{github_repository_url("example/widget")}"' in html and GITHUB_LABEL in html
     assert (tmp_path / "_site/favicon.png").read_bytes() == b"icon"
     assert (tmp_path / "_site/assets/brand/icon.png").read_bytes() == b"icon"  # A nested NAME gets its folder.
     assert (tmp_path / "_site/demos/D01.gif").read_bytes() == b"gif"  # A folder SOURCE is copied whole.
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env={**env, "GUIDE_ASSETS": ""}, check=True)
+
+
+def test_pages_guide_helper_is_checked_out_from_the_called_workflow():
+    _, build, _ = _pages()
+    helper = next(s for s in build["steps"] if s.get("name") == "Checkout the guide back-link helper")
+    assert helper["if"] == "inputs.guide_page != ''"
+    assert helper["uses"] == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+    assert "github.workflow_sha" not in yaml.safe_dump(helper)
+    assert helper["with"] == {
+        "repository": "${{ job.workflow_repository }}",
+        "ref": "${{ job.workflow_sha }}",
+        "path": ".reusable-pages-static",
+        "persist-credentials": False,
+        "sparse-checkout": "scripts/add_guide_backlinks.py",
+        "sparse-checkout-cone-mode": False,
+    }
+    identity = next(s for s in build["steps"] if s.get("name") == "Record the helper checkout identity")
+    assert identity["if"] == "inputs.guide_page != ''" and "${{" not in identity["run"]
+    assert identity["env"] == {
+        "JOB_WORKFLOW_REPOSITORY": "${{ job.workflow_repository }}",
+        "JOB_WORKFLOW_SHA": "${{ job.workflow_sha }}",
+        "CALLER_REPOSITORY": "${{ github.repository }}",
+        "CALLER_WORKFLOW_SHA": "${{ github.workflow_sha }}",
+    }
+
+
+def test_parent_audit_dashboard_does_not_render_a_guide_page():
+    doc = yaml.safe_load((ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8"))
+    deploy = doc["jobs"]["deploy"]
+    assert deploy["uses"] == "./.github/workflows/reusable-pages-static.yml"
+    assert deploy["with"] == {"artifact_path": "site/dist", "build": "python3 -S scripts/build_audit_pages.py"}
+    assert "guide_page" not in deploy["with"]
+    assert doc["jobs"]["deploy"]["if"] == "github.event_name != 'pull_request'"
+
+
+def test_parent_validates_guide_backlinks_by_calling_the_reusable_workflow():
+    pages = ROOT / ".github/workflows/pages.yml"
+    source = pages.read_text(encoding="utf-8")
+    assert "workflow_dispatch" not in source
+    doc = yaml.safe_load(source)
+    job = doc["jobs"]["guide-backlinks"]
+    assert job["if"] == "github.event_name == 'pull_request'"
+    assert job["uses"] == "./.github/workflows/reusable-pages-static.yml"
+    assert job.get("permissions") == {"contents": "read", "pages": "write", "id-token": "write"}
+    assert job["with"] == {
+        "artifact_path": "_site",
+        "guide_page": "tests/fixtures/guide-backlinks/guide.page.json",
+    }
+    fixture = ROOT / job["with"]["guide_page"]
+    assert fixture.is_file()
+    assert "myon-bioinformatics.github.io" not in fixture.read_text(encoding="utf-8")
+    assert "https://github.com/" not in fixture.read_text(encoding="utf-8")
 
