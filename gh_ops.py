@@ -4125,7 +4125,8 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
         allow_abbrev=False,
         source_argv=source,
     )
-    parser.add_argument("--json", action="store_true", help="print the full result as JSON")
+    parser.add_argument("--format", choices=("text", "json"), default="text", help="output format (default: text)")
+    parser.add_argument("--json", action="store_const", const="json", dest="format", help="print the full result as JSON")
     parser.add_argument("--json-errors", action="store_true",
                         help="on exit 2, also print {ok, error, exit_code, hint} as JSON on stdout")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -4586,7 +4587,7 @@ def main(argv: list[str] | None = None, *, client: Client | None = None) -> int:
         if args.json_errors:
             print(json.dumps(_error_payload(message), ensure_ascii=False))
         return 2
-    text = json.dumps(result, ensure_ascii=False, indent=2) if args.json else _render(args.command, result)
+    text = json.dumps(result, ensure_ascii=False, indent=2) if args.format == "json" else _render(args.command, result)
     print(scrub(text))
     return 0 if result.get("ok") else 1
 

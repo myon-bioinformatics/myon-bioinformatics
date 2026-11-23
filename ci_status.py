@@ -1001,7 +1001,8 @@ def main(argv=None):
     target.add_argument("--pr", type=int,help="PR number in REPOSITORY")
     target.add_argument("--ref", help="observe checks at the resolved branch, tag or commit")
     p.add_argument("--refresh", action="store_true", help="Force fresh API observation (default already fresh)")
-    p.add_argument("--json", action="store_true",help="print JSON instead of text")
+    p.add_argument("--format", choices=("text", "json"), default="text", help="output format (default: text)")
+    p.add_argument("--json", action="store_const", const="json", dest="format",help="print JSON instead of text")
     p.add_argument("--explain", action="store_true",
                    help="include detail and hint on observation errors; default omits exception text")
     p.add_argument("--ci-check", action="store_true", help="Exit with 1 if any observed repository state is not COMPLETE or NO CHECKS")
@@ -1023,7 +1024,7 @@ def main(argv=None):
     if a.conventions and not a.audit:
         names = None if a.all_repos else [x.strip() for x in a.repos.split(",") if x.strip()]
         report = conventions(names)
-        print(json.dumps(report, ensure_ascii=False, indent=2) if a.json else render_conventions(report))
+        print(json.dumps(report, ensure_ascii=False, indent=2) if a.format == "json" else render_conventions(report))
         return 2 if report["errors"] else 1 if report["findings"] else 0
     if a.audit:
         names = None if a.all_repos else [x.strip() for x in a.repos.split(",") if x.strip()]
@@ -1054,7 +1055,7 @@ def main(argv=None):
     output = {"schema": "ci-observation/1",
               "observed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "repositories": rows, "errors": errors}
-    if a.json:
+    if a.format == "json":
         print(json.dumps(output, ensure_ascii=False, indent=2))
     else:
         print(f'Observed at: {output["observed_at"]}')
