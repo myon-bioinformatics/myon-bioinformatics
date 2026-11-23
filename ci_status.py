@@ -996,12 +996,12 @@ def main(argv=None):
     if argv and argv[0] == "--verify-workflow":
         return _verify_workflow_cli(argv[1:])
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("repository", nargs="?")
+    p.add_argument("repository", nargs="?",help="OWNER/REPO (default: the all-repositories view of --repos)")
     target = p.add_mutually_exclusive_group()
-    target.add_argument("--pr", type=int)
+    target.add_argument("--pr", type=int,help="PR number in REPOSITORY")
     target.add_argument("--ref", help="observe checks at the resolved branch, tag or commit")
     p.add_argument("--refresh", action="store_true", help="Force fresh API observation (default already fresh)")
-    p.add_argument("--json", action="store_true")
+    p.add_argument("--json", action="store_true",help="print JSON instead of text")
     p.add_argument("--explain", action="store_true",
                    help="include detail and hint on observation errors; default omits exception text")
     p.add_argument("--ci-check", action="store_true", help="Exit with 1 if any observed repository state is not COMPLETE or NO CHECKS")

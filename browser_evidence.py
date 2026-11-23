@@ -74,12 +74,12 @@ def record(engine: str, screenshot: Path, root: Path, *, run_id: str, head_sha: 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Record one engine's screenshot evidence")
-    parser.add_argument("--engine", choices=sorted(ENGINES), required=True)
-    parser.add_argument("--root", type=Path, required=True)
-    parser.add_argument("--screenshot", type=Path, required=True)
-    parser.add_argument("--run-id", required=True)
-    parser.add_argument("--head-sha", required=True)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--engine", choices=sorted(ENGINES), required=True,help="browser engine that took the screenshot")
+    parser.add_argument("--root", type=Path, required=True,help="evidence directory that contains the screenshot")
+    parser.add_argument("--screenshot", type=Path, required=True,help="PNG inside --root")
+    parser.add_argument("--run-id", required=True,help="Actions run ID of the capture")
+    parser.add_argument("--head-sha", required=True,help="lowercase 40-hex commit SHA that was captured")
+    parser.add_argument("--output", type=Path, required=True,help="manifest JSON to write")
     args = parser.parse_args(argv)
     try:
         result = record(args.engine, args.screenshot, args.root, run_id=args.run_id, head_sha=args.head_sha)

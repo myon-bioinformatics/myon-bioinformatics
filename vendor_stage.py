@@ -87,13 +87,13 @@ def stage(root, manifest, output, *, kind="locked", runtime=(), legacy=(),
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--root", default=".")
-    p.add_argument("--manifest", default="vendor.lock.json")
-    p.add_argument("--output", required=True)
-    p.add_argument("--kind", choices=("locked", "candidate"), default="locked")
-    p.add_argument("--runtime-evidence", action="append", default=[])
-    p.add_argument("--legacy-evidence", action="append", default=[])
-    p.add_argument("--promotion-receipt")
+    p.add_argument("--root", default=".",help="isolated checkout (default: .)")
+    p.add_argument("--manifest", default="vendor.lock.json",help="vendor-lock/1 file, relative to --root (default: %(default)s)")
+    p.add_argument("--output", required=True,help="new staging directory")
+    p.add_argument("--kind", choices=("locked", "candidate"), default="locked",help="stage the locked bytes, or a candidate run (default: %(default)s)")
+    p.add_argument("--runtime-evidence", action="append", default=[],help="required runtime evidence file to include (repeatable)")
+    p.add_argument("--legacy-evidence", action="append", default=[],help="required legacy evidence file to include (repeatable)")
+    p.add_argument("--promotion-receipt",help="promotion receipt to include when --kind candidate and it exists")
     args = p.parse_args(argv)
     try:
         result = stage(args.root, args.manifest, args.output, kind=args.kind,

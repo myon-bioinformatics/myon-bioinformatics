@@ -232,12 +232,12 @@ def execute_workflow(repo, workflow, ref=None, *, apply=False, inputs=None, time
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("repo")
-    parser.add_argument("workflow")
-    parser.add_argument("--ref")
-    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("repo",help="OWNER/REPO")
+    parser.add_argument("workflow",help="workflow file name or ID")
+    parser.add_argument("--ref",help="branch or tag to run on (default: the default branch)")
+    parser.add_argument("--apply", action="store_true",help="dispatch it; without --apply only the plan is printed")
     parser.add_argument("--inputs", help="JSON object, forwarded without recording values")
-    parser.add_argument("--timeout", type=float, default=30)
+    parser.add_argument("--timeout", type=float, default=30,help="seconds per gh call (default: %(default)s)")
     parser.add_argument("--receipt", type=Path, help="append a JSONL receipt")
     args = parser.parse_args(argv)
     try:

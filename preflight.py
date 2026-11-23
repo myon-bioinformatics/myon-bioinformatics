@@ -64,10 +64,10 @@ def observe(root, *, required=(), python_min=None, require_clean=False,
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--root', type=Path, default=Path('.'))
-    parser.add_argument('--require', action='append', choices=('git', 'gh'), default=[])
+    parser.add_argument('--root', type=Path, default=Path('.'),help="checkout to inspect (default: .)")
+    parser.add_argument('--require', action='append', choices=('git', 'gh'), default=[],help="tool that must be available (repeatable)")
     parser.add_argument('--python-min', help='minimum current Python version, e.g. 3.11')
-    parser.add_argument('--require-clean', action='store_true')
+    parser.add_argument('--require-clean', action='store_true',help="fail unless the work tree is clean")
     parser.add_argument('--require-token', action='store_true', help='presence only, not authentication or permissions')
     parser.add_argument('--runtime-facts', type=Path, help='JSON emitted by yourself.collect(); never executes supplied code')
     parser.add_argument('--explain', action='store_true',

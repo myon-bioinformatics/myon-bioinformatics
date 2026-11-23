@@ -222,10 +222,10 @@ def compare(registry, lock, repository):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("validate", "compare"))
-    parser.add_argument("--registry", default="vendor-consumers.json")
-    parser.add_argument("--consumer")
-    parser.add_argument("--lock")
+    parser.add_argument("mode", choices=("validate", "compare"),help="validate the registry, or compare it with --lock")
+    parser.add_argument("--registry", default="vendor-consumers.json",help="vendor consumer registry JSON (default: %(default)s)")
+    parser.add_argument("--consumer",help="consumer repository, OWNER/REPO (compare)")
+    parser.add_argument("--lock",help="consumer vendor lock to compare (compare)")
     args = parser.parse_args(argv)
     try:
         registry = json.loads(Path(args.registry).read_text(encoding="utf-8"))
