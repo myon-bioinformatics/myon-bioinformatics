@@ -50,7 +50,9 @@
 
 ### 公開リポジトリのPages（済み分）
 
-2026年11月22日の再集計では、公開・非アーカイブ29件中19件でPagesが有効（11月21日時点の18件から、[ONTOの紹介ページ](https://myon-bioinformatics.github.io/ONTO/)を追加）。全件展開は完了条件として残す。無効10件は[残件](#pages-32)を参照。
+2026年11月22日の再集計では、公開・非アーカイブ29件中19件でPagesが有効（11月21日時点の18件から、[ONTOの紹介ページ](https://myon-bioinformatics.github.io/ONTO/)を追加）。同日中に残り10件を展開し、29件すべてで有効になった。
+
+残り10件の展開（11月22日）: 利用ガイド（`docs/guide.page.json`）と、cli_args などと同じ `pages.yml` を入れた（[BlueProbe #62](https://github.com/myon-bioinformatics/BlueProbe/pull/62)、[BrowserTestKit #187](https://github.com/myon-bioinformatics/BrowserTestKit/pull/187)、[Err-o-RoadRunner #76](https://github.com/myon-bioinformatics/Err-o-RoadRunner/pull/76)、[PythDRagoras #56](https://github.com/myon-bioinformatics/PythDRagoras/pull/56)、[QueRyu #51](https://github.com/myon-bioinformatics/QueRyu/pull/51)、[SakAnalytics #54](https://github.com/myon-bioinformatics/SakAnalytics/pull/54)、[search_seq_including_spaces #87](https://github.com/myon-bioinformatics/search_seq_including_spaces/pull/87)、[TalkCompress #196](https://github.com/myon-bioinformatics/TalkCompress/pull/196)、[TaxOntOy #15](https://github.com/myon-bioinformatics/TaxOntOy/pull/15)、[TopOntoLogy #18](https://github.com/myon-bioinformatics/TopOntoLogy/pull/18)）。10件とも main の配備ジョブとデプロイメントの状態が success。公開先は `https://myon-bioinformatics.github.io/<リポジトリ名>/`。ページを開いての表示確認は、公開前のビルドを 390 px 幅と 1200 px 幅の Chromium で描画した2件（SakAnalytics、BrowserTestKit）まで。10件とも紹介のページで入力を持たない。
 
 最初のHTML抽出（貼り付けとファイル選択、本文・見出し・リンク、同一入力での再抽出、結果の保存）は公開済み。[HTML文書取込](https://myon-bioinformatics.github.io/tools/html-import/)（HTTP 200）。契約とdesktop/mobileの検証は [docs/html-import.md](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/blob/main/docs/html-import.md)。
 
@@ -152,12 +154,9 @@ G6のtokenizer調査（`scripts/tokenizer_compat.py`、`docs/o200k-lookup/`）�
 
 ### 公開リポジトリのPages展開
 
-全公開・非アーカイブリポジトリへのPages展開は、完了条件として維持する。2026年11月22日時点で有効19件、無効10件。
+全公開・非アーカイブリポジトリへのPages展開は、2026年11月22日に29件すべてで完了した（[済み分](#pages-32-done)）。完了条件としては維持し、リポジトリが増えたときに同じ形で入れる。
 
-Pagesが無効の10件: `BlueProbe`、`BrowserTestKit`、`Err-o-RoadRunner`、`PythDRagoras`、`QueRyu`、`SakAnalytics`、`search_seq_including_spaces`、`TalkCompress`、`TaxOntOy`、`TopOntoLogy`。
-
-- [ ] 無効10件へPagesを展開する。各サイトの入力・結果・実行場所を記録し、スマートフォンだけで代表操作を完了できることを確認する。既存19件も、紹介だけのページを除き、同じ確認を続ける。
-  - 11月22日: 10件すべてに利用ガイド（`docs/guide.page.json`）と、cli_args などと同じ `pages.yml` を入れるPRを作った（[BlueProbe #62](https://github.com/myon-bioinformatics/BlueProbe/pull/62)、[BrowserTestKit #187](https://github.com/myon-bioinformatics/BrowserTestKit/pull/187)、[Err-o-RoadRunner #76](https://github.com/myon-bioinformatics/Err-o-RoadRunner/pull/76)、[PythDRagoras #56](https://github.com/myon-bioinformatics/PythDRagoras/pull/56)、[QueRyu #51](https://github.com/myon-bioinformatics/QueRyu/pull/51)、[SakAnalytics #54](https://github.com/myon-bioinformatics/SakAnalytics/pull/54)、[search_seq_including_spaces #87](https://github.com/myon-bioinformatics/search_seq_including_spaces/pull/87)、[TalkCompress #196](https://github.com/myon-bioinformatics/TalkCompress/pull/196)、[TaxOntOy #15](https://github.com/myon-bioinformatics/TaxOntOy/pull/15)、[TopOntoLogy #18](https://github.com/myon-bioinformatics/TopOntoLogy/pull/18)）。PRではページのビルドまで確認済み。配備には各リポジトリの Settings → Pages で Source を「GitHub Actions」にする必要があり、有効にしてからマージする。10件とも紹介のページで入力を持たないため、スマートフォンでの代表操作の確認は対象外。
+- [ ] 入力を持つ既存のサイトで、入力・結果・実行場所を記録し、スマートフォンだけで代表操作を完了できることを確認する。紹介だけのページは対象外。
 - [ ] 移管先の公開後に旧リンク・query・hashを検証する。入力の保存は利用者の選択とし、公開用の合成fixtureと分ける。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/myon-bioinformatics.github.io/issues/32)
@@ -167,7 +166,7 @@ Pagesが無効の10件: `BlueProbe`、`BrowserTestKit`、`Err-o-RoadRunner`、`P
 ### Aoiの研究記録
 
 - [ ] 研究登録の機械値を英語（`posthoc` / `preregistered` / `unknown`）にし、日本語表示は別ラベルにする。現行の `registration_status()` は「事後構成／事前登録／不明」を返す表示用ヘルパー。Aoiで小さなPRを予定する（この文書PRの範囲外）。
-  - 11月22日: 子の QueRyu に `registration_code`（`posthoc` / `preregistered` / `unknown`）を足した（[QueRyu #52](https://github.com/myon-bioinformatics/QueRyu/pull/52)）。表示ラベルを返す `registration_status` と、結果行の `registration` の日本語の値は変えていない。残りは Aoi の `queryu/` へのsubtree同期。
+  - 11月22日: 子の QueRyu に `registration_code`（`posthoc` / `preregistered` / `unknown`）を足し、QueRyu の main に入った（[QueRyu #52](https://github.com/myon-bioinformatics/QueRyu/pull/52)）。表示ラベルを返す `registration_status` と、結果行の `registration` の日本語の値は変えていない。残りは Aoi の `queryu/` へのsubtree同期。
   - 着手時の注意（11月22日に確認）: 実装は子リポジトリ QueRyu の `ask/ask.py` にあり、Aoi 側はそのsubtree。結果行の `registration` は NagoyAction の受付テストが日本語の値で検査し、DRAgoWing は表示ラベルとして使う。子で先に変えてから Aoi へ同期する順になる。既存の値は残し、英語の機械値を別フィールドで足す形なら、利用側を壊さずに分離できる。
 
 [元Issueと受入条件](https://github.com/myon-bioinformatics/Aoi/issues/30)
