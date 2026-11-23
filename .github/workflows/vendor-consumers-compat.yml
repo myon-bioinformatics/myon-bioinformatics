@@ -22,7 +22,6 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/vendor-consumers-compat.yml"
-  workflow_dispatch:
 
 permissions:
   contents: read

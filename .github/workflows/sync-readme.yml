@@ -1,7 +1,6 @@
 name: Sync canonical README
 
 on:
-  workflow_dispatch:
   schedule:
     - cron: '17 0 * * *'
   pull_request:

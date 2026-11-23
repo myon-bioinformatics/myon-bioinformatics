@@ -152,10 +152,10 @@ def test_workflow_runs_offline_regressions_and_uploads_even_on_failure():
 def test_weekly_scan_event_and_permission_boundaries():
     workflow = yaml.load(WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     assert workflow["on"]["schedule"] == [{"cron": "30 0 * * 1"}]
-    assert "workflow_dispatch" in workflow["on"]
+    assert "workflow_dispatch" not in workflow["on"]  # Scheduled only: no manual runs.
     assert workflow["permissions"] == {"contents": "read"}
     job = workflow["jobs"]["duplicate-files"]
-    assert job["if"] == "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
+    assert job["if"] == "github.event_name == 'schedule'"
     assert "needs" not in job  # A separate reconciliation failure cannot suppress the scan.
     assert "permissions" not in job  # Inherit the read-only boundary.
     assert int(job["timeout-minutes"]) * 60 > 900  # Leave time to render and upload evidence.
