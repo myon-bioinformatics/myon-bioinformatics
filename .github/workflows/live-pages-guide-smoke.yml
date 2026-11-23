@@ -1,7 +1,6 @@
 name: Live Pages guide smoke
 
 on:
-  workflow_dispatch:
   schedule:
     - cron: "23 3 * * 1"
 
