@@ -175,17 +175,17 @@ def fetch_lock(repository, path, *, ref):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--catalog", default="vendor-catalog.json")
-    parser.add_argument("--registry", default="vendor-consumers.json")
+    parser.add_argument("--catalog", default="vendor-catalog.json",help="parent vendor catalog JSON (default: %(default)s)")
+    parser.add_argument("--registry", default="vendor-consumers.json",help="vendor consumer registry JSON (default: %(default)s)")
     parser.add_argument("--review", help="review evidence JSON; stale/unpinned reviews never approve enrollment")
-    parser.add_argument("--consumer", action="append", required=True)
+    parser.add_argument("--consumer", action="append", required=True,help="consumer repository to reconcile, OWNER/REPO (repeatable)")
     inputs = parser.add_mutually_exclusive_group()
     inputs.add_argument("--heads", help="parent child-heads.json: fetch selected locks at recorded SHAs")
     inputs.add_argument("--lock", action="append", default=[], metavar="OWNER/REPO=FILE",
                         help="offline lock input; otherwise retrieve actual lock from GitHub")
     parser.add_argument("--ref", default="main", help="consumer revision to resolve (default: main)")
     parser.add_argument("--output", help="write stable JSON report, otherwise stdout")
-    parser.add_argument("--fail-on-drift", action="store_true")
+    parser.add_argument("--fail-on-drift", action="store_true",help="exit 1 when a lock drifts from the registry")
     args = parser.parse_args(argv)
     try:
         catalog = json.loads(Path(args.catalog).read_text(encoding="utf-8"))

@@ -2269,9 +2269,9 @@ COMMANDS = ("targets", "graph", "impact", "plan", "test", "report", "query")
 def _registration_main(argv=None):
     parser = argparse.ArgumentParser(description="Read-only vendor fleet registration plan "
                                      f"(fleet commands: {', '.join(COMMANDS)}; see --help of each).")
-    parser.add_argument("--catalog", default="vendor-catalog.json")
-    parser.add_argument("--registry", default="vendor-consumers.json")
-    parser.add_argument("--consumer", action="append", default=[])
+    parser.add_argument("--catalog", default="vendor-catalog.json",help="parent vendor catalog JSON (default: %(default)s)")
+    parser.add_argument("--registry", default="vendor-consumers.json",help="vendor consumer registry JSON (default: %(default)s)")
+    parser.add_argument("--consumer", action="append", default=[],help="limit the plan to this consumer repository (repeatable)")
     parser.add_argument("--fail-on-missing", action="store_true",
                         help="exit 1 for unregistered non-skipped source candidates")
     args = parser.parse_args(argv)
@@ -2324,22 +2324,22 @@ def _fleet_parser():
         p.add_argument("-p", "--pattern", default="test*.py", help="test file pattern, like unittest -p (default test*.py)")
         p.add_argument("-k", dest="keywords", action="append", default=[], help="test name pattern, like unittest -k")
         p.add_argument("--related", action="append", default=[], metavar="TEXT", help="keep test files that mention TEXT")
-        p.add_argument("--runner", choices=("all", "unittest", "pytest"), default="all")
+        p.add_argument("--runner", choices=("all", "unittest", "pytest"), default="all",help="which runner to use (default: %(default)s)")
         p.add_argument("--list", action="store_true", help="load and list tests without running them")
         p.add_argument("--no-checks", action="store_true", help="skip the offline vendor_sync check prerequisite")
         jobs(p, 4)
         if name == "report":
             p.add_argument("--with-tests", action="store_true", help="also run the selected tests")
             p.add_argument("--previous", metavar="FILE", help="previous report JSON (diff, carried test rows)")
-            p.add_argument("--changed", action="append", default=[], metavar="REPO:PATH")
+            p.add_argument("--changed", action="append", default=[], metavar="REPO:PATH",help="limit to these changed sources, REPO:PATH (repeatable)")
     p = sub.add_parser("query", help="🔎 ask the published graph: deps REPO · who NAME|ID · facts [TEXT]; no checkouts needed",
                        allow_abbrev=False)
-    p.add_argument("kind", choices=QUERY_KINDS)
+    p.add_argument("kind", choices=QUERY_KINDS,help="deps REPO, who NAME|ID, facts [TEXT], why or reverify")
     p.add_argument("term", nargs="?", default="", help="repository (deps), name / previous name / repository_id (who), "
                    "text (facts), 'Repo:path' or text (why: 判断の根拠 · reverify: 影響先・再テスト・再検証)")
     p.add_argument("--graph", default=GRAPH_URL, metavar="FILE_OR_URL", help=f"fleet JSON-LD (default: the published {GRAPH_URL})")
     p.add_argument("--severity", choices=("failure", "blocked", "unavailable", "updated", "insufficient"), help="facts only")
-    p.add_argument("--format", choices=("text", "json", "markdown"), default="text")
+    p.add_argument("--format", choices=("text", "json", "markdown"), default="text",help="output format (default: %(default)s)")
     return parser
 
 

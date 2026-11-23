@@ -4131,7 +4131,7 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = _command_parser(sub, "issue-comments", help="digest an issue/PR conversation (index, time, author, size, preview)")
-    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("number", type=int,help="issue or PR number")
     p.add_argument("--since", help="ISO 8601; only comments updated at or after this time")
     p.add_argument("--last", type=int, help="keep only the last N rows")
     p.add_argument("--author", help="keep only comments by this login")
@@ -4147,98 +4147,98 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p.add_argument("--show", default="", help="comma-separated comment indexes to print in full")
 
     p = _command_parser(sub, "open-prs", help="open PRs across all repositories of OWNER (none -> exit 1)")
-    p.add_argument("owner"); p.add_argument("--org", action="store_true", help="OWNER is an organization")
+    p.add_argument("owner",help="GitHub user or organization"); p.add_argument("--org", action="store_true", help="OWNER is an organization")
     p.add_argument("--limit", type=int, default=50, help="rows to show (max 100)")
     p.add_argument("--repos", default="", help="comma-separated repository names: read each via /repos/OWNER/NAME/pulls instead of search")
 
     for command, help_text in (("repo-counts", "open Issue/PR counts and default-branch commit counts"),
                                ("open-issues", "all open Issues across repositories (excluding PRs)")):
         p = _command_parser(sub, command, help=help_text)
-        p.add_argument("owner")
+        p.add_argument("owner",help="GitHub user or organization")
         p.add_argument("--org", action="store_true", help="OWNER is an organization")
         p.add_argument("--repos", default="", help="comma-separated repository names; bypass owner enumeration")
 
     p = _command_parser(sub, "pr-for-branch", help="PRs whose head is BRANCH (none -> exit 1)")
-    p.add_argument("repo"); p.add_argument("branch", help="branch name, or owner:branch for a fork")
-    p.add_argument("--state", choices=("open", "closed", "all"), default="all")
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("branch", help="branch name, or owner:branch for a fork")
+    p.add_argument("--state", choices=("open", "closed", "all"), default="all",help="which PRs (default: %(default)s)")
 
     p = _command_parser(sub, "pr-status", help="one-line PR state")
-    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("number", type=int,help="PR number")
 
     p = _command_parser(sub, "pr-observe", help="snapshot PR/head/check/review activity for later diffing")
-    p.add_argument("repo"); p.add_argument("number", type=int)
-    p.add_argument("--min", type=int, default=1, dest="min_checks")
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("number", type=int,help="PR number")
+    p.add_argument("--min", type=int, default=1, dest="min_checks",help="pending until at least this many check runs exist (default: %(default)s)")
 
     p = _command_parser(sub, "pr-diff", help="compare two saved pr-observe JSON snapshots offline")
-    p.add_argument("before"); p.add_argument("after")
+    p.add_argument("before",help="earlier pr-observe JSON file"); p.add_argument("after",help="later pr-observe JSON file")
 
     p = _command_parser(sub, "checks-wait", help="wait for check runs on a SHA and report conclusions/annotations")
-    p.add_argument("repo"); p.add_argument("sha")
-    p.add_argument("--min", type=int, default=1, dest="min_checks")
-    p.add_argument("--timeout", type=float, default=600.0)
-    p.add_argument("--interval", type=float, default=15.0)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("sha",help="commit SHA to watch")
+    p.add_argument("--min", type=int, default=1, dest="min_checks",help="pending until at least this many check runs exist (default: %(default)s)")
+    p.add_argument("--timeout", type=float, default=600.0,help="give up after this many seconds (default: %(default)s)")
+    p.add_argument("--interval", type=float, default=15.0,help="seconds between polls (default: %(default)s)")
 
     p = _command_parser(sub, "runs", help="list workflow runs by head SHA or workflow file")
-    p.add_argument("repo")
+    p.add_argument("repo",help="OWNER/REPO")
     group = p.add_mutually_exclusive_group(required=True)
-    group.add_argument("--sha"); group.add_argument("--workflow")
+    group.add_argument("--sha",help="head SHA whose runs are listed"); group.add_argument("--workflow",help="workflow file name, e.g. ci.yml")
 
     p = _command_parser(sub, "workflow-state", help="show a workflow's state (active, disabled_inactivity, ...)")
-    p.add_argument("repo"); p.add_argument("workflow")
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("workflow",help="workflow file name or ID")
 
     p = _command_parser(sub, "workflow-dispatch", help="trigger workflow_dispatch (needs --write)")
-    p.add_argument("repo"); p.add_argument("workflow")
-    p.add_argument("--ref", required=True)
-    p.add_argument("--write", action="store_true")
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("workflow",help="workflow file name or ID")
+    p.add_argument("--ref", required=True,help="branch or tag to run on")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "run-rerun", help="rerun a completed non-successful workflow run (planned unless --write)")
-    p.add_argument("repo"); p.add_argument("run_id", type=int)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("run_id", type=int,help="Actions run ID")
     p.add_argument("--all", action="store_true", dest="rerun_all",
                    help="rerun all jobs instead of only failed jobs")
     p.add_argument("--expect-head-sha", metavar="SHA",
                    help="refuse unless the run's head SHA matches this SHA")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "run-cancel", help="cancel a queued or in-progress workflow run (planned unless --write)")
-    p.add_argument("repo"); p.add_argument("run_id", type=int)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("run_id", type=int,help="Actions run ID")
     p.add_argument("--expect-head-sha", metavar="SHA",
                    help="refuse unless the run's head SHA matches this SHA")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "branch-delete", help="delete a branch ref after safety checks (planned unless --write)")
-    p.add_argument("repo"); p.add_argument("branch")
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("branch",help="branch to delete")
     p.add_argument("--expect-tip-sha", metavar="SHA",
                    help="refuse unless the branch tip SHA matches this SHA")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "issue-comment", help="create a top-level PR conversation comment (needs --write)")
-    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("number", type=int,help="PR number")
     p.add_argument("--file", required=True, help="UTF-8 file containing the comment body (one trailing newline ignored)")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "issue-comment-upsert",
                        help="update AUTHOR's newest comment starting with MARKER, else create one (needs --write)")
-    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("number", type=int,help="PR number")
     p.add_argument("--file", required=True, help="UTF-8 file with the comment body; it must start with --marker")
-    p.add_argument("--marker", required=True)
+    p.add_argument("--marker", required=True,help="text the comment must start with; finds the comment to update")
     p.add_argument("--author", required=True, help="only this login's comments are updated, e.g. github-actions[bot]")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "variable-delete",
                        help="delete one repository Actions variable; verify absence via complete scoped listing (needs --write)")
-    p.add_argument("repo"); p.add_argument("name")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("name",help="Actions variable name")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "pr-body-replace", help="replace an anchor that occurs exactly once (needs --write)")
-    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("number", type=int,help="PR number")
     p.add_argument("--old", required=True, help="file with the exact anchor text (one trailing newline ignored)")
     p.add_argument("--new", required=True, help="file with the replacement text (one trailing newline ignored)")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "pr-merge", help="verify head/mergeability/checks, then merge (needs --write)")
-    p.add_argument("repo"); p.add_argument("number", type=int)
-    p.add_argument("--sha", required=True)
-    p.add_argument("--min-checks", type=int, default=1)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("number", type=int,help="PR number")
+    p.add_argument("--sha", required=True,help="expected PR head SHA (an abbreviated SHA must match exactly one PR commit)")
+    p.add_argument("--min-checks", type=int, default=1,help="check runs required, all completed and passing (default: %(default)s)")
     p.add_argument("--method", choices=MERGE_METHODS, default=None,
                    help="explicit merge method; otherwise policy, GH_OPS_MERGE_METHOD, else squash")
     p.add_argument("--policy-file", default=None, metavar="PATH",
@@ -4248,9 +4248,9 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
                    help="require method merge; after --write, the merge commit must have the head as parents[1]")
     p.add_argument("--ignore", default=r"(?i)copilot", metavar="REGEX",
                    help="drop check names matching REGEX before judging (default (?i)copilot; '' keeps all)")
-    p.add_argument("--title")
-    p.add_argument("--message-file")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--title",help="merge commit title")
+    p.add_argument("--message-file",help="file with the merge commit message")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "git-commit", help="git add FILE... and commit from --message-file (needs --write)")
     p.add_argument("--message-file", required=True, metavar="FILE", help="path to the commit message")
@@ -4260,12 +4260,12 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p.add_argument("--allow-staged", action="store_true",
                    help="allow files other than FILE... to already be staged")
     p.add_argument("--push", action="store_true", help="git push origin HEAD after committing (needs --write)")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "subtree-push", help="push the tree-verified subtree split of --prefix to a NEW remote "
                        "branch as <sha>:refs/heads/<branch> (planned unless --write)")
     p.add_argument("--root", default=".", help="monorepo checkout (default: .)")
-    p.add_argument("--prefix", required=True); p.add_argument("--remote", required=True)
+    p.add_argument("--prefix", required=True,help="subtree directory in the monorepo"); p.add_argument("--remote", required=True,help="child repository remote name or URL")
     p.add_argument("--branch", required=True, help="new branch on the remote; must not exist yet")
     p.add_argument("--source", default="HEAD", help="monorepo revision to split (default: HEAD)")
     p.add_argument("--compare-ref", help="remote branch that must be an ancestor of the split (default: remote HEAD)")
@@ -4274,81 +4274,81 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p.add_argument("--timeout", type=float, default=600.0,
                    help="seconds for each git command (default: 600); the vendored split and its "
                         "filter-branch fallback share this one budget")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "git-push", help="push existing HEAD without a new commit; verify remote tip (needs --write)")
-    p.add_argument("--root", default="."); p.add_argument("--remote", default="origin")
+    p.add_argument("--root", default=".",help="local clone (default: .)"); p.add_argument("--remote", default="origin",help="remote to push to (default: %(default)s)")
     p.add_argument("--branch", help="target branch (default: current local branch)")
-    p.add_argument("--timeout", type=float, default=60)
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--timeout", type=float, default=60,help="seconds allowed for git push (default: %(default)s)")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "sync-main", help="merge origin/main into the checked-out PR branch (needs --write)")
-    p.add_argument("--base", default="main"); p.add_argument("--remote", default="origin")
-    p.add_argument("--push", action="store_true"); p.add_argument("--write", action="store_true")
+    p.add_argument("--base", default="main",help="branch merged from the remote (default: %(default)s)"); p.add_argument("--remote", default="origin",help="remote to merge from (default: %(default)s)")
+    p.add_argument("--push", action="store_true",help="push after a clean merge (with --write)"); p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "fleet-apply", help="coordinate multi-repository files/PR consolidation from a JSON manifest")
-    p.add_argument("--manifest", required=True)
+    p.add_argument("--manifest", required=True,help="JSON manifest of repositories, files and PRs")
     p.add_argument("--jobs", type=int, default=1, help="independent repositories in parallel, 1..8")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "pr-body-set", help="replace the whole PR body with a file's text (needs --write)")
-    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("number", type=int,help="PR number")
     p.add_argument("--file", required=True, help="file with the full replacement body (one trailing newline ignored)")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "pr-edit", help="edit PR title/base/state/body together; append preserves existing text (needs --write)")
-    p.add_argument("repo"); p.add_argument("number", type=int)
-    p.add_argument("--title"); p.add_argument("--base")
-    p.add_argument("--state", choices=_PR_EDIT_STATES)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("number", type=int,help="PR number")
+    p.add_argument("--title",help="new title"); p.add_argument("--base",help="new base branch")
+    p.add_argument("--state", choices=_PR_EDIT_STATES,help="open or close the PR")
     body_group = p.add_mutually_exclusive_group()
     body_group.add_argument("--body-file", help="full replacement body, UTF-8")
     body_group.add_argument("--append-body-file", help="append UTF-8 text once, preserving existing body")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "pr-create", help="create a PR idempotently after verifying head branch tip (planned unless --write)")
-    p.add_argument("repo")
+    p.add_argument("repo",help="OWNER/REPO")
     p.add_argument("--head", required=True, help="head branch name")
     p.add_argument("--base", default="main", help="base branch name (default: main)")
     p.add_argument("--title", required=True, help="PR title")
     p.add_argument("--body-file", help="optional UTF-8 file containing the PR body")
     p.add_argument("--draft", action="store_true", help="open as draft PR")
     p.add_argument("--expect-head-sha", metavar="SHA", help="refuse unless the head branch tip matches this SHA")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "pr-review", help="submit a PR review pinned to head_sha (planned unless --write)")
-    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("number", type=int,help="PR number")
     p.add_argument("--event", required=True, choices=("APPROVE", "REQUEST_CHANGES", "COMMENT", "approve", "request-changes", "comment"),
                    help="review action")
     p.add_argument("--body-file", help="UTF-8 file with review comment body (required for REQUEST_CHANGES and COMMENT)")
     p.add_argument("--expect-head-sha", metavar="SHA", help="refuse unless the PR head SHA matches this SHA")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "pr-ready", help="mark a draft PR ready for review, or convert to draft with --draft (planned unless --write)")
-    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("number", type=int,help="PR number")
     p.add_argument("--draft", action="store_true", help="convert an open PR to draft instead of marking ready")
     p.add_argument("--expect-head-sha", metavar="SHA", help="refuse unless the PR head SHA matches this SHA")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "issue-create", help="create a repository Issue after verifying labels exist (planned unless --write)")
-    p.add_argument("repo")
+    p.add_argument("repo",help="OWNER/REPO")
     p.add_argument("--title", required=True, help="Issue title")
     p.add_argument("--body-file", help="optional UTF-8 file containing the Issue body")
     p.add_argument("--label", action="append", default=[], dest="labels", metavar="NAME",
                    help="existing repository label to attach (repeatable)")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "issue-edit", help="edit Issue title/state/state_reason/body (planned unless --write)")
-    p.add_argument("repo"); p.add_argument("number", type=int)
-    p.add_argument("--title")
-    p.add_argument("--state", choices=_PR_EDIT_STATES)
-    p.add_argument("--state-reason", choices=_ISSUE_STATE_REASONS)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("number", type=int,help="issue number")
+    p.add_argument("--title",help="new title")
+    p.add_argument("--state", choices=_PR_EDIT_STATES,help="open or close the issue")
+    p.add_argument("--state-reason", choices=_ISSUE_STATE_REASONS,help="why the state changed")
     ibody_group = p.add_mutually_exclusive_group()
     ibody_group.add_argument("--body-file", help="full replacement body, UTF-8")
     ibody_group.add_argument("--append-body-file", help="append UTF-8 text once, preserving existing body")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "pr-retarget", help="change a stacked PR's base (planned unless --write)")
-    p.add_argument("repo"); p.add_argument("number", type=int)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("number", type=int,help="PR number")
     p.add_argument("--base", default="main", help="new base branch name (default: main)")
     p.add_argument("--allow-unmerged-commits", action="store_true",
                    help="allow --write when the old base has commits not in the new base (ahead_by > 0)")
@@ -4356,30 +4356,30 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
                    help="allow --write when compare with the old base failed (for example branch deleted)")
     p.add_argument("--expect-head-sha", metavar="SHA",
                    help="optional: refuse --write unless the PR head still matches this SHA before PATCH")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "file-put", help="create or update one file via the contents API (needs --write)")
-    p.add_argument("repo"); p.add_argument("path", help="path of the file inside the repository")
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("path", help="path of the file inside the repository")
     p.add_argument("--from", dest="from_path", required=True, help="local file to read the new content from")
-    p.add_argument("--branch", required=True)
+    p.add_argument("--branch", required=True,help="branch to commit to")
     p.add_argument("--message", required=True, help="commit message")
     p.add_argument("--allow-default-branch", action="store_true",
                    help="permit writing directly to the repository's default branch")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "commit-files", help="ONE commit of several files via the Git Data API, no clone "
                                              "(planned unless --write; fast-forward only; verified)")
-    p.add_argument("repo"); p.add_argument("--branch", required=True)
+    p.add_argument("repo",help="OWNER/REPO"); p.add_argument("--branch", required=True,help="branch to commit to")
     inputs = p.add_mutually_exclusive_group()
     inputs.add_argument("--stdin-json", action="store_true", help="read an array of path/encoding/content records from stdin")
     inputs.add_argument("--file", action="append", default=[], metavar="PATH[=LOCAL]",
                    help="repository path, optionally =local file to read (default: the same path)")
-    p.add_argument("--delete", action="append", default=[], metavar="PATH")
+    p.add_argument("--delete", action="append", default=[], metavar="PATH",help="repository path to delete (repeatable)")
     p.add_argument("--message", required=True, help="commit message")
     p.add_argument("--expect-head", metavar="SHA", help="refuse unless the branch tip is exactly this full 40-hex SHA")
     p.add_argument("--allow-default-branch", action="store_true",
                    help="permit writing directly to the repository's default branch")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "records-import", help="merge a dashboard JSON export into site/records.jsonl, locally or as "
                                                 "one commit on a branch (+PR); planned unless --write")
@@ -4388,7 +4388,7 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
     p.add_argument("--repo", metavar="OWNER/REPO", help="commit to this repository instead of the local file")
     p.add_argument("--branch", help="branch to commit to (created from the default branch when missing)")
     p.add_argument("--pr", action="store_true", help="open a PR for the branch unless one is attached")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "fleet-issues", help="one Issue per remaining fact of a vendor_fleet_plan report "
                                                "(matched by fact key; numbers stay with their Issue); planned unless --write")
@@ -4398,36 +4398,36 @@ def build_parser(argv: list[str] | None = None) -> GhOpsParser:
                    help="comma-separated severities to file (default: " + ",".join(FLEET_SEVERITY) + ")")
     p.add_argument("--close-resolved", action="store_true",
                    help="also close open fleet Issues whose fact is no longer in the report (with a comment)")
-    p.add_argument("--write", action="store_true")
+    p.add_argument("--write", action="store_true",help="do it; without --write only a dry run is reported")
 
     p = _command_parser(sub, "url", help="build a github.com / api.github.com URL for something; no network access")
     url_sub = p.add_subparsers(dest="url_kind", required=True)
 
     up = _command_parser(url_sub, "pr", help="a pull request, or one of its checks/files/commits tabs")
-    up.add_argument("repo"); up.add_argument("number", type=int)
-    up.add_argument("--tab", choices=("checks", "files", "commits"))
+    up.add_argument("repo",help="OWNER/REPO"); up.add_argument("number", type=int,help="PR number")
+    up.add_argument("--tab", choices=("checks", "files", "commits"),help="open this tab of the PR")
 
     up = _command_parser(url_sub, "compare", help="compare BASE...HEAD")
-    up.add_argument("repo"); up.add_argument("base"); up.add_argument("head")
+    up.add_argument("repo",help="OWNER/REPO"); up.add_argument("base",help="base ref"); up.add_argument("head",help="head ref")
 
     up = _command_parser(url_sub, "blame", help="blame view of PATH at REF")
-    up.add_argument("repo"); up.add_argument("ref"); up.add_argument("path")
-    up.add_argument("--line", type=int)
+    up.add_argument("repo",help="OWNER/REPO"); up.add_argument("ref",help="branch, tag or SHA"); up.add_argument("path",help="file path in the repository")
+    up.add_argument("--line", type=int,help="line to jump to")
 
     up = _command_parser(url_sub, "history", help="commit history of PATH at REF")
-    up.add_argument("repo"); up.add_argument("ref"); up.add_argument("path")
+    up.add_argument("repo",help="OWNER/REPO"); up.add_argument("ref",help="branch, tag or SHA"); up.add_argument("path",help="file path in the repository")
 
     up = _command_parser(url_sub, "runs", help="workflow run list, optionally filtered by branch/event/status")
-    up.add_argument("repo")
+    up.add_argument("repo",help="OWNER/REPO")
     up.add_argument("--workflow", help="workflow file name, e.g. ci.yml")
-    up.add_argument("--branch"); up.add_argument("--event"); up.add_argument("--status")
+    up.add_argument("--branch",help="only runs on this branch"); up.add_argument("--event",help="only runs of this event, e.g. push"); up.add_argument("--status",help="only runs with this status, e.g. failure")
 
     up = _command_parser(url_sub, "search", help="search results (pullrequests searches issues with is:pr added)")
-    up.add_argument("query")
-    up.add_argument("--type", choices=tuple(_SEARCH_ENDPOINTS), default="code")
+    up.add_argument("query",help="search query")
+    up.add_argument("--type", choices=tuple(_SEARCH_ENDPOINTS), default="code",help="what to search (default: %(default)s)")
 
     up = _command_parser(url_sub, "raw", help="raw file content of PATH at REF")
-    up.add_argument("repo"); up.add_argument("ref"); up.add_argument("path")
+    up.add_argument("repo",help="OWNER/REPO"); up.add_argument("ref",help="branch, tag or SHA"); up.add_argument("path",help="file path in the repository")
     return parser
 
 

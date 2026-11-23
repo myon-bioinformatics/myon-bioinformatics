@@ -3049,18 +3049,18 @@ def main(argv=None, *, get=_get):
             "run-child-ci",
             "resolve-parent-pr",
         ),
-    )
-    parser.add_argument("--manifest", default="vendor.lock.json")
-    parser.add_argument("--root", default=".")
-    parser.add_argument("--runtime-evidence", action="append", default=[])
-    parser.add_argument("--registry", default="vendor-consumers.json")
+    help="check verifies placed files against the lock; materialize and recreate write them from the pins; the rest update pins or audit children")
+    parser.add_argument("--manifest", default="vendor.lock.json",help="vendor-lock/1 file (default: %(default)s)")
+    parser.add_argument("--root", default=".",help="checkout (default: .)")
+    parser.add_argument("--runtime-evidence", action="append", default=[],help="runtime evidence file to include (repeatable)")
+    parser.add_argument("--registry", default="vendor-consumers.json",help="vendor consumer registry JSON (default: %(default)s)")
     parser.add_argument("--ref", default="main", help="consumer default branch ref to audit")
-    parser.add_argument("--parent", default=PARENT_REPOSITORY)
+    parser.add_argument("--parent", default=PARENT_REPOSITORY,help="parent repository, OWNER/REPO (default: %(default)s)")
     parser.add_argument("--consumer", action="append", default=[], help="limit audit to selected consumers")
     parser.add_argument("--summary", help="write a GitHub Actions step summary markdown file")
     parser.add_argument("--local-consumer", action="append", default=[], metavar="OWNER/REPO=PATH",
                         help="offline consumer checkout root (repeatable)")
-    parser.add_argument("--heads", default="child-heads.json")
+    parser.add_argument("--heads", default="child-heads.json",help="child-heads JSON (default: %(default)s)")
     parser.add_argument("--pr", help="parent pull request number for resolve-parent-pr")
     parser.add_argument("--ref-file", default="templates/parent-pr.ref.json",
                         help="parent-pr-ref/1 JSON for resolve-parent-pr verification")

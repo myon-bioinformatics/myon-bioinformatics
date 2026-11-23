@@ -139,14 +139,14 @@ def verify_candidate(root, catalog, registry, consumer, repository, source, test
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--root', default='.')
-    parser.add_argument('--catalog', default='vendor-catalog.json')
-    parser.add_argument('--registry', default='vendor-consumers.json')
-    parser.add_argument('--consumer', required=True)
-    parser.add_argument('--repository', required=True)
-    parser.add_argument('--source', required=True)
-    parser.add_argument('--test', action='append', default=[])
-    parser.add_argument('--output', required=True)
+    parser.add_argument('--root', default='.',help="consumer checkout; never written (default: .)")
+    parser.add_argument('--catalog', default='vendor-catalog.json',help="parent vendor catalog JSON (default: %(default)s)")
+    parser.add_argument('--registry', default='vendor-consumers.json',help="vendor consumer registry JSON (default: %(default)s)")
+    parser.add_argument('--consumer', required=True,help="registered consumer repository, OWNER/REPO")
+    parser.add_argument('--repository', required=True,help="repository of the catalog tool, OWNER/REPO")
+    parser.add_argument('--source', required=True,help="file path of the tool in --repository")
+    parser.add_argument('--test', action='append', default=[],help="consumer test path to run against the candidate (repeatable)")
+    parser.add_argument('--output', required=True,help="new directory outside --root for verification.json and candidate-junit.xml")
     args = parser.parse_args(argv)
     # Reports live outside the input checkout; output reservation precedes work.
     output = Path(args.output).absolute()

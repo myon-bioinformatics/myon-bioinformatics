@@ -170,7 +170,7 @@ def main(argv: list[str] | None = None, get=fetch, api=github_json, sleep=time.s
     parser.add_argument("--repo", help="OWNER/REPO: also check the newest github-pages deployment")
     parser.add_argument("--commit", help="deployment commit prefix to expect (default: local HEAD)")
     parser.add_argument("--wait", type=float, default=0, help="retry for up to this many seconds")
-    parser.add_argument("--interval", type=float, default=15)
+    parser.add_argument("--interval", type=float, default=15,help="seconds between retries while --wait lasts (default: %(default)s)")
     parser.add_argument("--no-bust", action="store_true", help="do not add a cache-busting query")
     parser.add_argument("--json", action="store_true",
                         help="print one JSON object instead of text lines")

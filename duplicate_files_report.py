@@ -106,10 +106,10 @@ def run(identity, output, summary=None, owner="myon-bioinformatics", timeout=900
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--identity", required=True)
-    parser.add_argument("--output", default="reports/duplicate-files.json")
-    parser.add_argument("--summary", default=os.environ.get("GITHUB_STEP_SUMMARY"))
-    parser.add_argument("--owner", default="myon-bioinformatics")
+    parser.add_argument("--identity", required=True,help="pinned gh_identity.py to run")
+    parser.add_argument("--output", default="reports/duplicate-files.json",help="report JSON; a .stderr.log is written beside it (default: %(default)s)")
+    parser.add_argument("--summary", default=os.environ.get("GITHUB_STEP_SUMMARY"),help="Markdown step summary file (default: $GITHUB_STEP_SUMMARY)")
+    parser.add_argument("--owner", default="myon-bioinformatics",help="GitHub user or organization (default: %(default)s)")
     parser.add_argument("--timeout", type=int, default=900,
                         help="Collector operation budget and wall-clock limit in seconds (default: 900)")
     ns = parser.parse_args(argv)

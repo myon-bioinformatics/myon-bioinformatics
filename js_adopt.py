@@ -444,11 +444,11 @@ try {
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--lock", default=LOCK)
-    parser.add_argument("--root", default=".")
+    parser.add_argument("--lock", default=LOCK,help="lock file, relative to --root (default: %(default)s)")
+    parser.add_argument("--root", default=".",help="repository root (default: .)")
     sub = parser.add_subparsers(dest="command", required=True)
     a = sub.add_parser("add", help="download one pinned file and record it")
-    a.add_argument("repository", metavar="OWNER/REPO")
+    a.add_argument("repository", metavar="OWNER/REPO",help="GitHub repository to adopt from")
     a.add_argument("ref", help="tag or full commit SHA")
     a.add_argument("path", help="file path inside the repository")
     a.add_argument("--dest", required=True, help="directory to write into, relative to --root")
@@ -467,11 +467,11 @@ def main(argv=None) -> int:
     c = sub.add_parser("check", help="verify local bytes, SRI and licenses")
     c.add_argument("--remote", action="store_true", help="also re-download to detect a moved ref")
     t = sub.add_parser("tag", help="print a <script> tag with integrity")
-    t.add_argument("name")
-    t.add_argument("--cdn", action="store_true")
+    t.add_argument("name",help="short name in the lock")
+    t.add_argument("--cdn", action="store_true",help="src from jsDelivr instead of the local copy (same integrity)")
     t.add_argument("--base", default="", help="prefix for the local src, e.g. ../")
     o = sub.add_parser("oneliners", help="equivalent curl / browser fetch / urllib commands")
-    o.add_argument("name")
+    o.add_argument("name",help="short name in the lock")
     args = parser.parse_args(argv)
     root, lock_path = Path(args.root), Path(args.root) / args.lock
     try:
