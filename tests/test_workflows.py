@@ -951,3 +951,61 @@ class DependencyOnlyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ═══ · reusable static Pages ═══════════════════════════════════════════════════════════════════════
+# reusable-pages-static.yml: a guide page builds on pull requests; only the default branch deploys.
+
+REUSABLE_PAGES_WORKFLOW = ROOT / ".github/workflows/reusable-pages-static.yml"
+ON_DEFAULT_BRANCH = "github.ref_name == github.event.repository.default_branch"
+
+
+def _pages():
+    doc = yaml.safe_load(REUSABLE_PAGES_WORKFLOW.read_text(encoding="utf-8"))
+    return doc, doc["jobs"]["build"], doc["jobs"]["deploy"]
+
+
+def test_pages_builds_on_pull_requests_only_for_a_guide_page():
+    _, build, deploy = _pages()
+    deploys = f"{ON_DEFAULT_BRANCH} && (github.event_name == 'push' || inputs.build != '')"
+    assert build["if"] == f"inputs.guide_page != '' || ({deploys})"
+    assert (deploy["if"], deploy["needs"]) == (deploys, "build")
+
+
+def test_pages_build_cannot_publish_and_uploads_only_from_the_default_branch():
+    _, build, deploy = _pages()
+    assert build["permissions"] == {"contents": "read"}
+    assert deploy["permissions"] == {"pages": "write", "id-token": "write"}
+    assert [s["if"] for s in build["steps"] if "upload-pages-artifact" in s.get("uses", "")] == [ON_DEFAULT_BRANCH]
+    assert not any("deploy-pages" in s.get("uses", "") for s in build["steps"])
+
+
+def test_pages_guide_inputs_reach_the_shell_through_env_and_the_renderer_is_pinned_once():
+    doc, build, _ = _pages()
+    guide = next(s for s in build["steps"] if s.get("name") == "Build the guide")
+    assert guide["if"] == "inputs.guide_page != ''" and "${{" not in guide["run"]
+    assert guide["env"] == {"GUIDE_PAGE": "${{ inputs.guide_page }}", "GUIDE_ASSETS": "${{ inputs.guide_assets }}",
+                            "ARTIFACT_PATH": "${{ inputs.artifact_path }}"}
+    assert re.fullmatch(r"pysaiyanweboo @ git\+https://github\.com/myon-bioinformatics/PySaiyanWeBoo@[0-9a-f]{40}", doc["env"]["WEB_UI"])
+
+
+def test_a_pull_request_pages_build_cannot_cancel_a_default_branch_deploy():
+    doc, _, _ = _pages()
+    assert doc["concurrency"]["group"] == "pages-${{ github.repository }}-${{ github.ref }}"
+
+
+def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
+    _, build, _ = _pages()
+    guide = next(s for s in build["steps"] if s.get("name") == "Build the guide")
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/uv").write_text("#!/bin/sh\necho \"rendered $*\"\n", encoding="utf-8")
+    (tmp_path / "bin/uv").chmod(0o755)
+    (tmp_path / "icon.png").write_bytes(b"icon")
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
+           "GUIDE_PAGE": "docs/guide.page.json", "GUIDE_ASSETS": "icon.png=favicon.png", "ARTIFACT_PATH": "_site"}
+    subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
+    assert (tmp_path / "_site/index.html").read_text(encoding="utf-8").strip() == \
+        "rendered run --no-project --with pinned python -m web_ui --page docs/guide.page.json"
+    assert (tmp_path / "_site/favicon.png").read_bytes() == b"icon"
+    subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env={**env, "GUIDE_ASSETS": ""}, check=True)
+
