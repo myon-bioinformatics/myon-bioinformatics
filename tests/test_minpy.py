@@ -246,6 +246,22 @@ def test_allowlisted_pure_python_dependency(tmp_path: Path) -> None:
     }]
 
 
+def test_characters_above_u_ffff_survive_bundling(tmp_path: Path) -> None:
+    # 📤 is U+1F4E4. JSON writes it as a surrogate pair, which a Python literal cannot carry.
+    root = tmp_path / "src"
+    _write(root, "app.py", 'ICON = "\U0001f4e4 出力"\nLOOKS_LIKE_AN_ESCAPE = "\\\\ud83d\\\\udce4"\nPLAIN = "é あ"\n')
+    bundle = tmp_path / "app_min.py"
+    bundle.write_text(_bundle(root), encoding="utf-8")
+    loaded = _load_expr(bundle, "ascii((module.ICON, module.LOOKS_LIKE_AN_ESCAPE, module.PLAIN))")
+    assert loaded.returncode == 0, loaded.stderr
+    assert loaded.stdout.strip() == ascii(("\U0001f4e4 出力", "\\ud83d\\udce4", "é あ"))
+    for text in ("", "plain", "é あ ￿", 'quote " and \\ backslash', "\\ud83d\\udce4 written out"):
+        assert minpy._python_literal(text) == json.dumps(text, ensure_ascii=True)  # Unchanged below U+10000.
+    for text in ("\U0001f4e4", "a\U0001f600b\U0010ffff", "\\\U0001f4e4", "\\\\\U0001f4e4"):
+        literal = minpy._python_literal(text)
+        assert literal.isascii() and eval(literal) == text
+
+
 def test_output_is_deterministic_and_self_describing(tmp_path: Path) -> None:
     root = tmp_path / "src"
     _write(root, "mathx.py", "def add(left, right):\n    return left + right\n")
