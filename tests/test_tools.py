@@ -605,6 +605,40 @@ def test_fleet_check_scripts_holds_for_the_parent_itself():
     fleet_check.check_scripts(ROOT, passthrough=("njs_launch.py",))      # forwards argv to node untouched
 
 
+def test_fleet_check_imports_follows_the_repository_and_names_third_party_imports(tmp_path):
+    files = {
+        "app.py": "import json\nimport helper\nfrom pkg import tool\nimport importlib\nimportlib.import_module('late')\n"
+                  "importlib.import_module(name)\nfrom typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import typed_only\n"
+                  "try:\n    import optional_dep\nexcept ImportError:\n    optional_dep = None\n"
+                  "if __name__ == '__main__':\n    import script_only\n",
+        "helper.py": "from math import pi\n",
+        "pkg/__init__.py": "",
+        "pkg/tool.py": "from . import sub\n",
+        "pkg/sub.py": "import os\n",
+        "late.py": "",
+        "core/far.py": "VALUE = 1\n",
+        "uses_far.py": "import far\nimport requests\n",
+    }
+    for rel, text in files.items():
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text(text, encoding="utf-8")
+    found = fleet_check.check_imports(tmp_path, "app.py")
+    assert found["modules"] == ["app.py", "helper.py", "late.py", "pkg/__init__.py", "pkg/sub.py", "pkg/tool.py"]
+    assert found["external"] == {} and found["dynamic"] == ["app.py:6"]
+    with pytest.raises(AssertionError, match="'far'"):                      # core/ is not searched by default
+        fleet_check.check_imports(tmp_path, "uses_far.py")
+    with pytest.raises(AssertionError) as caught:
+        fleet_check.check_imports(tmp_path, "uses_far.py", paths=("core",))
+    assert "'requests'" in str(caught.value) and "'far'" not in str(caught.value)
+    found = fleet_check.check_imports(tmp_path, "uses_far.py", allow=("requests",), paths=("core",))
+    assert found["modules"] == ["core/far.py", "uses_far.py"]
+
+
+def test_fleet_check_imports_holds_for_the_parent_stdlib_tools():
+    for entry in ("fleet_check.py", "vendor_sync.py", "vendor_consumers.py", "gh_ops.py"):
+        fleet_check.check_imports(ROOT, entry)
+
+
 def test_fleet_check_lock_verifies_bytes_and_accepted_commits(tmp_path):
     rows = [_lock_row(tmp_path, "python/vendor/a.py", b"print(1)\n"), _lock_row(tmp_path, "vendor/b.cjs", b"//\n", "b" * 40)]
     (tmp_path / "python").mkdir(exist_ok=True)

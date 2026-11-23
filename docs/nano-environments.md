@@ -95,7 +95,7 @@ solver, browser and service dependencies are retained, not labeled minimized.
   package-free; optional Gradio and browser assets remain actual dependencies.
 - Flutter's E2E image packages its real SDK/browsers. TalkCompress/Aoi/NagoyAction
   model hooks and native libraries are opt-in features, not substitutes supplied
-  by minpy/minjs. Their installed/native/model measurements are outside
+  by a stdlib copy or minjs. Their installed/native/model measurements are outside
   the selected preparation recipes.
 
 No Docker image/build setting, Pages publisher or CI job is removed or altered.
@@ -104,9 +104,9 @@ build time, equivalent isolation, or elimination of service/native dependencies.
 
 ### Reuse before writing another minimum
 
-- [minpy](minpy.md) bundles supported same-repository Python source. It does not
-  implement third-party APIs or remove native libraries, package data or host
-  runtimes. Allowlisted third-party source is still third-party, not stdlib.
+- `fleet_check.check_imports(root, entry)` lists the same-repository modules an entry reaches and fails on
+  third-party imports (best effort, read without running). Single files are copied as they are; nothing is
+  bundled (the parent's former `tools/minpy.py` was removed on 2026-11-23 after its last consumer left).
 - Aoi's [mindeps limits](https://github.com/myon-bioinformatics/Aoi/blob/385e14a09ad56b69c57ec1cbae04c16299d387c5/mindeps/LIMITS.md)
   define narrow HTTPX/HTML-selector call surfaces. HTTP exceptions/features and
   HTML5 error recovery differ. Keep the real-package comparison tests.

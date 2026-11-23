@@ -95,23 +95,9 @@ jobs:
           # Pull requests restore the cache and never write it; only main saves it.
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
-      - run: python -m py_compile git_inspector.py gh_ops.py vendor_consumers.py tools/parent_pin_check.py tools/minpy.py
+      - run: python -m py_compile git_inspector.py gh_ops.py vendor_consumers.py tools/parent_pin_check.py
       - name: Verify enrolled GitHub identity dependency (offline)
         run: python -S vendor_sync.py check --manifest vendor.lock.json
-      - name: Regenerate minpy fixture and compare
-        shell: bash
-        run: |
-          python tools/minpy.py bundle \
-            --root tests/fixtures/minpy_widget \
-            --entry app.py \
-            --repository example/widget \
-            --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
-            --skip-head-check \
-            --output "$RUNNER_TEMP/app_min.py"
-          python tools/minpy.py check \
-            --bundle "$RUNNER_TEMP/app_min.py" \
-            --root tests/fixtures/minpy_widget \
-            --skip-head-check
       # Run once per workflow to fail explicitly on stale or missing uv.lock.
       - name: Verify committed uv.lock matches pyproject.toml
         if: matrix.python == '3.11'
@@ -207,22 +193,8 @@ jobs:
           # Pull requests restore the cache and never write it; only main saves it.
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
-      - name: Regenerate minpy fixture and compare
-        shell: bash
-        run: |
-          python tools/minpy.py bundle \
-            --root tests/fixtures/minpy_widget \
-            --entry app.py \
-            --repository example/widget \
-            --commit aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
-            --skip-head-check \
-            --output "$RUNNER_TEMP/app_min.py"
-          python tools/minpy.py check \
-            --bundle "$RUNNER_TEMP/app_min.py" \
-            --root tests/fixtures/minpy_widget \
-            --skip-head-check
       - name: Exercise changed public Git snapshots and rejection cases
-        run: uv run pytest -q tests/test_vendor_sync.py tests/test_vendor_stage.py tests/test_vendor_consumers.py tests/test_vendor_update_workflow.py tests/test_gh_ops.py tests/test_gh_ops_fetch_guard.py tests/test_minpy.py --junitxml=reports/vendor.xml
+        run: uv run pytest -q tests/test_vendor_sync.py tests/test_vendor_stage.py tests/test_vendor_consumers.py tests/test_vendor_update_workflow.py tests/test_gh_ops.py tests/test_gh_ops_fetch_guard.py --junitxml=reports/vendor.xml
       - name: Preserve vendor regression JUnit
         id: vendor_junit_upload
         if: always()
