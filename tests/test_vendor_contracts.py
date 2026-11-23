@@ -184,6 +184,11 @@ POST_BASELINE_ENROLLMENTS = {
         "vendor/fleet_check.py", "vendor/cli_args.py", "vendor/cli_args-LICENSE"},
     "myon-bioinformatics/yourself": {
         "vendor/fleet_check.py", "vendor/cli_args.py", "vendor/cli_args-LICENSE"},
+    # BrowserTestKit #195 / PySaiyanWeBoo #170 vendor cli_args for their tests (run_cli); PySaiyanWeBoo keeps
+    # fleet_check from the unpack above. Both destinations stay out of observations that predate those merges.
+    "myon-bioinformatics/BrowserTestKit": {"vendor/cli_args.py", "vendor/cli_args-LICENSE"},
+    "myon-bioinformatics/PySaiyanWeBoo": {
+        "vendor/fleet_check.py", "vendor/cli_args.py", "vendor/cli_args-LICENSE"},
 }
 
 

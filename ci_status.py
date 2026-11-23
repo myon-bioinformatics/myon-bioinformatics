@@ -67,6 +67,8 @@ def observe(name, pr=None, *, ref=None):
         pull = get(base + "/pulls/" + str(pr))
         sha = pull["head"]["sha"]
         target = "PR #" + str(pr)
+        if pull.get("state") != "open":  # The checks of a finished pull request say nothing about whether it is still waiting.
+            target += " 🟣merged" if pull.get("merged_at") else " ⚫closed"
     else:
         meta = get(base)
         ref = meta["default_branch"]
