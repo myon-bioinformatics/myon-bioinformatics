@@ -175,6 +175,15 @@ POST_BASELINE_ENROLLMENTS = {
     # check_scripts (parent #328): PySaiyanWeBoo and Ironmate (above) lock it after the parent registers it;
     # Aoi locks it first and the parent registers and re-observes it together.
     **{f"myon-bioinformatics/{name}": {"vendor/fleet_check.py"} for name in ("PySaiyanWeBoo", "Aoi")},
+    # cli_args 5ae22b1a: xprobe already had a registry row; the new destination is excluded
+    # from frozen observations that predate xprobe #69.
+    "myon-bioinformatics/xprobe": {"vendor/cli_args.py"},
+    # nvd #71 / yourself #79 already had a registry row; keep fleet_check from the
+    # unpack above and exclude the new cli_args destinations from frozen observations.
+    "myon-bioinformatics/nvd_nist_known_vulns": {
+        "vendor/fleet_check.py", "vendor/cli_args.py", "vendor/cli_args-LICENSE"},
+    "myon-bioinformatics/yourself": {
+        "vendor/fleet_check.py", "vendor/cli_args.py", "vendor/cli_args-LICENSE"},
 }
 
 
@@ -314,7 +323,13 @@ def test_observation_does_not_enroll_new_repositories():
     registry = vendor_consumers.validate(json.loads((ROOT / "vendor-consumers.json").read_text()))
     locked = {row["repository"] for row in registry["consumers"] if row["state"] == "locked"}
     # flutter_navigation_basic was archived 2026-11-18 and dropped from live tracking.
-    assert set(FIXTURES) - {"myon-bioinformatics/flutter_navigation_basic"} == locked
+    baseline = set(FIXTURES) - {"myon-bioinformatics/flutter_navigation_basic"}
+    later = set(REOBSERVED.get("refreshed", {})) | set(REOBSERVED.get("adopted", {})) | set(LATEST_FIXTURES)
+    assert baseline <= locked
+    # New locked consumers (SakAnalytics, PythDRagoras, BlueProbe,
+    # FluidFullSpeedSimulation, OnTautoLogy, NagoyAction) must have a reviewed
+    # observation under refreshed or adopted fixtures.
+    assert locked - baseline <= later
 
 
 def test_ironmate_adoption_preserves_previous_snapshot_and_checks_new_entries():
