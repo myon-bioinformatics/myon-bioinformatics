@@ -179,7 +179,8 @@ G6のtokenizer調査（`scripts/tokenizer_compat.py`、`docs/o200k-lookup/`）�
 
 ### BrowserTestKitの操作
 
-- [ ] 子フレームとopen shadow rootを区別し、再描画後はlocatorを再取得する。現行は件数を比較するが、中身は `not_entered`。 中へ入るときに何を出すか（件数だけか、中の操作対象までか）は未決（11月23日）。 件数と一覧のテスト9件は main `f974ca0` で成功（ローカル確認）。BrowserTestKit側にも残件として記録した（[BrowserTestKit #185](https://github.com/myon-bioinformatics/BrowserTestKit/pull/185)）。
+- [x] 子フレームとopen shadow rootを区別し、再描画後はlocatorを再取得する。11月22日時点では件数の比較だけで、中身は `not_entered` だった。 件数と一覧のテスト9件は main `f974ca0` で成功（ローカル確認）。BrowserTestKit側にも残件として記録した（[BrowserTestKit #185](https://github.com/myon-bioinformatics/BrowserTestKit/pull/185)）。
+  - 11月23日: 同じプロセスの子フレームと open shadow root の中へ入り、要素数と中の操作対象の両方を出すようにした（[BrowserTestKit #189](https://github.com/myon-bioinformatics/BrowserTestKit/pull/189)、main `345dde1`）。フレーム内は `frame:N>ADDRESS` で操作でき、毎回探し直すので再描画後も見つかる。`pytest tests/python/test_page_inspect.py -k "frame or shadow"` で10件成功（ローカル確認、Chrome for Testing 153）。別プロセスのフレームと closed shadow root は入らない。
 
 移動後のセッション再観測、headed、任意のStagehandとAndroidは実行範囲を明記する。操作CLIの契約安定後にtransportの要否を判断する。Stagehandは必須にしない。 それぞれの再開条件は BrowserTestKit の `docs/page-inspect-platform-scenarios.md` に記録した（#185）。
 
