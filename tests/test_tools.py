@@ -1696,6 +1696,29 @@ def _svg_tree(fig):
 _SVG = "{http://www.w3.org/2000/svg}"
 
 
+def test_pillow_min_resize_box_averages_down_and_repeats_up():
+    """📐 BOX averages each block (alpha-weighted) when shrinking and repeats pixels when growing; NEAREST picks one."""
+    spec = importlib.util.spec_from_file_location("pillow_min", ROOT / "tools" / "stdlib_min" / "pillow_min.py")
+    pm = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pm)
+    Image = pm.Image
+    rgba = Image("RGBA", (2, 2), bytes([255, 0, 0, 255, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 255, 255]))
+    one = rgba.resize((1, 1))                       # red, blue, blue opaque and one see-through pixel
+    assert one.getpixel((0, 0)) == (85, 0, 170, 191)
+    grown = rgba.resize((4, 4))
+    assert grown.getpixel((0, 0)) == grown.getpixel((1, 1)) == (255, 0, 0, 255) and grown.getpixel((3, 0)) == (0, 0, 255, 255)
+    gray = Image("L", (3, 1), bytes([0, 30, 90])).resize((1, 1))
+    assert gray.mode == "L" and gray.getpixel((0, 0)) == 40
+    assert Image("RGB", (4, 2), bytes(range(24))).resize((2, 1), Image.NEAREST).tobytes() == bytes([15, 16, 17, 21, 22, 23])
+    palette = Image("P", (2, 1), bytes([0, 1]), palette=b"\xff\x00\x00\x00\xff\x00")
+    assert palette.resize((4, 1)).mode == "P" and palette.resize((4, 1)).tobytes() == bytes([0, 0, 1, 1])
+    for bad in (lambda: palette.resize((1, 1), Image.BOX), lambda: rgba.resize((1, 1), 2), lambda: rgba.resize((0, 1))):
+        with pytest.raises(ValueError):
+            bad()
+    square = Image.open(pm.encode_png(rgba.resize((8, 8))))                                       # saves and reopens as a PNG
+    assert square.size == (8, 8) and square.mode == "RGBA"
+
+
 def test_plotly_min_figure_json_is_plotly_shaped():
     pm = _plotly_min()
     go = pm.graph_objects

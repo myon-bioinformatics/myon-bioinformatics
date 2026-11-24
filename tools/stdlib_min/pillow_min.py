@@ -515,6 +515,7 @@ class Image:
     """Subset of ``PIL.Image.Image`` for PNG data (modes 1, L, LA, P, I;16, RGB, RGBA)."""
 
     modes = frozenset(_BPP)
+    NEAREST, BOX = 0, 4  # Pillow's ``Image.Resampling`` numbers; ``resize`` takes these two
 
     def __init__(self, mode: str, size: Tuple[int, int], data: bytes, *,
                  info: Optional[dict] = None, palette: Optional[bytes] = None):
@@ -940,6 +941,50 @@ class Image:
             dst = ((y - upper) * cw + (x0 - left)) * bpp
             out[dst:dst + (x1 - x0) * bpp] = self._data[src:src + (x1 - x0) * bpp]
         return self._new(self.mode, (cw, ch), bytes(out), palette=self._palette)
+
+    def resize(self, size: Tuple[int, int], resample: Optional[int] = None) -> 'Image':
+        """A copy scaled to ``size``. ``BOX`` (the default for L / LA / RGB / RGBA) averages the block of source
+        pixels under each target pixel, weighted by alpha so transparent edges stay clean; growing repeats pixels,
+        so pixel art stays crisp. ``NEAREST`` (the default and only choice for 1 / P / I;16) picks one pixel."""
+        self._loaded = True
+        dw, dh = (int(v) for v in size)
+        if dw < 1 or dh < 1:
+            raise ValueError('height and width must be > 0')
+        if resample is None:
+            resample = Image.NEAREST if self.mode in ('1', 'P', 'I;16') else Image.BOX
+        if resample not in (Image.NEAREST, Image.BOX):
+            raise ValueError('pillow_min resizes with NEAREST or BOX only')
+        if resample == Image.BOX and self.mode in ('1', 'P', 'I;16'):
+            raise ValueError(f'BOX needs L, LA, RGB or RGBA; convert {self.mode} first')
+        sw, sh = self.size
+        bpp, data = _BPP[self.mode], self._data
+        if resample == Image.NEAREST:
+            xs = [min(sw - 1, (2 * x + 1) * sw // (2 * dw)) * bpp for x in range(dw)]
+            out = bytearray()
+            for y in range(dh):
+                row = min(sh - 1, (2 * y + 1) * sh // (2 * dh)) * sw * bpp
+                for x in xs:
+                    out += data[row + x:row + x + bpp]
+            return self._new(self.mode, (dw, dh), bytes(out), palette=self._palette)
+        spans = lambda s, d: [(i * s // d, max((i + 1) * s // d, i * s // d + 1)) for i in range(d)]
+        alpha = self.mode in ('LA', 'RGBA')
+        colors = bpp - 1 if alpha else bpp
+        out = bytearray()
+        for y0, y1 in spans(sh, dh):
+            for x0, x1 in spans(sw, dw):
+                sums, weight, count = [0] * colors, 0, (y1 - y0) * (x1 - x0)
+                for sy in range(y0, y1):
+                    for i in range((sy * sw + x0) * bpp, (sy * sw + x1) * bpp, bpp):
+                        w = data[i + colors] if alpha else 1
+                        weight += w
+                        for c in range(colors):
+                            sums[c] += data[i + c] * w
+                if alpha:
+                    out += bytes((s + weight // 2) // weight for s in sums) if weight else bytes(colors)
+                    out.append((weight + count // 2) // count)
+                else:
+                    out += bytes((s + count // 2) // count for s in sums)
+        return self._new(self.mode, (dw, dh), bytes(out))
 
     def split(self) -> Tuple['Image', ...]:
         self._loaded = True
