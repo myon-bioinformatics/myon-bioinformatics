@@ -1,0 +1,60 @@
+{
+  "schema": "development-tasks/1",
+  "captured_at": "2026-11-24",
+  "capacity": {
+    "active": 12,
+    "limit": 15
+  },
+  "tasks": [
+    {
+      "id": "github-audit",
+      "title": "GitHub横断監査・収束計画",
+      "schedule": "毎週月曜 09:00 JST",
+      "state": "着手中",
+      "summary": "PR・Issue・CI、親子依存、固定SHA、import整理、生成カタログ、pyproject共通化。読み取り専用。",
+      "merged_from": [
+        "GitHub 今週の作業候補",
+        "親子リポジトリ週次監査",
+        "import整理の週次確認",
+        "生成カタログ・pyproject共通化の週次確認"
+      ]
+    },
+    {
+      "id": "python-nano",
+      "title": "Python・ナノ環境軽量化",
+      "schedule": "毎週月曜 08:00 JST",
+      "state": "着手中",
+      "summary": "Python 3.11+、依存削減、Docker・導入時間の実測と技術動向。読み取り専用。",
+      "merged_from": [
+        "Python環境の軽量化調査",
+        "ナノ環境化の週次進捗"
+      ]
+    },
+    {
+      "id": "aoi-integration",
+      "title": "Aoi CI・統合監視",
+      "schedule": "1時間ごと（条件監視）",
+      "state": "調査中",
+      "summary": "Aoi #254のSHA限定・CI・レビュー・重複ナビ検証、Ironmate #256の統合後検証。条件を満たす場合のみ承認済みマージ。",
+      "merged_from": []
+    }
+  ],
+  "pr_tracking": [
+    {
+      "repository": "Aoi",
+      "number": 254,
+      "url": "https://github.com/myon-bioinformatics/Aoi/pull/254",
+      "expected_sha": "03df21bbf1a774725b8e07af08313d1642c1c2d1",
+      "state": "保留",
+      "next": "最新headの全CI、固定SHA・ナビ重複を検証。承認済みSHAと一致する場合のみマージ。"
+    },
+    {
+      "repository": "Ironmate",
+      "number": 256,
+      "url": "https://github.com/myon-bioinformatics/Ironmate/pull/256",
+      "expected_sha": "668dac02449e0d2b1ca946a6db4145db1f8800d3",
+      "state": "調査中",
+      "next": "2026-11-24統合済み。Image/Slide Studioの生成経路、main CI、Pages公開・実ブラウザを検証。"
+    }
+  ]
+}
