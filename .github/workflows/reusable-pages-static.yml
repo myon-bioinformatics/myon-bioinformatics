@@ -35,7 +35,7 @@ concurrency:
 
 env:
   # The one pin for every guide page; move it here and re-pin the callers.
-  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@a821355536a65b035c5780b68ca474771386dc29"
+  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@05e5961ff6b8e702d193354f8f3fbcd2dd907d0d"
 
 jobs:
   build:
