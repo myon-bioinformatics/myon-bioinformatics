@@ -28,7 +28,7 @@ on:
         type: string
         default: ""
       guide_features:
-        description: "Optional Python files whose every CLI command and public name fill the guide's 🧩 機能一覧 tab (space-separated, see PySaiyanWeBoo add_features). Empty: <repository name>.py when it exists (lower case, - as _); - turns it off"
+        description: "Optional Python files whose every CLI command and public name fill the guide's 📚 機能全一覧 tab (space-separated, see PySaiyanWeBoo add_features). Empty: <repository name>.py when it exists (lower case, - as _); - turns it off"
         required: false
         type: string
         default: ""
@@ -109,7 +109,7 @@ jobs:
           if python3 -c 'import json, sys; sys.exit(0 if "icon" in json.load(open(sys.argv[1], encoding="utf-8")) else 1)' "$GUIDE_PAGE"; then
             home=(--home-screen "$ARTIFACT_PATH")
           fi
-          # 🧩 The 機能一覧 tab also lists every CLI command and public name, read from the code (add_features).
+          # 📚 A 機能全一覧 tab lists every CLI command and public name, read from the code (add_features).
           features=()
           if [ "$GUIDE_FEATURES" != "-" ]; then
             read -r -a modules <<< "$GUIDE_FEATURES"
