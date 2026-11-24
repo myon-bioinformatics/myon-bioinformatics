@@ -62,7 +62,7 @@ jobs:
           version: "latest"
           python-version: "3.15"
           enable-cache: false
-      - if: inputs.guide_brand != ''
+      - if: inputs.guide_brand != '' && github.repository != 'myon-bioinformatics/CaChereCyCle'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/CaChereCyCle
@@ -87,7 +87,11 @@ jobs:
           done
           if [ -n "$GUIDE_BRAND" ]; then
             # ♻️ The icon and favicon from the store; sizes are made there (averaged when shrinking) and kept as they are.
-            python3 -S .cacherecycle/cacherecycle.py sync "icon.png=$GUIDE_BRAND.icon" "favicon.png=$GUIDE_BRAND.favicon" \
+            store_cli=.cacherecycle/cacherecycle.py
+            if [ "$GUIDE_REPOSITORY" = "myon-bioinformatics/CaChereCyCle" ]; then
+              store_cli=cacherecycle.py
+            fi
+            python3 -S "$store_cli" sync "icon.png=$GUIDE_BRAND.icon" "favicon.png=$GUIDE_BRAND.favicon" \
               "icon-180.png=$GUIDE_BRAND.icon@180:opaque" "icon-192.png=$GUIDE_BRAND.icon@192:opaque" \
               "icon-512.png=$GUIDE_BRAND.icon@512:opaque" --cache "$ARTIFACT_PATH"
             rm -f "$ARTIFACT_PATH/.cacherecycle.json"
