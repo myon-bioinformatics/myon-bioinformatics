@@ -36,6 +36,24 @@
       "destination": "vendor/pysaiyanweboo-LICENSE",
       "blob_sha": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
       "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
+    },
+    {
+      "repository": "myon-bioinformatics/cli_args",
+      "ref": "5ae22b1a1b808eca93e3c385a8db867fbeb8ee32",
+      "commit": "5ae22b1a1b808eca93e3c385a8db867fbeb8ee32",
+      "source": "cli_args.py",
+      "destination": "vendor/cli_args.py",
+      "blob_sha": "2016baa6f1f347840ac8dff7ca59e7bdaf565475",
+      "sha256": "360a048d5e2764da52277be4992ad3e5399d25fd236ceed19f8efe611674b4b5"
+    },
+    {
+      "repository": "myon-bioinformatics/cli_args",
+      "ref": "d849c17f5e7c18037e2ab2c04bc71eee3e22cd35",
+      "commit": "d849c17f5e7c18037e2ab2c04bc71eee3e22cd35",
+      "source": "LICENSE",
+      "destination": "vendor/cli_args-LICENSE",
+      "blob_sha": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
+      "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
     }
   ]
 }
