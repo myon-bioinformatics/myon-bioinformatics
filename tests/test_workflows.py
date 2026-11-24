@@ -987,6 +987,7 @@ def test_pages_guide_inputs_reach_the_shell_through_env_and_the_renderer_is_pinn
     guide = next(s for s in build["steps"] if s.get("name") == "Build the guide")
     assert guide["if"] == "inputs.guide_page != ''" and "${{" not in guide["run"]
     assert guide["env"] == {"GUIDE_PAGE": "${{ inputs.guide_page }}", "GUIDE_ASSETS": "${{ inputs.guide_assets }}",
+                            "GUIDE_BRAND": "${{ inputs.guide_brand }}",
                             "ARTIFACT_PATH": "${{ inputs.artifact_path }}",
                             "GUIDE_REPOSITORY": "${{ github.repository }}"}
     assert 'python -m pysaiyanweboo --page "$ARTIFACT_PATH/guide.page.json" "${home[@]}"' in guide["run"]
@@ -1029,6 +1030,32 @@ def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
     assert "--home-screen" not in (tmp_path / "_site/index.html").read_text(encoding="utf-8")   # no icon, no home screen
     (tmp_path / "bin/uv").write_text("#!/bin/sh\nprintf '<main class=\"ui-page\"></main>'\n", encoding="utf-8")
     assert subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env).returncode != 0
+
+
+def test_pages_guide_brand_reads_the_pinned_store_and_leaves_no_index(tmp_path):
+    """♻️ guide_brand writes icon.png, favicon.png and the square sizes from the pinned CaChereCyCle commit."""
+    doc, build, _ = _pages()
+    store = next(s for s in build["steps"] if s.get("with", {}).get("repository") == "myon-bioinformatics/CaChereCyCle")
+    assert store["if"] == "inputs.guide_brand != ''" and store["with"]["ref"] == "${{ env.CACHERECYCLE }}"
+    assert re.fullmatch(r"[0-9a-f]{40}", doc["env"]["CACHERECYCLE"]) and store["with"]["path"] == ".cacherecycle"
+    guide = next(s for s in build["steps"] if s.get("name") == "Build the guide")
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/uv").write_text("#!/bin/sh\nprintf '<main class=\"ui-page\"><nav data-ui-back></nav></main>'\n", encoding="utf-8")
+    (tmp_path / "bin/uv").chmod(0o755)
+    (tmp_path / ".cacherecycle").mkdir()
+    (tmp_path / ".cacherecycle/cacherecycle.py").write_text(  # stands in for sync: each NAME holds its SPEC
+        "import sys, pathlib\nargs = sys.argv[2:]\nout = pathlib.Path(args[args.index('--cache') + 1])\n"
+        "for item in args[:args.index('--cache')]:\n    name, spec = item.split('=')\n    (out / name).write_text(spec)\n"
+        "(out / '.cacherecycle.json').write_text('{}')\n", encoding="utf-8")
+    (tmp_path / "guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W", "icon": "./icon.png"}', encoding="utf-8")
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
+           "GUIDE_PAGE": "guide.page.json", "ARTIFACT_PATH": "_site", "GUIDE_ASSETS": "", "GUIDE_BRAND": "Err-o-RoadRunner",
+           "GUIDE_REPOSITORY": "example/widget"}
+    subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
+    site = tmp_path / "_site"
+    assert (site / "icon.png").read_text() == "Err-o-RoadRunner.icon" and (site / "favicon.png").read_text() == "Err-o-RoadRunner.favicon"
+    assert [(site / f"icon-{s}.png").read_text() for s in (180, 192, 512)] == [f"Err-o-RoadRunner.icon@{s}:opaque" for s in (180, 192, 512)]
+    assert not (site / ".cacherecycle.json").exists()                       # the cache index is not published
 
 
 def test_pages_guide_needs_no_second_checkout():

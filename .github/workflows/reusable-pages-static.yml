@@ -22,6 +22,11 @@ on:
         required: false
         type: string
         default: ""
+      guide_brand:
+        description: "Optional CaChereCyCle id prefix, the repository name as written (for example xprobe): <prefix>.icon and <prefix>.favicon are written next to the guide as icon.png, favicon.png and square icon-180/192/512.png, so the repository keeps no copies"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -35,7 +40,9 @@ concurrency:
 
 env:
   # The one pin for every guide page; move it here and re-pin the callers.
-  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@a955daad04aa7643f7dbfee97161120d541bdb3b"
+  # ♻️ The CaChereCyCle commit whose store (icons and favicons, Base64 in JSONL) guide_brand reads.
+  CACHERECYCLE: "387668718a8ef6d72392512a1fe22a84ec44ac76"
+  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@64ca752b5a9c46e16e353393590b19dfb4bcedc7"
 
 jobs:
   build:
@@ -55,11 +62,19 @@ jobs:
           version: "latest"
           python-version: "3.15"
           enable-cache: false
+      - if: inputs.guide_brand != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: myon-bioinformatics/CaChereCyCle
+          ref: ${{ env.CACHERECYCLE }}
+          path: .cacherecycle
+          persist-credentials: false
       - if: inputs.guide_page != ''
         name: Build the guide
         env:
           GUIDE_PAGE: ${{ inputs.guide_page }}
           GUIDE_ASSETS: ${{ inputs.guide_assets }}
+          GUIDE_BRAND: ${{ inputs.guide_brand }}
           ARTIFACT_PATH: ${{ inputs.artifact_path }}
           GUIDE_REPOSITORY: ${{ github.repository }}
         run: |
@@ -70,6 +85,13 @@ jobs:
             mkdir -p "$(dirname "$target")"
             cp -R "${pair%%=*}" "$target"
           done
+          if [ -n "$GUIDE_BRAND" ]; then
+            # ♻️ The icon and favicon from the store; sizes are made there (averaged when shrinking) and kept as they are.
+            python3 -S .cacherecycle/cacherecycle.py sync "icon.png=$GUIDE_BRAND.icon" "favicon.png=$GUIDE_BRAND.favicon" \
+              "icon-180.png=$GUIDE_BRAND.icon@180:opaque" "icon-192.png=$GUIDE_BRAND.icon@192:opaque" \
+              "icon-512.png=$GUIDE_BRAND.icon@512:opaque" --cache "$ARTIFACT_PATH"
+            rm -f "$ARTIFACT_PATH/.cacherecycle.json"
+          fi
           # 📲 A guide with an icon also gets square icon-180/192/512.png, manifest.webmanifest and the spec with its
           # Base64 cache (home) next to the page, so "Add to Home Screen" and shortcuts show the repository's own icon.
           cp "$GUIDE_PAGE" "$ARTIFACT_PATH/guide.page.json"
