@@ -35,7 +35,7 @@ concurrency:
 
 env:
   # The one pin for every guide page; move it here and re-pin the callers.
-  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@05e5961ff6b8e702d193354f8f3fbcd2dd907d0d"
+  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@a955daad04aa7643f7dbfee97161120d541bdb3b"
 
 jobs:
   build:
@@ -64,15 +64,23 @@ jobs:
           GUIDE_REPOSITORY: ${{ github.repository }}
         run: |
           mkdir -p "$ARTIFACT_PATH"
-          # 🏠 portfolio · 🐙 repository: the way back comes from the pinned renderer (back_nav_html).
-          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$GUIDE_PAGE" --repository "$GUIDE_REPOSITORY" > "$ARTIFACT_PATH/index.html"
-          grep -qF 'data-ui-back' "$ARTIFACT_PATH/index.html"
           read -r -a pairs <<< "$GUIDE_ASSETS"
           for pair in "${pairs[@]}"; do
             target="$ARTIFACT_PATH/${pair#*=}"
             mkdir -p "$(dirname "$target")"
             cp -R "${pair%%=*}" "$target"
           done
+          # 📲 A guide with an icon also gets square icon-180/192/512.png, manifest.webmanifest and the spec with its
+          # Base64 cache (home) next to the page, so "Add to Home Screen" and shortcuts show the repository's own icon.
+          cp "$GUIDE_PAGE" "$ARTIFACT_PATH/guide.page.json"
+          home=()
+          if python3 -c 'import json, sys; sys.exit(0 if "icon" in json.load(open(sys.argv[1], encoding="utf-8")) else 1)' "$GUIDE_PAGE"; then
+            home=(--home-screen "$ARTIFACT_PATH")
+          fi
+          # 🏠 portfolio · 🐙 repository: the way back comes from the pinned renderer (back_nav_html).
+          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$ARTIFACT_PATH/guide.page.json" "${home[@]}" \
+            --repository "$GUIDE_REPOSITORY" > "$ARTIFACT_PATH/index.html"
+          grep -qF 'data-ui-back' "$ARTIFACT_PATH/index.html"
       - if: inputs.build != ''
         name: Build
         env:
