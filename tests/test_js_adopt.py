@@ -1,6 +1,7 @@
 """js_adopt: pinned raw files, sha256/SRI lock, license gate, script tags, and generated examples against hostile loopback responses."""
 
 import base64
+import functools
 import hashlib
 import http.server
 import json
@@ -18,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import js_adopt as ja
+from vendor.cli_args import run_cli
 
 
 # ═══ · js adopt ══════════════════════════════════════════════════════════════════════════════════════════
@@ -124,8 +126,7 @@ def test_tags_and_oneliners_carry_the_same_integrity(tmp_path):
 
 def test_cli_runs_under_python_s(tmp_path):
     adopt(tmp_path)
-    run = lambda *a: subprocess.run([sys.executable, "-S", str(ROOT / "js_adopt.py"), "--root", str(tmp_path), *a],
-                                    capture_output=True, text=True, timeout=60)
+    run = functools.partial(run_cli, ROOT / "js_adopt.py", "--root", tmp_path, python_options=("-S",), timeout=60)
     done = run("check")
     assert done.returncode == 0 and "1 adopted, 0 problem(s)" in done.stdout
     assert run("tag", "purify").stdout.startswith('<script src="vendor/js/purify.min.js"')

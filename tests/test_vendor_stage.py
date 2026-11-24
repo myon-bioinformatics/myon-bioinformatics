@@ -1,10 +1,11 @@
 """Real lock/byte staging regression: no mocked evidence derivation."""
-import hashlib, json, subprocess, sys
+import hashlib, json
 from pathlib import Path
 
 import pytest
 import vendor_stage
 import vendor_sync
+from vendor.cli_args import run_cli
 
 
 def fixture(root, destinations=("vendor/one.py",)):
@@ -132,12 +133,11 @@ def test_runtime_required_and_separate(tmp_path):
 def test_cli_stdlib_only(tmp_path):
     fixture(tmp_path)
     script = Path(vendor_stage.__file__)
-    command = [sys.executable, "-S", str(script), "--root", str(tmp_path),
-               "--output", "build/out", "--kind", "candidate", "--promotion-receipt", "receipt.json",
-               "--legacy-evidence", "legacy.json"]
-    result = subprocess.run(command, capture_output=True, text=True)
+    args = [script, "--root", tmp_path, "--output", "build/out", "--kind", "candidate",
+            "--promotion-receipt", "receipt.json", "--legacy-evidence", "legacy.json"]
+    result = run_cli(*args, python_options=("-S",))
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)["schema"] == "vendor-stage/1"
-    result = subprocess.run(command, capture_output=True, text=True)
+    assert result.json()["schema"] == "vendor-stage/1"
+    result = run_cli(*args, python_options=("-S",))
     assert result.returncode == 2
     assert "existing" in result.stderr

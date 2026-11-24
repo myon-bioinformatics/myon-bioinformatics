@@ -1,10 +1,11 @@
 """Offline end-to-end regressions for the scheduled duplicate-files adapter."""
 
-import json, os, subprocess, sys
+import json, os
 from pathlib import Path
 
 import pytest
 import yaml
+from vendor.cli_args import run_cli
 
 SCRIPT = Path(__file__).resolve().parents[1] / "duplicate_files_report.py"
 WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/vendor-lock-reconciliation.yml"
@@ -42,12 +43,8 @@ def execute(tmp_path):
         env.update(FAKE_JSON=payload, FAKE_EXIT=str(collector_exit),
                    FAKE_RENDER_FAIL="1" if render_fail else "0",
                    FAKE_HANG="1" if hang else "0")
-        result = subprocess.run(
-            [sys.executable, "-S", str(SCRIPT), "--identity", str(identity),
-             "--output", str(output), "--summary", str(summary), "--owner", "fake",
-             "--timeout", str(timeout)],
-            env=env, capture_output=True, text=True, check=False,
-        )
+        result = run_cli(SCRIPT, "--identity", identity, "--output", output, "--summary", summary,
+                         "--owner", "fake", "--timeout", str(timeout), python_options=("-S",), env=env)
         return result, output, output.with_suffix(".md"), summary
     return invoke
 

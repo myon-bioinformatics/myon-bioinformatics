@@ -1,9 +1,10 @@
-import copy, datetime, hashlib, json, subprocess, sys, warnings
+import copy, datetime, hashlib, json, subprocess, warnings
 from pathlib import Path
 
 import pytest
 import vendor_catalog as catalog
 import vendor_sync as sync
+from vendor.cli_args import run_cli
 
 OLD = '1' * 40
 NEW = '2' * 40
@@ -322,7 +323,7 @@ def test_checked_in_catalog_and_cli_errors(tmp_path, monkeypatch):
     value = catalog.validate(json.loads((root / 'vendor-catalog.json').read_text()), verify_pins=True)
     assert {'gh_identity.py', 'xprobe.py', 'yourself.py', 'cli_args.py', 'markdown.py', 'ascii_artist.py'} <= {t['source'] for t in value['tools']}
     assert catalog.main(['validate', '--catalog', str(tmp_path / 'missing')]) == 2
-    result = subprocess.run([sys.executable, str(root / 'vendor_catalog.py'), '--help'], cwd=tmp_path, capture_output=True)
+    result = run_cli(root / 'vendor_catalog.py', '--help', cwd=tmp_path)
     assert result.returncode == 0
 
 

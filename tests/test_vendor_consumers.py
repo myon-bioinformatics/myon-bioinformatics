@@ -1,10 +1,11 @@
-import copy, json, subprocess, sys
+import copy, json, os
 from pathlib import Path
 
 import pytest
 
 import vendor_consumers as consumers
 import vendor_sync as sync
+from vendor.cli_args import run_cli
 
 
 def registry():
@@ -263,11 +264,7 @@ def test_cli_validate_compare_and_errors(tmp_path):
     assert consumers.main(["compare", "--registry", str(registry_path)]) == 2
     assert consumers.main(["validate", "--registry", str(tmp_path / "missing")]) == 2
 
-    result = subprocess.run(
-        [sys.executable, str(root / "vendor_consumers.py"), "--help"],
-        capture_output=True,
-        cwd=tmp_path,
-    )
+    result = run_cli(root / "vendor_consumers.py", "--help", cwd=tmp_path)
     assert result.returncode == 0
 
 
@@ -282,10 +279,8 @@ def test_compare_cli_fails_closed_with_json_evidence(tmp_path, drift):
     else:
         value["files"].append(dict(value["files"][0], destination="vendor/extra.py"))
     lock_path.write_text(json.dumps(value), encoding="utf-8")
-    result = subprocess.run(
-        [sys.executable, "-S", str(Path(consumers.__file__)), "compare",
-         "--registry", str(registry_path), "--consumer", "owner/app",
-         "--lock", str(lock_path)], capture_output=True, text=True, cwd=tmp_path)
+    result = run_cli(Path(consumers.__file__), "compare", "--registry", registry_path, "--consumer", "owner/app",
+                     "--lock", lock_path, python_options=("-S",), cwd=tmp_path)
     assert result.returncode == 1
     evidence = json.loads(result.stdout)
     assert evidence["matches"] is False
@@ -318,15 +313,11 @@ def test_non_dict_entry_containing_license_rejects_without_traceback(entry, tmp_
         consumers.validate(doc)
     registry_path = tmp_path / "registry.json"
     registry_path.write_text(json.dumps(doc), encoding="utf-8")
-    result = subprocess.run(
-        [sys.executable, "-S", str(Path(consumers.__file__)), "validate", "--registry", str(registry_path)],
-        capture_output=True,
-        text=True,
-        cwd=tmp_path,
-    )
+    result = run_cli(Path(consumers.__file__), "validate", "--registry", registry_path,
+                     python_options=("-S",), cwd=tmp_path)
     assert result.returncode == 2
     assert result.stdout == ""
-    assert result.stderr == "vendor-consumers: invalid consumer entry fields\n"
+    assert result.stderr.splitlines(keepends=True) == ["vendor-consumers: invalid consumer entry fields" + os.linesep]
     assert "Traceback" not in result.stderr
 
 

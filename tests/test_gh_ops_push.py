@@ -16,6 +16,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 import gh_ops as g
 from test_gh_ops import gh_ops
+from vendor.cli_args import run_cli
 
 
 # ═══ · gh ops commit files ═══════════════════════════════════════════════════════════════════════════════
@@ -742,8 +743,7 @@ def test_split_failure_records_real_git_stderr(tmp_path, monkeypatch):
 
 
 def test_subtree_push_help_documents_the_shared_split_timeout():
-    proc = subprocess.run([sys.executable, "-S", str(SCRIPT), "subtree-push", "--help"],
-                          capture_output=True, text=True)
+    proc = run_cli(SCRIPT, "subtree-push", "--help", python_options=("-S",))
     assert proc.returncode == 0
     assert "filter-branch fallback share this one budget" in " ".join(proc.stdout.split())
 
@@ -1107,16 +1107,14 @@ def test_push_with_retry_default_args_unchanged():
 def test_cli_plan_prints_command(world):
     _seed_child(world)
     before_child = _refs(world["child"])
-    r = subprocess.run([sys.executable, "-S", str(SCRIPT), "--json", "subtree-push", "--root", str(world["mono"]),
-                        "--prefix", "sub", "--remote", str(world["child"]), "--branch", "sync/x"],
-                       capture_output=True, text=True, env=ENV)
+    r = run_cli(SCRIPT, "--json", "subtree-push", "--root", world["mono"], "--prefix", "sub",
+                "--remote", world["child"], "--branch", "sync/x", python_options=("-S",), env=ENV)
     assert r.returncode == 0, r.stderr
-    out = json.loads(r.stdout)
+    out = r.json()
     assert out["state"] == "planned" and out["command"][:4] == ["git", "push", "--force-with-lease=refs/heads/sync/x:", "--"]
     assert _refs(world["child"]) == before_child
-    r = subprocess.run([sys.executable, "-S", str(SCRIPT), "subtree-push", "--root", str(world["mono"]),
-                        "--prefix", "sub", "--remote", str(world["child"]), "--branch", "main"],
-                       capture_output=True, text=True, env=ENV)
+    r = run_cli(SCRIPT, "subtree-push", "--root", world["mono"], "--prefix", "sub",
+                "--remote", world["child"], "--branch", "main", python_options=("-S",), env=ENV)
     assert r.returncode == 2 and not r.stdout and "main/master" in r.stderr
 
 @pytest.mark.usefixtures("_isolated_git")
@@ -2033,8 +2031,7 @@ def test_pr_retarget_tree_compare_records_tip_shas():
 
 
 def test_subprocess_cli_without_injected_client():
-    proc = subprocess.run([sys.executable, "-S", str(ROOT / "gh_ops.py"), "pr-retarget", "bad repo", "1"],
-                          capture_output=True, text=True, cwd=ROOT)
+    proc = run_cli(ROOT / "gh_ops.py", "pr-retarget", "bad repo", "1", python_options=("-S",), cwd=ROOT)
     assert proc.returncode == 2
     assert "repository must look like" in proc.stderr
 

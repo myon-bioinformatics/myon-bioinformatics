@@ -23,6 +23,7 @@ import vendor_sync as s
 import vendor_sync as sync
 from test_vendor_child_bootstrap import child_fixture
 from test_vendor_sync import _staging_left, entry, lock
+from vendor.cli_args import Command, run_command
 
 
 # ═══ · vendor adopted enrollment ═════════════════════════════════════════════════════════════════════════
@@ -965,7 +966,7 @@ def test_vendored_gh_identity_loads_under_python_S():
     code = ("import sys; sys.path.insert(0, %r); import vendor_sync as s; g = s._gh_identity(); "
             "print(all(hasattr(g, n) for n in ('list_owner_repositories', 'commit_pulls', 'request_stub', 'operation')))"
             % str(ROOT))
-    out = subprocess.run([sys.executable, "-S", "-c", code], capture_output=True, text=True, cwd=ROOT)
+    out = run_command(Command([sys.executable, "-S", "-c", code]), cwd=ROOT)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "True"
 

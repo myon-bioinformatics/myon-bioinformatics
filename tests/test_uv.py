@@ -14,6 +14,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 from tools import uv_tool_build as utb
+from vendor.cli_args import run_cli
 
 
 # ═══ · uv git sources ════════════════════════════════════════════════════════════════════════════════════
@@ -259,16 +260,17 @@ def test_dry_run_does_not_install():
 def test_cli_skip_lanes_do_not_rewrite_the_catalog():
     before = (ROOT / "vendor-catalog.json").read_bytes()
     locked = (ROOT / "vendor.lock.json").read_bytes()
-    for args in (
-        [sys.executable, "-S", "pilot/vendor_dispatch.py", "--dry-run", "--offline"],
-        [sys.executable, "pilot/vendor_dispatch.py", "--assume-python", "3.9", "--dry-run", "--offline"],
+    for options, args in (
+        (("-S",), ("--dry-run", "--offline")),
+        ((), ("--assume-python", "3.9", "--dry-run", "--offline")),
     ):
-        completed = subprocess.run(args, cwd=ROOT, check=True, capture_output=True, text=True)
-        report = json.loads(completed.stdout)
+        completed = run_cli("pilot/vendor_dispatch.py", *args, python_options=options, cwd=ROOT)
+        assert completed.returncode == 0, completed.stderr
+        report = completed.json()
         assert report["schema"] == "vendor-dispatch/1"
         python_rows = [row for row in report["entries"] if row["source"].endswith(".py")]
         assert python_rows
-        if "-S" in args:
+        if "-S" in options:
             assert all(row["action"] == "skip" and row["reason"].startswith("python -S") for row in python_rows)
         else:
             assert all(row["action"] == "skip" and "3.9" in row["reason"] for row in python_rows)
@@ -585,11 +587,8 @@ def test_cli_module_flag(tmp_path):
     entry = _entry(tmp_path, "nagoyaction.py")
     forge = _entry(tmp_path, "local_forge.py", "import os\n")
     lint = _entry(tmp_path, "localci.py", "import json\n")
-    run = subprocess.run(
-        [sys.executable, "-S", str(SCRIPT), str(entry), "--module", str(forge), "--module", str(lint),
-         "--out", str(tmp_path / "o"), "--json"],
-        capture_output=True, text=True, check=False,
-    )
+    run = run_cli(SCRIPT, entry, "--module", forge, "--module", lint, "--out", tmp_path / "o", "--json",
+                  python_options=("-S",))
     assert run.returncode == 0, run.stderr
     payload = json.loads(run.stdout)
     assert payload["scripts"] == {"nagoyaction": "nagoyaction:main"}
@@ -668,12 +667,10 @@ def test_output_must_be_new_or_empty(tmp_path):
 
 def test_cli_json_and_error_exit(tmp_path):
     entry = _entry(tmp_path)
-    run = subprocess.run([sys.executable, "-S", str(SCRIPT), str(entry), "--out", str(tmp_path / "o"), "--json"],
-                         capture_output=True, text=True, check=False)
+    run = run_cli(SCRIPT, entry, "--out", tmp_path / "o", "--json", python_options=("-S",))
     assert run.returncode == 0, run.stderr
     assert json.loads(run.stdout)["scripts"] == {"blueprobe": "blueprobe:main"}
-    bad = subprocess.run([sys.executable, "-S", str(SCRIPT), str(entry), "--out", str(tmp_path / "o")],
-                         capture_output=True, text=True, check=False)
+    bad = run_cli(SCRIPT, entry, "--out", tmp_path / "o", python_options=("-S",))
     assert bad.returncode == 1 and "new or empty" in bad.stderr
 
 
