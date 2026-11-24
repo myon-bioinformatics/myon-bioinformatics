@@ -987,7 +987,7 @@ def test_pages_guide_inputs_reach_the_shell_through_env_and_the_renderer_is_pinn
     guide = next(s for s in build["steps"] if s.get("name") == "Build the guide")
     assert guide["if"] == "inputs.guide_page != ''" and "${{" not in guide["run"]
     assert guide["env"] == {"GUIDE_PAGE": "${{ inputs.guide_page }}", "GUIDE_ASSETS": "${{ inputs.guide_assets }}",
-                            "GUIDE_BRAND": "${{ inputs.guide_brand }}",
+                            "GUIDE_BRAND": "${{ inputs.guide_brand }}", "GUIDE_FEATURES": "${{ inputs.guide_features }}",
                             "ARTIFACT_PATH": "${{ inputs.artifact_path }}",
                             "GUIDE_REPOSITORY": "${{ github.repository }}"}
     assert 'python -m pysaiyanweboo --page "$ARTIFACT_PATH/guide.page.json" "${home[@]}"' in guide["run"]
@@ -1030,6 +1030,29 @@ def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
     assert "--home-screen" not in (tmp_path / "_site/index.html").read_text(encoding="utf-8")   # no icon, no home screen
     (tmp_path / "bin/uv").write_text("#!/bin/sh\nprintf '<main class=\"ui-page\"></main>'\n", encoding="utf-8")
     assert subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env).returncode != 0
+
+
+def test_pages_guide_features_name_the_repository_module_or_the_given_files(tmp_path):
+    """🧩 Empty guide_features passes <repository>.py when it exists; a list passes each file; - passes none."""
+    _, build, _ = _pages()
+    guide = next(s for s in build["steps"] if s.get("name") == "Build the guide")
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/uv").write_text("#!/bin/sh\nprintf '<main class=\"ui-page\"><nav data-ui-back>%s</nav></main>' \"$*\"\n", encoding="utf-8")
+    (tmp_path / "bin/uv").chmod(0o755)
+    (tmp_path / "guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W"}', encoding="utf-8")
+    (tmp_path / "err_o_roadrunner.py").write_text('"""Demo."""\n', encoding="utf-8")
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
+           "GUIDE_PAGE": "guide.page.json", "ARTIFACT_PATH": "_site", "GUIDE_ASSETS": "", "GUIDE_BRAND": "",
+           "GUIDE_REPOSITORY": "example/Err-o-RoadRunner"}
+
+    def args(**changes):
+        subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env={**env, **changes}, check=True)
+        return (tmp_path / "_site/index.html").read_text(encoding="utf-8")
+
+    assert "--features err_o_roadrunner.py --repository" in args(GUIDE_FEATURES="")   # lower case, - as _
+    assert "--features" not in args(GUIDE_FEATURES="", GUIDE_REPOSITORY="example/widget")   # no widget.py
+    assert "--features a.py --features tools/b.py --repository" in args(GUIDE_FEATURES="a.py tools/b.py")
+    assert "--features" not in args(GUIDE_FEATURES="-")
 
 
 def test_pages_guide_brand_reads_the_pinned_store_and_leaves_no_index(tmp_path):
