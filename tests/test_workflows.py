@@ -1036,7 +1036,8 @@ def test_pages_guide_brand_reads_the_pinned_store_and_leaves_no_index(tmp_path):
     """♻️ guide_brand writes icon.png, favicon.png and the square sizes from the pinned CaChereCyCle commit."""
     doc, build, _ = _pages()
     store = next(s for s in build["steps"] if s.get("with", {}).get("repository") == "myon-bioinformatics/CaChereCyCle")
-    assert store["if"] == "inputs.guide_brand != ''" and store["with"]["ref"] == "${{ env.CACHERECYCLE }}"
+    assert store["if"] == "inputs.guide_brand != '' && github.repository != 'myon-bioinformatics/CaChereCyCle'"
+    assert store["with"]["ref"] == "${{ env.CACHERECYCLE }}"
     assert re.fullmatch(r"[0-9a-f]{40}", doc["env"]["CACHERECYCLE"]) and store["with"]["path"] == ".cacherecycle"
     guide = next(s for s in build["steps"] if s.get("name") == "Build the guide")
     (tmp_path / "bin").mkdir()
@@ -1056,6 +1057,15 @@ def test_pages_guide_brand_reads_the_pinned_store_and_leaves_no_index(tmp_path):
     assert (site / "icon.png").read_text() == "Err-o-RoadRunner.icon" and (site / "favicon.png").read_text() == "Err-o-RoadRunner.favicon"
     assert [(site / f"icon-{s}.png").read_text() for s in (180, 192, 512)] == [f"Err-o-RoadRunner.icon@{s}:opaque" for s in (180, 192, 512)]
     assert not (site / ".cacherecycle.json").exists()                       # the cache index is not published
+
+    # The store repository itself must use the checked-out revision, not its old external pin.
+    (tmp_path / "cacherecycle.py").write_text((tmp_path / ".cacherecycle/cacherecycle.py").read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / ".cacherecycle/cacherecycle.py").unlink()
+    subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path,
+                   env={**env, "GUIDE_BRAND": "CaChereCyCle", "GUIDE_REPOSITORY": "myon-bioinformatics/CaChereCyCle"}, check=True)
+    assert (site / "icon.png").read_text() == "CaChereCyCle.icon"
+    assert (site / "favicon.png").read_text() == "CaChereCyCle.favicon"
+    assert not (site / ".cacherecycle.json").exists()
 
 
 def test_pages_guide_needs_no_second_checkout():
