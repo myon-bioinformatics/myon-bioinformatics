@@ -28,7 +28,7 @@ on:
         type: string
         default: ""
       guide_features:
-        description: "Optional Python files whose every CLI command and public name fill the guide's 📚 機能全一覧 tab (space-separated, see PySaiyanWeBoo add_features). Empty: <repository name>.py when it exists (lower case, - as _); - turns it off"
+        description: "Optional Python files whose every CLI command and public name fill the guide's 📚 機能全一覧 tab (space-separated, see PySaiyanWeBoo add_features). Empty: <repository name>.py (lower case, - as _), else <initials>.py (search_seq_including_spaces → ssis.py), when it exists; - turns it off"
         required: false
         type: string
         default: ""
@@ -114,12 +114,15 @@ jobs:
           if [ "$GUIDE_FEATURES" != "-" ]; then
             read -r -a modules <<< "$GUIDE_FEATURES"
             if [ "${#modules[@]}" -eq 0 ]; then
-              guess="${GUIDE_REPOSITORY#*/}"
-              guess="${guess,,}"
-              guess="${guess//-/_}.py"
-              if [ -f "$guess" ]; then
-                modules=("$guess")
-              fi
+              # 🔍 <name>.py (lower case, - as _), then the initials (search_seq_including_spaces → ssis.py, CaChereCyCle → cccc.py)
+              read -r -a guesses <<< "$(python3 -c 'import re, sys; n = sys.argv[1]; w = re.findall(r"[A-Z]?[a-z0-9]+|[A-Z]+(?![a-z])", n)
+          print(n.lower().replace("-", "_") + ".py", "".join(x[0] for x in w).lower() + ".py")' "${GUIDE_REPOSITORY#*/}")"
+              for guess in "${guesses[@]}"; do
+                if [ -f "$guess" ]; then
+                  modules=("$guess")
+                  break
+                fi
+              done
             fi
             for module in "${modules[@]}"; do
               features+=(--features "$module")

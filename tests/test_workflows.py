@@ -1033,7 +1033,7 @@ def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
 
 
 def test_pages_guide_features_name_the_repository_module_or_the_given_files(tmp_path):
-    """🧩 Empty guide_features passes <repository>.py when it exists; a list passes each file; - passes none."""
+    """🧩 Empty guide_features passes <repository>.py, else <initials>.py, when it exists; a list passes each file; - passes none."""
     _, build, _ = _pages()
     guide = next(s for s in build["steps"] if s.get("name") == "Build the guide")
     (tmp_path / "bin").mkdir()
@@ -1051,6 +1051,12 @@ def test_pages_guide_features_name_the_repository_module_or_the_given_files(tmp_
 
     assert "--features err_o_roadrunner.py --repository" in args(GUIDE_FEATURES="")   # lower case, - as _
     assert "--features" not in args(GUIDE_FEATURES="", GUIDE_REPOSITORY="example/widget")   # no widget.py
+    (tmp_path / "ssis.py").write_text('"""Demo."""\n', encoding="utf-8")
+    (tmp_path / "olnm.py").write_text('"""Demo."""\n', encoding="utf-8")
+    assert "--features ssis.py --repository" in args(GUIDE_FEATURES="", GUIDE_REPOSITORY="example/search_seq_including_spaces")
+    assert "--features olnm.py --repository" in args(GUIDE_FEATURES="", GUIDE_REPOSITORY="example/OneLaunchNumerousModules")
+    (tmp_path / "err_o_roadrunner.py").rename(tmp_path / "eorr.py")
+    assert "--features eorr.py --repository" in args(GUIDE_FEATURES="")                      # Err-o-RoadRunner: E, o, R, R
     assert "--features a.py --features tools/b.py --repository" in args(GUIDE_FEATURES="a.py tools/b.py")
     assert "--features" not in args(GUIDE_FEATURES="-")
 
