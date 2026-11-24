@@ -41,7 +41,7 @@ concurrency:
 env:
   # The one pin for every guide page; move it here and re-pin the callers.
   # ♻️ The CaChereCyCle commit whose store (icons and favicons, Base64 in JSONL) guide_brand reads.
-  CACHERECYCLE: "387668718a8ef6d72392512a1fe22a84ec44ac76"
+  CACHERECYCLE: "066016de91b5be00b5ab7c1c8e532c90d4b9911b"
   WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@64ca752b5a9c46e16e353393590b19dfb4bcedc7"
 
 jobs:

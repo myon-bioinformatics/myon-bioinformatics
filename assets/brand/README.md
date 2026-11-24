@@ -16,8 +16,8 @@ These ICO and PNG files are **not** the same bytes as the
 portfolio keeps its own copies (`favicon.ico` is 6,893 bytes with 24-bit frames,
 source PNG 77 × 77, profile icon 170 × 170). This repository’s `favicon.ico` is
 8,943 bytes with 32-bit frames; `favicon.png` is 160 × 160; `profile-icon.png`
-is 384 × 384. The [concept diagram](concept-overview.jpg) *is* the same bytes as
-the portfolio’s `assets/brand/myon-concept-diagram.jpg`.
+is 384 × 384. The [concept diagram](repository-concept.jpg) *is* the same bytes as
+the portfolio’s `assets/brand/repository-concept.jpg`.
 
 This repository is a GitHub profile and shared-tooling repository. Its README
 cannot configure the favicon of github.com or change the GitHub account avatar.
@@ -28,7 +28,7 @@ from the generated HTML (not `/favicon.ico`, which would resolve on the
 portfolio host). The portfolio website continues to manage its own browser
 icons separately.
 
-The [concept diagram](concept-overview.jpg) is the supplied updated 1536 × 1024
+The [concept diagram](repository-concept.jpg) is the supplied updated 1536 × 1024
 JPEG, copied without cropping, recompression, or other image modifications. Its
 reference to “this site” means the [portfolio website](https://myon-bioinformatics.github.io/),
 not this GitHub profile repository.

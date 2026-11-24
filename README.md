@@ -91,7 +91,7 @@ I design and build practical CLI and browser tools: mostly single-file, standard
 <!-- PRESENTATION:START concept -->
 ## Activity overview
 
-[![The flow of activity: turning life-science data and problems into published tools and documentation through analysis, development, and verification, aiming to contribute to research, the community, and safety](./assets/brand/concept-overview.jpg)](./assets/brand/concept-overview.jpg)
+[![The flow of activity: turning life-science data and problems into published tools and documentation through analysis, development, and verification, aiming to contribute to research, the community, and safety](./assets/brand/repository-concept.jpg)](./assets/brand/repository-concept.jpg)
 
 A diagram summarizing the flow of activity and the value it aims for. "This site" in the diagram refers to the [portfolio](https://myon-bioinformatics.github.io/). Click the image to enlarge it.
 <!-- PRESENTATION:END concept -->
