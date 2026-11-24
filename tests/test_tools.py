@@ -700,6 +700,33 @@ def test_fleet_check_parent_refs_keep_mutable_and_missing_refs(tmp_path):
     assert fleet_check.repo_root(flows / "ci.yml") == tmp_path.resolve()
 
 
+def test_fleet_check_ci_keeps_pull_request_runs_quick(tmp_path):
+    """⏱ 🔁 push limited to branches, 🛑 superseded PR runs cancelled, ⏲ every job timed; reusable jobs are timed there."""
+    flows = tmp_path / ".github/workflows"
+    flows.mkdir(parents=True)
+    (flows / "ci.yml").write_text(
+        "name: CI\non:\n  push:\n    branches: [main]\n  pull_request:\n"
+        "concurrency:\n  group: ci-${{ github.ref }}\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n"
+        "jobs:\n  changes:\n    uses: o/r/.github/workflows/x.yml@" + "a" * 40 + "\n"
+        "  test:\n    runs-on: ubuntu-24.04\n    timeout-minutes: 15\n    steps:\n      - run: echo\n", encoding="utf-8")
+    (flows / "pages.yml").write_text("on:\n  push:\n    branches: [main]\n  pull_request:\njobs:\n  pages:\n    uses: o/r/.github/workflows/p.yml@"
+                                     + "a" * 40 + "\n", encoding="utf-8")
+    (flows / "nightly.yml").write_text("on:\n  schedule:\n    - cron: '0 0 * * *'\njobs:\n  a:\n    runs-on: x\n", encoding="utf-8")
+    assert fleet_check.check_ci(tmp_path) == ["ci.yml", "pages.yml"]       # no pull_request: not a PR gate
+    (flows / "old.yml").write_text("on: [push, pull_request]\njobs:\n  a:\n    runs-on: x\n    steps:\n      - run: |\n"
+                                   "          timeout-minutes: 3\n", encoding="utf-8")
+    with pytest.raises(AssertionError) as caught:
+        fleet_check.check_ci(tmp_path)
+    assert str(caught.value).splitlines() == ["old.yml: 🔁 push runs on every branch (limit it to branches: [main])",
+                                              "old.yml: 🛑 no concurrency with cancel-in-progress",
+                                              "old.yml: ⏲ job a has no timeout-minutes"]   # a step's text is not the job's key
+    assert "old.yml" in fleet_check.check_ci(tmp_path, allow=("old.yml:push", "old.yml:cancel", "old.yml:timeout:a"))
+    (flows / "old.yml").write_text("on: [push, pull_request]\nconcurrency:\n  group: g\n  cancel-in-progress: false\n"
+                                   "jobs:\n  a:\n    runs-on: x\n    timeout-minutes: 5\n", encoding="utf-8")
+    with pytest.raises(AssertionError, match="🛑"):
+        fleet_check.check_ci(tmp_path, allow=("old.yml:push",))
+
+
 def test_fleet_check_actions_need_full_shas_and_version_comments(tmp_path):
     flows = tmp_path / ".github/workflows"
     flows.mkdir(parents=True)

@@ -232,6 +232,59 @@ def check_actions(root, pins=None, workflow="*.y*ml") -> list:
     return rows
 
 
+def _blocks(text, indent):
+    """Top-level keys at ``indent`` spaces → their lines (comments and blank lines dropped)."""
+    out, key = {}, None
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        lead = len(line) - len(line.lstrip(" "))
+        if lead == indent and not line.lstrip().startswith("-"):
+            key = line.strip().split(":", 1)[0].strip("'\"")
+            out[key] = [line]
+        elif lead > indent and key is not None:
+            out[key].append(line)
+        elif lead < indent:
+            key = None
+    return out
+
+
+def check_ci(root, workflow="*.y*ml", allow=()) -> list:
+    """⏱ Workflows that run on pull requests stay quick; return the workflow names checked.
+
+    🔁 ``push`` names its branches or tags (else every push to a PR branch runs a second copy);
+    🛑 a ``concurrency`` with ``cancel-in-progress`` (superseded PR runs stop); ⏲ every job has
+    ``timeout-minutes`` (a job that ``uses:`` a reusable workflow is timed and cancelled there, so a workflow of
+    such jobs only needs the 🔁 rule). ``allow`` holds
+    ``"<file>:<rule>"`` exceptions, rule one of ``push``, ``cancel`` or ``timeout:<job>``.
+    """
+    problems, checked = [], []
+    for path in sorted((Path(root) / ".github/workflows").glob(workflow)):
+        text = path.read_text(encoding="utf-8")
+        top = _blocks(text, 0)
+        on = top.get("on") or top.get("true") or []
+        head = on[0].split(":", 1)[1].strip() if on else ""
+        events = re.findall(r"[a-z_]+", head) if head else [l.strip().split(":")[0] for l in on[1:] if l.startswith("  ") and not l.startswith("   ")]
+        if "pull_request" not in events:
+            continue
+        checked.append(path.name)
+        flag = lambda rule, message: None if f"{path.name}:{rule}" in allow else problems.append(f"{path.name}: {message}")
+        push = _blocks("\n".join(l[2:] for l in on[1:]), 0).get("push") if not head else (["push:"] if "push" in events else None)
+        if push is not None and not any(re.match(r"\s*(branches|tags)\s*:", l) for l in push[1:]):
+            flag("push", "🔁 push runs on every branch (limit it to branches: [main])")
+        jobs = {job: _blocks("\n".join(l[2:] for l in lines[1:]), 0)
+                for job, lines in _blocks("\n".join(l[2:] for l in top.get("jobs", [])[1:]), 0).items()}
+        own = {job: body for job, body in jobs.items() if "uses" not in body}   # reusable jobs carry their own
+        concurrency = top.get("concurrency", [])
+        if own and not any(re.match(r"\s*cancel-in-progress\s*:\s*(?!false\b)\S", l) for l in concurrency):
+            flag("cancel", "🛑 no concurrency with cancel-in-progress")
+        for job, body in own.items():
+            if "timeout-minutes" not in body:
+                flag(f"timeout:{job}", f"⏲ job {job} has no timeout-minutes")
+    assert not problems, "\n".join(problems)
+    return checked
+
+
 def workflow_job(root, job, workflow="ci.yml", node_floor=None, setup=None, inputs=(), dispatch_lock=None) -> str:
     """Body of one top-level job of ``.github/workflows/<workflow>``.
 
