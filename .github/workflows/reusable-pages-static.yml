@@ -22,6 +22,11 @@ on:
         required: false
         type: string
         default: ""
+      guide_brand:
+        description: "Optional CaChereCyCle id prefix, the repository name as written (for example xprobe): <prefix>.icon and <prefix>.favicon are written next to the guide as icon.png, favicon.png and square icon-180/192/512.png, so the repository keeps no copies"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -35,7 +40,9 @@ concurrency:
 
 env:
   # The one pin for every guide page; move it here and re-pin the callers.
-  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@05e5961ff6b8e702d193354f8f3fbcd2dd907d0d"
+  # ♻️ The CaChereCyCle commit whose store (icons and favicons, Base64 in JSONL) guide_brand reads.
+  CACHERECYCLE: "387668718a8ef6d72392512a1fe22a84ec44ac76"
+  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@64ca752b5a9c46e16e353393590b19dfb4bcedc7"
 
 jobs:
   build:
@@ -55,24 +62,47 @@ jobs:
           version: "latest"
           python-version: "3.15"
           enable-cache: false
+      - if: inputs.guide_brand != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: myon-bioinformatics/CaChereCyCle
+          ref: ${{ env.CACHERECYCLE }}
+          path: .cacherecycle
+          persist-credentials: false
       - if: inputs.guide_page != ''
         name: Build the guide
         env:
           GUIDE_PAGE: ${{ inputs.guide_page }}
           GUIDE_ASSETS: ${{ inputs.guide_assets }}
+          GUIDE_BRAND: ${{ inputs.guide_brand }}
           ARTIFACT_PATH: ${{ inputs.artifact_path }}
           GUIDE_REPOSITORY: ${{ github.repository }}
         run: |
           mkdir -p "$ARTIFACT_PATH"
-          # 🏠 portfolio · 🐙 repository: the way back comes from the pinned renderer (back_nav_html).
-          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$GUIDE_PAGE" --repository "$GUIDE_REPOSITORY" > "$ARTIFACT_PATH/index.html"
-          grep -qF 'data-ui-back' "$ARTIFACT_PATH/index.html"
           read -r -a pairs <<< "$GUIDE_ASSETS"
           for pair in "${pairs[@]}"; do
             target="$ARTIFACT_PATH/${pair#*=}"
             mkdir -p "$(dirname "$target")"
             cp -R "${pair%%=*}" "$target"
           done
+          if [ -n "$GUIDE_BRAND" ]; then
+            # ♻️ The icon and favicon from the store; sizes are made there (averaged when shrinking) and kept as they are.
+            python3 -S .cacherecycle/cacherecycle.py sync "icon.png=$GUIDE_BRAND.icon" "favicon.png=$GUIDE_BRAND.favicon" \
+              "icon-180.png=$GUIDE_BRAND.icon@180:opaque" "icon-192.png=$GUIDE_BRAND.icon@192:opaque" \
+              "icon-512.png=$GUIDE_BRAND.icon@512:opaque" --cache "$ARTIFACT_PATH"
+            rm -f "$ARTIFACT_PATH/.cacherecycle.json"
+          fi
+          # 📲 A guide with an icon also gets square icon-180/192/512.png, manifest.webmanifest and the spec with its
+          # Base64 cache (home) next to the page, so "Add to Home Screen" and shortcuts show the repository's own icon.
+          cp "$GUIDE_PAGE" "$ARTIFACT_PATH/guide.page.json"
+          home=()
+          if python3 -c 'import json, sys; sys.exit(0 if "icon" in json.load(open(sys.argv[1], encoding="utf-8")) else 1)' "$GUIDE_PAGE"; then
+            home=(--home-screen "$ARTIFACT_PATH")
+          fi
+          # 🏠 portfolio · 🐙 repository: the way back comes from the pinned renderer (back_nav_html).
+          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$ARTIFACT_PATH/guide.page.json" "${home[@]}" \
+            --repository "$GUIDE_REPOSITORY" > "$ARTIFACT_PATH/index.html"
+          grep -qF 'data-ui-back' "$ARTIFACT_PATH/index.html"
       - if: inputs.build != ''
         name: Build
         env:

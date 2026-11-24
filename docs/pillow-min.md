@@ -10,7 +10,7 @@ The Pillow 13 APIs that consumers actually call are implemented to give the same
 |---|---|
 | Reading | `Image.open` (path, bytes, file-like object), `n_frames` / `is_animated` / `seek` / `tell`, `info` |
 | Creating images | `Image.new` / `frombytes` / `putdata` / `putpixel` / `putpalette` / `getpalette` |
-| Conversion / access | `convert` (to L / LA / RGB / RGBA), `crop`, `split`, `point`, `histogram`, `getbbox`, `getextrema`, `getpixel`, `tobytes`, `width` / `height` / `size` / `mode` |
+| Conversion / access | `convert` (to L / LA / RGB / RGBA), `crop`, `resize` (`NEAREST` / `BOX`), `split`, `point`, `histogram`, `getbbox`, `getextrema`, `getpixel`, `tobytes`, `width` / `height` / `size` / `mode` |
 | Writing | `save` (PNG only; modes 1 / L / LA / P / I;16 / RGB / RGBA, `transparency` / `bits` / `compress_level`) |
 | Differences | `ImageChops.difference` / `lighter` / `darker` |
 | Own helpers | `open_bytes` (returns RGBA), `decode_png_rgba`, `iter_apng_frames`, `encode_png`, `decode_base64`, `Image.to_base64`, `diff_metrics`, `paeth`, `unfilter_scanlines` |
@@ -33,6 +33,7 @@ To match Pillow's results, the following behaviors are reproduced as-is.
 | Item | Pillow | pillow_min |
 |---|---|---|
 | Formats | Also reads JPEG, WebP, GIF, etc. | PNG and APNG only; others raise `UnsupportedImageError` |
+| `resize` | Six filters; the default is `BICUBIC`; `BOX` weighs partly covered source pixels | `NEAREST` and `BOX` only; the default is `BOX` (L / LA / RGB / RGBA) or `NEAREST` (1 / P / I;16); `BOX` averages whole source pixels (integer block edges, alpha-weighted), so results can differ from Pillow by a step at block edges |
 | Broken files | Skips CRC on some chunks; may read files with trailing data or truncated files | Verifies CRC on every chunk; trailing data and truncated files error on open |
 | Error types | Subclasses of `OSError` (`UnidentifiedImageError` etc.) | `ImageDecodeError` subclasses both `ValueError` and `OSError`, so catching either works. Message wording differs |
 | OVER compositing of 16-bit gray APNG | Fails with `conversion from I;16 to RGBA not supported` | Composites (the mask is treated as opaque) |

@@ -490,6 +490,40 @@ def view_data(snapshot, evidence, history, operations, previous=None):
             'source': {'parent_main': parent.get('head_sha') or '', 'kind': 'Pages audit build'}}
 
 
+def load_development_tasks(path):
+    """Validate a public, manually updated task summary; never query private automation state."""
+    document = json.loads(Path(path).read_text(encoding='utf-8'))
+    if not isinstance(document, dict) or document.get('schema') != 'development-tasks/1':
+        raise ValueError('invalid public development task schema')
+    capacity = document.get('capacity')
+    if not isinstance(capacity, dict) or any(type(capacity.get(k)) is not int for k in ('active', 'limit')):
+        raise ValueError('invalid task capacity')
+    if not 0 <= capacity['active'] <= capacity['limit'] <= 100:
+        raise ValueError('invalid task counts')
+    if not isinstance(document.get('captured_at'), str) or not document['captured_at']:
+        raise ValueError('missing snapshot timestamp')
+    if not isinstance(document.get('tasks'), list) or not isinstance(document.get('pr_tracking'), list):
+        raise ValueError('missing development task lists')
+    ids = set()
+    for task in document['tasks']:
+        if not isinstance(task, dict) or not all(isinstance(task.get(k), str) and task[k] for k in ('id', 'title', 'schedule', 'state')):
+            raise ValueError('invalid public task row')
+        if task['id'] in ids or task['state'] not in ('調査中', '着手中', '完了', '保留', 'ブロッカー'):
+            raise ValueError('duplicate task identity or invalid state')
+        if not isinstance(task.get('merged_from', []), list) or not all(isinstance(x, str) for x in task['merged_from']):
+            raise ValueError('invalid merged task list')
+        ids.add(task['id'])
+    for pr in document['pr_tracking']:
+        if not isinstance(pr, dict) or not all(isinstance(pr.get(k), str) for k in ('repository', 'url', 'state', 'next')):
+            raise ValueError('invalid PR task row')
+        if type(pr.get('number')) is not int or pr['number'] < 1:
+            raise ValueError('invalid PR number')
+        expected_url = f"https://github.com/myon-bioinformatics/{pr['repository']}/pull/{pr['number']}"
+        if pr['url'] != expected_url or pr['state'] not in ('調査中', '着手中', '完了', '保留', 'ブロッカー'):
+            raise ValueError('invalid PR link or state')
+    return document
+
+
 def write_workspace(snapshot, evidence, history, stage, source_root, previous=None):
     ui = Path(source_root) / 'site/ui'
     template = ui / 'unified.template.html'
@@ -500,6 +534,9 @@ def write_workspace(snapshot, evidence, history, stage, source_root, previous=No
     research = ui / 'research-audit.json'
     if research.exists():
         data['research'] = json.loads(research.read_text(encoding='utf-8'))
+    task_snapshot = ui / 'development-tasks.json'
+    if task_snapshot.exists():
+        data['development_tasks'] = load_development_tasks(task_snapshot)
     content = template.read_text(encoding='utf-8')
     for token, name in [('CSS', 'unified.css'), ('MODEL', 'unified-model.js'), ('APP', 'unified-app.js')]:
         text = (ui / name).read_text(encoding='utf-8')

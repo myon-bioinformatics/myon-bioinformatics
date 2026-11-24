@@ -493,3 +493,41 @@ class GithubEvidencePagesTests(unittest.TestCase):
             self.assertIn('url=index.html#audit', alias)
             self.assertNotIn('<table', alias)
             self.assertIn("DOMContentLoaded',routeAuditView", (out/'app.js').read_text())
+
+
+class DevelopmentTasksPublicationTests(unittest.TestCase):
+    def test_public_snapshot_included_in_workspace_and_schema_valid(self):
+        from scripts.unified_operations import load_development_tasks
+        import pathlib
+        path = pathlib.Path(__file__).resolve().parents[1] / 'site/ui/development-tasks.json'
+        value = load_development_tasks(path)
+        self.assertEqual(value['schema'], 'development-tasks/1')
+        self.assertEqual((value['capacity']['active'], value['capacity']['limit']), (12, 15))
+        self.assertEqual({r['repository'] for r in value['pr_tracking']}, {'Aoi', 'Ironmate'})
+
+    def test_public_snapshot_fails_closed_on_invalid_status_and_url(self):
+        from scripts.unified_operations import load_development_tasks
+        import pathlib
+        path = pathlib.Path(__file__).resolve().parents[1] / 'site/ui/development-tasks.json'
+        data = load_development_tasks(path)
+        with tempfile.TemporaryDirectory() as tmp:
+            output = pathlib.Path(tmp) / 'tasks.json'
+            for corrupt in ('state', 'url'):
+                sample = copy.deepcopy(data)
+                if corrupt == 'state':
+                    sample['tasks'][0]['state'] = '未確認'
+                else:
+                    sample['pr_tracking'][0]['url'] = 'https://example.com/private'
+                output.write_text(json.dumps(sample, ensure_ascii=False), encoding='utf-8')
+                with self.assertRaises(ValueError):
+                    load_development_tasks(output)
+
+    def test_development_task_tab_and_safe_escaping(self):
+        path = Path(__file__).resolve().parents[1] / 'site/ui'
+        template = (path / 'unified.template.html').read_text(encoding='utf-8')
+        script = (path / 'unified-app.js').read_text(encoding='utf-8')
+        self.assertIn('data-tab="tasks"', template)
+        self.assertIn("tasks:developmentTasks", script)
+        self.assertIn("E(t.title)", script)
+        self.assertIn("E(t.summary||'')", script)
+        self.assertIn('ChatGPTの自動化APIやGitHubの現在状態と同期しません', script)
