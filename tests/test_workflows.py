@@ -989,8 +989,8 @@ def test_pages_guide_inputs_reach_the_shell_through_env_and_the_renderer_is_pinn
     assert guide["env"] == {"GUIDE_PAGE": "${{ inputs.guide_page }}", "GUIDE_ASSETS": "${{ inputs.guide_assets }}",
                             "ARTIFACT_PATH": "${{ inputs.artifact_path }}",
                             "GUIDE_REPOSITORY": "${{ github.repository }}"}
-    assert ('python -m pysaiyanweboo --page "$GUIDE_PAGE" --repository "$GUIDE_REPOSITORY" > "$ARTIFACT_PATH/index.html"'
-            in guide["run"])  # 🏠 the way back comes from the pinned renderer, not a second copy of its HTML
+    assert 'python -m pysaiyanweboo --page "$ARTIFACT_PATH/guide.page.json" "${home[@]}"' in guide["run"]
+    assert '--repository "$GUIDE_REPOSITORY" > "$ARTIFACT_PATH/index.html"' in guide["run"]  # 🏠 the way back comes from the pinned renderer
     assert "grep -qF 'data-ui-back' \"$ARTIFACT_PATH/index.html\"" in guide["run"]
     assert re.fullmatch(r"pysaiyanweboo @ git\+https://github\.com/myon-bioinformatics/PySaiyanWeBoo@[0-9a-f]{40}", doc["env"]["WEB_UI"])
 
@@ -1010,17 +1010,23 @@ def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
     (tmp_path / "icon.png").write_bytes(b"icon")
     (tmp_path / "docs/demos").mkdir(parents=True)
     (tmp_path / "docs/demos/D01.gif").write_bytes(b"gif")
+    (tmp_path / "docs/guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W", "icon": "./icon.png"}', encoding="utf-8")
     env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
            "GUIDE_PAGE": "docs/guide.page.json", "ARTIFACT_PATH": "_site",
            "GUIDE_ASSETS": "icon.png=favicon.png icon.png=assets/brand/icon.png docs/demos=demos",
            "GUIDE_REPOSITORY": "example/widget"}
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
     html = (tmp_path / "_site/index.html").read_text(encoding="utf-8")
-    assert "--with pinned python -m pysaiyanweboo --page docs/guide.page.json --repository example/widget" in html
+    # 📲 with an icon the renderer also writes the home-screen icons, the manifest and the spec with its cache
+    assert "--with pinned python -m pysaiyanweboo --page _site/guide.page.json --home-screen _site --repository example/widget" in html
+    assert (tmp_path / "_site/guide.page.json").is_file()
     assert (tmp_path / "_site/favicon.png").read_bytes() == b"icon"
     assert (tmp_path / "_site/assets/brand/icon.png").read_bytes() == b"icon"  # A nested NAME gets its folder.
     assert (tmp_path / "_site/demos/D01.gif").read_bytes() == b"gif"  # A folder SOURCE is copied whole.
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env={**env, "GUIDE_ASSETS": ""}, check=True)
+    (tmp_path / "docs/guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W"}', encoding="utf-8")
+    subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
+    assert "--home-screen" not in (tmp_path / "_site/index.html").read_text(encoding="utf-8")   # no icon, no home screen
     (tmp_path / "bin/uv").write_text("#!/bin/sh\nprintf '<main class=\"ui-page\"></main>'\n", encoding="utf-8")
     assert subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env).returncode != 0
 
