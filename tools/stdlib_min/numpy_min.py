@@ -1093,14 +1093,18 @@ def _complete_zero_columns(data, rows, cols, missing):
 
     Standard-axis candidates are reorthogonalized twice. Choose the largest
     residual deterministically; no rank threshold or singular value is changed.
+    ⚡ The residual of axis i is 1 - |row i|^2 for orthonormal columns, so only the
+    8 axes with the lightest rows are reorthogonalized (all axes: billions of steps for
+    suggest's 145x3247, 9 minutes). Up to 8 rows this is the full search.
     """
     missing = set(missing)
     if not missing:
         return
     fixed = [j for j in range(cols) if j not in missing]
+    weight = [_math.fsum(data[i * cols + j] ** 2 for j in fixed) for i in range(rows)]
     for col in sorted(missing):
         best, best_norm = None, -1.0
-        for axis in range(rows):
+        for axis in sorted(sorted(range(rows), key=weight.__getitem__)[:8]):
             candidate = [float(i == axis) for i in range(rows)]
             for _ in range(2):
                 for other in fixed:
@@ -1115,6 +1119,7 @@ def _complete_zero_columns(data, rows, cols, missing):
         scale = 1.0 / _math.sqrt(best_norm)
         for i in range(rows):
             data[i * cols + col] = best[i] * scale
+            weight[i] += data[i * cols + col] ** 2
         fixed.append(col)
 
 
