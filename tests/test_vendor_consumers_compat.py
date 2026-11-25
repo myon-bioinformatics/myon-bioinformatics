@@ -8,13 +8,14 @@ The dedicated workflow checks out both historical parent and Ironmate at
 immutable commit SHAs. Ordinary Python test jobs skip these tests because
 their shallow checkouts do not contain those external snapshots.
 """
-import json, os, subprocess, sys
+import json, os, subprocess
 from pathlib import Path
 
 import pytest
 
 import vendor_consumers
 import vendor_sync
+from vendor.cli_args import run_cli
 
 PARENT_ROOT = Path(__file__).resolve().parents[1]
 LEGACY_SHA = "1eda992aa6fa31a902e2c06428e53ab17e8fe3c1"
@@ -60,11 +61,10 @@ def _project_retired_parent_tools(doc):
 
 
 def _invoke(tool_root, mode, registry_path, lock_path=None):
-    args = [sys.executable, "-S", str(tool_root / "vendor_consumers.py"), mode,
-            "--registry", str(registry_path)]
-    if lock_path:
-        args += ["--consumer", IRONMATE_NAME, "--lock", str(lock_path)]
-    return subprocess.run(args, capture_output=True, text=True, cwd=tool_root)
+    """One pinned snapshot's vendor_consumers.py (``tool_root``), run in its own tree; ``lock_path`` selects Ironmate."""
+    pair = ["--consumer", IRONMATE_NAME, "--lock", lock_path] if lock_path else []
+    return run_cli(tool_root / "vendor_consumers.py", mode, "--registry", registry_path, *pair,
+                   python_options=("-S",), cwd=tool_root)
 
 
 @pytest.fixture

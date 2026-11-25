@@ -23,6 +23,7 @@ import vendor_sync as s
 import vendor_sync as sync
 from test_vendor_child_bootstrap import child_fixture
 from test_vendor_sync import _staging_left, entry, lock
+from vendor.cli_args import Command, run_command
 
 
 # ═══ · vendor adopted enrollment ═════════════════════════════════════════════════════════════════════════
@@ -164,7 +165,9 @@ POST_BASELINE_ENROLLMENTS = {
     # pillow_min.py moved from Ironmate's root to the parent's tools/stdlib_min/ (#293); Ironmate locks it from here.
     "myon-bioinformatics/Ironmate": {"vendor/fetch_module.py", "vendor/Aoi-LICENSE", "vendor/pillow_min.py", "vendor/fleet_check.py"},
     # The parent audit dashboard (ci_status.py --audit --html) renders through the vendored pysaiyanweboo.py.
-    "myon-bioinformatics/myon-bioinformatics": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
+    # The parent's own tests launch its scripts through the vendored cli_args.py (run_cli); tests only.
+    "myon-bioinformatics/myon-bioinformatics": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE",
+                                                "vendor/cli_args.py", "vendor/cli_args-LICENSE"},
     "myon-bioinformatics/mcp-toolcall-lab": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
     # Shared child checks (parent #292/#294); the adopters are re-observed in child_reobservations.json.
     **{f"myon-bioinformatics/{name}": {"vendor/fleet_check.py"} for name in (
@@ -963,7 +966,7 @@ def test_vendored_gh_identity_loads_under_python_S():
     code = ("import sys; sys.path.insert(0, %r); import vendor_sync as s; g = s._gh_identity(); "
             "print(all(hasattr(g, n) for n in ('list_owner_repositories', 'commit_pulls', 'request_stub', 'operation')))"
             % str(ROOT))
-    out = subprocess.run([sys.executable, "-S", "-c", code], capture_output=True, text=True, cwd=ROOT)
+    out = run_command(Command([sys.executable, "-S", "-c", code]), cwd=ROOT)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == "True"
 

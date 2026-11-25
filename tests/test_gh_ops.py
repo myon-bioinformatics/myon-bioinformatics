@@ -2,6 +2,7 @@ import base64, importlib.util, io, json, os, subprocess, sys, urllib.parse
 from pathlib import Path
 
 import pytest
+from vendor.cli_args import Command, run_cli, run_command
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT
@@ -196,8 +197,7 @@ def test_gh_ops_loads_adjacent_ghi_without_scripts_on_sys_path(tmp_path):
     )
     env = dict(os.environ)
     env.pop("PYTHONPATH", None)
-    done = subprocess.run([sys.executable, "-S", "-c", code], cwd=tmp_path,
-                          env=env, capture_output=True, text=True, check=False)
+    done = run_command(Command([sys.executable, "-S", "-c", code]), cwd=tmp_path, env=env)
     assert done.returncode == 0, done.stderr
     assert done.stdout.strip().replace("\\", "/").endswith("vendor/gh_identity.py")
 
@@ -623,10 +623,10 @@ def test_forbidden_is_not_reported_as_unconfigured():
 # --- stdlib-only / one-line import ---------------------------------------------------------
 
 def test_runs_with_python_dash_s_and_imports_in_one_line():
-    help_run = subprocess.run([sys.executable, "-S", str(SCRIPTS / "gh_ops.py"), "--help"], capture_output=True, text=True)
+    help_run = run_cli(SCRIPTS / "gh_ops.py", "--help", python_options=("-S",))
     assert help_run.returncode == 0 and "issue-comments" in help_run.stdout
-    one_line = subprocess.run([sys.executable, "-S", "-c", "from gh_ops import pr_merge, issue_comments; print('ok')"],
-                              cwd=SCRIPTS, capture_output=True, text=True)
+    one_line = run_command(Command([sys.executable, "-S", "-c", "from gh_ops import pr_merge, issue_comments; print('ok')"]),
+                           cwd=SCRIPTS)
     assert one_line.stdout.strip() == "ok", one_line.stderr
 
 
@@ -727,8 +727,7 @@ def test_comments_file_runs_offline_without_a_token(tmp_path):
     path.write_text(json.dumps(_saved_comments(2, 5)), encoding="utf-8")
     env = {k: v for k, v in os.environ.items() if k not in {"GITHUB_TOKEN", "GH_TOKEN"}}
     env.update(PYTHONIOENCODING="utf-8", HTTPS_PROXY="http://127.0.0.1:9", HTTP_PROXY="http://127.0.0.1:9")
-    done = subprocess.run([sys.executable, "-S", str(SCRIPTS / "gh_ops.py"), "comments-file", str(path),
-                           "--last", "1"], capture_output=True, text=True, encoding="utf-8", env=env)
+    done = run_cli(SCRIPTS / "gh_ops.py", "comments-file", path, "--last", "1", python_options=("-S",), env=env)
     assert done.returncode == 0, done.stderr
     assert done.stdout.splitlines()[1].startswith("[1] 2026-09-20T14:01:00Z myon 5 chars: ")
 
@@ -1200,7 +1199,7 @@ assert gh_ops.main(["--json", "repo-counts", "octo", "--org"],
                    client=gh_ops.Client(transport=transport)) == 0
 assert calls == ["GET"]
 '''
-    result = subprocess.run([sys.executable, "-S", "-c", code], cwd=SCRIPTS, capture_output=True, text=True)
+    result = run_command(Command([sys.executable, "-S", "-c", code]), cwd=SCRIPTS)
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["totals"] == {"open_issues": 0, "open_prs": 0, "commits": 0}
 
@@ -1348,8 +1347,7 @@ def _cli(args, extra=None):
     env = {key: value for key, value in os.environ.items()
            if key not in ("GH_OPS_MERGE_METHOD", "GH_OPS_MERGE_POLICY_FILE", "GITHUB_TOKEN", "GH_TOKEN")}
     env.update(extra or {})
-    return subprocess.run([sys.executable, "-S", str(SCRIPTS / "gh_ops.py"), *args],
-                          cwd=SCRIPTS, env=env, capture_output=True, text=True, timeout=20)
+    return run_cli(SCRIPTS / "gh_ops.py", *args, python_options=("-S",), cwd=SCRIPTS, env=env, timeout=20)
 
 
 def test_merge_method_precedence(tmp_path):
@@ -1853,8 +1851,7 @@ def test_branch_state_rest_listing_proves_absence_and_rejects_bad_rows():
 
 
 def test_branch_delete_cli_rejects_a_bad_repository_before_network():
-    proc = subprocess.run([sys.executable, "-S", str(SCRIPTS / "gh_ops.py"), "branch-delete", "not a repo", "feat"],
-                          capture_output=True, text=True, cwd=SCRIPTS)
+    proc = run_cli(SCRIPTS / "gh_ops.py", "branch-delete", "not a repo", "feat", python_options=("-S",), cwd=SCRIPTS)
     assert proc.returncode == 2 and proc.stdout == ""
     assert "repository must look like" in proc.stderr
 

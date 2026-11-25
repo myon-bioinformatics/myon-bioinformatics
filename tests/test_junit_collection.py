@@ -1,7 +1,8 @@
 """Execute the actual reusable-workflow importer against local artifacts."""
-import json, os, shutil, subprocess, sys
+import json, os, shutil, sys
 from pathlib import Path
 import pytest
+from vendor.cli_args import Command, run_command
 
 WORKFLOW = Path(__file__).parents[1] / '.github/workflows/reusable-junit-identity.yml'
 if 'XPROBE_SOURCE' not in os.environ:
@@ -27,7 +28,7 @@ def run_collection(tmp_path, reports, expected=None, commit_sha=None):
     env.pop('COMMIT_SHA', None)
     if commit_sha is not None:
         env['COMMIT_SHA'] = commit_sha
-    result = subprocess.run([sys.executable, '-c', code], cwd=tmp_path, env=env, capture_output=True)
+    result = run_command(Command([sys.executable, '-c', code]), cwd=tmp_path, env=env)
     summary = json.loads((tmp_path / 'identity/collection.json').read_text())
     cases = [json.loads(line) for line in (tmp_path / 'identity/failure-identity.jsonl').read_text().splitlines()]
     return result, summary, cases
@@ -153,6 +154,6 @@ def test_artifact_layout_uses_exact_name_only_for_one_artifact(tmp_path, expecte
     code = '\n'.join(line[10:] for line in code.splitlines())
     output = tmp_path / 'output'
     env = dict(os.environ, EXPECTED_REPORTS=json.dumps(expected), GITHUB_OUTPUT=str(output))
-    result = subprocess.run([sys.executable, '-c', code], env=env, capture_output=True)
+    result = run_command(Command([sys.executable, '-c', code]), env=env)
     assert result.returncode == 0
     assert output.read_text() == 'single_artifact=' + name + '\n'

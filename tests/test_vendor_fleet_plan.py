@@ -1,10 +1,11 @@
 """Read-only fleet plan tests with no external GitHub or network access."""
-import copy, json, subprocess, sys
+import copy, json
 from pathlib import Path
 
 import pytest
 
 import vendor_fleet_plan
+from vendor.cli_args import run_cli
 
 
 def fixtures():
@@ -72,14 +73,11 @@ def test_checked_in_fleet_and_cli_read_only(tmp_path):
     assert result["rows"]
     assert result["candidate_compatibility"] == "unverified"
     assert all(r["consumer"] == "myon-bioinformatics/Ironmate" for r in result["rows"])
-    out = subprocess.run(
-        [sys.executable, "-S", str(root / "vendor_fleet_plan.py"),
-         "--catalog", str(root / "vendor-catalog.json"),
-         "--registry", str(root / "vendor-consumers.json"),
-         "--consumer", "myon-bioinformatics/Ironmate"],
-        cwd=tmp_path, capture_output=True, text=True, check=False)
+    out = run_cli(root / "vendor_fleet_plan.py", "--catalog", root / "vendor-catalog.json",
+                  "--registry", root / "vendor-consumers.json", "--consumer", "myon-bioinformatics/Ironmate",
+                  python_options=("-S",), cwd=tmp_path)
     assert out.returncode == 0, out.stderr
-    assert json.loads(out.stdout)["read_only"]
+    assert out.json()["read_only"]
     assert not list(tmp_path.iterdir())
 
 
@@ -101,13 +99,12 @@ def test_strict_mode_detects_missing_without_mutation(tmp_path):
     catalog.write_text(json.dumps(cat), encoding="utf-8")
     registry.write_text(json.dumps(reg), encoding="utf-8")
     root = Path(__file__).resolve().parents[1]
-    args = [sys.executable, "-S", str(root / "vendor_fleet_plan.py"),
-            "--catalog", str(catalog), "--registry", str(registry),
+    args = [root / "vendor_fleet_plan.py", "--catalog", catalog, "--registry", registry,
             "--consumer", "owner/other", "--fail-on-missing"]
-    result = subprocess.run(args, cwd=tmp_path, capture_output=True, text=True)
+    result = run_cli(*args, python_options=("-S",), cwd=tmp_path)
     assert result.returncode == 1
-    assert json.loads(result.stdout)["counts"]["needs_registration"] == 1
-    assert subprocess.run(args[:-1], cwd=tmp_path, capture_output=True).returncode == 0
+    assert result.json()["counts"]["needs_registration"] == 1
+    assert run_cli(*args[:-1], python_options=("-S",), cwd=tmp_path).returncode == 0
     assert json.loads(catalog.read_text(encoding="utf-8")) == cat
     assert json.loads(registry.read_text(encoding="utf-8")) == reg
 

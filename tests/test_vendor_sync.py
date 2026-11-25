@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 import vendor_sync as sync
+from vendor.cli_args import run_cli
 
 OLD = "1" * 40
 NEW = "2" * 40
@@ -255,12 +256,12 @@ def test_duplicate_overlap_and_short_sha():
 
 def test_cli_help_has_no_side_effects_and_missing_file_is_red(tmp_path):
     script = Path(sync.__file__).resolve()
-    help_result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
+    help_result = run_cli(script, "--help", cwd=tmp_path)
     assert help_result.returncode == 0
     assert "audit-merged-pins" in help_result.stdout
     assert "run-parent-child-ci" in help_result.stdout
     assert not list(tmp_path.iterdir())
-    result = subprocess.run([sys.executable, str(script), "check"], cwd=tmp_path, capture_output=True, text=True)
+    result = run_cli(script, "check", cwd=tmp_path)
     assert result.returncode == 2
     assert result.stderr.startswith("vendor-sync:")
 
@@ -546,7 +547,7 @@ def test_promote_resolution_failure_leaves_baseline_unchanged(tmp_path):
 
 def test_promote_cli_help_exposes_explicit_mode(tmp_path):
     script = Path(sync.__file__).resolve()
-    result = subprocess.run([sys.executable, str(script), "--help"], cwd=tmp_path, capture_output=True, text=True)
+    result = run_cli(script, "--help", cwd=tmp_path)
     assert result.returncode == 0
     assert "promote" in result.stdout
     assert "run-parent-child-ci" in result.stdout
@@ -963,6 +964,6 @@ def test_update_only_rejects_unknown_destinations_and_misuse(tmp_path):
         sync.synchronize(path.name, tmp_path, "update", get=lambda url: pytest.fail("network"), to_ref=NEW)
     with pytest.raises(ValueError, match="update only"):
         sync.synchronize(path.name, tmp_path, "check", only=["vendor/adapter.py"])
-    out = subprocess.run([sys.executable, "-S", str(Path(sync.__file__)), "update", "--root", str(tmp_path),
-                          "--manifest", path.name, "--to-ref", NEW], capture_output=True, text=True)
+    out = run_cli(Path(sync.__file__), "update", "--root", tmp_path, "--manifest", path.name, "--to-ref", NEW,
+                  python_options=("-S",))
     assert out.returncode == 2 and "needs --only" in out.stderr

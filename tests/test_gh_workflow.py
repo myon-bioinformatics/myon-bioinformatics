@@ -5,6 +5,7 @@ import pytest
 import yaml
 
 import gh_workflow as gw
+from vendor.cli_args import run_cli
 
 SHA = "a" * 40
 TARGET = "b" * 40
@@ -285,13 +286,10 @@ def test_malformed_repository_response(monkeypatch, data):
 def test_actual_cli_missing_gh_writes_receipt(tmp_path):
     from pathlib import Path
     import os
-    import sys
     env = os.environ.copy()
     env["PATH"] = str(tmp_path)
     receipt = tmp_path / "receipt.jsonl"
-    proc = subprocess.run([sys.executable, str(Path(gw.__file__).resolve()),
-                           "o/r", "ci.yml", "--receipt", str(receipt)],
-                          capture_output=True, text=True, env=env, timeout=5)
+    proc = run_cli(Path(gw.__file__).resolve(), "o/r", "ci.yml", "--receipt", receipt, env=env, timeout=5)
     assert proc.returncode == 1
     assert json.loads(proc.stdout)["error"] == "gh_not_found"
     assert json.loads(receipt.read_text())["error"] == "gh_not_found"

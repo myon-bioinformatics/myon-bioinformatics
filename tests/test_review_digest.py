@@ -1,10 +1,9 @@
 """Provenance and conservative resolution attribution for saved conversations."""
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 from scripts.review_digest import digest
+from vendor.cli_args import run_cli
 
 HEAD = "a" * 40
 OLD = "b" * 40
@@ -46,8 +45,7 @@ def test_cli_accepts_saved_raw_and_rejects_previews_and_duplicate_ids():
     path = Path(__file__).resolve().parents[1] / "scripts" / "review_digest.py"
     row = comment(5, "Nit: rename")
     for data, code in [({"comments": [row]}, 0), ([{"id": 5, "preview": "Nit: rename"}], 2), ([row, row], 2)]:
-        result = subprocess.run([sys.executable, "-S", str(path), "-", "--head", HEAD],
-                                input=json.dumps(data), text=True, capture_output=True)
+        result = run_cli(path, "-", "--head", HEAD, python_options=("-S",), stdin=json.dumps(data))
         assert result.returncode == code
         if code == 0:
             assert json.loads(result.stdout)["comments"][0]["covers"] == [5]

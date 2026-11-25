@@ -30,6 +30,7 @@ import gh_ops
 import git_inspector as gi
 import preflight
 from browser_evidence import main, record
+from vendor.cli_args import Command, run_cli, run_command
 
 
 # ═══ · apply repo patches ════════════════════════════════════════════════════════════════════════════════
@@ -198,7 +199,7 @@ def test_inherited_index_override_does_not_hide_dirty_source(repo, tmp_path, mon
 
 
 def test_stdlib_only_help():
-    proc = subprocess.run([sys.executable, "-S", str(SCRIPT), "--help"], capture_output=True, text=True)
+    proc = run_cli(SCRIPT, "--help", python_options=("-S",))
     assert proc.returncode == 0
     assert "--apply" in proc.stdout
 
@@ -344,32 +345,23 @@ class BrowserEvidenceTests(unittest.TestCase):
 # Default text and exit codes stay compatible with vendored callers. These tests
 # spawn the tools; they do not replace the in-process suites.
 
-def run(script: str, argv: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-S", str(ROOT / script), *argv],
-        cwd=cwd or ROOT,
-        capture_output=True,
-        text=True,
-    )
-
-
 def test_gh_ops_help_documents_exit_codes_and_refuses_abbreviations():
-    help_run = run("gh_ops.py", ["--help"])
+    help_run = run_cli(ROOT / "gh_ops.py", "--help", python_options=("-S",), cwd=ROOT)
     assert help_run.returncode == 0, help_run.stderr
     assert "Exit codes" in help_run.stdout
     assert "--json-errors" in help_run.stdout
     assert "issue-comments" in help_run.stdout
 
-    abbreviated = run("gh_ops.py", ["--js", "pr-status", "octo/demo", "1"])
+    abbreviated = run_cli(ROOT / "gh_ops.py", "--js", "pr-status", "octo/demo", "1", python_options=("-S",), cwd=ROOT)
     assert abbreviated.returncode == 2
     assert abbreviated.stdout == ""
     assert "unrecognized arguments" in abbreviated.stderr
 
-    plain = run("gh_ops.py", ["pr-status", "bad repo", "1"])
+    plain = run_cli(ROOT / "gh_ops.py", "pr-status", "bad repo", "1", python_options=("-S",), cwd=ROOT)
     assert plain.returncode == 2 and plain.stdout == ""
     assert "repository must look like" in plain.stderr
 
-    guided = run("gh_ops.py", ["--json-errors", "pr-status", "bad repo", "1"])
+    guided = run_cli(ROOT / "gh_ops.py", "--json-errors", "pr-status", "bad repo", "1", python_options=("-S",), cwd=ROOT)
     assert guided.returncode == 2
     assert "repository must look like" in guided.stderr
     payload = json.loads(guided.stdout)
@@ -389,7 +381,7 @@ def test_publish_check_json_against_a_local_server(tmp_path):
     thread.start()
     try:
         base = f"http://127.0.0.1:{server.server_address[1]}/"
-        result = run("publish_check.py", ["--json", "--site", base, "index.html", "--contains", "hello-page", "--no-bust"])
+        result = run_cli(ROOT / "publish_check.py", "--json", "--site", base, "index.html", "--contains", "hello-page", "--no-bust", python_options=("-S",), cwd=ROOT)
     finally:
         server.shutdown()
     assert result.returncode == 0, result.stderr
@@ -397,18 +389,18 @@ def test_publish_check_json_against_a_local_server(tmp_path):
     assert payload["ok"] is True and payload["verdict"] == "ok"
     assert any(row["state"] == "ok" and "hello-page" in row["line"] for row in payload["checks"])
 
-    missing = run("publish_check.py", ["--json"])
+    missing = run_cli(ROOT / "publish_check.py", "--json", python_options=("-S",), cwd=ROOT)
     assert missing.returncode == 2
     assert "at least one target" in missing.stderr
 
 
 def test_py_matrix_json_when_uv_is_missing():
-    help_run = run("py_matrix.py", ["--help"])
+    help_run = run_cli(ROOT / "py_matrix.py", "--help", python_options=("-S",), cwd=ROOT)
     assert help_run.returncode == 0
     assert "Exit codes" in help_run.stdout and "--json" in help_run.stdout
     if shutil.which("uv"):
         return
-    result = run("py_matrix.py", ["--json", "3.12"])
+    result = run_cli(ROOT / "py_matrix.py", "--json", "3.12", python_options=("-S",), cwd=ROOT)
     assert result.returncode == 2
     assert "uv not found" in result.stderr
     payload = json.loads(result.stdout)
@@ -418,7 +410,7 @@ def test_py_matrix_json_when_uv_is_missing():
 
 def test_pytest_brief_json_runs_a_real_test(tmp_path):
     (tmp_path / "test_sample.py").write_text("def test_ok():\n    assert 1 + 1 == 2\n", encoding="utf-8")
-    result = run("pytest_brief.py", ["--json", "--", "test_sample.py"], cwd=tmp_path)
+    result = run_cli(ROOT / "pytest_brief.py", "--json", "--", "test_sample.py", python_options=("-S",), cwd=tmp_path)
     assert result.returncode == 0, result.stderr + result.stdout
     payload = json.loads(result.stdout)
     assert payload["ok"] is True and payload["exit_code"] == 0
@@ -426,7 +418,7 @@ def test_pytest_brief_json_runs_a_real_test(tmp_path):
 
 
 def test_ci_status_json_explains_a_bad_repository_without_network():
-    result = run("ci_status.py", ["not a repo", "--json", "--explain"])
+    result = run_cli(ROOT / "ci_status.py", "not a repo", "--json", "--explain", python_options=("-S",), cwd=ROOT)
     assert result.returncode == 2, result.stderr
     payload = json.loads(result.stdout)
     assert payload["errors"][0]["error"] == "ValueError"
@@ -436,7 +428,7 @@ def test_ci_status_json_explains_a_bad_repository_without_network():
 
 def test_gh_workflow_rejects_inputs_without_echoing_them():
     secret = "super-secret-token-value"
-    result = run("gh_workflow.py", ["o/r", "ci.yml", "--inputs", "{" + secret])
+    result = run_cli(ROOT / "gh_workflow.py", "o/r", "ci.yml", "--inputs", "{" + secret, python_options=("-S",), cwd=ROOT)
     assert result.returncode == 1
     payload = json.loads(result.stdout)
     assert payload["error"] == "invalid_argument"
@@ -495,8 +487,8 @@ with tempfile.TemporaryDirectory() as tmp:
         raise RuntimeError('failure receipt changed')
     print('failed listing rejected; incomplete receipt preserved')
 '''
-                    result = subprocess.run([sys.executable, '-S', *(['-O'] if optimized else []), '-c', code,
-                                             str(EVIDENCE / folder / script)], capture_output=True, text=True, timeout=30)
+                    result = run_command(Command([sys.executable, '-S', *(['-O'] if optimized else []), '-c', code,
+                                                  str(EVIDENCE / folder / script)]), timeout=30)
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertIn('failed listing rejected', result.stdout)
 
@@ -519,8 +511,8 @@ with tempfile.TemporaryDirectory() as tmp:
          patch.object(sys, 'argv', [script, '--execute', '--exclusive-window', '--installed-trials', tmp]):
         g['main']()
 '''
-                result = subprocess.run([sys.executable, '-S', *(['-O'] if optimized else []), '-c', code,
-                                         str(EVIDENCE / '2026-11-01-ironmate/measure_node_offline.py')], capture_output=True, text=True, timeout=30)
+                result = run_command(Command([sys.executable, '-S', *(['-O'] if optimized else []), '-c', code,
+                                              str(EVIDENCE / '2026-11-01-ironmate/measure_node_offline.py')]), timeout=30)
                 self.assertEqual(result.returncode, 1)
                 self.assertIn('AssertionError', result.stderr)
                 self.assertNotIn('work created before validation', result.stderr)
@@ -555,8 +547,8 @@ with tempfile.TemporaryDirectory() as tmp:
     if result['file_count'] != 2: raise RuntimeError('wrong valid package inventory')
     print('valid package accepted')
 '''
-                    result = subprocess.run([sys.executable, '-S', *(['-O'] if optimized else []), '-c', code, definitions, mutation],
-                                            capture_output=True, text=True, timeout=30)
+                    result = run_command(Command([sys.executable, '-S', *(['-O'] if optimized else []), '-c', code, definitions, mutation]),
+                                         timeout=30)
                     self.assertEqual(result.returncode, 0 if mutation == 'none' else 1, result.stderr)
                     self.assertEqual(result.stdout, 'valid package accepted\n' if mutation == 'none' else '')
                     if mutation != 'none': self.assertIn('AssertionError', result.stderr)
@@ -1067,11 +1059,10 @@ def init_repo(root: Path) -> None:
     subprocess.run(["git", "-C", str(root), "commit", "-q", "-m", "initial"], check=True, env=git_env())
 
 
-def run_cli(root: Path, *args: str, write: bool = True) -> subprocess.CompletedProcess:
-    argv = [sys.executable, "-S", str(GIT_COMMIT_SCRIPT), "git-commit", *args]
-    if write:
-        argv.append("--write")
-    return subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", cwd=str(root), env=git_env())
+def git_commit_cli(root: Path, *args: str, write: bool = True):
+    """``git-commit`` in ``root`` with the hermetic Git identity; ``--write`` unless a dry run is asked for."""
+    return run_cli(GIT_COMMIT_SCRIPT, "git-commit", *args, *(["--write"] if write else []),
+                   python_options=("-S",), cwd=root, env=git_env())
 
 
 def git_output(root: Path, *args: str) -> str:
@@ -1126,7 +1117,7 @@ def test_push_with_retry_retries_only_network_errors_then_succeeds() -> None:
 def test_dry_run_does_not_touch_git(tmp_path: Path) -> None:
     init_repo(tmp_path)
     (tmp_path / "message.txt").write_text("msg\n", encoding="utf-8")
-    done = run_cli(tmp_path, "--message-file", "message.txt", "a.txt", write=False)
+    done = git_commit_cli(tmp_path, "--message-file", "message.txt", "a.txt", write=False)
     assert done.returncode == 0
     assert "dry run" in done.stdout
 
@@ -1136,7 +1127,7 @@ def test_cli_stages_only_named_files_prints_status_diff_and_sha(tmp_path: Path) 
     (tmp_path / "a.txt").write_text("changed\n", encoding="utf-8")
     (tmp_path / "b.txt").write_text("new\n", encoding="utf-8")
     (tmp_path / "message.txt").write_text("Update files\n", encoding="utf-8")
-    done = run_cli(tmp_path, "--message-file", "message.txt", "a.txt", "b.txt",
+    done = git_commit_cli(tmp_path, "--message-file", "message.txt", "a.txt", "b.txt",
                    "--trailer", "Co-Authored-By: Claude <noreply@anthropic.com>")
     assert done.returncode == 0, done.stderr
     assert "M  a.txt" in done.stdout
@@ -1151,7 +1142,7 @@ def test_cli_refuses_when_other_files_already_staged(tmp_path: Path) -> None:
     (tmp_path / "extra.txt").write_text("extra\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(tmp_path), "add", "extra.txt"], check=True, env=git_env())
     (tmp_path / "message.txt").write_text("msg\n", encoding="utf-8")
-    done = run_cli(tmp_path, "--message-file", "message.txt", "a.txt")
+    done = git_commit_cli(tmp_path, "--message-file", "message.txt", "a.txt")
     assert done.returncode == 2
     assert "extra.txt" in done.stderr
 
@@ -1167,7 +1158,7 @@ def test_cli_push_against_a_real_remote(tmp_path: Path) -> None:
     branch = git_output(work, "branch", "--show-current").strip()
     (work / "a.txt").write_text("changed\n", encoding="utf-8")
     (work / "message.txt").write_text("second commit\n", encoding="utf-8")
-    done = run_cli(work, "--message-file", "message.txt", "a.txt", "--push")
+    done = git_commit_cli(work, "--message-file", "message.txt", "a.txt", "--push")
     assert done.returncode == 0, done.stderr
     remote_sha = subprocess.run(["git", "-C", str(bare), "rev-parse", branch], capture_output=True, text=True,
                                 check=True).stdout.strip()
@@ -1229,28 +1220,27 @@ def test_runtime_facts_are_whitelisted_and_not_live(tmp_path, monkeypatch):
 
 def test_stdlib_cli_exit_codes_with_real_git(tmp_path):
     subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
-    command = [sys.executable, '-S', str(Path(preflight.__file__)), '--root', str(tmp_path), '--require', 'git']
-    result = subprocess.run(command + ['--require-clean', '--python-min', '3'], capture_output=True, text=True)
+    run = functools.partial(run_cli, Path(preflight.__file__), '--root', tmp_path, '--require', 'git', python_options=('-S',))
+    result = run('--require-clean', '--python-min', '3')
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)['ready']
     (tmp_path / 'untracked').write_text('x')
-    result = subprocess.run(command + ['--require-clean'], capture_output=True, text=True)
+    result = run('--require-clean')
     assert result.returncode == 1
     assert json.loads(result.stdout)['worktree']['changed_records'] == 1
     for args in (['--python-min', '999'], ['--python-min', 'bad'],
                  ['--runtime-facts', str(tmp_path / 'missing')]):
-        result = subprocess.run(command + args, capture_output=True)
+        result = run(*args)
         assert result.returncode == (1 if args == ['--python-min', '999'] else 2)
-    result = subprocess.run(command[:4] + [str(tmp_path / 'missing')], capture_output=True)
+    result = run_cli(Path(preflight.__file__), '--root', tmp_path / 'missing', python_options=('-S',))
     assert result.returncode == 2
     nested = tmp_path / 'nested.json'
     nested.write_bytes(b'[' * 10000 + b'0' + b']' * 10000)
-    result = subprocess.run(command + ['--runtime-facts', str(nested)], capture_output=True, text=True)
+    result = run('--runtime-facts', str(nested))
     assert result.returncode == 2
     assert result.stdout == ''
     assert result.stderr == 'preflight: ValueError\n'
-    explained = subprocess.run(command + ['--runtime-facts', str(nested), '--explain'],
-                               capture_output=True, text=True)
+    explained = run('--runtime-facts', str(nested), '--explain')
     assert explained.returncode == 2 and explained.stdout == ''
     assert explained.stderr.startswith('preflight: ValueError: ')
     assert explained.stderr.endswith('\n') and len(explained.stderr) < 200
@@ -1693,8 +1683,8 @@ def test_stdlib_min_stand_ins_import_only_the_standard_library():
                 assert node.level == 0, (file.name, "relative import")
                 names.add((node.module or "").split(".")[0])
         assert names <= set(sys.stdlib_module_names) | {"__future__"}, (file.name, sorted(names - set(sys.stdlib_module_names)))
-        result = subprocess.run([sys.executable, "-S", "-I", "-c", "import runpy, sys; runpy.run_path(sys.argv[1], run_name='stdlib_min_check')", str(file)],
-                                capture_output=True, text=True, check=False, timeout=60)
+        result = run_command(Command([sys.executable, "-S", "-I", "-c", "import runpy, sys; runpy.run_path(sys.argv[1], run_name='stdlib_min_check')", str(file)]),
+                             timeout=60)
         assert result.returncode == 0, (file.name, result.stderr)
 
 
