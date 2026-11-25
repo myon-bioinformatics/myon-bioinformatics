@@ -399,7 +399,7 @@ def test_dev_group_matches_requirements_lower_bounds():
     assert project["project"]["requires-python"] == ">=3.11"
     assert project["project"]["dependencies"] == []
     assert project["tool"]["uv"]["package"] is False
-    assert project["dependency-groups"]["dev"] == ["pytest>=8", "PyYAML>=6", "coverage>=7", "pip>=23"]
+    assert project["dependency-groups"]["dev"] == ["pytest>=8", "PyYAML>=6", "coverage>=7", "pip>=23", {"include-group": "pages"}]
     assert not list((ROOT / "tests").glob("*requirements*.txt"))
     assert "uv.lock" not in (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     lock = (ROOT / "uv.lock").read_text(encoding="utf-8")
@@ -996,10 +996,10 @@ def test_pages_guide_inputs_reach_the_shell_through_env_and_the_renderer_is_pinn
     assert '--repository "$GUIDE_REPOSITORY" > "$site/index.html"' in guide["run"]  # 🏠 the way back comes from the pinned renderer
     assert "grep -qF 'data-ui-back' \"$site/index.html\"" in guide["run"]
     assert re.fullmatch(r"pysaiyanweboo @ git\+https://github\.com/myon-bioinformatics/PySaiyanWeBoo@[0-9a-f]{40}", doc["env"]["PSWB"])
-    # 📌 One PySaiyanWeBoo commit: the vendored copy (the audit pages, python3 -S) moves with the guide pin.
-    vendored = [f for f in json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))["files"]
-                if f["destination"] == "vendor/pysaiyanweboo.py"]
-    assert [f["commit"] for f in vendored] == [doc["env"]["PSWB"].rsplit("@", 1)[1]], "move both: vendor_sync.py update --only vendor/pysaiyanweboo.py --to-ref <PSWB commit>"
+    # 📌 One PySaiyanWeBoo pin: the audit pages' pages group (pyproject.toml) holds the very string the guides use.
+    pages = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["dependency-groups"]["pages"]
+    assert pages == [doc["env"]["PSWB"]], "move both PSWB and the pyproject pages pin, then uv lock"
+    assert not (ROOT / "vendor/pysaiyanweboo.py").exists()     # 📦 no second, vendored copy to drift
 
 
 def test_a_pull_request_pages_build_cannot_cancel_a_default_branch_deploy():
@@ -1151,7 +1151,7 @@ def test_parent_audit_dashboard_does_not_render_a_guide_page():
     doc = yaml.safe_load((ROOT / ".github/workflows/pages.yml").read_text(encoding="utf-8"))
     deploy = doc["jobs"]["deploy"]
     assert deploy["uses"] == "./.github/workflows/reusable-pages-static.yml"
-    assert deploy["with"] == {"artifact_path": "site/dist", "build": "python3 -S scripts/build_audit_pages.py"}
+    assert deploy["with"] == {"artifact_path": "site/dist", "build": "uv run --locked --only-group pages python scripts/build_audit_pages.py"}
     assert "guide_page" not in deploy["with"]
     assert doc["jobs"]["deploy"]["if"] == "github.event_name != 'pull_request'"
 

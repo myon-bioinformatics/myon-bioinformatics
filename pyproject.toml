@@ -1,5 +1,5 @@
-# Pytest jobs only. Parent runtime tools stay on the standard library and keep
-# their own floors. This file does not change those contracts.
+# Pytest jobs, and the audit pages' renderer (the pages group). Parent runtime tools stay on the
+# standard library and keep their own floors. This file does not change those contracts.
 
 [project]
 name = "myon-bioinformatics"
@@ -16,4 +16,10 @@ dev = [
   "PyYAML>=6",
   "coverage>=7",
   "pip>=23",
+  { include-group = "pages" },
+]
+# 📌 PSWB (PySaiyanWeBoo) renders the audit pages (ci_status.py, scripts/build_audit_pages.py). The pin is the same
+# commit as PSWB in .github/workflows/reusable-pages-static.yml (tests/test_workflows.py); move both, then uv lock.
+pages = [
+  "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@901b790f14ad7a04a4280409bfd274d8f6926fa7",
 ]
