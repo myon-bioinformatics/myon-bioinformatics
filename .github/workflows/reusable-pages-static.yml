@@ -52,7 +52,7 @@ env:
   # The one pin for every guide page; move it here and re-pin the callers.
   # ♻️ The CaChereCyCle commit whose store (icons and favicons, Base64 in JSONL) guide_brand reads.
   CACHERECYCLE: "066016de91b5be00b5ab7c1c8e532c90d4b9911b"
-  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@64e103dc79a4b459920781b4d61d71be15f5546e"
+  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@1d697e7f157bc75c11a6d2711475a31fc421179c"
 
 jobs:
   build:
