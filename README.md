@@ -238,6 +238,7 @@ Experiments in short expressions that keep their meaning for a given reader: whi
 
 * [AttentionToJapaneseBeginners](https://github.com/myon-bioinformatics/AttentionToJapaneseBeginners)
 * [audio_any2any_gui](https://github.com/myon-bioinformatics/audio_any2any_gui)
+* [CaChereCyCle](https://github.com/myon-bioinformatics/CaChereCyCle)
 * [convert_img_fmt_to_webp-CUI-](https://github.com/myon-bioinformatics/convert_img_fmt_to_webp-CUI-)
 * [convert_img_fmt_to_webp-GUI-](https://github.com/myon-bioinformatics/convert_img_fmt_to_webp-GUI-)
 * [cumlative_usage](https://github.com/myon-bioinformatics/cumlative_usage)
