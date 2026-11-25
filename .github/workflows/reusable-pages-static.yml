@@ -37,6 +37,11 @@ on:
         required: false
         type: string
         default: ""
+      guide_features_config:
+        description: "Optional repository-relative JSON config for exact Python source paths, API-only sources and required CLI invocations. Takes the place of guide_features."
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -52,7 +57,7 @@ env:
   # The one pin for every guide page; move it here and re-pin the callers.
   # ♻️ The CaChereCyCle commit whose store (icons and favicons, Base64 in JSONL) guide_brand reads.
   CACHERECYCLE: "7e50f9f9f66026437254c4cc7b63bc2a697cceff"
-  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@1d697e7f157bc75c11a6d2711475a31fc421179c"
+  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@cfc3ee5175216892ecef397f235e04ff2706045c"
 
 jobs:
   build:
@@ -86,6 +91,7 @@ jobs:
           GUIDE_ASSETS: ${{ inputs.guide_assets }}
           GUIDE_BRAND: ${{ inputs.guide_brand }}
           GUIDE_FEATURES: ${{ inputs.guide_features }}
+          GUIDE_FEATURES_CONFIG: ${{ inputs.guide_features_config }}
           GUIDE_DIR: ${{ inputs.guide_dir }}
           ARTIFACT_PATH: ${{ inputs.artifact_path }}
           GUIDE_REPOSITORY: ${{ github.repository }}
@@ -122,7 +128,13 @@ jobs:
           fi
           # 📚 A 機能全一覧 tab lists every CLI command and public name, read from the code (add_features).
           features=()
-          if [ "$GUIDE_FEATURES" != "-" ]; then
+          if [ -n "$GUIDE_FEATURES_CONFIG" ]; then
+            if [ -n "$GUIDE_FEATURES" ]; then
+              echo "::error::Specify only one of guide_features_config and guide_features" >&2
+              exit 1
+            fi
+            features=(--features-config "$GUIDE_FEATURES_CONFIG")
+          elif [ "$GUIDE_FEATURES" != "-" ]; then
             read -r -a modules <<< "$GUIDE_FEATURES"
             if [ "${#modules[@]}" -eq 0 ]; then
               # 🔍 <name>.py (lower case, - as _), then the initials (search_seq_including_spaces → ssis.py, CaChereCyCle → cccc.py)

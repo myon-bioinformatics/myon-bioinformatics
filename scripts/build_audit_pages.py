@@ -32,7 +32,8 @@ BASE_URL = 'https://myon-bioinformatics.github.io/myon-bioinformatics'
 VIEWS = (('all', '▤', '監査一覧', '監査ワークスペース'), ('overview', '▥', '概要', 'リポジトリ概要'), ('focus', '◎', '優先対応', '優先対応'),
          ('dependencies', '⇄', '依存・統合順序・固定SHA', '依存・統合順序・固定SHA'), ('progress', '▦', '共通化の進捗', '共通化の進捗'),
          ('history', '◷', '週次記録', '週次スナップショット'), ('done', '✓', '完了記録', '完了記録'))
-LINKS = (('#pswb-migration', 'PSWB #141 統合順序'), ('workspace.html', '運用の確認・記録'), ('evidence.html', '◉ GitHub検証証跡 ↗'), ('component-ops/', '利用導線・責務移管 ↗'))  # other pages, before the actions
+LINKS = (('#pswb-migration', 'PSWB #141 統合順序'), ('workspace.html', '運用の確認・記録'), ('evidence.html', '◉ GitHub検証証跡 ↗'), ('component-ops/', '利用導線・責務移管 ↗'),
+         ('nano-environment-benchmarks.html', '週次計測台帳'))
 ACTIONS = (('refresh', '↻ 観測値を再読込', ''), ('import', '↑ JSON読込', ''), ('export', '↓ 記録を書出し', ''), ('snapshot', '＋ 週次記録', 'primary'))
 # (id, aria-label, first option, further options): app.js fills repo and axis from the data.
 FILTERS = (('repo', 'リポジトリ', '全リポジトリ', ()),
@@ -292,6 +293,40 @@ def observatory_page(snapshot=None, theme=THEME):
 </body>
 </html>
 '''
+
+
+def publish_benchmark_ledger(stage, source, ui):
+    from vendor.markdown import markdown_to_html
+
+    content = markdown_to_html(source.read_text(encoding='utf-8'))
+    content = re.sub(
+        r'<table>.*?</table>',
+        lambda match: ui.scroll_html(match[0], label='週次計測', kind='table'),
+        content, flags=re.DOTALL,
+    )
+    (stage / 'nano-environment-benchmarks.html').write_text(
+        f'''<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>依存削減・環境軽量化の週次計測台帳</title>
+  {favicon_link_tags()}
+  <link rel="stylesheet" href="pswb-shell.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body data-ui-theme="{THEME}">
+<main class="benchmark-ledger">
+  <nav aria-label="台帳の操作"><a href="index.html">監査ダッシュボード</a> · <a href="{source.name}" download>Markdown原本</a></nav>
+  {content}
+</main>
+<script type="module" src="pswb-scroll.js"></script>
+</body>
+</html>
+''',
+        encoding='utf-8',
+    )
+    shutil.copyfile(source, stage / source.name)
 
 
 def pswb_css():
@@ -627,6 +662,8 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
             (stage / 'index.html').write_text(observatory_page(snapshot), encoding='utf-8')
         (stage / 'pswb-shell.css').write_text(pswb_css(), encoding='utf-8')
         ui = ci._load_pysaiyanweboo()
+        ledger = source_root / 'site/nano-environment-benchmarks.md'
+        publish_benchmark_ledger(stage, ledger, ui)
         for name in ('scroll.js', 'records.js'):
             (stage / ('pswb-' + name)).write_text(ui.js_source(name), encoding='utf-8')
         (stage / 'history.json').write_text(json.dumps(history, ensure_ascii=False) + '\n', encoding='utf-8')
@@ -652,6 +689,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
             if unified.exists():
                 archive.write(unified, 'scripts/unified_operations.py')
             archive.write(source_root / 'docs/audit-pages.md', 'docs/audit-pages.md')
+            archive.write(ledger, 'site/' + ledger.name)
             captured = source_root / 'site/evidence/observations.json.gz'
             if captured.exists():
                 archive.write(captured, 'site/evidence/observations.json.gz')

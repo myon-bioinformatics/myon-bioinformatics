@@ -57,3 +57,11 @@ pre { max-width: 100%; overflow: auto; }
 /* Eight evidence columns keep SHA and run details readable in the shared PSWB scroller. */
 #pswb-migration{scroll-margin-top:130px}
 #pswb-migration table{min-width:1600px}
+
+.benchmark-ledger { max-width: 104rem; margin: 0 auto; padding: 24px clamp(15px, 4vw, 48px); }
+.benchmark-ledger nav { margin: 0 0 24px; }
+.benchmark-ledger [data-ui-scroll="table"] { max-height: 64dvh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.benchmark-ledger table { min-width: 76rem; background: var(--panel); }
+.benchmark-ledger th { position: sticky; top: 0; z-index: 1; }
+.benchmark-ledger :is(th, td):nth-child(n+4):nth-child(-n+6) { text-align: right; font-variant-numeric: tabular-nums; }
+.benchmark-ledger td code { overflow-wrap: anywhere; }

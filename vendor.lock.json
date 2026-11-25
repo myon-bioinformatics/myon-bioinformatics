@@ -54,6 +54,24 @@
       "destination": "vendor/cli_args-LICENSE",
       "blob_sha": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
       "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
+    },
+    {
+      "repository": "myon-bioinformatics/markdown",
+      "ref": "b8e8e7ebb7dd3a43fee807530e516bd332a397bd",
+      "commit": "b8e8e7ebb7dd3a43fee807530e516bd332a397bd",
+      "source": "markdown.py",
+      "destination": "vendor/markdown.py",
+      "blob_sha": "3f1f2440ef78735b2aa47994523420a7102f2393",
+      "sha256": "ad9ee7c8b8e2e9dda0817df0e0c5edad129b17003dd4342f546617747dfdefc5"
+    },
+    {
+      "repository": "myon-bioinformatics/markdown",
+      "ref": "b8e8e7ebb7dd3a43fee807530e516bd332a397bd",
+      "commit": "b8e8e7ebb7dd3a43fee807530e516bd332a397bd",
+      "source": "LICENSE",
+      "destination": "vendor/markdown-LICENSE",
+      "blob_sha": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
+      "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
     }
   ]
 }
