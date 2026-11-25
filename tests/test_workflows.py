@@ -1062,10 +1062,6 @@ def test_pages_guide_features_name_the_repository_module_or_the_given_files(tmp_
     assert "--features a.py --features tools/b.py --repository" in args(GUIDE_FEATURES="a.py tools/b.py")
     assert "--features" not in args(GUIDE_FEATURES="-")
     assert "--run-steps" not in args(GUIDE_FEATURES="-")
-    (tmp_path / "guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W", "blocks": [{"type": "runbook", "books": [{"label": "a",'
-                                              ' "runbook": {"key": "a", "steps": [{"id": "s", "title": "s", "command": "true", "run": true}]}}]}]}',
-                                              encoding="utf-8")
-    assert "--features eorr.py --run-steps --repository" in args(GUIDE_FEATURES="")     # 🤖 steps marked run: true run in CI
 
     assert "--features-config docs/guide.features.json --repository" in args(
         GUIDE_FEATURES="", GUIDE_FEATURES_CONFIG="docs/guide.features.json")
@@ -1074,6 +1070,10 @@ def test_pages_guide_features_name_the_repository_module_or_the_given_files(tmp_
                               capture_output=True, text=True)
     assert conflict.returncode != 0
     assert "Specify only one" in conflict.stderr
+    (tmp_path / "guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W", "blocks": [{"type": "runbook", "books": [{"label": "a",'
+                                              ' "runbook": {"key": "a", "steps": [{"id": "s", "title": "s", "command": "true", "run": true}]}}]}]}',
+                                              encoding="utf-8")
+    assert "--features eorr.py --run-steps --repository" in args(GUIDE_FEATURES="")     # 🤖 steps marked run: true run in CI
 
 
 def test_pages_guide_dir_keeps_the_front_page_and_puts_the_guide_one_folder_down(tmp_path):
