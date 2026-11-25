@@ -968,18 +968,29 @@ def _pages():
 
 
 def test_pages_builds_on_pull_requests_only_for_a_guide_page():
-    _, build, deploy = _pages()
+    doc, build, deploy = _pages()
     deploys = f"{ON_DEFAULT_BRANCH} && (github.event_name == 'push' || inputs.build != '')"
     assert build["if"] == f"inputs.guide_page != '' || ({deploys})"
-    assert (deploy["if"], deploy["needs"]) == (deploys, "build")
+    assert (deploy["if"], deploy["needs"]) == (deploys, "verify")
+    assert doc["jobs"]["verify"]["needs"] == "build"
 
 
-def test_pages_build_cannot_publish_and_uploads_only_from_the_default_branch():
-    _, build, deploy = _pages()
+def test_pages_artifact_must_pass_uploaded_tar_inspection_before_deployment():
+    doc, build, deploy = _pages()
+    gate = doc["jobs"]["verify"]
     assert build["permissions"] == {"contents": "read"}
+    assert gate["permissions"] == {"contents": "read"}
     assert deploy["permissions"] == {"pages": "write", "id-token": "write"}
-    assert [s["if"] for s in build["steps"] if "upload-pages-artifact" in s.get("uses", "")] == [ON_DEFAULT_BRANCH]
-    assert not any("deploy-pages" in s.get("uses", "") for s in build["steps"])
+    upload = next(step for step in build["steps"] if "upload-pages-artifact" in step.get("uses", ""))
+    download = next(step for step in gate["steps"] if "download-artifact" in step.get("uses", ""))
+    checkout = next(step for step in gate["steps"] if "checkout@" in step.get("uses", ""))
+    verify = next(step for step in gate["steps"] if step.get("name") == "Verify uploaded Pages artifact")
+    assert "if" not in upload
+    assert upload["with"]["name"] == download["with"]["name"] == deploy["steps"][-1]["with"]["artifact_name"]
+    assert "github.run_attempt" in upload["with"]["name"]
+    assert (checkout["with"]["repository"], checkout["with"]["ref"]) == ("${{ job.workflow_repository }}", "${{ job.workflow_sha }}")
+    assert "scripts/verify_pages_artifact.py .downloaded-pages/artifact.tar" in verify["run"]
+    assert not any("deploy-pages" in step.get("uses", "") for step in build["steps"] + gate["steps"])
 
 
 def test_pages_guide_inputs_reach_the_shell_through_env_and_the_renderer_is_pinned_once():
