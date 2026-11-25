@@ -169,11 +169,11 @@ pages = [
 dev = [
     { name = "coverage", specifier = ">=7" },
     { name = "pip", specifier = ">=23" },
-    { name = "pysaiyanweboo", git = "https://github.com/myon-bioinformatics/PySaiyanWeBoo?rev=90607d19f37f805c56e1aa885b7c97c564e3f90c" },
+    { name = "pysaiyanweboo", git = "https://github.com/myon-bioinformatics/PySaiyanWeBoo?rev=2518d660c199d41424cef9fad451d696fdef4f8e" },
     { name = "pytest", specifier = ">=8" },
     { name = "pyyaml", specifier = ">=6" },
 ]
-pages = [{ name = "pysaiyanweboo", git = "https://github.com/myon-bioinformatics/PySaiyanWeBoo?rev=90607d19f37f805c56e1aa885b7c97c564e3f90c" }]
+pages = [{ name = "pysaiyanweboo", git = "https://github.com/myon-bioinformatics/PySaiyanWeBoo?rev=2518d660c199d41424cef9fad451d696fdef4f8e" }]
 
 [[package]]
 name = "packaging"
@@ -214,7 +214,7 @@ wheels = [
 [[package]]
 name = "pysaiyanweboo"
 version = "0.1.0"
-source = { git = "https://github.com/myon-bioinformatics/PySaiyanWeBoo?rev=90607d19f37f805c56e1aa885b7c97c564e3f90c#90607d19f37f805c56e1aa885b7c97c564e3f90c" }
+source = { git = "https://github.com/myon-bioinformatics/PySaiyanWeBoo?rev=2518d660c199d41424cef9fad451d696fdef4f8e#2518d660c199d41424cef9fad451d696fdef4f8e" }
 
 [[package]]
 name = "pytest"

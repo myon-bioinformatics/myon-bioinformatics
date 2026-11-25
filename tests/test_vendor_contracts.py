@@ -168,7 +168,6 @@ POST_BASELINE_ENROLLMENTS = {
     # (The audit dashboard renders through the pinned PySaiyanWeBoo package, the pyproject pages group, not a copy.)
     "myon-bioinformatics/myon-bioinformatics": {"vendor/cli_args.py", "vendor/cli_args-LICENSE",
                                                 "vendor/markdown.py", "vendor/markdown-LICENSE"},
-    "myon-bioinformatics/mcp-toolcall-lab": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
     # Shared child checks (parent #292/#294); the adopters are re-observed in child_reobservations.json.
     **{f"myon-bioinformatics/{name}": {"vendor/fleet_check.py"} for name in (
         "yourself", "nvd_nist_known_vulns", "ascii_artist", "cli_args", "gh_identity")},
@@ -205,9 +204,11 @@ POST_BASELINE_REPLACEMENTS = {
         "added": [],
     },
     # Exact old/new topology; immutable historical observations stay unchanged.
+    # web_ui.py became pysaiyanweboo.py, then the copy went: the lab pins PySaiyanWeBoo by commit in pyproject.toml (mcp-toolcall-lab #232).
     "myon-bioinformatics/mcp-toolcall-lab": {
-        "retired": [{"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "web_ui.py", "destination": "vendor/web_ui.py", "license": "vendor/web-ui-LICENSE"}],
-        "added": [{"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "pysaiyanweboo.py", "destination": "vendor/pysaiyanweboo.py", "license": "vendor/pysaiyanweboo-LICENSE"}],
+        "retired": [{"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "web_ui.py", "destination": "vendor/web_ui.py", "license": "vendor/web-ui-LICENSE"},
+                    {"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "pysaiyanweboo.py", "destination": "vendor/pysaiyanweboo.py", "license": "vendor/pysaiyanweboo-LICENSE"}],
+        "added": [],
     },
 }
 
@@ -247,7 +248,8 @@ def restore_retired(registry, name, lock):
     registry = copy.deepcopy(registry)
     consumer = next(c for c in registry["consumers"] if c["repository"].casefold() == name.casefold())
     added = {_key(e) for e in change["added"]}
-    consumer["entries"] = [e for e in consumer["entries"] if _key(e) not in added] + copy.deepcopy(retired)
+    kept = [e for e in consumer["entries"] if _key(e) not in added]
+    consumer["entries"] = kept + copy.deepcopy([e for e in retired if _key(e) not in {_key(k) for k in kept}])
     return registry
 
 

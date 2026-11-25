@@ -242,12 +242,6 @@
           "destination": "vendor/njs_launch.py"
         },
         {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "pysaiyanweboo.py",
-          "destination": "vendor/pysaiyanweboo.py",
-          "license": "vendor/pysaiyanweboo-LICENSE"
-        },
-        {
           "repository": "myon-bioinformatics/myon-bioinformatics",
           "source": "vendor_fleet_plan.py",
           "destination": "vendor/vendor_fleet_plan.py"
