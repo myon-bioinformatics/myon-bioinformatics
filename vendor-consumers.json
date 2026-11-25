@@ -13,12 +13,6 @@
           "license": "vendor/gh_identity-LICENSE"
         },
         {
-          "repository": "myon-bioinformatics/PySaiyanWeBoo",
-          "source": "pysaiyanweboo.py",
-          "destination": "vendor/pysaiyanweboo.py",
-          "license": "vendor/pysaiyanweboo-LICENSE"
-        },
-        {
           "repository": "myon-bioinformatics/cli_args",
           "source": "cli_args.py",
           "destination": "vendor/cli_args.py",

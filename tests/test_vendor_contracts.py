@@ -164,10 +164,9 @@ def recorded_before_reobservation():
 POST_BASELINE_ENROLLMENTS = {
     # pillow_min.py moved from Ironmate's root to the parent's tools/stdlib_min/ (#293); Ironmate locks it from here.
     "myon-bioinformatics/Ironmate": {"vendor/fetch_module.py", "vendor/Aoi-LICENSE", "vendor/pillow_min.py", "vendor/fleet_check.py"},
-    # The parent audit dashboard (ci_status.py --audit --html) renders through the vendored pysaiyanweboo.py.
     # The parent's own tests launch its scripts through cli_args. The audit ledger renders through markdown.py.
-    "myon-bioinformatics/myon-bioinformatics": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE",
-                                                "vendor/cli_args.py", "vendor/cli_args-LICENSE",
+    # (The audit dashboard renders through the pinned PySaiyanWeBoo package, the pyproject pages group, not a copy.)
+    "myon-bioinformatics/myon-bioinformatics": {"vendor/cli_args.py", "vendor/cli_args-LICENSE",
                                                 "vendor/markdown.py", "vendor/markdown-LICENSE"},
     "myon-bioinformatics/mcp-toolcall-lab": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
     # Shared child checks (parent #292/#294); the adopters are re-observed in child_reobservations.json.
@@ -200,6 +199,11 @@ POST_BASELINE_ENROLLMENTS = {
 # compares retired entries strictly with the merged child, so the child lands first; until the parent re-observes it,
 # a reviewed lock that holds none of the replacements is compared with the retired entries.
 POST_BASELINE_REPLACEMENTS = {
+    # 📦 The audit pages render through the pinned PySaiyanWeBoo package (pyproject pages group) instead of a copy.
+    "myon-bioinformatics/myon-bioinformatics": {
+        "retired": [{"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "pysaiyanweboo.py", "destination": "vendor/pysaiyanweboo.py", "license": "vendor/pysaiyanweboo-LICENSE"}],
+        "added": [],
+    },
     # Exact old/new topology; immutable historical observations stay unchanged.
     "myon-bioinformatics/mcp-toolcall-lab": {
         "retired": [{"repository": "myon-bioinformatics/PySaiyanWeBoo", "source": "web_ui.py", "destination": "vendor/web_ui.py", "license": "vendor/web-ui-LICENSE"}],
@@ -228,13 +232,22 @@ def before_replacements(registry, name, lock):
             row['entries'] = copy.deepcopy(transition['old_entries'])
             assert vendor_consumers.compare(registry, lock, name)['matches']
             return registry
+    return restore_retired(registry, name, lock)
+
+
+def restore_retired(registry, name, lock):
+    """``registry`` with ``name``'s POST_BASELINE_REPLACEMENTS undone for a reviewed ``lock`` that still holds the retired entries."""
     change = POST_BASELINE_REPLACEMENTS.get(name)
-    if not change or {_key(e) for e in change["added"]} & {_key(e) for e in lock["files"]}:
+    held = {_key(e) for e in lock["files"]}
+    if not change or {_key(e) for e in change["added"]} & held:
+        return registry
+    retired = [e for e in change["retired"] if _key(e) in held]
+    if not retired:
         return registry
     registry = copy.deepcopy(registry)
     consumer = next(c for c in registry["consumers"] if c["repository"].casefold() == name.casefold())
     added = {_key(e) for e in change["added"]}
-    consumer["entries"] = [e for e in consumer["entries"] if _key(e) not in added] + copy.deepcopy(change["retired"])
+    consumer["entries"] = [e for e in consumer["entries"] if _key(e) not in added] + copy.deepcopy(retired)
     return registry
 
 
@@ -1183,6 +1196,7 @@ def test_refreshed_observation_matches_merged_lock(name):
     assert observed["repository_id"] == snapshot["repository_id"]
     lock = sync.validate(snapshot["lock"])
     assert sync._transition_digest(lock) == snapshot["lock_sha256"]
+    registry = restore_retired(registry, name, lock)
     assert consumers.compare(before_later_enrollments(registry, name, lock), lock, name)["matches"]
     if name != sync.PARENT_REPOSITORY:
         assert all(row["ref"] == row["commit"] for row in lock["files"])
