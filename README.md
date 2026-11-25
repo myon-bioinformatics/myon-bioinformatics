@@ -355,7 +355,8 @@ For coordinated changes across repositories, `fleet-apply --manifest fleet.json`
 groups files per repository, reuses existing PRs and verifies explicitly listed
 source PRs before commenting/closing them. `pr-edit --append-body-file` updates
 metadata without discarding existing text; `git-push` sends an existing commit
-with destination readback. See [the operation guide](docs/gh-ops.md).
+with destination readback. `branch-delete` removes a single branch only after
+existence has been resolved through `gh_identity`. See [the operation guide](docs/gh-ops.md).
 
 ## Shared tooling and evidence
 
@@ -369,6 +370,7 @@ sibling repositories. It is both the profile README and the parent tooling repo.
 | Fleet discovery, dependency graph, update plan, cross-repository tests | [vendor_fleet_plan.py](vendor_fleet_plan.py) `targets` / `graph` / `impact` / `plan` / `test` / `report` / `query`, [guide](docs/vendor-automation.md#fleet-entry-point-discover-graph-plan-test-report) | Keep locks, heads and tests where they are; the parent reads them and plans in order; `query` asks the published `fleet.jsonld` |
 | 変更の影響先・判断の根拠・再テスト対象 | [fleet_records.py](fleet_records.py) via `vendor_fleet_plan.py impact` / `report` / `query why\|reverify`, [spec](docs/fleet-records.md) | Tests, generators, browser receipts, failure corpus, ledgers, provenance pins and PR dependencies linked with their record, basis and time; differences are reported, never judged as outdated |
 | GitHub workflow operations | [gh_workflow.py](gh_workflow.py), [guide](docs/gh-workflow.md) | Keep explicit write preconditions and repository-specific orchestration |
+| Shared static Pages guides | [reusable-pages-static.yml](.github/workflows/reusable-pages-static.yml) with the pinned PySaiyanWeBoo page builder | Build the guide from `docs/guide.page.json`; the workflow fills the 🧩 機能一覧 and 📚 機能全一覧 tabs from the code (`guide_features`), serves brand icons from CaChereCyCle without local copies (`guide_brand`), and executes 🔬 検証ガイド (runbook) steps marked `"run": true` in CI (`--run-steps`), showing the real output |
 | JUnit failure identity | [reusable collector](.github/workflows/reusable-junit-identity.yml), [contract](docs/junit-identity.md) | Produce raw XML, preserve the test exit code, and configure exact expected report paths |
 | Browser screenshot evidence | [browser_evidence.py](browser_evidence.py), [contract](docs/browser-evidence.md) | Capture screenshots with the consumer's engine runner; supply run and checkout identity |
 | Third-party browser JS (`js-adopt`) | [js_adopt.py](js_adopt.py), [guide](docs/js-adopt.md) | Keep `js.lock.json` (raw GitHub URL or exact npm release, sha256, SRI, license) and check it in CI; verify the page in each engine |
@@ -418,6 +420,8 @@ placed into consumer trees. See [catalog coverage](docs/vendor-catalog-coverage.
 [Cross-repository use cases and connection candidates](docs/cross-repository-use-cases.md) records the entry points and verification status of the 23 public, non-archived repositories observed on 2026-10-21.
 That survey includes this parent repository. The [2026-11-03 unittest audit](docs/unittest-discovery.md#cross-repository-audit-2026-11-03) covers 24 repositories, also including this parent, with TalkCompress added.
 
+The fleet has grown since those dated surveys: the portfolio's [repository index](https://myon-bioinformatics.github.io/api/repos.json) now lists 49 repositories, and their live PR, Issue and CI state is tracked on the audit dashboard below instead of in snapshots.
+
 Local prerequisite observations: `python -S preflight.py --root . --require git
 --python-min 3.11`. Optional `--runtime-facts` connects yourself's OS/runtime JSON
 without importing another checkout; see [preflight usage and limits](docs/preflight.md).
@@ -439,7 +443,10 @@ Generated, not hand-written: `.github/workflows/pages.yml` (push to `main`, dail
 python3 -S scripts/build_audit_pages.py
 ```
 
-through the shared `reusable-pages-static.yml` (`build` input) and deploys `site/dist`. The producer
+through the shared `reusable-pages-static.yml` (`build` input) and deploys `site/dist`. The same
+deployment also carries the 統合運用 (unified operations) app built by
+`scripts/unified_operations.py`, whose ▥ 概要 tab rolls every repository's PRs, Issues and CI into
+one overview. The producer
 observes every open PR and Issue of the organization through the vendored `gh_identity.py` (head,
 base, `mergeable`, check runs of the latest head, stacked-PR dependencies where a base is another open
 PR's head), and the page is rendered from that `data.json` with the pinned PySaiyanWeBoo helpers (the `pages` group in `pyproject.toml`)
