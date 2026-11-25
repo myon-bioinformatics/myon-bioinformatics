@@ -67,6 +67,8 @@ jobs:
     if: inputs.guide_page != '' || (github.ref_name == github.event.repository.default_branch && (github.event_name == 'push' || inputs.build != ''))
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    outputs:
+      artifact_name: ${{ steps.artifact.outputs.name }}
     permissions:
       contents: read
     steps:
@@ -167,15 +169,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: ${{ inputs.build }}
+      # Compute once in the build. A downstream-only retry uses the artifact from
+      # the successful build attempt, not the downstream job's new run_attempt.
+      - name: Name Pages artifact
+        id: artifact
+        env:
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: printf 'name=github-pages-%s\n' "$RUN_ATTEMPT" >> "$GITHUB_OUTPUT"
       # Upload on guide-page PRs as well, so the gate checks the actual artifact.
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          name: github-pages-${{ github.run_attempt }}
+          name: ${{ steps.artifact.outputs.name }}
           path: ${{ inputs.artifact_path }}
 
   verify:
     needs: build
+    outputs:
+      artifact_name: ${{ needs.build.outputs.artifact_name }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
@@ -192,7 +203,7 @@ jobs:
       - name: Download uploaded Pages artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: github-pages-${{ github.run_attempt }}
+          name: ${{ needs.build.outputs.artifact_name }}
           path: .downloaded-pages
       - name: Verify uploaded Pages artifact
         run: python3 -S .pages-verifier/scripts/verify_pages_artifact.py .downloaded-pages/artifact.tar
@@ -215,4 +226,4 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
         with:
-          artifact_name: github-pages-${{ github.run_attempt }}
+          artifact_name: ${{ needs.verify.outputs.artifact_name }}

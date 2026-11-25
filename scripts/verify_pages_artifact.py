@@ -1,7 +1,7 @@
 """Inspect the uploaded GitHub Pages tar archive without extracting it (stdlib only)."""
+import argparse
 import html.parser
 import posixpath
-import sys
 import tarfile
 from pathlib import PurePosixPath
 from urllib.parse import unquote, urlsplit
@@ -124,9 +124,9 @@ def verify(archive):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        sys.exit('usage: verify_pages_artifact.py artifact.tar')
-    failures = verify(sys.argv[1])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('archive', help='path to the uploaded Pages tar archive')
+    failures = verify(parser.parse_args().archive)
     for failure in failures[:100]:
         print(f'::error::{failure}')
-    sys.exit(bool(failures))
+    raise SystemExit(bool(failures))
