@@ -165,9 +165,10 @@ POST_BASELINE_ENROLLMENTS = {
     # pillow_min.py moved from Ironmate's root to the parent's tools/stdlib_min/ (#293); Ironmate locks it from here.
     "myon-bioinformatics/Ironmate": {"vendor/fetch_module.py", "vendor/Aoi-LICENSE", "vendor/pillow_min.py", "vendor/fleet_check.py"},
     # The parent audit dashboard (ci_status.py --audit --html) renders through the vendored pysaiyanweboo.py.
-    # The parent's own tests launch its scripts through the vendored cli_args.py (run_cli); tests only.
+    # The parent's own tests launch its scripts through cli_args. The audit ledger renders through markdown.py.
     "myon-bioinformatics/myon-bioinformatics": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE",
-                                                "vendor/cli_args.py", "vendor/cli_args-LICENSE"},
+                                                "vendor/cli_args.py", "vendor/cli_args-LICENSE",
+                                                "vendor/markdown.py", "vendor/markdown-LICENSE"},
     "myon-bioinformatics/mcp-toolcall-lab": {"vendor/pysaiyanweboo.py", "vendor/pysaiyanweboo-LICENSE"},
     # Shared child checks (parent #292/#294); the adopters are re-observed in child_reobservations.json.
     **{f"myon-bioinformatics/{name}": {"vendor/fleet_check.py"} for name in (
