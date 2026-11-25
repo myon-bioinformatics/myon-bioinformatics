@@ -1653,19 +1653,30 @@ def test_cli_preserves_plugin_startup_errors_in_json(tmp_path):
     (tmp_path / "broken_brief_plugin.py").write_text(
         'raise ImportError("brief plugin dependency unavailable")\n', encoding="utf-8")
     env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", PYTHONPATH=str(tmp_path))
-    for plugin, code, diagnostic in [
-        ("absent_brief_plugin", 4, "absent_brief_plugin"),
-        ("broken_brief_plugin", 3, "brief plugin dependency unavailable"),
+    env.pop("PYTEST_ADDOPTS", None)
+    env.pop("PYTEST_PLUGINS", None)
+    for plugin, diagnostic in [
+        ("absent_brief_plugin", "absent_brief_plugin"),
+        ("broken_brief_plugin", "brief plugin dependency unavailable"),
     ]:
+        pytest_args = ["-q", "-rfE", "-p", "no:cacheprovider", "-p", plugin]
+        direct = subprocess.run(
+            [sys.executable, "-m", "pytest", *pytest_args],
+            cwd=tmp_path, env=env, capture_output=True, text=True,
+        )
+        direct_output = direct.stdout + direct.stderr
+        assert direct.returncode > 0, direct_output
+        assert diagnostic in direct_output, direct_output
+
         done = subprocess.run(
             [sys.executable, "-S", str(PYTEST_BRIEF_SCRIPT), "--json", "--", "-p", plugin],
             cwd=tmp_path, env=env, capture_output=True, text=True,
         )
-        assert done.returncode == code, done.stdout + done.stderr
+        assert done.returncode == direct.returncode, done.stdout + done.stderr
         payload = json.loads(done.stdout)
         assert payload["ok"] is False
-        assert payload["exit_code"] == code
-        assert diagnostic in "\n".join(payload["lines"])
+        assert payload["exit_code"] == direct.returncode
+        assert diagnostic in "\n".join(payload["lines"]), payload
 
 
 # ═══ · repository hygiene ════════════════════════════════════════════════════════════════════════════════

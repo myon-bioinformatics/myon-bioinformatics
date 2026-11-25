@@ -13,7 +13,7 @@ Replaces the re-typed one-liner
 * pytest runs in this interpreter as ``python -m pytest -q -rfE -p no:cacheprovider [ARGS]``;
 * printed: the installed names (if any), ``FAILED``/``ERROR`` lines, the coverage ``TOTAL``
   and ``Required test coverage`` lines, and pytest's final summary line. If pytest itself
-  could not run (exit 2-5 with no summary), the last ``--tail`` lines instead.
+  could not run, the last ``--tail`` lines instead.
 
 Stdlib only; runs under ``python -S`` (the child pytest runs without ``-S``)::
 
@@ -66,7 +66,9 @@ def resolve(pip: list[str], requirements: list[str]) -> list[str]:
 def brief(output: str, returncode: int, tail: int) -> list[str]:
     lines = [line.rstrip() for line in output.splitlines()]
     kept = [line for line in lines if KEEP.search(line)]
-    if not any(re.search(r"\b(passed|failed|no tests ran|error)\b", line) for line in kept) and returncode not in (0, 1):
+    # Older pytest versions can exit 1 with a startup traceback and no report.
+    has_summary = any(re.search(r"\b(passed|failed|no tests ran|error)\b", line) for line in kept)
+    if returncode and (not kept or (returncode != 1 and not has_summary)):
         return [line for line in lines if line][-tail:]
     return kept
 
