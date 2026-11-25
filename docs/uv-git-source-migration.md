@@ -148,3 +148,16 @@ CIの `--preserve-missing-catalog-sources` は、mainのソース取得が404の
 BrowserTestKitの `scripts/interaction.mjs` と `scripts/browser_execution.mjs` は
 mainでは `tools/` へ移動済み。利用側の採用済み参照は、移行PRで明示的に更新する。
 この結果は「最新main採用済み」を意味しない。
+
+## 📌 固定先のずれ（ベストエフォート）
+
+PySaiyanWeBoo のような自前の依存は、各リポジトリが `pyproject.toml` で commit を固定し、`uv.lock` に記録する。
+基準は親の `uv.lock`（`pages` グループ。`reusable-pages-static.yml` の `PSWB` と同じ文字列）。
+`vendor_fleet_plan.py report` の 📦 `uv-git` 行がずれを並べる。
+
+- ✅ 基準と同じコミット
+- 🟡 基準より遅れているが、提供元 main の first-parent 上（許容。まとめて上げる PR を作る、マージは手動）
+- ❌ main の外のコミット（PR の途中のコミットなど）
+
+リポジトリが分かれている以上、全部を同時にはそろえられないので、遅れは見える化して早めに上げる。
+

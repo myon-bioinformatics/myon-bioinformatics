@@ -223,6 +223,31 @@ class Plans(FleetFixture):
         self.assertIn("waits for vendor:app:vendor.lock.json:tool", rows["verify:app"]["reason"])
 
 
+    def test_uv_git_pins_follow_the_parent_reference_best_effort(self):
+        """📦 ✅ the parent's uv.lock commit · 🟡 behind it on main · ❌ a commit off main (first-parent)."""
+        def uv_lock(sha):
+            return f'[[package]]\nname = "tool"\nsource = {{ git = "https://github.com/{OWNER}/tool?rev={sha}#{sha}" }}\n'
+        v2 = commit(self.checkouts / "tool", {"tool.py": "VALUE = 2\n"})
+        git(self.checkouts / "tool", "checkout", "-q", "-b", "side")
+        side = commit(self.checkouts / "tool", {"tool.py": "VALUE = 3\n"}, "side")
+        git(self.checkouts / "tool", "checkout", "-q", "main")
+        commit(self.parent, {"uv.lock": uv_lock(v2)})
+        commit(self.checkouts / "app", {"uv.lock": uv_lock(self.tool_v1)})
+        commit(self.checkouts / "relay", {"uv.lock": uv_lock(side)})
+        commit(self.checkouts / "hub", {"uv.lock": uv_lock(v2)})
+        self.assertEqual(fleet.uv_git_pins(uv_lock(v2)), [("tool", v2)])
+        f, d, g = self.analysed()
+        rows = {r["repository"]: r for r in fleet.plan_updates(f, g, d)["rows"] if r["kind"] == "uv-git"}
+        self.assertEqual(rows["hub"]["status"], "skipped")
+        self.assertIn("✅", rows["hub"]["reason"])
+        self.assertEqual(rows["app"]["status"], "updated")
+        self.assertIn("🟡", rows["app"]["reason"])
+        self.assertNotIn("not checked", rows["app"]["reason"])     # a full local history answers offline
+        self.assertEqual(rows["relay"]["status"], "failure")
+        self.assertIn("❌", rows["relay"]["reason"])
+        self.assertFalse([x for x in g["findings"] if x["kind"] == "shape"])
+
+
 class CrossRepositoryTests(FleetFixture):
     def run_tests(self, **kwargs):
         f, d, _g = self.analysed()
