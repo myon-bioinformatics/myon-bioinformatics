@@ -987,12 +987,13 @@ def test_pages_guide_inputs_reach_the_shell_through_env_and_the_renderer_is_pinn
     guide = next(s for s in build["steps"] if s.get("name") == "Build the guide")
     assert guide["if"] == "inputs.guide_page != ''" and "${{" not in guide["run"]
     assert guide["env"] == {"GUIDE_PAGE": "${{ inputs.guide_page }}", "GUIDE_ASSETS": "${{ inputs.guide_assets }}",
-                            "GUIDE_BRAND": "${{ inputs.guide_brand }}",
+                            "GUIDE_BRAND": "${{ inputs.guide_brand }}", "GUIDE_FEATURES": "${{ inputs.guide_features }}",
+                            "GUIDE_DIR": "${{ inputs.guide_dir }}",
                             "ARTIFACT_PATH": "${{ inputs.artifact_path }}",
                             "GUIDE_REPOSITORY": "${{ github.repository }}"}
-    assert 'python -m pysaiyanweboo --page "$ARTIFACT_PATH/guide.page.json" "${home[@]}"' in guide["run"]
-    assert '--repository "$GUIDE_REPOSITORY" > "$ARTIFACT_PATH/index.html"' in guide["run"]  # 🏠 the way back comes from the pinned renderer
-    assert "grep -qF 'data-ui-back' \"$ARTIFACT_PATH/index.html\"" in guide["run"]
+    assert 'python -m pysaiyanweboo --page "$site/guide.page.json" "${home[@]}"' in guide["run"]
+    assert '--repository "$GUIDE_REPOSITORY" > "$site/index.html"' in guide["run"]  # 🏠 the way back comes from the pinned renderer
+    assert "grep -qF 'data-ui-back' \"$site/index.html\"" in guide["run"]
     assert re.fullmatch(r"pysaiyanweboo @ git\+https://github\.com/myon-bioinformatics/PySaiyanWeBoo@[0-9a-f]{40}", doc["env"]["WEB_UI"])
 
 
@@ -1030,6 +1031,59 @@ def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
     assert "--home-screen" not in (tmp_path / "_site/index.html").read_text(encoding="utf-8")   # no icon, no home screen
     (tmp_path / "bin/uv").write_text("#!/bin/sh\nprintf '<main class=\"ui-page\"></main>'\n", encoding="utf-8")
     assert subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env).returncode != 0
+
+
+def test_pages_guide_features_name_the_repository_module_or_the_given_files(tmp_path):
+    """🧩 Empty guide_features passes <repository>.py, else <initials>.py, when it exists; a list passes each file; - passes none."""
+    _, build, _ = _pages()
+    guide = next(s for s in build["steps"] if s.get("name") == "Build the guide")
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/uv").write_text("#!/bin/sh\nprintf '<main class=\"ui-page\"><nav data-ui-back>%s</nav></main>' \"$*\"\n", encoding="utf-8")
+    (tmp_path / "bin/uv").chmod(0o755)
+    (tmp_path / "guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W"}', encoding="utf-8")
+    (tmp_path / "err_o_roadrunner.py").write_text('"""Demo."""\n', encoding="utf-8")
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
+           "GUIDE_PAGE": "guide.page.json", "ARTIFACT_PATH": "_site", "GUIDE_ASSETS": "", "GUIDE_BRAND": "",
+           "GUIDE_REPOSITORY": "example/Err-o-RoadRunner"}
+
+    def args(**changes):
+        subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env={**env, **changes}, check=True)
+        return (tmp_path / "_site/index.html").read_text(encoding="utf-8")
+
+    assert "--features err_o_roadrunner.py --repository" in args(GUIDE_FEATURES="")   # lower case, - as _
+    assert "--features" not in args(GUIDE_FEATURES="", GUIDE_REPOSITORY="example/widget")   # no widget.py
+    (tmp_path / "ssis.py").write_text('"""Demo."""\n', encoding="utf-8")
+    (tmp_path / "olnm.py").write_text('"""Demo."""\n', encoding="utf-8")
+    assert "--features ssis.py --repository" in args(GUIDE_FEATURES="", GUIDE_REPOSITORY="example/search_seq_including_spaces")
+    assert "--features olnm.py --repository" in args(GUIDE_FEATURES="", GUIDE_REPOSITORY="example/OneLaunchNumerousModules")
+    (tmp_path / "err_o_roadrunner.py").rename(tmp_path / "eorr.py")
+    assert "--features eorr.py --repository" in args(GUIDE_FEATURES="")                      # Err-o-RoadRunner: E, o, R, R
+    assert "--features a.py --features tools/b.py --repository" in args(GUIDE_FEATURES="a.py tools/b.py")
+    assert "--features" not in args(GUIDE_FEATURES="-")
+
+
+def test_pages_guide_dir_keeps_the_front_page_and_puts_the_guide_one_folder_down(tmp_path):
+    """📘 guide_dir: the guide, its spec, brand and home-screen files go under that folder; the front page stays."""
+    _, build, _ = _pages()
+    guide = next(s for s in build["steps"] if s.get("name") == "Build the guide")
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin/uv").write_text("#!/bin/sh\nprintf '<main class=\"ui-page\"><nav data-ui-back>%s</nav></main>' \"$*\"\n", encoding="utf-8")
+    (tmp_path / "bin/uv").chmod(0o755)
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs/index.html").write_text("front", encoding="utf-8")
+    (tmp_path / "docs/guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W", "icon": "./icon.png"}', encoding="utf-8")
+    (tmp_path / "icon.png").write_bytes(b"icon")
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
+           "GUIDE_PAGE": "docs/guide.page.json", "ARTIFACT_PATH": "docs", "GUIDE_ASSETS": "icon.png=icon.png", "GUIDE_BRAND": "",
+           "GUIDE_FEATURES": "-", "GUIDE_DIR": "guide", "GUIDE_REPOSITORY": "example/widget"}
+    subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
+    assert (tmp_path / "docs/index.html").read_text(encoding="utf-8") == "front"
+    page = (tmp_path / "docs/guide/index.html").read_text(encoding="utf-8")
+    assert "--page docs/guide/guide.page.json --home-screen docs/guide --repository example/widget" in page
+    assert (tmp_path / "docs/guide/icon.png").read_bytes() == b"icon" and (tmp_path / "docs/guide/guide.page.json").is_file()
+    for bad in ("../out", "/tmp/out"):
+        assert subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env={**env, "GUIDE_DIR": bad},
+                              capture_output=True).returncode != 0
 
 
 def test_pages_guide_brand_reads_the_pinned_store_and_leaves_no_index(tmp_path):
