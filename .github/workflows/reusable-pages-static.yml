@@ -54,10 +54,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The one pin for every guide page; move it here and re-pin the callers.
+  # 📌 PSWB (PySaiyanWeBoo): the one pin for every guide page; move it here and re-pin the callers.
+  #    vendor/pysaiyanweboo.py (the parent's audit pages) moves with it to the same commit (tests/test_workflows.py).
   # ♻️ The CaChereCyCle commit whose store (icons and favicons, Base64 in JSONL) guide_brand reads.
   CACHERECYCLE: "7e50f9f9f66026437254c4cc7b63bc2a697cceff"
-  WEB_UI: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@8f7389fe4f854f5cb58dab8fcd5f4218ac8ac20f"
+  PSWB: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@901b790f14ad7a04a4280409bfd274d8f6926fa7"
 
 jobs:
   build:
@@ -157,7 +158,7 @@ jobs:
             run=(--run-steps)
           fi
           # 🏠 portfolio · 🐙 repository: the way back comes from the pinned renderer (back_nav_html).
-          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$site/guide.page.json" "${home[@]}" "${features[@]}" "${run[@]}" \
+          uv run --no-project --with "$PSWB" python -m pysaiyanweboo --page "$site/guide.page.json" "${home[@]}" "${features[@]}" "${run[@]}" \
             --repository "$GUIDE_REPOSITORY" > "$site/index.html"
           grep -qF 'data-ui-back' "$site/index.html"
       - if: inputs.build != ''

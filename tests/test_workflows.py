@@ -995,7 +995,11 @@ def test_pages_guide_inputs_reach_the_shell_through_env_and_the_renderer_is_pinn
     assert 'python -m pysaiyanweboo --page "$site/guide.page.json" "${home[@]}"' in guide["run"]
     assert '--repository "$GUIDE_REPOSITORY" > "$site/index.html"' in guide["run"]  # 🏠 the way back comes from the pinned renderer
     assert "grep -qF 'data-ui-back' \"$site/index.html\"" in guide["run"]
-    assert re.fullmatch(r"pysaiyanweboo @ git\+https://github\.com/myon-bioinformatics/PySaiyanWeBoo@[0-9a-f]{40}", doc["env"]["WEB_UI"])
+    assert re.fullmatch(r"pysaiyanweboo @ git\+https://github\.com/myon-bioinformatics/PySaiyanWeBoo@[0-9a-f]{40}", doc["env"]["PSWB"])
+    # 📌 One PySaiyanWeBoo commit: the vendored copy (the audit pages, python3 -S) moves with the guide pin.
+    vendored = [f for f in json.loads((ROOT / "vendor.lock.json").read_text(encoding="utf-8"))["files"]
+                if f["destination"] == "vendor/pysaiyanweboo.py"]
+    assert [f["commit"] for f in vendored] == [doc["env"]["PSWB"].rsplit("@", 1)[1]], "move both: vendor_sync.py update --only vendor/pysaiyanweboo.py --to-ref <PSWB commit>"
 
 
 def test_a_pull_request_pages_build_cannot_cancel_a_default_branch_deploy():
@@ -1014,7 +1018,7 @@ def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
     (tmp_path / "docs/demos").mkdir(parents=True)
     (tmp_path / "docs/demos/D01.gif").write_bytes(b"gif")
     (tmp_path / "docs/guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W", "icon": "./icon.png"}', encoding="utf-8")
-    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "PSWB": "pinned",
            "GUIDE_PAGE": "docs/guide.page.json", "ARTIFACT_PATH": "_site",
            "GUIDE_ASSETS": "icon.png=favicon.png icon.png=assets/brand/icon.png docs/demos=demos",
            "GUIDE_REPOSITORY": "example/widget"}
@@ -1043,7 +1047,7 @@ def test_pages_guide_features_name_the_repository_module_or_the_given_files(tmp_
     (tmp_path / "bin/uv").chmod(0o755)
     (tmp_path / "guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W"}', encoding="utf-8")
     (tmp_path / "err_o_roadrunner.py").write_text('"""Demo."""\n', encoding="utf-8")
-    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "PSWB": "pinned",
            "GUIDE_PAGE": "guide.page.json", "ARTIFACT_PATH": "_site", "GUIDE_ASSETS": "", "GUIDE_BRAND": "",
            "GUIDE_REPOSITORY": "example/Err-o-RoadRunner"}
 
@@ -1087,7 +1091,7 @@ def test_pages_guide_dir_keeps_the_front_page_and_puts_the_guide_one_folder_down
     (tmp_path / "docs/index.html").write_text("front", encoding="utf-8")
     (tmp_path / "docs/guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W", "icon": "./icon.png"}', encoding="utf-8")
     (tmp_path / "icon.png").write_bytes(b"icon")
-    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "PSWB": "pinned",
            "GUIDE_PAGE": "docs/guide.page.json", "ARTIFACT_PATH": "docs", "GUIDE_ASSETS": "icon.png=icon.png", "GUIDE_BRAND": "",
            "GUIDE_FEATURES": "-", "GUIDE_DIR": "guide", "GUIDE_REPOSITORY": "example/widget"}
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
@@ -1117,7 +1121,7 @@ def test_pages_guide_brand_reads_the_pinned_store_and_leaves_no_index(tmp_path):
         "for item in args[:args.index('--cache')]:\n    name, spec = item.split('=')\n    (out / name).write_text(spec)\n"
         "(out / '.cacherecycle.json').write_text('{}')\n", encoding="utf-8")
     (tmp_path / "guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W", "icon": "./icon.png"}', encoding="utf-8")
-    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
+    env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "PSWB": "pinned",
            "GUIDE_PAGE": "guide.page.json", "ARTIFACT_PATH": "_site", "GUIDE_ASSETS": "", "GUIDE_BRAND": "Err-o-RoadRunner",
            "GUIDE_REPOSITORY": "example/widget"}
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
@@ -1137,7 +1141,7 @@ def test_pages_guide_brand_reads_the_pinned_store_and_leaves_no_index(tmp_path):
 
 
 def test_pages_guide_needs_no_second_checkout():
-    """The renderer pinned in WEB_UI draws the way back, so the guide job checks out nothing from the parent."""
+    """The renderer pinned in PSWB draws the way back, so the guide job checks out nothing from the parent."""
     _, build, _ = _pages()
     assert not any("workflow_sha" in yaml.safe_dump(s) or s.get("with", {}).get("path") == ".reusable-pages-static"
                    for s in build["steps"])
