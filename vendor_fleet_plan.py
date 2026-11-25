@@ -20,7 +20,9 @@ dependency graph and aggregates the results::
 Inputs, none of them new: the parent's ``vendor-consumers.json``, ``child-heads.json``,
 ``vendor-catalog.json`` and ``vendor.lock.json``; every repository's lock files
 (``vendor.lock.json``, ``shared-tools.lock.json``, ``html-import-vendor/1``), a hub's own
-``child-heads.json`` (Aoi), workflow pins to the parent and the test layout.
+``child-heads.json`` (Aoi), workflow pins to the parent, the test layout, and each ``uv.lock``'s git
+sources of this owner (📦 ``uv-git``: ✅ the parent's own ``uv.lock`` commit, else the source's main;
+🟡 behind it but on main, best effort; ❌ a commit off main's first-parent history).
 ``--checkouts DIR`` holds clones named like the repositories; the parent is read from
 its working tree. ``--fetch`` clones a missing public repository once (anonymous,
 bare, blob-less, depth 1) and fetches the blobs a run needs in one batch per
@@ -78,6 +80,7 @@ RELATIONS = {  # kind: code, icon, domain (source), range (target), group, plan 
     "launcher": ("ln", "🚀", "File", "File", "code", "vendor", "prov:wasDerivedFrom", "copies the shared launcher"),
     "license": ("lc", "⚖️", "File", "File", "code", "vendor", "prov:wasDerivedFrom", "copies the license of"),
     "workflow-pin": ("wp", "📌", "File|Workflow|Repository", "Workflow", "code", "regenerate", "prov:used", "runs a pinned commit of"),
+    "uv-git": ("ug", "📦", "Repository", "File|Record", "code", "regenerate", "prov:used", "installs a pinned commit of"),
     "subtree": ("st", "🌿", "Directory", "Repository", "code", "regenerate", "prov:wasDerivedFrom", "is pushed from the subtree"),
     "shared-tools": ("sh", "🧰", "File", "Repository", "code", None, None, "is a declared consumer of"),
     "heads": ("hd", "🧷", "Repository", "Record", "record", "record", "prov:used", "records the head of"),
@@ -291,6 +294,24 @@ class Fleet:
         extra = ["--filter=blob:none"] if self._cached_clone(repo) else []
         self.run(location, "fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--depth", "1", *extra, "origin", sha)
         return self.run(location, "cat-file", "-e", sha + "^{commit}").returncode == 0
+
+    def on_main(self, repo, commit):
+        """True / False: commit is on repo's default-branch first-parent history; None when it cannot be told
+        (offline with only a shallow or blob-less copy). A full local history answers offline; else --fetch asks GitHub."""
+        def check():
+            location = self.location(repo)
+            full = location is not None and not self._cached_clone(repo) and \
+                self.run(location, "rev-parse", "--is-shallow-repository").stdout.strip() == b"false"
+            if not (full or self.fetch) or not commit:
+                return None
+            try:
+                return _sibling("vendor_sync").commit_merged_into_default(
+                    f"{OWNER}/{repo}", commit, local_roots={f"{OWNER}/{repo}": location} if full else None)
+            except ValueError:
+                return False
+            except Exception:  # transport: say nothing rather than guess
+                return None
+        return self._memo(("on_main", repo, commit), check)
 
     def revision(self, repo, at=None):
         """Commit SHA for 'main' (origin/HEAD, else HEAD), 'heads' (recorded child head) or an explicit SHA.
@@ -636,6 +657,13 @@ def _lock_edges(name, lock, document, base):
     return edges, unmodeled
 
 
+def uv_git_pins(text):
+    """📦 (repository, commit) of every git source a uv.lock resolves from this owner's repositories (PEP 508 or
+    [tool.uv.sources] alike: uv.lock records both as ``source = { git = "...?rev=…#<commit>" }``)."""
+    pattern = r'source = \{ git = "https://github\.com/' + OWNER + r'/([A-Za-z0-9_.-]+?)(?:\.git)?\?[^"#]*#([0-9a-f]{40})" \}'
+    return sorted(set(re.findall(pattern, text)))
+
+
 def _checkout_uses(text, line):
     """Parent files a pinned whole-repository checkout step is used for: '<path>/<file>' after its 'path:'."""
     lines = text.splitlines()
@@ -701,7 +729,7 @@ def build_graph(fleet, discovery, records=None, *, evidence=True, snapshot=None)
         files = fleet.files(name, rev)
         workflow_paths = [p for p in sorted(files) if p.startswith(".github/workflows/") and p.count("/") == 2
                           and p.endswith((".yml", ".yaml"))]
-        fleet.prefetch(name, rev, r["lock_files"] + workflow_paths)
+        fleet.prefetch(name, rev, r["lock_files"] + workflow_paths + (["uv.lock"] if "uv.lock" in files else []))
         for lock in r["lock_files"]:
             base = next((p for p in sorted(prefixes.get(name, ())) if lock.startswith(p + "/")), "")
             try:
@@ -730,6 +758,9 @@ def build_graph(fleet, discovery, records=None, *, evidence=True, snapshot=None)
                            and e["target"] == f"{name}:{pin['file']}" for e in edges[-40:]):  # several steps, one pin
                     edges.append(_edge("workflow-pin", f"{PARENT}:{path}", f"{name}:{pin['file']}", f"{name}:{pin['file']}",
                                        pin=pin["commit"], line=pin.get("line")))
+        if "uv.lock" in files:  # 📦 git dependencies pinned by commit (pyproject + uv.lock), e.g. PySaiyanWeBoo
+            for repository, commit in uv_git_pins(fleet.read(name, rev, "uv.lock").decode("utf-8", "replace")):
+                edges.append(_edge("uv-git", f"{repository}:", f"{name}:uv.lock", f"{name}:uv.lock", pin=commit))
     for r in discovery["repositories"]:
         for hub, info in r["hubs"].items():
             # A hub that records its own head (the parent) records an earlier commit of itself, not a dependency.
@@ -1060,7 +1091,7 @@ def _facets(row, content, commit, state):
     compatibility stays not_assessed here: only a test run can say a different version still works.
     """
     row.update(content=content, commit=commit, state=state,
-               compatibility="not_assessed" if row["kind"] in (*UPDATE_KINDS, "workflow-pin", "catalog") else "not_applicable")
+               compatibility="not_assessed" if row["kind"] in (*UPDATE_KINDS, "workflow-pin", "uv-git", "catalog") else "not_applicable")
 
 
 def plan_updates(fleet, graph, discovery, *, changed=None, python="python"):
@@ -1076,6 +1107,10 @@ def plan_updates(fleet, graph, discovery, *, changed=None, python="python"):
         selected = set(reach["changed"]) | {r["node"] for r in reach["rows"]}
     repos = {r["repository"]: r for r in discovery["repositories"]}
     parent_head = _parent_commit(fleet)
+    parent_rev = fleet.revision(PARENT)
+    # 📌 the reference pins: the parent's own uv.lock (its pages group holds the guides' PSWB string)
+    reference = dict(uv_git_pins(fleet.read(PARENT, parent_rev, "uv.lock").decode("utf-8", "replace"))) \
+        if parent_rev and "uv.lock" in fleet.files(PARENT, parent_rev) else {}
     order = graph["order"] or sorted({n for e in graph["edges"] for n in (e["source"], e["target"])})
     position = {node: i for i, node in enumerate(order)}
     incoming = {}
@@ -1150,6 +1185,19 @@ def plan_updates(fleet, graph, discovery, *, changed=None, python="python"):
                 else:
                     row.update(status="updated", reason=f"pinned file changed since {e['pin'][:7]}")
                     _facets(row, "different", commit, "pending")
+        elif e["kind"] == "uv-git":  # ✅ the reference · 🟡 behind it on main (best effort) · ❌ off main
+            target = reference.get(src_repo) or rev
+            basis = "the parent's uv.lock" if src_repo in reference else "main"
+            if e["pin"] == target:
+                row.update(status="skipped", reason=f"✅ same commit as {basis}")
+                _facets(row, "not_applicable", "same", "success")
+            elif (merged := fleet.on_main(src_repo, e["pin"])) is False:
+                row.update(status="failure", reason=f"❌ {e['pin'][:7]} is not on {src_repo} main (first-parent)")
+                _facets(row, "not_applicable", "different", "failure")
+            else:
+                row.update(status="updated", reason=f"🟡 {e['pin'][:7]} → {_brief(target)} ({basis})"
+                           + ("" if merged else ", first-parent not checked (--fetch)"))
+                _facets(row, "not_applicable", "different", "pending")
         elif e["kind"] == "catalog":
             pinned = fleet.blob_at(src_repo, e["pin"], src_path)
             commit = _same(e.get("pin"), rev, parent_head)
@@ -1231,6 +1279,9 @@ def plan_updates(fleet, graph, discovery, *, changed=None, python="python"):
             step = _step(steps, f"regenerate:{dst_repo}:workflow-pins", phase="regenerate", repository=dst_repo,
                          argv=[python, "-S", "<tools>/tools/parent_pin_check.py", "--root", f"<checkouts>/{dst_repo}"])
             step["reasons"].append(f"{dst_path}: {r['reason']}")
+        elif r["kind"] == "uv-git":
+            step = _step(steps, f"regenerate:{dst_repo}:uv-git", phase="regenerate", repository=dst_repo)
+            step["reasons"].append(f"{split(r['source'])[0]} in pyproject.toml, then uv lock: {r['reason']}")
         elif r["kind"] == "catalog":
             step = _step(steps, "record:catalog", phase="record", repository=PARENT,
                          argv=[python, "-S", "pilot/vendor_dispatch.py", "--resolve-ref", "main", "--record"])
