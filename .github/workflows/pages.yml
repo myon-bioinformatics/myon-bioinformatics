@@ -11,7 +11,8 @@ on:
       - assets/brand/favicon.png
       - vendor_fleet_plan.py
       - fleet_records.py
-      - vendor/pysaiyanweboo.py
+      - pyproject.toml
+      - uv.lock
       - vendor/gh_identity.py
       - site/**
       - docs/audit-pages.md
@@ -31,6 +32,8 @@ on:
       - tests/test_audit_model.cjs
       - tests/test_workflows.py
       - tests/fixtures/guide-backlinks/**
+      - pyproject.toml
+      - uv.lock
       - .github/workflows/pages.yml
       - .github/workflows/reusable-pages-static.yml
   schedule:
@@ -48,11 +51,20 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26"
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "latest"
+          python-version: "3.15"
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Test audit producer and publication failure boundaries
+        # 📦 The pages group: the pinned PySaiyanWeBoo the audit pages render through (pyproject.toml).
         run: |
-          python3 -S -m unittest discover -s tests -p test_ci_status.py
-          python3 -S -m unittest discover -s tests -p test_audit_pages.py
-          python3 -S -m unittest discover -s tests -p test_unified_operations.py
+          uv run --locked --only-group pages python -m unittest discover -s tests -p test_ci_status.py
+          uv run --locked --only-group pages python -m unittest discover -s tests -p test_audit_pages.py
+          uv run --locked --only-group pages python -m unittest discover -s tests -p test_unified_operations.py
           node --check site/ui/unified-app.js
           node --check site/ui/unified-model.js
           node --check site/ui/shared-ui.js
@@ -65,11 +77,19 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "latest"
+          python-version: "3.15"
+          enable-cache: true
+          # Pull requests restore the cache and never write it; only main saves it.
+          save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          prune-cache: true
       - name: Build from live public observations without publishing
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
-          python3 -S scripts/build_audit_pages.py
+          uv run --locked --only-group pages python scripts/build_audit_pages.py
           --repos cli_args,xprobe --previous '' --previous-history ''
           --out /tmp/audit-live-smoke
   guide-backlinks:
@@ -95,5 +115,5 @@ jobs:
     uses: ./.github/workflows/reusable-pages-static.yml
     with:
       artifact_path: site/dist
-      build: python3 -S scripts/build_audit_pages.py
+      build: uv run --locked --only-group pages python scripts/build_audit_pages.py
 

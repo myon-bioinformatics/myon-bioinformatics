@@ -20,24 +20,6 @@
       "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
     },
     {
-      "repository": "myon-bioinformatics/PySaiyanWeBoo",
-      "ref": "901b790f14ad7a04a4280409bfd274d8f6926fa7",
-      "commit": "901b790f14ad7a04a4280409bfd274d8f6926fa7",
-      "source": "pysaiyanweboo.py",
-      "destination": "vendor/pysaiyanweboo.py",
-      "blob_sha": "ed7ad34aefb690fbfe215b9e26db49b0566839d7",
-      "sha256": "3832c1aa53eb78bbcbdfc420d951d7059eefcc91dd3ed479be397ec76dc57099"
-    },
-    {
-      "repository": "myon-bioinformatics/PySaiyanWeBoo",
-      "ref": "635f2f265ea64d41326772b6b55011d7ad82037c",
-      "commit": "635f2f265ea64d41326772b6b55011d7ad82037c",
-      "source": "LICENSE",
-      "destination": "vendor/pysaiyanweboo-LICENSE",
-      "blob_sha": "4ec4989b801bf1a3df6184d21f79e6e7ed5931f6",
-      "sha256": "15f66204c4a6a1ce0c94f0ed4319ff9400f872e85fd32c95f21695c2f231af59"
-    },
-    {
       "repository": "myon-bioinformatics/cli_args",
       "ref": "5ae22b1a1b808eca93e3c385a8db867fbeb8ee32",
       "commit": "5ae22b1a1b808eca93e3c385a8db867fbeb8ee32",

@@ -54,8 +54,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # 📌 PSWB (PySaiyanWeBoo): the one pin for every guide page; move it here and re-pin the callers.
-  #    vendor/pysaiyanweboo.py (the parent's audit pages) moves with it to the same commit (tests/test_workflows.py).
+  # 📌 PSWB (PySaiyanWeBoo): the reference pin for every guide page; move it here and re-pin the callers.
+  #    The parent's pyproject.toml pages group (the audit pages) holds the same string (tests/test_workflows.py);
+  #    each repository's own pin may trail it on PySaiyanWeBoo main (🟡) but never leave main (❌).
   # ♻️ The CaChereCyCle commit whose store (icons and favicons, Base64 in JSONL) guide_brand reads.
   CACHERECYCLE: "7e50f9f9f66026437254c4cc7b63bc2a697cceff"
   PSWB: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@901b790f14ad7a04a4280409bfd274d8f6926fa7"
@@ -72,7 +73,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      - if: inputs.guide_page != ''
+      - if: inputs.guide_page != '' || inputs.build != ''
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "latest"
