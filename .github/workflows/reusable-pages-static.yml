@@ -139,8 +139,13 @@ jobs:
               features+=(--features "$module")
             done
           fi
+          # 🤖 A 🔬 検証ガイド (runbook block) whose steps say "run": true: they run here, in the checkout, and the guide shows what came out.
+          run=()
+          if grep -Eq '"run": *true' "$GUIDE_PAGE"; then
+            run=(--run-steps)
+          fi
           # 🏠 portfolio · 🐙 repository: the way back comes from the pinned renderer (back_nav_html).
-          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$site/guide.page.json" "${home[@]}" "${features[@]}" \
+          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$site/guide.page.json" "${home[@]}" "${features[@]}" "${run[@]}" \
             --repository "$GUIDE_REPOSITORY" > "$site/index.html"
           grep -qF 'data-ui-back' "$site/index.html"
       - if: inputs.build != ''
