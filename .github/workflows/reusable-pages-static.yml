@@ -27,6 +27,11 @@ on:
         required: false
         type: string
         default: ""
+      guide_dir:
+        description: "Optional folder inside artifact_path for the guide (for example guide), when the Pages already has its own front page; empty: artifact_path itself"
+        required: false
+        type: string
+        default: ""
       guide_features:
         description: "Optional Python files whose every CLI command and public name fill the guide's 📚 機能全一覧 tab (space-separated, see PySaiyanWeBoo add_features). Empty: <repository name>.py (lower case, - as _), else <initials>.py (search_seq_including_spaces → ssis.py), when it exists; - turns it off"
         required: false
@@ -81,13 +86,19 @@ jobs:
           GUIDE_ASSETS: ${{ inputs.guide_assets }}
           GUIDE_BRAND: ${{ inputs.guide_brand }}
           GUIDE_FEATURES: ${{ inputs.guide_features }}
+          GUIDE_DIR: ${{ inputs.guide_dir }}
           ARTIFACT_PATH: ${{ inputs.artifact_path }}
           GUIDE_REPOSITORY: ${{ github.repository }}
         run: |
-          mkdir -p "$ARTIFACT_PATH"
+          # 📘 guide_dir keeps a Pages' own front page: the guide and everything next to it go one folder down.
+          case "$GUIDE_DIR" in
+            /* | *..*) echo "::error::guide_dir is a folder inside artifact_path" >&2; exit 1 ;;
+          esac
+          site="$ARTIFACT_PATH${GUIDE_DIR:+/$GUIDE_DIR}"
+          mkdir -p "$site"
           read -r -a pairs <<< "$GUIDE_ASSETS"
           for pair in "${pairs[@]}"; do
-            target="$ARTIFACT_PATH/${pair#*=}"
+            target="$site/${pair#*=}"
             mkdir -p "$(dirname "$target")"
             cp -R "${pair%%=*}" "$target"
           done
@@ -99,15 +110,15 @@ jobs:
             fi
             python3 -S "$store_cli" sync "icon.png=$GUIDE_BRAND.icon" "favicon.png=$GUIDE_BRAND.favicon" \
               "icon-180.png=$GUIDE_BRAND.icon@180:opaque" "icon-192.png=$GUIDE_BRAND.icon@192:opaque" \
-              "icon-512.png=$GUIDE_BRAND.icon@512:opaque" --cache "$ARTIFACT_PATH"
-            rm -f "$ARTIFACT_PATH/.cacherecycle.json"
+              "icon-512.png=$GUIDE_BRAND.icon@512:opaque" --cache "$site"
+            rm -f "$site/.cacherecycle.json"
           fi
           # 📲 A guide with an icon also gets square icon-180/192/512.png, manifest.webmanifest and the spec with its
           # Base64 cache (home) next to the page, so "Add to Home Screen" and shortcuts show the repository's own icon.
-          cp "$GUIDE_PAGE" "$ARTIFACT_PATH/guide.page.json"
+          cp "$GUIDE_PAGE" "$site/guide.page.json"
           home=()
           if python3 -c 'import json, sys; sys.exit(0 if "icon" in json.load(open(sys.argv[1], encoding="utf-8")) else 1)' "$GUIDE_PAGE"; then
-            home=(--home-screen "$ARTIFACT_PATH")
+            home=(--home-screen "$site")
           fi
           # 📚 A 機能全一覧 tab lists every CLI command and public name, read from the code (add_features).
           features=()
@@ -129,9 +140,9 @@ jobs:
             done
           fi
           # 🏠 portfolio · 🐙 repository: the way back comes from the pinned renderer (back_nav_html).
-          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$ARTIFACT_PATH/guide.page.json" "${home[@]}" "${features[@]}" \
-            --repository "$GUIDE_REPOSITORY" > "$ARTIFACT_PATH/index.html"
-          grep -qF 'data-ui-back' "$ARTIFACT_PATH/index.html"
+          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$site/guide.page.json" "${home[@]}" "${features[@]}" \
+            --repository "$GUIDE_REPOSITORY" > "$site/index.html"
+          grep -qF 'data-ui-back' "$site/index.html"
       - if: inputs.build != ''
         name: Build
         env:
