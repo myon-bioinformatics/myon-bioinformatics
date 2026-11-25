@@ -22,6 +22,11 @@ on:
         required: false
         type: string
         default: ""
+      guide_dir:
+        description: "Optional folder under artifact_path for the guide and everything written next to it (for example guide, when index.html at the top is the repository's own page)"
+        required: false
+        type: string
+        default: ""
       guide_brand:
         description: "Optional CaChereCyCle id prefix, the repository name as written (for example xprobe): <prefix>.icon and <prefix>.favicon are written next to the guide as icon.png, favicon.png and square icon-180/192/512.png, so the repository keeps no copies"
         required: false
@@ -75,13 +80,13 @@ jobs:
           GUIDE_PAGE: ${{ inputs.guide_page }}
           GUIDE_ASSETS: ${{ inputs.guide_assets }}
           GUIDE_BRAND: ${{ inputs.guide_brand }}
-          ARTIFACT_PATH: ${{ inputs.artifact_path }}
+          GUIDE_OUT: ${{ inputs.guide_dir != '' && format('{0}/{1}', inputs.artifact_path, inputs.guide_dir) || inputs.artifact_path }}
           GUIDE_REPOSITORY: ${{ github.repository }}
         run: |
-          mkdir -p "$ARTIFACT_PATH"
+          mkdir -p "$GUIDE_OUT"
           read -r -a pairs <<< "$GUIDE_ASSETS"
           for pair in "${pairs[@]}"; do
-            target="$ARTIFACT_PATH/${pair#*=}"
+            target="$GUIDE_OUT/${pair#*=}"
             mkdir -p "$(dirname "$target")"
             cp -R "${pair%%=*}" "$target"
           done
@@ -93,20 +98,20 @@ jobs:
             fi
             python3 -S "$store_cli" sync "icon.png=$GUIDE_BRAND.icon" "favicon.png=$GUIDE_BRAND.favicon" \
               "icon-180.png=$GUIDE_BRAND.icon@180:opaque" "icon-192.png=$GUIDE_BRAND.icon@192:opaque" \
-              "icon-512.png=$GUIDE_BRAND.icon@512:opaque" --cache "$ARTIFACT_PATH"
-            rm -f "$ARTIFACT_PATH/.cacherecycle.json"
+              "icon-512.png=$GUIDE_BRAND.icon@512:opaque" --cache "$GUIDE_OUT"
+            rm -f "$GUIDE_OUT/.cacherecycle.json"
           fi
           # 📲 A guide with an icon also gets square icon-180/192/512.png, manifest.webmanifest and the spec with its
           # Base64 cache (home) next to the page, so "Add to Home Screen" and shortcuts show the repository's own icon.
-          cp "$GUIDE_PAGE" "$ARTIFACT_PATH/guide.page.json"
+          cp "$GUIDE_PAGE" "$GUIDE_OUT/guide.page.json"
           home=()
           if python3 -c 'import json, sys; sys.exit(0 if "icon" in json.load(open(sys.argv[1], encoding="utf-8")) else 1)' "$GUIDE_PAGE"; then
-            home=(--home-screen "$ARTIFACT_PATH")
+            home=(--home-screen "$GUIDE_OUT")
           fi
           # 🏠 portfolio · 🐙 repository: the way back comes from the pinned renderer (back_nav_html).
-          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$ARTIFACT_PATH/guide.page.json" "${home[@]}" \
-            --repository "$GUIDE_REPOSITORY" > "$ARTIFACT_PATH/index.html"
-          grep -qF 'data-ui-back' "$ARTIFACT_PATH/index.html"
+          uv run --no-project --with "$WEB_UI" python -m pysaiyanweboo --page "$GUIDE_OUT/guide.page.json" "${home[@]}" \
+            --repository "$GUIDE_REPOSITORY" > "$GUIDE_OUT/index.html"
+          grep -qF 'data-ui-back' "$GUIDE_OUT/index.html"
       - if: inputs.build != ''
         name: Build
         env:

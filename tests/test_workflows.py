@@ -988,11 +988,13 @@ def test_pages_guide_inputs_reach_the_shell_through_env_and_the_renderer_is_pinn
     assert guide["if"] == "inputs.guide_page != ''" and "${{" not in guide["run"]
     assert guide["env"] == {"GUIDE_PAGE": "${{ inputs.guide_page }}", "GUIDE_ASSETS": "${{ inputs.guide_assets }}",
                             "GUIDE_BRAND": "${{ inputs.guide_brand }}",
-                            "ARTIFACT_PATH": "${{ inputs.artifact_path }}",
+                            # 📁 the guide's folder: artifact_path, or artifact_path/guide_dir when the top is the repository's own page
+                            "GUIDE_OUT": "${{ inputs.guide_dir != '' && format('{0}/{1}', inputs.artifact_path, inputs.guide_dir) || inputs.artifact_path }}",
                             "GUIDE_REPOSITORY": "${{ github.repository }}"}
-    assert 'python -m pysaiyanweboo --page "$ARTIFACT_PATH/guide.page.json" "${home[@]}"' in guide["run"]
-    assert '--repository "$GUIDE_REPOSITORY" > "$ARTIFACT_PATH/index.html"' in guide["run"]  # 🏠 the way back comes from the pinned renderer
-    assert "grep -qF 'data-ui-back' \"$ARTIFACT_PATH/index.html\"" in guide["run"]
+    assert 'python -m pysaiyanweboo --page "$GUIDE_OUT/guide.page.json" "${home[@]}"' in guide["run"]
+    assert '--repository "$GUIDE_REPOSITORY" > "$GUIDE_OUT/index.html"' in guide["run"]  # 🏠 the way back comes from the pinned renderer
+    assert "grep -qF 'data-ui-back' \"$GUIDE_OUT/index.html\"" in guide["run"]
+    assert "$ARTIFACT_PATH" not in guide["run"]                                  # everything the guide writes stays in its folder
     assert re.fullmatch(r"pysaiyanweboo @ git\+https://github\.com/myon-bioinformatics/PySaiyanWeBoo@[0-9a-f]{40}", doc["env"]["WEB_UI"])
 
 
@@ -1013,7 +1015,7 @@ def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
     (tmp_path / "docs/demos/D01.gif").write_bytes(b"gif")
     (tmp_path / "docs/guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W", "icon": "./icon.png"}', encoding="utf-8")
     env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
-           "GUIDE_PAGE": "docs/guide.page.json", "ARTIFACT_PATH": "_site",
+           "GUIDE_PAGE": "docs/guide.page.json", "GUIDE_OUT": "_site",
            "GUIDE_ASSETS": "icon.png=favicon.png icon.png=assets/brand/icon.png docs/demos=demos",
            "GUIDE_REPOSITORY": "example/widget"}
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
@@ -1028,6 +1030,12 @@ def test_pages_guide_step_renders_the_spec_and_copies_named_assets(tmp_path):
     (tmp_path / "docs/guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W"}', encoding="utf-8")
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
     assert "--home-screen" not in (tmp_path / "_site/index.html").read_text(encoding="utf-8")   # no icon, no home screen
+    # 📁 guide_dir: the guide, its assets and its spec go to the folder, and the top index.html is left alone
+    (tmp_path / "_site/index.html").write_text("front", encoding="utf-8")
+    subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env={**env, "GUIDE_OUT": "_site/guide"}, check=True)
+    assert (tmp_path / "_site/index.html").read_text(encoding="utf-8") == "front"
+    assert "--page _site/guide/guide.page.json" in (tmp_path / "_site/guide/index.html").read_text(encoding="utf-8")
+    assert (tmp_path / "_site/guide/demos/D01.gif").read_bytes() == b"gif"
     (tmp_path / "bin/uv").write_text("#!/bin/sh\nprintf '<main class=\"ui-page\"></main>'\n", encoding="utf-8")
     assert subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env).returncode != 0
 
@@ -1050,7 +1058,7 @@ def test_pages_guide_brand_reads_the_pinned_store_and_leaves_no_index(tmp_path):
         "(out / '.cacherecycle.json').write_text('{}')\n", encoding="utf-8")
     (tmp_path / "guide.page.json").write_text('{"schema": "web-ui-page/1", "title": "W", "icon": "./icon.png"}', encoding="utf-8")
     env = {**os.environ, "PATH": f"{tmp_path / 'bin'}{os.pathsep}{os.environ['PATH']}", "WEB_UI": "pinned",
-           "GUIDE_PAGE": "guide.page.json", "ARTIFACT_PATH": "_site", "GUIDE_ASSETS": "", "GUIDE_BRAND": "Err-o-RoadRunner",
+           "GUIDE_PAGE": "guide.page.json", "GUIDE_OUT": "_site", "GUIDE_ASSETS": "", "GUIDE_BRAND": "Err-o-RoadRunner",
            "GUIDE_REPOSITORY": "example/widget"}
     subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path, env=env, check=True)
     site = tmp_path / "_site"
