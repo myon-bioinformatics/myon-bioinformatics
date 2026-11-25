@@ -21,5 +21,5 @@ dev = [
 # 📌 PSWB (PySaiyanWeBoo) renders the audit pages (ci_status.py, scripts/build_audit_pages.py). The pin is the same
 # commit as PSWB in .github/workflows/reusable-pages-static.yml (tests/test_workflows.py); move both, then uv lock.
 pages = [
-  "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@546971762de8d074d0923fcd518c9ccfff2064d6",
+  "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@7909683ff5f5ee748b79822a3c0718d57c527a76",
 ]
