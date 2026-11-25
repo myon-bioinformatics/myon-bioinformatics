@@ -65,7 +65,7 @@ jobs:
   build:
     # A guide page is also built on pull requests, where an invalid spec fails. Everything else builds only when it deploys.
     if: inputs.guide_page != '' || (github.ref_name == github.event.repository.default_branch && (github.event_name == 'push' || inputs.build != ''))
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     permissions:
       contents: read
@@ -180,7 +180,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       pages: write
