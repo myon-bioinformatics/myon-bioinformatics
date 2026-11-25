@@ -988,6 +988,7 @@ def test_pages_guide_inputs_reach_the_shell_through_env_and_the_renderer_is_pinn
     assert guide["if"] == "inputs.guide_page != ''" and "${{" not in guide["run"]
     assert guide["env"] == {"GUIDE_PAGE": "${{ inputs.guide_page }}", "GUIDE_ASSETS": "${{ inputs.guide_assets }}",
                             "GUIDE_BRAND": "${{ inputs.guide_brand }}", "GUIDE_FEATURES": "${{ inputs.guide_features }}",
+                            "GUIDE_FEATURES_CONFIG": "${{ inputs.guide_features_config }}",
                             "GUIDE_DIR": "${{ inputs.guide_dir }}",
                             "ARTIFACT_PATH": "${{ inputs.artifact_path }}",
                             "GUIDE_REPOSITORY": "${{ github.repository }}"}
@@ -1060,6 +1061,14 @@ def test_pages_guide_features_name_the_repository_module_or_the_given_files(tmp_
     assert "--features eorr.py --repository" in args(GUIDE_FEATURES="")                      # Err-o-RoadRunner: E, o, R, R
     assert "--features a.py --features tools/b.py --repository" in args(GUIDE_FEATURES="a.py tools/b.py")
     assert "--features" not in args(GUIDE_FEATURES="-")
+
+    assert "--features-config docs/guide.features.json --repository" in args(
+        GUIDE_FEATURES="", GUIDE_FEATURES_CONFIG="docs/guide.features.json")
+    conflict = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", guide["run"]], cwd=tmp_path,
+                              env={**env, "GUIDE_FEATURES": "a.py", "GUIDE_FEATURES_CONFIG": "docs/guide.features.json"},
+                              capture_output=True, text=True)
+    assert conflict.returncode != 0
+    assert "Specify only one" in conflict.stderr
 
 
 def test_pages_guide_dir_keeps_the_front_page_and_puts_the_guide_one_folder_down(tmp_path):
