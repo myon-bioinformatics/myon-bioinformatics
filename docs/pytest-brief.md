@@ -16,7 +16,8 @@ the final counts. Consumer repositories vendor this file from here.
    - Runs `python -m pytest -q -rfE -p no:cacheprovider`.
    - Prints only `FAILED` / `ERROR` lines, coverage lines (`TOTAL ...`, `Required test coverage ...`)
      and the final summary line (`X passed, Y failed in ...`).
-   - When pytest itself could not run (exit 2-5 with no summary line), prints the last `--tail` lines.
+   - When pytest fails before reporting results, prints the last `--tail` lines, including startup
+     tracebacks reported with exit 1 by older pytest versions.
 3. **Stdlib only**: runs as `python -S pytest_brief.py`, loosely coupled to the pytest and pip it drives.
 
 ## Usage
@@ -44,7 +45,7 @@ python -S pytest_brief.py --requirements tool/python/requirements.txt -- tool/py
 ## Exit status
 
 - `0`: all tests passed (or were skipped)
-- `1`: test failures
+- `1`: test failures, or startup errors reported with this code by older pytest versions
 - `3`: dependency analysis/installation failed, or pytest reported an internal error
 - `4`: pytest usage error, including an explicitly requested plugin that cannot be found (pytest 9.2+)
 - anything else: pytest's own exit code, passed through
