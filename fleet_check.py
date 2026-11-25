@@ -12,7 +12,7 @@ from __future__ import annotations
 import ast, functools, hashlib, json, os, re, shlex, shutil, signal, subprocess, sys, tempfile
 from pathlib import Path
 
-__all__ = ["check_actions", "check_imports", "check_lock", "check_scripts", "launcher_contract", "node", "node_parity", "parent_refs", "python_floor", "repo_root", "run_main", "script_facts", "vendor_staging", "workflow_job"]
+__all__ = ["check_actions", "check_imports", "check_lock", "check_scripts", "launcher_contract", "node", "node_parity", "parent_refs", "python_floor", "repo_root", "run_main", "script_catalog", "script_facts", "vendor_staging", "workflow_job"]
 PARENT = "myon-bioinformatics/myon-bioinformatics"
 
 
@@ -51,11 +51,36 @@ def script_facts(path) -> dict:
             "argparse": bool(names & {"argparse", "cli_args"})}
 
 
+
+def script_catalog(root, patterns, *, timeout: float = 20) -> list[dict]:
+    """📜 ``{path, summary, usage}`` for every file the globs match under ``root``, sorted and once each: a scripts table that
+    follows the code instead of being written by hand (the portfolio's project pages, a repository's Pages).
+
+    ``summary`` is ``script_facts``'. Only a .py that imports argparse or cli_args is asked for ``--help`` (``python3 -S``,
+    an empty HOME and only PATH and LANG of this machine's variables); ``usage`` is the first line of that and its indented
+    continuations (≤ 300 characters). Nothing else is run. Best effort, never raises."""
+    root, items = Path(root), []
+    for path in sorted({p for pattern in patterns for p in root.glob(pattern) if p.is_file()}):
+        relative, facts, lines = path.relative_to(root).as_posix(), script_facts(path), []
+        if facts["argparse"] and path.suffix == ".py":
+            try:
+                with tempfile.TemporaryDirectory() as home:   # 🔒 PATH only: no names or values of this machine's other variables
+                    done = subprocess.run(["python3", "-S", relative, "--help"], cwd=root, capture_output=True, text=True, timeout=timeout,
+                                          stdin=subprocess.DEVNULL, env={"PATH": os.environ.get("PATH", ""), "HOME": home, "LANG": "C.UTF-8"})
+                lines = done.stdout.strip().splitlines() if done.returncode == 0 else []
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        lines = lines if lines and lines[0].lower().startswith("usage") else []
+        end = next((i for i, line in enumerate(lines[1:], 1) if not line[:1].isspace() or not line.strip()), len(lines))
+        usage = " ".join(" ".join(line.split()) for line in lines[:end])   # the first line and its indented continuations
+        items.append({"path": relative, "summary": facts["summary"], "usage": usage[:300] + ("…" if len(usage) > 300 else "")})
+    return items
+
 def check_scripts(root, patterns=("*.py", "*.mjs", "*.cjs", "scripts/*", "tools/*", "examples/*"), passthrough=()) -> dict:
     """📝 Every script the globs match (.py / .mjs / .cjs) describes itself, and ⌨️ one that reads ``sys.argv``
     declares its arguments with argparse or cli_args, except ``passthrough`` launchers that hand argv on untouched.
 
-    That is what the portfolio's script catalog reads instead of running anything. Returns ``script_facts`` by path.
+    ``script_catalog`` turns the same facts into a table. Returns ``script_facts`` by path.
     """
     root = Path(root)
     found = {p.relative_to(root).as_posix(): script_facts(p) for pattern in patterns for p in sorted(root.glob(pattern))

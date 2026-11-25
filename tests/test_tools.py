@@ -568,6 +568,24 @@ def _lock_row(root: Path, where: str, data: bytes, commit: str = "a" * 40) -> di
             "sha256": __import__("hashlib").sha256(data).hexdigest()}
 
 
+def test_fleet_check_script_catalog_lists_scripts_from_their_docstring_and_help(tmp_path):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    (tools / "cli.py").write_text('"""Do one thing.\n\nMore words."""\nimport argparse\n'
+                                  'p = argparse.ArgumentParser(prog="cli.py"); p.add_argument("--flag"); p.add_argument("--more", action="store_true")\n'
+                                  'p.add_argument("--and-a-rather-long-option-name", metavar="SOMETHING_WIDE"); p.parse_args()\n')
+    (tools / "quiet.py").write_text('import sys\nopen(sys.argv[0] + ".ran", "w")\n')   # no docstring, no argparse: never run
+    (tools / "facts.mjs").write_text('#!/usr/bin/env node\nimport fs from "node:fs";\n\n// Facts without a browser.\n')
+    (tools / "notes.txt").write_text("not a script")
+    items = fleet_check.script_catalog(tmp_path, ["tools/*.py", "tools/*.mjs", "tools/*.py"])
+    assert [i["path"] for i in items] == ["tools/cli.py", "tools/facts.mjs", "tools/quiet.py"]   # sorted, once each
+    cli, facts, quiet = items
+    assert (cli["summary"], quiet["summary"], facts["summary"]) == ("Do one thing.", "", "Facts without a browser.")
+    assert cli["usage"] == "usage: cli.py [-h] [--flag FLAG] [--more] [--and-a-rather-long-option-name SOMETHING_WIDE]"  # wrapped
+    assert quiet["usage"] == "" and not (tools / "quiet.py.ran").exists()                    # 🔍 read, never run
+    assert facts["usage"] == ""                                                               # JS is never run
+
+
 def test_fleet_check_scripts_reads_descriptions_and_declared_arguments_without_running_them(tmp_path):
     (tmp_path / "tools").mkdir()
     files = {"tool.py": '"""Do one thing.\n\nMore."""\nimport argparse, sys\nargparse.ArgumentParser().parse_args(sys.argv[1:])\n',
