@@ -21,12 +21,12 @@
     },
     {
       "repository": "myon-bioinformatics/PySaiyanWeBoo",
-      "ref": "635f2f265ea64d41326772b6b55011d7ad82037c",
-      "commit": "635f2f265ea64d41326772b6b55011d7ad82037c",
+      "ref": "901b790f14ad7a04a4280409bfd274d8f6926fa7",
+      "commit": "901b790f14ad7a04a4280409bfd274d8f6926fa7",
       "source": "pysaiyanweboo.py",
       "destination": "vendor/pysaiyanweboo.py",
-      "blob_sha": "ef50684a5a734ac906b3eb4d1e316bb12eaf15ef",
-      "sha256": "c20e29dc4c7bd20b62ae0986889f6ecedf3e06a2ec14b4b55e300f69900fac64"
+      "blob_sha": "ed7ad34aefb690fbfe215b9e26db49b0566839d7",
+      "sha256": "3832c1aa53eb78bbcbdfc420d951d7059eefcc91dd3ed479be397ec76dc57099"
     },
     {
       "repository": "myon-bioinformatics/PySaiyanWeBoo",

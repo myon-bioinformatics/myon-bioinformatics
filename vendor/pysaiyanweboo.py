@@ -8,7 +8,7 @@ only as an explicit subprocess helper for pytest/CI one-liners.
 """
 from __future__ import annotations
 
-import argparse, base64, bisect, colorsys, errno, functools, hashlib, heapq, hmac, http.client, http.server, importlib.util, json, math, os, random, re, shlex, shutil, struct, subprocess, sys, time, unicodedata, urllib.error, urllib.request, xml.etree.ElementTree as ET, zlib
+import argparse, ast, base64, colorsys, errno, hashlib, heapq, hmac, http.client, http.server, importlib.util, io, json, math, os, random, re, shlex, shutil, struct, subprocess, sys, time, unicodedata, urllib.error, urllib.request, xml.etree.ElementTree as ET, zlib
 from collections import Counter, defaultdict; from datetime import date, datetime, timezone; from decimal import Decimal; from html import escape; from pathlib import Path; from typing import Any, Sequence; from urllib.parse import parse_qsl, quote, urlsplit
 
 THEMES = ("modern", "github-like")
@@ -24,10 +24,12 @@ export function prettyJson(value){return JSON.stringify(value,null,2)}
 export async function copyText(value){const text=String(value);try{await navigator.clipboard.writeText(text)}catch(error){const box=document.createElement("textarea");box.value=text;box.setAttribute("readonly","");box.style.cssText="position:fixed;opacity:0";try{document.body.append(box);box.select();if(typeof document.execCommand!=="function"||!document.execCommand("copy"))throw error}finally{box.remove()}}}
 /** [data-ui-copy] copies the <pre> of its .ui-code box with copyText; the button shows data-ui-copied (or data-ui-copy-failed) for a moment. Returns the buttons. */
 export function bindCopy(root=document){const buttons=[...root.querySelectorAll("[data-ui-copy]")];for(const button of buttons){const box=button.closest(".ui-code"),pre=box&&box.querySelector("pre");if(!pre)continue;const label=button.textContent;button.addEventListener("click",async()=>{let ok=true;try{await copyText(pre.textContent)}catch{ok=false}button.textContent=(ok?button.dataset.uiCopied:button.dataset.uiCopyFailed)||label;setTimeout(()=>{button.textContent=label},1600)})}return buttons}
-/** Switch data-ui-theme on <body> with no reload: controls are <select data-ui-theme-switch> or radios named ui-theme. The choice is remembered (localStorage, best effort). Returns the theme in effect. */
 /** Buttons with data-ui-toggle flip aria-pressed on click (memory only: nothing is saved); data-label-on / data-label-off, when present, rename the button. */
 export function bindToggles(root=document){return[...root.querySelectorAll("[data-ui-toggle]")].map(b=>{const sync=()=>{const label=b.getAttribute("aria-pressed")==="true"?b.dataset.labelOn:b.dataset.labelOff;if(label){b.setAttribute("aria-label",label);b.title=label}};b.addEventListener("click",()=>{b.setAttribute("aria-pressed",String(b.getAttribute("aria-pressed")!=="true"));sync()});sync();return b})}
-export function bindTheme(root=document,{key="web-ui-theme"}={}){const body=document.body,controls=[...root.querySelectorAll("[data-ui-theme-switch],input[name=ui-theme]")];const known=name=>controls.some(c=>c.tagName==="SELECT"?[...c.options].some(o=>o.value===name):c.value===name);const sync=()=>{for(const c of controls){if(c.tagName==="SELECT")c.value=body.dataset.uiTheme;else c.checked=c.value===body.dataset.uiTheme}};let saved=null;try{saved=localStorage.getItem(key)}catch{}if(saved&&known(saved))body.dataset.uiTheme=saved;sync();for(const c of controls)c.addEventListener("change",()=>{if(!known(c.value))return;body.dataset.uiTheme=c.value;sync();try{localStorage.setItem(key,c.value)}catch{}});return body.dataset.uiTheme}
+/** Switch data-ui-theme on <body> with no reload: controls are <select data-ui-theme-switch> or radios named ui-theme. The choice is remembered (localStorage, best effort) and marked on <body> as data-ui-theme-chosen. An empty-valued option means "the page's own theme" (data-ui-theme-page, by default the theme at bind time; see pageTheme): choosing it forgets the choice. Returns the theme in effect. */
+export function bindTheme(root=document,{key="web-ui-theme"}={}){const body=document.body,controls=[...root.querySelectorAll("[data-ui-theme-switch],input[name=ui-theme]")];const known=name=>controls.some(c=>c.tagName==="SELECT"?[...c.options].some(o=>o.value===name):c.value===name);if(body.dataset.uiThemePage===undefined)body.dataset.uiThemePage=body.dataset.uiTheme||"";const sync=()=>{const chosen=body.dataset.uiThemeChosen;for(const c of controls){if(c.tagName==="SELECT")c.value=chosen===undefined&&[...c.options].some(o=>o.value==="")?"":body.dataset.uiTheme;else c.checked=c.value===body.dataset.uiTheme}};const choose=name=>{if(name){body.dataset.uiThemeChosen=name;body.dataset.uiTheme=name}else{delete body.dataset.uiThemeChosen;body.dataset.uiTheme=body.dataset.uiThemePage}};let saved=null;try{saved=localStorage.getItem(key)}catch{}if(saved&&known(saved))choose(saved);sync();for(const c of controls)c.addEventListener("change",()=>{if(!known(c.value))return;choose(c.value);sync();try{if(c.value)localStorage.setItem(key,c.value);else localStorage.removeItem(key)}catch{}});return body.dataset.uiTheme}
+/** Tell bindTheme which theme is the page's own (a page whose own look changes, such as display modes): it shows unless the visitor chose one. Returns the theme in effect. */
+export function pageTheme(name){const body=document.body;body.dataset.uiThemePage=name;if(body.dataset.uiThemeChosen===undefined)body.dataset.uiTheme=name;return body.dataset.uiTheme}
 /** Mark on-screen elements with data-lit (IntersectionObserver); CSS decides what lit looks like. Without IntersectionObserver every element counts as lit. Returns a stop function. */
 export function observeLit(targets,{threshold=0.4,root=null}={}){const nodes=typeof targets==="string"?[...document.querySelectorAll(targets)]:[...targets];if(typeof IntersectionObserver==="undefined"){for(const n of nodes)n.dataset.lit="";return()=>{}}const io=new IntersectionObserver(entries=>{for(const e of entries){if(e.isIntersecting)e.target.dataset.lit="";else delete e.target.dataset.lit}},{threshold,root});for(const n of nodes)io.observe(n);return()=>io.disconnect()}
 /** Click-to-enlarge for <a href="full.png"><img alt="..."></a> items inside [data-ui-lightbox]: one <dialog>; Esc, the backdrop and the close button shut it, arrows, buttons and a 48px swipe step through. Returns {open, close, dialog}, or null without items or <dialog>. */
@@ -60,19 +62,11 @@ export function bindRecordsIO(root=document,{filename="records.json"}={}){const 
 export function downloadText(filename,text,type="application/json"){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 /** [data-ui-download="name.json"] saves the text of its data-ui-download-source (a <script type="application/json">) as that file. Returns the buttons. */
 export function bindDownloads(root=document){const buttons=[...root.querySelectorAll("[data-ui-download]")];for(const button of buttons){const source=root.querySelector(button.dataset.uiDownloadSource||"#none");if(source)button.addEventListener("click",()=>downloadText(button.dataset.uiDownload,source.textContent))}return buttons}
+/** select[data-ui-choice="name"] shows the [data-ui-choice-panel="name"] whose data-ui-choice-value is its value and hides the others (without JS every panel shows). With data-ui-draft the choice is kept like any draft. Returns the bound selects. */
+export function bindChoice(root=document){const fields=[...root.querySelectorAll("select[data-ui-choice]")];for(const field of fields){const panels=[...root.querySelectorAll("[data-ui-choice-panel]")].filter(p=>p.dataset.uiChoicePanel===field.dataset.uiChoice);const sync=()=>{for(const p of panels)p.hidden=p.dataset.uiChoiceValue!==field.value};field.addEventListener("change",sync);field.addEventListener("input",sync);sync()}return fields}
 /** Bind everything inside root; pages mark the board with data-ui-records (or carry a data download) so loading the module is enough. */
-export function mount(root=document,options={}){bindDrafts(root,options);bindStatus(root);bindFilter(root);bindRecordsIO(root,options);bindDownloads(root);return root}
+export function mount(root=document,options={}){bindDrafts(root,options);bindChoice(root);bindStatus(root);bindFilter(root);bindRecordsIO(root,options);bindDownloads(root);return root}
 if(typeof document!=="undefined"&&(document.querySelector("[data-ui-records]")||document.querySelector("[data-ui-download]"))){const start=()=>mount(document);if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",start,{once:true});else start()}
-""",
-    "stub.js": r"""import{setText,prettyJson}from"./ui.js";
-/**
- * Bind one text input to an async or sync consumer handler.
- *
- * handler receives the input string and may return either text or any
- * JSON-serializable value. Protocol-specific validation and semantics belong
- * to the consuming repository, not web-ui.
- */
-export function bindStub({input="#query",run="#run",output="#output",form="#stub-form",handler}){const q=document.querySelector(input),b=document.querySelector(run),f=document.querySelector(form);if(!q||!b)return;const execute=async event=>{event?.preventDefault();b.disabled=true;try{const result=await handler(q.value);setText(output,typeof result==="string"?result:prettyJson(result))}catch(error){setText(output,`Error: ${error?.message??error}`)}finally{b.disabled=false}};(f??b).addEventListener(f?"submit":"click",execute)}
 """,
     "controls.js": r"""/* Provider-independent, text-only dropdown binding. No fetches or HTML input. */
 (function (root, factory) {
@@ -835,14 +829,65 @@ export function bindStub({input="#query",run="#run",output="#output",form="#stub
 }
 EMBEDDED_UI_JS = _JS["ui.js"]
 
-SHARED_SCRIPT_NAMES = ("ui.js", "stub.js", "repository-diagnostics.js", "navigation.js", "controls.js", "records.js")
+SHARED_SCRIPT_NAMES = ("ui.js", "repository-diagnostics.js", "navigation.js", "controls.js", "records.js")
 # Pinned browser bundle for PptxGenJS 4.0.1, including its JSZip dependency.
 # sha384 covers the exact bytes of that jsDelivr URL (immutable npm version).
 _PPTXGENJS_URL = "https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js"
 _PPTXGENJS_SRI = "sha384-qb0Xhi7LLYpvW1HCK6oMrmDLSY9sy7vwm6ZlV6KjtrlL9yg30+YN4neTwnmX+Kp8"
 # jsDelivr resolves plotly.js-dist-min to the latest npm release (not plotly-latest).
+# BEGIN DRAgoWing Plotly runtime
 PLOTLY_JS_URL = "https://cdn.jsdelivr.net/npm/plotly.js-dist-min/plotly.min.js"
 PLOTLY_JS_MAX_BYTES = 8 * 1024 * 1024
+
+
+def verify_plotly_js(raw: bytes) -> bytes:
+    """Return CDN bytes or fail before any decoding, caching or execution."""
+    if not isinstance(raw, bytes):
+        raise TypeError("Plotly.js payload must be bytes")
+    if not raw:
+        raise RuntimeError("Plotly.js CDN returned an empty body")
+    if len(raw) > PLOTLY_JS_MAX_BYTES:
+        raise RuntimeError(f"Plotly.js exceeds {PLOTLY_JS_MAX_BYTES} byte limit")
+    return raw
+
+
+def _fetch_plotly_bytes(*, timeout: float, user_agent: str) -> bytes:
+    """Explicitly fetch the allowlisted jsDelivr bundle with a bounded read.
+
+    Rendering helpers do not call this function. Consumers own successful-byte
+    caching; cached/local bytes can be checked with verify_plotly_js().
+    """
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("timeout must be finite and positive")
+    request = urllib.request.Request(
+        PLOTLY_JS_URL, headers={"User-Agent": user_agent},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            status = getattr(response, "status", None)
+            if status is None:
+                status = getattr(response, "getcode", lambda: 200)()
+            if status != 200:
+                raise RuntimeError(f"Plotly.js CDN returned HTTP {status} for {PLOTLY_JS_URL}")
+            raw = response.read(PLOTLY_JS_MAX_BYTES + 1)
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"Plotly.js CDN request failed: HTTP {exc.code} {exc.reason}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Plotly.js CDN request failed: {exc.reason}") from exc
+    except (OSError, http.client.HTTPException) as exc:
+        raise RuntimeError(f"Plotly.js CDN request failed: {exc}") from exc
+    return verify_plotly_js(raw)
+
+
+def _plotly_initializer(div_id: str, spec_expression: str, config_expression: str) -> str:
+    """Build the initializer from caller-serialized JS expressions."""
+    identity = json.dumps(div_id, ensure_ascii=True).replace("<", "\\u003c")
+    return (
+        f'(function(){{var s={spec_expression};var el=document.getElementById({identity});'
+        f'if(el&&window.Plotly){{window.Plotly.newPlot(el,s.data,s.layout,{config_expression});}}}})();'
+    )
+# END DRAgoWing Plotly runtime
+
 # Explicit HTTPS allowlist for opt-in remote classic scripts (not ES modules).
 REMOTE_SCRIPT_NAMES: dict[str, str] = {
     "plotly.js": PLOTLY_JS_URL,
@@ -925,8 +970,8 @@ _CSS = {
     ),
     "tokens.css": r""":root{--ui-bg:#0d1117;--ui-panel:#101820;--ui-fg:#d1f7c4;--ui-muted:#8b949e;--ui-border:#58a6ff;--ui-accent:#7ee787;--ui-danger:#cf222e;--ui-radius:0;--ui-text:16px;--ui-space:1rem;--ui-max:960px;--ui-font:Meiryo,メイリオ,sans-serif;--ui-font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
 """,
-    "base.css": r"""@layer base{*{box-sizing:border-box}body{margin:0;background:var(--ui-bg);color:var(--ui-fg);font:var(--ui-text)/1.6 var(--ui-font)}pre,code,kbd,samp{font-family:var(--ui-font-mono)!important}.ui-page{max-width:var(--ui-max);margin:auto;padding:var(--ui-space)}a{color:inherit}.ui-print-only{display:none}@media print{body{background:#fff;color:#000}.ui-page{max-width:none;padding:0}.ui-no-print{display:none}.ui-print-only{display:block}a{text-decoration:none}}@media(prefers-reduced-motion:reduce){*,::before,::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}}""",
-    "components.css": r"""@layer components{.ui-panel,.ui-card{background:var(--ui-panel);border:1px solid var(--ui-border);padding:var(--ui-space);margin:var(--ui-space) 0;border-radius:var(--ui-radius)}.ui-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}.ui-tag{display:inline-block;border:1px solid var(--ui-border);padding:.1rem .4rem}.ui-button,.ui-input,.ui-elements button,.ui-elements select,.ui-elements textarea,.ui-elements input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file]){font:inherit;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);padding:.6rem;border-radius:var(--ui-radius)}.ui-button,.ui-elements button{cursor:pointer}.ui-button:hover,.ui-elements button:hover{border-color:var(--ui-accent)}.ui-button:disabled,.ui-elements button:disabled{opacity:.4;cursor:default}.ui-elements input[type=range],.ui-elements input[type=checkbox],.ui-elements input[type=radio]{accent-color:var(--ui-accent)}.ui-elements label{color:var(--ui-muted)}.ui-muted{color:var(--ui-muted)}.ui-output{font:inherit;white-space:pre-wrap;overflow:auto;background:#d8dee4;color:#161b22;border:1px solid #8c959f;border-radius:4px;padding:.75rem}pre code,.ui-output code{font-family:inherit;color:inherit}pre.ui-output code{background:transparent}@media(max-width:480px){.ui-page{padding:.75rem}.ui-grid{grid-template-columns:1fr}.ui-card,.ui-panel{margin:.75rem 0;padding:.75rem}}.ui-lightbox{border:1px solid var(--ui-border);background:var(--ui-panel);color:var(--ui-fg);padding:1rem;max-width:min(96vw,960px);max-height:96vh;border-radius:var(--ui-radius)}.ui-lightbox::backdrop{background:rgba(0,0,0,.72)}.ui-lightbox img{display:block;max-width:100%;max-height:calc(96vh - 8rem);margin:auto}.ui-lightbox-bar{display:flex;gap:.5rem;justify-content:space-between;margin-top:.75rem}body:has(.ui-lightbox[open]){overflow:hidden}.ui-table,.ui-elements table{border-collapse:collapse;width:100%}.ui-table th,.ui-table td,.ui-elements th,.ui-elements td{border-bottom:1px solid var(--ui-border);padding:.25rem .5rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}.ui-table th,.ui-elements th{color:var(--ui-muted);font-weight:500}.ui-table caption,.ui-elements caption{text-align:left;color:var(--ui-muted);padding:.25rem 0}.ui-pass{color:var(--ui-accent)}.ui-fail{color:var(--ui-danger)}.ui-changed{background:color-mix(in srgb,var(--ui-accent) 18%,transparent)}.ui-tag.ui-pass{border-color:var(--ui-accent)}.ui-tag.ui-fail{border-color:var(--ui-danger)}}""",
+    "base.css": r"""@layer base{*{box-sizing:border-box}body{margin:0;background:var(--ui-bg);color:var(--ui-fg);font:var(--ui-text)/1.6 var(--ui-font)}pre,code,kbd,samp{font-family:var(--ui-font-mono)!important}.ui-page{max-width:var(--ui-max);margin:auto;padding:var(--ui-space)}.ui-title{overflow-wrap:anywhere}a{color:inherit}.ui-print-only{display:none}@media print{body{background:#fff;color:#000}.ui-page{max-width:none;padding:0}.ui-no-print{display:none}.ui-print-only{display:block}a{text-decoration:none}}@media(prefers-reduced-motion:reduce){*,::before,::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}}""",
+    "components.css": r"""@layer components{.ui-panel,.ui-card{background:var(--ui-panel);border:1px solid var(--ui-border);padding:var(--ui-space);margin:var(--ui-space) 0;border-radius:var(--ui-radius)}.ui-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.75rem}.ui-tag{display:inline-block;border:1px solid var(--ui-border);padding:.1rem .4rem}.ui-button,.ui-input,.ui-elements button,.ui-elements select,.ui-elements textarea,.ui-elements input:not([type=checkbox],[type=radio],[type=range],[type=color],[type=file]){font:inherit;background:var(--ui-panel);color:var(--ui-fg);border:1px solid var(--ui-border);padding:.6rem;border-radius:var(--ui-radius)}.ui-button,.ui-elements button{cursor:pointer}.ui-button:hover,.ui-elements button:hover{border-color:var(--ui-accent)}.ui-button:disabled,.ui-elements button:disabled{opacity:.4;cursor:default}.ui-elements input[type=range],.ui-elements input[type=checkbox],.ui-elements input[type=radio]{accent-color:var(--ui-accent)}.ui-elements label{color:var(--ui-muted)}.ui-muted{color:var(--ui-muted)}.ui-back{margin:0 0 8px;font-size:.875rem}.ui-back .ui-links{margin:0}.ui-back a{color:var(--ui-muted);text-decoration:none}.ui-back a:hover,.ui-back a:focus-visible{color:var(--ui-accent);text-decoration:underline}.ui-output{font:inherit;white-space:pre-wrap;overflow:auto;background:#d8dee4;color:#161b22;border:1px solid #8c959f;border-radius:4px;padding:.75rem}pre code,.ui-output code{font-family:inherit;color:inherit}pre.ui-output code{background:transparent}@media(max-width:480px){.ui-page{padding:.75rem}.ui-grid{grid-template-columns:1fr}.ui-card,.ui-panel{margin:.75rem 0;padding:.75rem}}.ui-lightbox{border:1px solid var(--ui-border);background:var(--ui-panel);color:var(--ui-fg);padding:1rem;max-width:min(96vw,960px);max-height:96vh;border-radius:var(--ui-radius)}.ui-lightbox::backdrop{background:rgba(0,0,0,.72)}.ui-lightbox img{display:block;max-width:100%;max-height:calc(96vh - 8rem);margin:auto}.ui-lightbox-bar{display:flex;gap:.5rem;justify-content:space-between;margin-top:.75rem}body:has(.ui-lightbox[open]){overflow:hidden}.ui-table,.ui-elements table{border-collapse:collapse;width:100%}.ui-table th,.ui-table td,.ui-elements th,.ui-elements td{border-bottom:1px solid var(--ui-border);padding:.25rem .5rem;text-align:left;vertical-align:top;overflow-wrap:anywhere}.ui-table th,.ui-elements th{color:var(--ui-muted);font-weight:500}.ui-table caption,.ui-elements caption{text-align:left;color:var(--ui-muted);padding:.25rem 0}.ui-pass{color:var(--ui-accent)}.ui-fail{color:var(--ui-danger)}.ui-changed{background:color-mix(in srgb,var(--ui-accent) 18%,transparent)}.ui-tag.ui-pass{border-color:var(--ui-accent)}.ui-tag.ui-fail{border-color:var(--ui-danger)}}""",
     "matrix.css": r"""@layer components{.ui-matrix:has(>section:target)>section:not(:target){display:none}.ui-matrix>section{scroll-margin-top:16px}.ui-matrix-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--ui-matrix-col,160px),1fr));gap:var(--ui-matrix-gap,8px);padding:0;list-style:none}.ui-matrix-tiles li{border:1px solid var(--ui-border);padding:var(--ui-matrix-pad,8px);font-size:.8rem;overflow-wrap:anywhere}.ui-matrix-tiles img{display:block;width:100%;height:auto;margin:var(--ui-matrix-pad,8px) 0;background:#fff}.ui-matrix-tiles .is-missing{border-style:dashed;color:var(--ui-muted)}.ui-matrix-tiles .is-fail{outline:2px solid var(--ui-danger)}.ui-matrix-tiles .is-reference{outline:2px solid var(--ui-accent)}.ui-matrix-page>nav{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}.ui-matrix-page>nav .ui-button{white-space:nowrap;text-decoration:none}.ui-matrix a{overflow-wrap:anywhere}}
 """,
     "repository-diagnostics.css": r""".repo-diagnostics{box-sizing:border-box;border:1px solid var(--ui-border,#c9c9cf);border-radius:1rem;padding:1.25rem;background:var(--ui-surface,#fff);color:var(--ui-text,#222)}.repo-diagnostics h2{margin:0 0 .75rem;font-size:1.25rem}.repo-diagnostics__commit{overflow-wrap:anywhere}.repo-diagnostics__measurements{display:grid;grid-template-columns:minmax(8rem,1fr) 1fr;gap:.45rem 1rem;margin:1rem 0 0}.repo-diagnostics__measurements dt,.repo-diagnostics__measurements dd{margin:0}.repo-diagnostics__measurements dd{font-variant-numeric:tabular-nums}@media(max-width:30rem){.repo-diagnostics__measurements{grid-template-columns:1fr}.repo-diagnostics__measurements dd{margin-bottom:.35rem}}
@@ -1265,41 +1310,9 @@ def verify_remote_script(name: str, raw: bytes) -> bytes:
     return verify_pinned_asset(raw, REMOTE_SCRIPT_INTEGRITY[url], label=name)
 
 
-def verify_plotly_js(raw: bytes) -> bytes:
-    """Return CDN bytes or fail before any decoding, caching or execution."""
-    if not isinstance(raw, bytes):
-        raise TypeError("Plotly.js payload must be bytes")
-    if not raw:
-        raise RuntimeError("Plotly.js CDN returned an empty body")
-    if len(raw) > PLOTLY_JS_MAX_BYTES:
-        raise RuntimeError(f"Plotly.js exceeds {PLOTLY_JS_MAX_BYTES} byte limit")
-    return raw
-
-
 def fetch_plotly_js(*, timeout: float = 60.0) -> bytes:
-    """Explicitly fetch the allowlisted jsDelivr bundle with a bounded read.
-
-    Rendering helpers do not call this function. Consumers own successful-byte
-    caching; cached/local bytes can be checked with verify_plotly_js().
-    """
-    if not math.isfinite(timeout) or timeout <= 0:
-        raise ValueError("timeout must be finite and positive")
-    request = urllib.request.Request(
-        PLOTLY_JS_URL, headers={"User-Agent": "web-ui/1.0 (verified Plotly embed)"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            status = response.status if hasattr(response, "status") else response.getcode()
-            if status != 200:
-                raise RuntimeError(f"Plotly.js CDN returned HTTP {status} for {PLOTLY_JS_URL}")
-            raw = response.read(PLOTLY_JS_MAX_BYTES + 1)
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"Plotly.js CDN request failed: HTTP {exc.code} {exc.reason}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"Plotly.js CDN request failed: {exc.reason}") from exc
-    except (OSError, http.client.HTTPException) as exc:
-        raise RuntimeError(f"Plotly.js CDN request failed: {exc}") from exc
-    return verify_plotly_js(raw)
+    """Explicit bounded download. Consumers own successful-byte caching."""
+    return _fetch_plotly_bytes(timeout=timeout, user_agent="web-ui/1.0 (verified Plotly embed)")
 
 
 def shared_scripts(asset_base: str, *, names: tuple[str, ...] = ("ui.js",)) -> tuple[str, ...]:
@@ -1319,9 +1332,9 @@ def shared_scripts(asset_base: str, *, names: tuple[str, ...] = ("ui.js",)) -> t
 
 def module_asset(name: str = "ui.js") -> tuple[bytes, str]:
     """Return immutable bundled module bytes and the JavaScript MIME type."""
-    if name not in ("ui.js", "world.js"):
+    if name != "ui.js":
         raise ValueError("unknown embedded module")
-    return (EMBEDDED_UI_JS if name == "ui.js" else WORLD_JS).encode("utf-8"), "text/javascript; charset=utf-8"
+    return EMBEDDED_UI_JS.encode("utf-8"), "text/javascript; charset=utf-8"
 
 
 def gif_recorder_document(*, title: str = "web_ui GIF recorder") -> str:
@@ -1339,12 +1352,24 @@ def classic_script(source: str, *, nonce: str | None = None) -> str:
 
     Inline bodies require CSP script-src nonce/hash/unsafe-inline authorization.
     """
-    if nonce is not None and (not nonce or not re.fullmatch(r"[A-Za-z0-9+/_=-]+", nonce)):
+    return _inline_script(source, nonce=nonce, module=False)
+
+
+def _nonce_attribute(nonce: str | None) -> str:
+    if nonce is None:
+        return ""
+    if not re.fullmatch(r"[A-Za-z0-9+/_=-]+", nonce):
         raise ValueError("invalid CSP nonce")
+    return f' nonce="{escape(nonce, quote=True)}"'
+
+
+def _inline_script(source: str, *, nonce: str | None, module: bool) -> str:
+    attribute = _nonce_attribute(nonce)
     if re.search(r"</script(?=[\s/>])", source, re.IGNORECASE):
-        raise ValueError("script contains HTML script end tag")
-    attribute = f' nonce="{escape(nonce, quote=True)}"' if nonce else ""
-    return f"<script{attribute}>{source}</script>"
+        kind = "module" if module else "script"
+        raise ValueError(f"{kind} contains HTML script end tag")
+    script_type = ' type="module"' if module else ""
+    return f"<script{script_type}{attribute}>{source}</script>"
 
 
 def module_script(source: str, *, mode: str = "inline", nonce: str | None = None) -> str:
@@ -1355,17 +1380,13 @@ def module_script(source: str, *, mode: str = "inline", nonce: str | None = None
     """
     if mode not in ("inline", "data"):
         raise ValueError("unknown module mode")
-    if nonce is not None and (not nonce or not re.fullmatch(r"[A-Za-z0-9+/_=-]+", nonce)):
-        raise ValueError("invalid CSP nonce")
     if mode == "data":
         if nonce is not None:
+            _nonce_attribute(nonce)
             raise ValueError("nonce is only supported for inline mode")
         encoded = base64.b64encode(source.encode("utf-8")).decode("ascii")
         return f'<script type="module" src="data:text/javascript;base64,{encoded}"></script>'
-    if re.search(r"</script(?=[\s/>])", source, re.IGNORECASE):
-        raise ValueError("module contains HTML script end tag")
-    attribute = f' nonce="{escape(nonce, quote=True)}"' if nonce else ""
-    return f'<script type="module"{attribute}>{source}</script>'
+    return _inline_script(source, nonce=nonce, module=True)
 
 
 def module_csp_hash(source: str) -> str:
@@ -1464,8 +1485,152 @@ def installed_commit() -> str | None:
         return None
 
 
+# --- 🔎 Portable collection query (was collection_filter.py): filter_request(request) here, ``--collection`` from the shell and Node.
+# Portable collection query: JSON on stdin -> JSON on stdout (stdlib only).
+# 
+# Filter (query, facets, ranges), then sort, then window (offset/limit), then optionally group.
+# Node reaches this tool through vendor/py_launch.cjs (no Node twin); domain-specific
+# browser filters and callbacks remain in the collection.js module (js_source).
+# Sort, ranges, window and grouping come from flutter_navigation_basic python/collection_query_patterns.py
+# (its facet/tag filters were duplicates of the facets here and are not carried over).
+
+def _collection_text(value):
+    if value is None:
+        return ""
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return str(value).strip().lower()
+
+
+def _collection_equal(actual, expected):
+    # Match JavaScript strict equality for JSON scalar values (not Python 0 == False).
+    if isinstance(actual, bool) or isinstance(expected, bool):
+        return type(actual) is type(expected) and actual == expected
+    if isinstance(actual, (int, float)) and not isinstance(actual, bool):
+        return isinstance(expected, (int, float)) and not isinstance(expected, bool) and actual == expected
+    return type(actual) is type(expected) and actual == expected
+
+
+def _finite_number(value: Any) -> bool:
+    return type(value) in (int, float) and math.isfinite(value)
+
+
+def _collection_ranges(spec):
+    if not isinstance(spec, dict) or any(not isinstance(k, str) or not k for k in spec):
+        raise ValueError("ranges must map field names to {min, max}")
+    out = {}
+    for key, bounds in spec.items():
+        if not isinstance(bounds, dict) or not bounds or set(bounds) - {"min", "max"} \
+                or any(not _finite_number(v) for v in bounds.values()) \
+                or ("min" in bounds and "max" in bounds and bounds["min"] > bounds["max"]):
+            raise ValueError("a range has numeric min and/or max, with min <= max")
+        out[key] = bounds
+    return out
+
+
+def _collection_sorts(spec):
+    keys = [spec] if isinstance(spec, dict) else spec
+    if not isinstance(keys, list) or not keys:
+        raise ValueError("sort is {key, descending} or a nonempty list of them")
+    out = []
+    for entry in keys:
+        if not isinstance(entry, dict) or set(entry) - {"key", "descending"} or not isinstance(entry.get("key"), str) \
+                or not entry["key"] or not isinstance(entry.get("descending", False), bool):
+            raise ValueError("a sort key is {key, descending}")
+        out.append((entry["key"], entry.get("descending", False)))
+    return out
+
+
+def _collection_sort(items, sorts):
+    """Stable multi-key sort, first key first. Values of one key must be all strings or all finite numbers;
+    items lacking the key (or null) come last whichever way it sorts."""
+    items = list(items)
+    for key, descending in reversed(sorts):
+        present = [item[key] for item in items if item.get(key) is not None]
+        if any(type(v) is bool or not (isinstance(v, str) or _finite_number(v)) for v in present):
+            raise ValueError("sort values must be strings or finite numbers: " + key)
+        if len({isinstance(v, str) for v in present}) > 1:
+            raise ValueError("mixed string and number sort values: " + key)
+        have = sorted((i for i in items if i.get(key) is not None), key=lambda i: i[key], reverse=descending)
+        items = have + [i for i in items if i.get(key) is None]
+    return items
+
+
+def _collection_window(items, offset, limit):
+    for name, value in (("offset", offset), ("limit", limit)):
+        if value is not None and (type(value) is not int or value < 0):
+            raise ValueError(name + " must be a non-negative integer")
+    start = offset or 0
+    return items[start:] if limit is None else items[start:start + limit]
+
+
+def _collection_group(items, key):
+    if not isinstance(key, str) or not key:
+        raise ValueError("group_by must be a field name")
+    groups = []
+    for item in items:
+        value = item.get(key)
+        if isinstance(value, (list, dict)):
+            raise ValueError("group_by needs scalar values: " + key)
+        group = next((g for g in groups if _collection_equal(g["value"], value)), None)
+        if group is None:
+            group = {"value": value, "items": []}
+            groups.append(group)
+        group["items"].append(item)
+    return groups
+
+
+def filter_request(request):
+    """Return selected original JSON objects in original order, without mutation
+    (sorted, windowed or grouped when the request says so)."""
+    if not isinstance(request, dict):
+        raise ValueError("request must be an object")
+    items = request.get("items")
+    if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+        raise ValueError("items must be an array of objects")
+    query = request.get("query", "")
+    if not isinstance(query, str):
+        raise ValueError("query must be a string")
+    fields = request.get("text_fields", ["name"])
+    if not isinstance(fields, list) or not fields or any(not isinstance(f, str) or not f for f in fields):
+        raise ValueError("text_fields must be a nonempty array of field names")
+    facets = request.get("facets", {})
+    if not isinstance(facets, dict) or any(not isinstance(k, str) or isinstance(v, (list, dict)) for k, v in facets.items()):
+        raise ValueError("facets must map field names to scalar JSON values")
+    ranges = _collection_ranges(request.get("ranges", {}))
+    sorts = _collection_sorts(request["sort"]) if "sort" in request else []
+    needle = query.strip().lower()
+    output = []
+    for item in items:
+        if needle:
+            values = []
+            for field in fields:
+                value = item.get(field)
+                values.extend(value if isinstance(value, list) else [value])
+            if not any(needle in _collection_text(value) for value in values):
+                continue
+        if any(key not in item or not (any(_collection_equal(v, expected) for v in item[key]) if isinstance(item.get(key), list)
+                    else _collection_equal(item.get(key), expected))
+               for key, expected in facets.items()):
+            continue
+        if any(not _finite_number(item.get(key)) or not bounds.get("min", -math.inf) <= item[key] <= bounds.get("max", math.inf)
+               for key, bounds in ranges.items()):
+            continue
+        output.append(item)
+    if sorts:
+        output = _collection_sort(output, sorts)
+    output = _collection_window(output, request.get("offset"), request.get("limit"))
+    return _collection_group(output, request["group_by"]) if "group_by" in request else output
+
+
+def _collection_reject_non_json(value):
+    raise ValueError("non-JSON number: " + value)
+
+
 # --- 🏷️ Output names for recordings (GIFs, stills) that people and agents rerun: <prefix><name><suffix>[-<run detail>...].<ext>.
-# Moved from tools/record_demo.py so every recorder (record_demo here, BrowserTestKit's evidence_gif) names its files the same way.
+# Shared by every recorder (the portfolio's world demos, BrowserTestKit's evidence_gif) so they name their files the same way.
 
 NAME_PART = re.compile(r"[\w.-]{0,64}")
 
@@ -1495,7 +1660,7 @@ class _AddRunDetail(argparse.Action):
 
 
 def add_gif_arguments(parser):
-    """The output arguments shared by the CLI and ``WEB_UI_GIFS``: ``out``, ``--prefix``, ``--suffix``, ``--timestamp``, ``--git-commit``, ``--force``."""
+    """The output arguments shared by the CLI and ``PSWB_GIFS``: ``out``, ``--prefix``, ``--suffix``, ``--timestamp``, ``--git-commit``, ``--force``."""
     parser.add_argument("out", type=Path, help="directory for <prefix><name><suffix>[-<run detail>...].gif")
     parser.add_argument("--prefix", type=name_part, default="", metavar="TEXT", help="put TEXT before every file name")
     parser.add_argument("--suffix", type=name_part, default="", metavar="TEXT",
@@ -1556,14 +1721,110 @@ def gif_targets(directory, stems, *, prefix="", suffix="", run_details=(), force
 
 
 def gif_targets_from(spec, stems, *, now=None, revision=None, ext=".gif", root=None):
-    """``gif_targets`` from one setting string, ``"DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"`` (``WEB_UI_GIFS`` in the
+    """``gif_targets`` from one setting string, ``"DIR [--prefix P] [--suffix S] [--timestamp] [--git-commit] [--force]"`` (``PSWB_GIFS`` in the
     browser tests). The words are split like a shell command line and parsed by the same argparse definitions as the CLI (the run details
     keep their order), so a bad option raises argparse.ArgumentError here instead of exiting.
     """
-    parser = add_gif_arguments(argparse.ArgumentParser(prog="WEB_UI_GIFS", add_help=False, allow_abbrev=False, exit_on_error=False))
+    parser = add_gif_arguments(argparse.ArgumentParser(prog="PSWB_GIFS", add_help=False, allow_abbrev=False, exit_on_error=False))
     args = parser.parse_args(shlex.split(spec))
     return gif_targets(args.out, stems, prefix=args.prefix, suffix=args.suffix, run_details=args.run_details,
                        force=args.force, now=now, revision=revision, ext=ext, root=root)
+
+
+# --- 🎞 Recording a page as a GIF: GifCamera keeps screenshots with their real times, encode_gif writes them (Pillow), launch_chromium opens one ---
+# (was tools/record_demo.py's Camera / encode / launch: the component GIFs here and the portfolio's world demos record with them)
+ZOOM_ANCHORS = {"center": (.5, .5), "left": (0, .5), "right": (1, .5), "top": (.5, 0), "bottom": (.5, 1),
+                "top-left": (0, 0), "top-right": (1, 0), "bottom-left": (0, 1), "bottom-right": (1, 1),
+                "←": "left", "⬅": "left", "→": "right", "➡": "right", "↑": "top", "⬆": "top", "↓": "bottom", "⬇": "bottom",
+                "↖": "top-left", "↗": "top-right", "↙": "bottom-left", "↘": "bottom-right", "🎯": "center", "📍": "center"}
+
+
+class GifCamera:
+    """Screenshots of a Playwright ``page`` with their real times; a scene calls ``hold``/``until`` where the GIF should show time passing.
+    ``crop`` (a selector) keeps only that element's box; at most one screenshot per ``frame_ms`` while a scene waits."""
+
+    def __init__(self, page, crop=None, frame_ms=80):
+        self.page, self.crop, self.frame_ms, self.shots = page, crop, frame_ms, []
+
+    def png(self):
+        """One screenshot; with ``crop`` only that element's box, so the GIF is the part and not the empty page around it."""
+        if not self.crop:
+            return self.page.screenshot(type="png")
+        box = self.page.eval_on_selector(self.crop, "e => { const r = e.getBoundingClientRect(); return {x: r.x, y: r.y, width: r.width, height: r.height} }")
+        return self.page.screenshot(type="png", clip={k: round(v) for k, v in box.items()})
+
+    def snap(self):
+        self.shots.append((time.monotonic(), self.png()))
+
+    def hold(self, ms):
+        end = time.monotonic() + ms / 1000
+        while time.monotonic() < end:
+            began = time.monotonic()
+            self.snap()
+            self.page.wait_for_timeout(max(0, self.frame_ms - (time.monotonic() - began) * 1000))
+
+    def zoom(self, anchor=(0.5, 0.5), factor=2.5, steps=6, hold_ms=1500):
+        """Zoom into what is on screen toward ``anchor`` and stay there. ``anchor`` is (x, y) from 0 to 1, a name (``"bottom-right"``) or an arrow
+        emoji (``↘️``, ``⬅``, ``🎯`` for the centre; ``ZOOM_ANCHORS``). Every pixel changes in a zoom, so it costs a few frames; it does not zoom back."""
+        from PIL import Image
+        if isinstance(anchor, str):
+            name = anchor.replace("\ufe0e", "").replace("\ufe0f", "")
+            anchor = ZOOM_ANCHORS.get(name)
+            anchor = ZOOM_ANCHORS.get(anchor, anchor)
+            if not isinstance(anchor, tuple):
+                raise ValueError(f"not an anchor: {name!r}")
+        source = Image.open(io.BytesIO(self.png())).convert("RGB")
+        width, height = source.size
+        forward = []
+        for i in range(1, steps + 1):
+            t = i / steps
+            grow = 1 + (factor - 1) * t * t * (3 - 2 * t)          # smoothstep, as in Ironmate's png_zoom_gif
+            w, h = max(1, round(width / grow)), max(1, round(height / grow))
+            left, top = round((width - w) * anchor[0]), round((height - h) * anchor[1])
+            forward.append(source.crop((left, top, left + w, top + h)).resize(source.size, Image.Resampling.LANCZOS))
+        path = [(f, 60) for f in forward[:-1]] + [(forward[-1], hold_ms)]
+        t = time.monotonic()
+        for frame, ms in path:
+            png = io.BytesIO()
+            frame.save(png, format="PNG")
+            self.shots.append((t, png.getvalue()))
+            t += ms / 1000
+        time.sleep(max(0, t - time.monotonic()))                  # the clock catches up with the frames just added
+
+    def until(self, script, ms=20000):
+        end = time.monotonic() + ms / 1000
+        while not self.page.evaluate(script):
+            if time.monotonic() > end:
+                raise TimeoutError(script)
+            self.hold(self.frame_ms)
+        self.snap()
+
+
+def encode_gif(shots, *, width=None, tail_ms=1500, min_ms=20, max_ms=2000):
+    """One GIF from (time, png) shots: one shared palette (no dither, so frames never flicker), delays in 10 ms units within
+    ``min_ms``..``max_ms`` (browsers stretch shorter ones), the last frame held ``tail_ms``, looping forever, unchanged pixels as deltas."""
+    from PIL import Image
+    frames = [Image.open(io.BytesIO(png)).convert("RGB") for _, png in shots]
+    if width and width != frames[0].width:
+        frames = [f.resize((width, round(f.height * width / f.width)), Image.Resampling.LANCZOS) for f in frames]
+    sample = frames[::max(1, len(frames) // 16)]                # the palette comes from frames across the whole scene
+    sheet = Image.new("RGB", (sample[0].width, sample[0].height * len(sample)))
+    for i, frame in enumerate(sample):
+        sheet.paste(frame, (0, i * frame.height))
+    palette = sheet.quantize(colors=255)                        # one slot stays free for Pillow's "unchanged pixel" transparency
+    encoded = [f.quantize(palette=palette, dither=Image.Dither.NONE) for f in frames]
+    times = [t for t, _ in shots]
+    delays = [min(max_ms, max(min_ms, round((b - a) * 100) * 10)) for a, b in zip(times, times[1:])] + [tail_ms]
+    out = io.BytesIO()
+    encoded[0].save(out, format="GIF", save_all=True, append_images=encoded[1:], duration=delays, loop=0, optimize=True)
+    return out.getvalue()
+
+
+def launch_chromium(pw, chrome=None, extra=()):
+    """Chromium for recorders and browser tests: ``WEB_UI_CHROME`` (or ``chrome``) names an installed Chrome (then run without its sandbox); ``extra`` are more flags."""
+    chrome = chrome or os.environ.get("WEB_UI_CHROME")
+    args = ["--no-sandbox", *extra] if chrome else list(extra)
+    return pw.chromium.launch(executable_path=chrome, args=args) if chrome else pw.chromium.launch(args=args)
 
 
 def repository_diagnostics_page(
@@ -1585,16 +1846,9 @@ def repository_diagnostics_page(
     ``jsonl_name`` is linked as the raw metadata record. Consumers produce the JSON with their own
     gh_identity / resolver data and call this for the HTML, so one renderer serves every repository.
     """
-    if not isinstance(repository, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
-        raise ValueError("repository must be owner/name")
-    for name, label in ((json_name, "json_name"), (jsonl_name, "jsonl_name")):
-        _require_local_script_path(name, label=label)
-    if icon is not None:
-        _require_local_or_https(icon, label="icon", allow_query=False)
-    title = f"{repository} repository diagnostics"
     body = ('<main class="ui-page">' + repository_diagnostics_body(repository, json_name=json_name, jsonl_name=jsonl_name, icon=icon, description=description)
             + "</main>" + classic_script(js_source("repository-diagnostics.js")) + classic_script(f'RepositoryDiagnostics.mount(document, "./{json_name}");'))
-    return render_document(trusted_html=body, title=title, theme=theme, css=bundled_css(),
+    return render_document(trusted_html=body, title=f"{repository} repository diagnostics", theme=theme, css=bundled_css(),
                            favicon=favicon, touch_icon=icon)
 
 
@@ -1683,7 +1937,15 @@ def _spec_href(value: Any) -> str:
 
 
 PAGE_SCHEMA = "web-ui-page/1"
-PAGE_BLOCKS = ("heading", "text", "output", "table", "card", "links", "image", "kv", "badges", "section")
+PAGE_BLOCKS = ("heading", "text", "output", "table", "card", "links", "image", "kv", "badges", "section", "tabs", "runbook")
+# 🗂️ tabs: CSS-only radio tabs (no script), up to this many per block; page_document adds the rules below.
+_TABS_MAX = 8
+_TABS_CSS = (".ui-tabs{margin:var(--ui-space) 0}.ui-tab-input{position:absolute;opacity:0;pointer-events:none}"
+             ".ui-tab{display:inline-block;padding:.4rem .8rem;margin:0 .25rem .5rem 0;border:1px solid var(--ui-border);"
+             "border-radius:var(--ui-radius);cursor:pointer;color:var(--ui-muted)}.ui-tab-input:checked+.ui-tab{color:var(--ui-fg);"
+             "border-color:var(--ui-accent);background:var(--ui-panel)}.ui-tab-input:focus-visible+.ui-tab{outline:2px solid var(--ui-accent);"
+             "outline-offset:2px}.ui-tab-panel{display:none}.ui-tab-panel img{max-width:100%;height:auto}"
+             + "".join(f".ui-tabs>.ui-tab-input:nth-of-type({k}):checked~.ui-tab-panel:nth-of-type({k}){{display:block}}" for k in range(1, _TABS_MAX + 1)))
 
 
 def _page_block(block: Any, *, depth: int) -> str:
@@ -1693,7 +1955,7 @@ def _page_block(block: Any, *, depth: int) -> str:
     kind = block["type"]
     allowed = {"heading": {"text", "level"}, "text": {"text", "muted"}, "output": {"text"}, "table": {"headers", "rows", "caption"},
                "card": {"title", "text", "blocks"}, "links": {"items"}, "image": {"src", "alt", "width", "height"},
-               "kv": {"rows"}, "badges": {"items"}, "section": {"title", "blocks"}}[kind] | {"type"}
+               "kv": {"rows"}, "badges": {"items"}, "section": {"title", "blocks", "_feature_source"}, "tabs": {"tabs", "id"}, "runbook": {"books", "choice", "id"}}[kind] | {"type"}
     if block.keys() - allowed:
         raise ValueError(f"{kind}: unknown field {sorted(block.keys() - allowed)}")
     if kind == "heading":
@@ -1764,6 +2026,25 @@ def _page_block(block: Any, *, depth: int) -> str:
                 item = item.get("text")
             parts.append(f'<span class="ui-tag{status}">{escape(_spec_text(item, "badge", limit=100, required=True))}</span>')
         return f'<p class="ui-badges">{" ".join(parts)}</p>'
+    if kind == "runbook":
+        return runbook_html(block)
+    if kind == "tabs":
+        tabs = block.get("tabs")
+        if not isinstance(tabs, list) or not 2 <= len(tabs) <= _TABS_MAX:
+            raise ValueError(f"tabs has 2..{_TABS_MAX} tabs")
+        key = block.get("id", hashlib.sha1(json.dumps(block, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:8])
+        if not isinstance(key, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", key):
+            raise ValueError("tabs id is 1..40 of a-z, 0-9 and -")
+        name, heads, panels = f"ui-tabs-{key}", [], []
+        for i, tab in enumerate(tabs):
+            if not isinstance(tab, dict) or tab.keys() - {"label", "blocks"}:
+                raise ValueError("a tab has label and blocks")
+            label = _spec_text(tab.get("label"), "tab label", limit=100, required=True)
+            checked = " checked" if i == 0 else ""
+            heads.append(f'<input type="radio" class="ui-tab-input" name="{name}" id="{name}-{i}"{checked}>'
+                         f'<label class="ui-tab" for="{name}-{i}">{escape(label)}</label>')
+            panels.append('<div class="ui-tab-panel">' + "".join(_page_block(b, depth=depth + 1) for b in _blocks(tab.get("blocks", []), depth)) + "</div>")
+        return f'<div class="ui-tabs" data-ui-tabs>{"".join(heads)}{"".join(panels)}</div>'
     # section
     title = _spec_text(block.get("title"), "section title", limit=300, required=True)
     inner = "".join(_page_block(b, depth=depth + 1) for b in _blocks(block.get("blocks", []), depth))
@@ -1782,20 +2063,52 @@ def _blocks(value: Any, depth: int) -> list:
     return value
 
 
+def back_nav_html(back: Any, *, test_id: str | None = None) -> str:
+    """🏠 The way back, before a page's content: ``OWNER/REPO`` gives 🏠 the owner's portfolio (``https://OWNER.github.io/``)
+    · 🐙 the repository on GitHub; or pass a ``links`` block's items (``[{"label", "href"}]``) for another way back. It is
+    marked ``data-ui-back``; ``test_id`` adds ``data-testid`` for a consumer's browser tests."""
+    if isinstance(back, str):
+        parts = back.split("/")
+        if len(parts) != 2 or not all(p and p not in {".", ".."} and all(c.isalnum() or c in "._-" for c in p) for p in parts):
+            raise ValueError("the way back is OWNER/REPO or a list of links")
+        back = [{"label": "🏠 ポートフォリオ", "href": f"https://{parts[0].lower()}.github.io/"},
+                {"label": "🐙 GitHub リポジトリ", "href": f"https://github.com/{parts[0]}/{parts[1]}"}]
+    test = f' data-testid="{escape(_spec_text(test_id, "test id", limit=80, required=True), quote=True)}"' if test_id is not None else ""
+    return f'<nav class="ui-back" aria-label="関連リンク" data-ui-back{test}>{_page_block({"type": "links", "items": back}, depth=0)}</nav>'
+
+
+def add_back_nav(page: str, back: Any, *, test_id: str | None = None) -> str:
+    """🏠 Put ``back_nav_html(back)`` right after the opening ``<main>`` (else ``<body>``) of a built page (a page that
+    already has a way back keeps it). From the shell: ``--page spec.json --repository OWNER/REPO``."""
+    if "data-ui-back" in page:
+        return page
+    for tag in ("<main", "<body"):
+        start = page.find(tag)
+        end = page.find(">", start) if start >= 0 else -1
+        if end >= 0:
+            return page[:end + 1] + back_nav_html(back, test_id=test_id) + page[end + 1:]
+    raise ValueError("page has no <main> or <body> to put the way back in")
+
+
 def page_document(spec: Any, *, layouts: Any = None) -> str:
     """One self-contained page from a ``web-ui-page/1`` spec — the consumer owns the data, web_ui the HTML and CSS.
 
-    ``{"schema", "title", "theme"?, "description"?, "icon"?, "favicon"?, "blocks": [...]}``; blocks are ``heading``,
+    ``{"schema", "title", "theme"?, "description"?, "icon"?, "favicon"?, "blocks": [...]}``. Blocks are ``heading``,
     ``text`` (paragraphs; ``muted``), ``output`` (preformatted), ``table`` (headers, rows, caption), ``card`` /
-    ``section`` (title, text, nested blocks), ``links``, ``image``, ``kv`` (key–value rows) and ``badges``
-    (``{text, status: pass|fail}``). Text is never HTML; links and images are relative paths or HTTPS. The theme is one
+    ``section`` (title, text, nested blocks), ``links``, ``image``, ``kv`` (key–value rows), ``badges``
+    (``{text, status: pass|fail}``), ``tabs`` (2..8 ``{label, blocks}`` switched by radios without a script — e.g.
+    🎞 GIF demo / 🧩 features; optional ``id`` when two tabs blocks on a page are identical) and ``runbook`` (🔬 a verification
+    guide, see ``runbook_html``: the only block that brings scripts, ui.js's copy buttons and records.js). Text is never HTML; links and images are relative paths or HTTPS. The theme is one
     of ours, ``auto`` or a brand registered with ``theme_css`` (its CSS is appended when registered in this process);
     ``layouts`` adds switchable presets. The same from the shell or Node: ``python -S pysaiyanweboo.py --page spec.json``.
+    🏠 ``home`` (written by ``home_screen``) links the square icons and the manifest next to the page, so "Add to Home
+    Screen" and shortcuts show the repository's own icon and short name.
     """
     if not isinstance(spec, dict) or spec.get("schema") != PAGE_SCHEMA:
         raise ValueError(f"expected schema {PAGE_SCHEMA}")
-    if spec.keys() - {"schema", "title", "theme", "description", "icon", "favicon", "blocks"}:
-        raise ValueError("page has schema, title, blocks and optional theme, description, icon, favicon")
+    if spec.keys() - {"schema", "title", "theme", "description", "icon", "favicon", "home", "blocks"}:
+        raise ValueError("page has schema, title, blocks and optional theme, description, icon, favicon, home")
+    home = _home_spec(spec["home"]) if "home" in spec else None
     title = _spec_text(spec.get("title"), "title", limit=200, required=True)
     theme = spec.get("theme", "modern")
     if not _theme_name(theme):
@@ -1813,9 +2126,353 @@ def page_document(spec: Any, *, layouts: Any = None) -> str:
     css = core_css(theme if theme in THEMES or theme in CANDIDATE_THEMES or theme == AUTO_THEME else "modern")
     css += _REGISTERED_THEME_CSS.get(theme, "") + (layout_presets_css(layouts) if layouts is not None else "")
     css += ".ui-kv{display:grid;grid-template-columns:max-content 1fr;gap:.25rem var(--ui-space)}.ui-kv dt{color:var(--ui-muted)}.ui-kv dd{margin:0}.ui-badges .ui-tag{margin-right:.25rem}"
-    return render_document(trusted_html="".join(body), title=title, theme=theme, css=css,
+    css += _TABS_CSS if 'data-ui-tabs' in "".join(body) else ""
+    if "data-ui-choices" in "".join(body):   # 🔬 a runbook: its CSS, the copy buttons and records.js (drafts, states, filters, the pulldown)
+        css += css_source("records.css") + ".ui-ran summary{cursor:pointer}.ui-ran pre{max-height:24rem;overflow:auto}"
+        body.insert(-1, module_script(EMBEDDED_UI_JS + "\nbindCopy();\n") + module_script(js_source("records.js")))
+    page = render_document(trusted_html="".join(body), title=title, theme=theme, css=css,
                            favicon=_spec_href(spec["favicon"]) if "favicon" in spec else None,
-                           touch_icon=_spec_href(spec["icon"]) if "icon" in spec else None)
+                           touch_icon=None if home or "icon" not in spec else _spec_href(spec["icon"]))
+    if home is None:
+        return page
+    head = (f'<link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">'
+            f'<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">'
+            f'<link rel="manifest" href="./{HOME_MANIFEST}">'
+            f'<meta name="apple-mobile-web-app-title" content="{escape(home["short_name"], quote=True)}">')
+    return page.replace("</head>", head + "</head>", 1)
+
+
+# 🏠 Home screen: what "Add to Home Screen" (iOS: apple-touch-icon 180) and Android / desktop shortcuts (manifest 192 · 512)
+# need, made from the page's own icon. Square and opaque, scaled by nearest neighbour without Pillow (pixel icons stay crisp).
+HOME_SIZES = (180, 192, 512)
+HOME_MANIFEST = "manifest.webmanifest"
+
+
+def _home_spec(home: Any) -> dict[str, Any]:
+    if not isinstance(home, dict) or home.keys() - {"short_name", "source_sha256", "icons"}:
+        raise ValueError("home has short_name, source_sha256 and icons")
+    short = _spec_text(home.get("short_name"), "home short_name", limit=32, required=True)
+    icons = home.get("icons")
+    if not isinstance(icons, dict) or set(icons) != {str(s) for s in HOME_SIZES} or not all(isinstance(v, str) for v in icons.values()):
+        raise ValueError(f"home icons are Base64 PNGs keyed {', '.join(map(str, HOME_SIZES))}")
+    return {"short_name": short, "source_sha256": str(home.get("source_sha256", "")), "icons": icons}
+
+
+def home_screen_icon(png: bytes, size: int) -> bytes:
+    """One square, opaque ``size`` px PNG from an 8-bit PNG: padded to a square and its transparency flattened onto its
+    top-left colour (white if that is see-through — iOS would paint it black), scaled by nearest neighbour."""
+    width, height, rgba = studio_png_decode(png)
+    bg = rgba[0:3] if rgba[3] == 255 else b"\xff\xff\xff"
+    side = max(width, height)
+    ox, oy = (side - width) // 2, (side - height) // 2
+    columns = [x * side // size - ox for x in range(size)]
+    out = bytearray()
+    for y in range(size):
+        sy = y * side // size - oy
+        for sx in columns:
+            if 0 <= sx < width and 0 <= sy < height:
+                i = (sy * width + sx) * 4
+                a = rgba[i + 3]
+                out += bytes((rgba[i + k] * a + bg[k] * (255 - a)) // 255 for k in range(3)) + b"\xff"
+            else:
+                out += bg + b"\xff"
+    return studio_png_encode(size, size, bytes(out))
+
+
+def home_screen(spec: Any, root: Path | str) -> tuple[dict[str, Any], dict[str, bytes]]:
+    """🏠 For a ``web-ui-page/1`` spec whose ``icon`` is a local PNG under ``root``: the spec with ``home`` filled in
+    (short name, the source's SHA-256 and each size as Base64 — a cache Python can read back without decoding again;
+    kept when the source is unchanged) and the files to write next to the page: ``icon-180/192/512.png`` and the manifest.
+    An ``icon-<size>.png`` already under ``root`` (e.g. made by CaChereCyCle's ``sync``, which averages when shrinking)
+    is used as it is; only missing sizes are made here. The short name is ``home.short_name`` when given, else the
+    title without " 利用ガイド"."""
+    if not isinstance(spec, dict) or not isinstance(spec.get("icon"), str):
+        raise ValueError("home_screen needs a page spec with an icon")
+    source = (Path(root) / _spec_href(spec["icon"])).read_bytes()
+    digest = hashlib.sha256(source).hexdigest()
+    title = _spec_text(spec.get("title"), "title", limit=200, required=True)
+    given = spec.get("home") if isinstance(spec.get("home"), dict) else {}
+    short = given.get("short_name") or title.replace(" 利用ガイド", "").strip()[:32]
+    cached = given.get("icons") if given.get("source_sha256") == digest else None
+    cached = cached if isinstance(cached, dict) and set(cached) == {str(s) for s in HOME_SIZES} else {}
+    icons = {}
+    for s in HOME_SIZES:
+        made = Path(root) / f"icon-{s}.png"
+        icons[str(s)] = (base64.b64encode(made.read_bytes()).decode("ascii") if made.is_file() else
+                         cached.get(str(s)) or base64.b64encode(home_screen_icon(source, s)).decode("ascii"))
+    home = _home_spec({"short_name": short, "source_sha256": digest, "icons": icons})
+    manifest = {"name": title, "short_name": home["short_name"], "start_url": "./", "scope": "./", "display": "browser",
+                "icons": [{"src": f"icon-{s}.png", "sizes": f"{s}x{s}", "type": "image/png", "purpose": "any"} for s in HOME_SIZES]}
+    files = {f"icon-{s}.png": base64.b64decode(icons[str(s)]) for s in HOME_SIZES}
+    files[HOME_MANIFEST] = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    return {**spec, "home": home}, files
+
+
+_FEATURES_SHIM = r'''
+import argparse, json, runpy, sys
+from pathlib import Path
+
+class _Parsed(BaseException):
+    pass
+
+def _stop(self, args=None, namespace=None):
+    raise _Parsed(self)
+
+argparse.ArgumentParser.parse_known_args = _stop
+argparse.ArgumentParser.parse_known_intermixed_args = _stop
+path = Path(sys.argv[1]).resolve()
+sys.argv = [str(path), *sys.argv[2:]]
+sys.path.insert(0, str(path.parent))
+parser = None
+try:
+    runpy.run_path(str(path), run_name="__main__")
+except _Parsed as stopped:
+    parser = stopped.args[0]
+except SystemExit:
+    pass
+
+def options(p):
+    fmt, out = p._get_formatter(), []
+    for a in p._actions:
+        if isinstance(a, (argparse._HelpAction, argparse._SubParsersAction)) or a.help == argparse.SUPPRESS:
+            continue
+        try:
+            text = " ".join(fmt._expand_help(a).split()) if a.help else ""
+        except (KeyError, TypeError, ValueError):
+            text = " ".join(str(a.help).split())
+        if a.option_strings:   # 🏷 the longest flag, with its choices: --format {text,json}
+            short = max(a.option_strings, key=len) + (" {" + ",".join(map(str, a.choices)) + "}" if a.choices and a.nargs != 0 else "")
+        else:
+            short = fmt._format_action_invocation(a)
+        out.append([fmt._format_action_invocation(a), text, short])
+    return out
+
+def walk(p, prefix, out):
+    subs = [a for a in p._actions if isinstance(a, argparse._SubParsersAction)]
+    if not subs:
+        return
+    helps = {c.dest: " ".join((c.help or "").split()) for c in subs[0]._choices_actions}
+    by_parser = {}
+    for name, sub in subs[0].choices.items():
+        by_parser.setdefault(sub, []).append(name)
+    for sub, (name, *aliases) in by_parser.items():
+        text = helps.get(name) or " ".join((sub.description or "").strip().split("\n")[0].split())
+        out.append([" ".join(prefix + [name]), text, options(sub), aliases])
+        walk(sub, prefix + [name], out)
+
+result = None
+if parser is not None:
+    found = []
+    walk(parser, [], found)
+    result = {"prog": Path(parser.prog).name, "options": options(parser), "commands": found}
+print(json.dumps(result, ensure_ascii=False))
+'''
+
+
+def _features_api(source: str, *, namespaces: bool = False) -> tuple[str, list[list[str]]]:
+    tree = ast.parse(source)
+    defs: dict[str, tuple[str, str]] = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            kind = "🧱" if isinstance(node, ast.ClassDef) else "🔧"
+            defs[node.name] = (kind, (ast.get_docstring(node) or "").strip().split("\n", 1)[0])
+        elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+            for target in node.targets if isinstance(node, ast.Assign) else [node.target]:
+                if isinstance(target, ast.Name):
+                    defs.setdefault(target.id, ("📦", ""))
+    names: list[str] | None = None
+    for node in tree.body:
+        value = node.value if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)) else None
+        target = (node.targets[0] if isinstance(node, ast.Assign) else getattr(node, "target", None)) if value is not None else None
+        if isinstance(target, ast.Name) and target.id == "__all__" and isinstance(value, (ast.List, ast.Tuple)):
+            listed = [e.value for e in value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+            names = (names or []) + listed if isinstance(node, ast.AugAssign) else listed
+    if names is None:
+        label = "_ 以外の公開名"
+        names = [n for n, (kind, _) in defs.items() if not n.startswith("_") and kind != "📦"]
+    else:
+        label = "__all__"
+    rows = []
+    for name in dict.fromkeys(names):
+        kind, doc = defs.get(name, ("↪️", ""))
+        rows.append([f"{kind} {name}" + ("()" if kind == "🔧" else ""), doc])
+    if namespaces:
+        exported = set(names) if label == "__all__" else None
+        for node in tree.body:
+            if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+                continue
+            if not isinstance(node.value.func, ast.Name) or node.value.func.id != "SimpleNamespace":
+                continue
+            for target in node.targets:
+                if not isinstance(target, ast.Name) or target.id.startswith("_"):
+                    continue
+                if exported is not None and target.id not in exported:
+                    continue
+                if exported is None:
+                    rows.append([f"📦 {target.id}", ""])
+                for keyword in node.value.keywords:
+                    if keyword.arg and not keyword.arg.startswith("_"):
+                        value = keyword.value
+                        kind, doc = defs.get(value.id, ("↪️", "")) if isinstance(value, ast.Name) else ("📦", "")
+                        name = f"{target.id}.{keyword.arg}" + ("()" if kind == "🔧" else "")
+                        rows.append([f"{kind} {name}", doc])
+    return label, rows
+
+
+def add_features(spec: Any, module: str | os.PathLike[str], *, timeout: float = 30) -> dict:
+    """🧩 ``spec`` (web-ui-page/1) whose 🧩 機能一覧 tab starts with every feature of the Python file ``module``.
+
+    ⌨️ CLI: each argparse command with its help and options, read by running the file only up to its first
+    ``parse_args`` (nothing after it runs; no CLI → no section). 🐍 Python: every name in ``__all__`` (or, without it,
+    each public function and class) with the first line of its docstring, read without importing. One tab holds it all:
+    the sections (titled "全 N …") go at the top of the hand-written 🧩 機能一覧 tab (any tab whose label has 機能), above
+    its highlights, after the sections of files added before, and replace this file's own on a second call — unless the
+    tab already names every command and name, which needs no full list. Without such a tab they become a 🧩 機能一覧 tab;
+    a page without tabs gets them at its end, titled 🧩 機能一覧. Returns a new spec; ``spec`` is not changed."""
+    path = Path(module)
+    resolved = path.resolve()
+    try:
+        display = resolved.relative_to(Path.cwd().resolve()).as_posix()
+        source_key = display
+    except ValueError:
+        display = path.name
+        source_key = "sha256:" + hashlib.sha256(os.fsencode(resolved)).hexdigest()
+    sections, names = _feature_module(path, timeout=timeout, display=display)
+    return _put_features(spec, sections, names=names, source_key=source_key)
+
+
+def _feature_cli(path: Path, argv: list[str], *, timeout: float, required: bool) -> dict | None:
+    try:
+        done = subprocess.run(
+            [sys.executable, "-c", _FEATURES_SHIM, str(path.resolve()), *argv],
+            capture_output=True, text=True, encoding="utf-8", timeout=timeout,
+            stdin=subprocess.DEVNULL, cwd=None if required else path.resolve().parent, check=False,
+        )
+        if done.returncode:
+            raise ValueError(done.stderr.strip().splitlines()[-1] if done.stderr.strip() else f"exit {done.returncode}")
+        cli = json.loads(done.stdout.strip().splitlines()[-1]) if done.stdout.strip() else None
+        if not cli:
+            raise ValueError("no argparse parser captured")
+        return cli
+    except (subprocess.TimeoutExpired, OSError, ValueError, IndexError) as exc:
+        if required:
+            invocation = " ".join([str(path), *argv])
+            raise ValueError(f"feature CLI extraction failed for {invocation}: {exc}") from exc
+        return None
+
+
+def _feature_cli_section(cli: dict, prog: str, *, qualify: bool) -> dict:
+    if cli["commands"]:
+        def cell(text: str, opts: list, aliases: list[str]) -> str:
+            flags = " ".join(full if qualify else short for full, _, short in opts)
+            alias_text = "別名: " + ", ".join(aliases) if qualify and aliases else ""
+            return " ".join(part for part in (text, alias_text, f"⚙️ {flags}" if flags else "") if part)
+
+        rows = [[name, cell(text, opts, aliases)] for name, text, opts, aliases in cli["commands"]]
+        if cli["options"]:
+            rows.insert(0, ["（共通）", cell("", cli["options"], [])])
+        return {"type": "section", "title": f"⌨️ {prog} · 全 {len(cli['commands'])} コマンド",
+                "blocks": [{"type": "table", "headers": ["⌨️ コマンド", "📝 説明 · ⚙️ オプション"], "rows": rows}]}
+    if cli["options"]:
+        return {"type": "section", "title": f"⌨️ {prog} · 全 {len(cli['options'])} オプション",
+                "blocks": [{"type": "table", "headers": ["⚙️ オプション", "📝 説明"],
+                            "rows": [[full, text] for full, text, _ in cli["options"]]}]}
+    return {"type": "section", "title": f"⌨️ {prog} · 引数なし", "blocks": []}
+
+
+def _feature_module(path: Path, *, timeout: float, cli_argv: list[list[str]] | None = None,
+                    entry: Path | None = None, namespaces: bool = False,
+                    display: str, qualify: bool = False) -> tuple[list[dict], list[str]]:
+    label, rows = _features_api(path.read_text(encoding="utf-8"), namespaces=namespaces)
+    sections, names = [], []
+    for argv in ([[]] if cli_argv is None else cli_argv):
+        cli = _feature_cli(entry or path, argv, timeout=timeout, required=cli_argv is not None)
+        if cli is None:
+            continue
+        prog = " ".join([entry.as_posix() if entry else display, *argv])
+        if cli["commands"] or cli["options"] or qualify:
+            sections.append(_feature_cli_section(cli, prog, qualify=qualify))
+        names.extend([name for name, _, _, _ in cli["commands"]] or
+                     [short.split()[0] for _, _, short in cli["options"]])
+    if rows:
+        module = f"Python · {display}" if qualify else display
+        sections.append({"type": "section", "title": f"🐍 {module} · 全 {len(rows)} 個（{label}）",
+                         "blocks": [{"type": "table", "headers": ["🐍 名前（🔧 関数 · 🧱 クラス · 📦 値 · ↪️ 取り込み）", "📝 説明"], "rows": rows}]})
+        names.extend(row[0].split(" ", 1)[1].removesuffix("()") for row in rows)
+    return sections, names
+
+
+def _put_features(spec: Any, sections: list[dict], *, names: list[str] | None = None,
+                  source_key: str | None = None) -> dict:
+    spec = json.loads(json.dumps(spec))
+    if not isinstance(spec, dict) or not isinstance(spec.get("blocks"), list):
+        raise ValueError("add_features: spec is a web-ui-page/1 object with blocks")
+    if not sections:
+        return spec
+    if source_key is not None:
+        for section in sections:
+            section["_feature_source"] = source_key
+
+    def keep(block: Any) -> bool:
+        return not isinstance(block, dict) or (source_key is not None and block.get("_feature_source") != source_key)
+
+    def put(blocks: list) -> list:
+        """This file's sections where its old ones were, else after the full lists already at the top."""
+        old = next((i for i, b in enumerate(blocks) if not keep(b)), None)
+        blocks = [b for b in blocks if keep(b)]
+        at = old if old is not None else next((i for i, b in enumerate(blocks) if not (isinstance(b, dict) and "_feature_source" in b)), len(blocks))
+        return blocks[:at] + sections + blocks[at:]
+
+    tabs = next((b for b in spec["blocks"] if isinstance(b, dict) and b.get("type") == "tabs"), None)
+    if tabs is None:
+        for section in sections:
+            section["title"] = f"🧩 機能一覧 · {section['title']}"
+        spec["blocks"] = [b for b in spec["blocks"] if keep(b)] + sections
+        return spec
+    every = tabs.setdefault("tabs", [])
+    labels = [str(t.get("label", "")) if isinstance(t, dict) else "" for t in every]
+    hand = next((i for i, label in enumerate(labels) if "機能" in label), None)
+    if hand is None:
+        every.append({"label": "🧩 機能一覧", "blocks": sections})
+        return spec
+    tab = every[hand]
+    if names is not None and not any("_feature_source" in b for b in tab.get("blocks", []) if isinstance(b, dict)):
+        if all(name in json.dumps(tab, ensure_ascii=False) for name in names):   # ✅ the hand-written list names everything
+            return spec
+    tab["blocks"] = put(tab.get("blocks", []))
+    return spec
+
+
+def _feature_config_path(value: Any) -> Path:
+    if not isinstance(value, str) or not value:
+        raise ValueError("features config requires a repository-relative Python path")
+    path = Path(value)
+    if path.is_absolute() or path.suffix != ".py" or not path.resolve().is_relative_to(Path.cwd()):
+        raise ValueError(f"invalid features config path: {value}")
+    return path
+
+
+def _feature_config_sections(config: Any, *, timeout: float = 30) -> list[dict]:
+    if not isinstance(config, list) or not config:
+        raise ValueError("features config must be a non-empty list of sources")
+    sections = []
+    for item in config:
+        if not isinstance(item, dict) or set(item) - {"source", "cli", "entry", "namespaces"}:
+            raise ValueError("invalid features config source")
+        path = _feature_config_path(item.get("source"))
+        cli = item.get("cli", [])
+        namespaces = item.get("namespaces", False)
+        if (not isinstance(cli, list) or any(not isinstance(argv, list) or
+                any(not isinstance(arg, str) for arg in argv) for argv in cli)
+                or not isinstance(namespaces, bool) or ("entry" in item and not cli)):
+            raise ValueError(f"invalid features config options for {path}")
+        entry = _feature_config_path(item["entry"]) if "entry" in item else None
+        found, _ = _feature_module(path, timeout=timeout, cli_argv=cli, entry=entry,
+                                   namespaces=namespaces, display=path.as_posix(), qualify=True)
+        if not found:
+            raise ValueError(f"no public API or CLI extracted from {path}")
+        sections.extend(found)
+    return sections
 
 
 PARTS_THEMES = (*THEMES, *CANDIDATE_THEMES, AUTO_THEME)
@@ -2106,7 +2763,8 @@ STEP_LABELS = {"expect": "期待される出力", "needs": "前提条件", "trou
                "record": "再現記録", "status": "状態", "date": "検証日", "actual": "実際の出力・終了コード", "note": "環境・バージョン・備考",
                "copy": "コピー", "copied": "コピー済み", "copy_failed": "コピーできませんでした", "search": "検索", "filter": "状態", "all": "すべて",
                "export": "記録を JSON で保存", "import": "記録を読み込む", "loaded": "記録を読み込みました。", "stale": "別の版の記録を読み込み、状態を戻しました。",
-               "bad": "記録を読み込めません。このページから保存した JSON を選んでください。", "empty": "該当する手順はありません。"}
+               "bad": "記録を読み込めません。このページから保存した JSON を選んでください。", "empty": "該当する手順はありません。",
+               "choice": "実行方法", "run": "🤖 CI で実行する手順", "ran": "🤖 CI で実行した結果"}
 
 
 def notice(text: str, *, tone: str = "info", title: str | None = None) -> str:
@@ -2189,11 +2847,27 @@ def _step_text(value: Any, name: str, limit: int = 1000, required: bool = False)
     return value
 
 
+def _step_ran(value: Any) -> dict[str, Any]:
+    """🤖 What ``run_steps`` recorded for a step: ``exit`` (an int, or ``"timeout"``), ``output`` (its tail), ``seconds``, ``at`` (a UTC date),
+    ``commit`` and ``where`` (system and Python)."""
+    if not isinstance(value, dict) or set(value) - {"exit", "output", "seconds", "at", "commit", "where"}:
+        raise ValueError("ran is {exit, output, seconds, at, commit, where}")
+    code = value.get("exit")
+    if not (type(code) is int or code == "timeout"):
+        raise ValueError("ran.exit is an exit code or timeout")
+    seconds = value.get("seconds", 0)
+    if type(seconds) not in (int, float) or not 0 <= seconds < 86400:
+        raise ValueError("ran.seconds is a duration")
+    return {"exit": code, "output": _step_text(value.get("output", ""), "ran output", 8000), "seconds": round(float(seconds), 1),
+            **{k: _step_text(value.get(k, ""), f"ran {k}", 80) for k in ("at", "commit", "where")}}
+
+
 def steps_validate(spec: Any) -> dict[str, Any]:
     """Checked copy of a runbook: ``key`` (the drafts' prefix, such as ``olnm/uvfile``), ``steps`` (1..32 of ``id``, ``title``, ``command`` and
     optional ``expect``, ``needs`` and ``trouble: {seen, check, fix}``), optional ``statuses`` (``[[token, label], ...]`` over
     todo/doing/pass/hold/block, the first is the start), ``source`` (the version the records belong to), ``record`` (default true: a state, a date,
-    the actual output and a note per step), ``toolbar`` (default true: search, state filter, JSON save/load) and ``labels`` (STEP_LABELS keys)."""
+    the actual output and a note per step), ``toolbar`` (default true: search, state filter, JSON save/load) and ``labels`` (STEP_LABELS keys).
+    🤖 A step with ``run: true`` is one ``run_steps`` executes (in CI); it then carries ``ran`` (see ``_step_ran``)."""
     if not isinstance(spec, dict) or set(spec) - {"key", "steps", "statuses", "source", "record", "toolbar", "labels"}:
         raise ValueError("a runbook is {key, steps, statuses, source, record, toolbar, labels}")
     key = _draft_key(spec.get("key", ""))
@@ -2213,8 +2887,10 @@ def steps_validate(spec: Any) -> dict[str, Any]:
         raise ValueError("a runbook has 1..32 steps")
     steps, seen = [], set()
     for step in steps_in:
-        if not isinstance(step, dict) or set(step) - {"id", "title", "command", "expect", "needs", "trouble"}:
-            raise ValueError("a step is {id, title, command, expect, needs, trouble}")
+        if not isinstance(step, dict) or set(step) - {"id", "title", "command", "expect", "needs", "trouble", "run", "ran"}:
+            raise ValueError("a step is {id, title, command, expect, needs, trouble, run, ran}")
+        if type(step.get("run", False)) is not bool:
+            raise ValueError("run is true or false")
         sid = step.get("id")
         if not isinstance(sid, str) or not _STEP_ID.fullmatch(sid) or sid in seen:
             raise ValueError("a step id is a distinct lowercase token")
@@ -2224,11 +2900,24 @@ def steps_validate(spec: Any) -> dict[str, Any]:
             raise ValueError("trouble is {seen, check, fix}")
         steps.append({"id": sid, "title": _step_text(step.get("title"), "title", 120, True), "command": _step_text(step.get("command"), "command", 4000, True),
                       "expect": _step_text(step.get("expect"), "expect"), "needs": _step_text(step.get("needs"), "needs"),
-                      "trouble": {k: _step_text(trouble.get(k), k) for k in ("seen", "check", "fix") if trouble.get(k)}})
+                      "trouble": {k: _step_text(trouble.get(k), k) for k in ("seen", "check", "fix") if trouble.get(k)},
+                      "run": step.get("run", False), "ran": _step_ran(step["ran"]) if step.get("ran") is not None else None})
     source = spec.get("source")
     if source is not None and (not isinstance(source, str) or not re.fullmatch(r"[A-Za-z0-9_.:/+-]{1,80}", source)):
         raise ValueError("source is a commit or version of up to 80 plain characters")
     return {"key": key, "steps": steps, "statuses": statuses, "source": source, **flags, "labels": {**STEP_LABELS, **labels}}
+
+
+def _ran_html(step: dict[str, Any], text: dict[str, str]) -> str:
+    """🤖 A step's CI run: ✅/❌ with the exit code, the time, the commit, the date and the machine, then its output (open)."""
+    ran = step.get("ran")
+    if ran is None:
+        return f'<p class="ui-badges"><span class="ui-tag">{escape(text["run"])}</span></p>' if step.get("run") else ""
+    ok = ran["exit"] == 0
+    head = " · ".join(x for x in (f'{"✅" if ok else "❌"} {"exit " + str(ran["exit"]) if ran["exit"] != "timeout" else "⏱ timeout"}',
+                                  f'{ran["seconds"]:g} s', ran["commit"], ran["at"], ran["where"]) if x)
+    return (f'<details class="ui-ran" open data-ran="{"pass" if ok else "fail"}"><summary>{escape(text["ran"])} '
+            f'<span class="ui-tag ui-{"pass" if ok else "fail"}">{escape(head)}</span></summary><pre class="ui-output">{escape(ran["output"])}</pre></details>')
 
 
 def steps_html(spec: Any) -> str:
@@ -2259,7 +2948,7 @@ def steps_html(spec: Any) -> str:
         cards.append(f'<article class="ui-card ui-step" id="{base}" data-ui-item data-status="{first_token}">'
                      f'<header class="ui-step-head"><h3>{n}. {escape(step["title"])}</h3><span class="ui-tag" data-ui-status-tag>{escape(first_label)}</span></header>'
                      + code_block(step["command"], copy_label=text["copy"], copied_label=text["copied"], failed_label=text["copy_failed"])
-                     + facts([("expect", step["expect"]), ("needs", step["needs"])])
+                     + facts([("expect", step["expect"]), ("needs", step["needs"])]) + _ran_html(step, text)
                      + (details(text["trouble"], trusted_html=trouble) if trouble else "") + record + "</article>")
     toolbar = ""
     if book["toolbar"]:
@@ -2269,6 +2958,89 @@ def steps_html(spec: Any) -> str:
                    + '</div>' + (f'<p class="ui-muted" role="status" data-ui-records-message data-ui-msg-loaded="{escape(text["loaded"], quote=True)}" '
                                  f'data-ui-msg-stale="{escape(text["stale"], quote=True)}" data-ui-msg-bad="{escape(text["bad"], quote=True)}"></p>' if book["record"] else ""))
     return records_board(toolbar + f'<div class="ui-steps" id="{eid}-list">' + "".join(cards) + "</div>", id=eid, source=book["source"])
+
+
+def runbook_html(block: Any) -> str:
+    """🔬 A verification guide: ``books`` is 1..8 ``{label, intro?, runbook}`` (``runbook`` a ``steps_validate`` spec, each with its own ``key``).
+    With two or more a pulldown (``choice``, default 実行方法; kept as a draft) shows one book at a time — without JS they all show, one after another.
+    In a ``web-ui-page/1`` spec it is the ``runbook`` block (``page_document`` then carries ui.js's copy buttons and records.js)."""
+    books = block.get("books") if isinstance(block, dict) else None
+    if not isinstance(books, list) or not 1 <= len(books) <= 8:
+        raise ValueError("runbook has 1..8 books")
+    choice = _spec_text(block.get("choice", STEP_LABELS["choice"]), "runbook choice", limit=60, required=True)
+    key = block.get("id", hashlib.sha1(json.dumps(block, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:8])
+    if not isinstance(key, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,39}", key):
+        raise ValueError("runbook id is 1..40 of a-z, 0-9 and -")
+    name, options, panels, keys = f"runbook-{key}", [], [], set()
+    for i, book in enumerate(books):
+        if not isinstance(book, dict) or set(book) - {"label", "intro", "runbook"} or not isinstance(book.get("runbook"), dict):
+            raise ValueError("a book is {label, intro, runbook}")
+        label = _spec_text(book.get("label"), "book label", limit=100, required=True)
+        if book["runbook"].get("key") in keys:
+            raise ValueError("every book's runbook has its own key")
+        keys.add(book["runbook"].get("key"))
+        intro = f'<p class="ui-muted">{escape(_spec_text(book["intro"], "book intro", limit=1000))}</p>' if "intro" in book else ""
+        options.append((str(i), label))
+        panels.append(f'<section class="ui-choice-panel" data-ui-choice-panel="{name}" data-ui-choice-value="{i}"><h3>{escape(label)}</h3>{intro}'
+                      f'{steps_html(book["runbook"])}</section>')
+    pick = ""
+    if len(books) > 1:
+        pick = ('<div class="ui-records-bar">' + draft_select(tuple(options), key=f"{name}:choice", id=f"{name}-choice", label=choice)
+                .replace("<select ", f'<select data-ui-choice="{name}" ', 1) + "</div>")
+    return f'<div class="ui-runbook" data-ui-choices>{pick}{"".join(panels)}</div>'
+
+
+def _run_step(command: str, *, cwd: Any, timeout: float, shell: str) -> dict[str, Any]:
+    start = time.monotonic()
+    try:
+        done = subprocess.run([shell, "-c", command], cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout,
+                              env={**os.environ, "PYTHONUTF8": "1", "NO_COLOR": "1"})
+        code, data = done.returncode, done.stdout or b""
+    except subprocess.TimeoutExpired as exc:
+        code, data = "timeout", exc.stdout or b""
+    text = data.decode("utf-8", "replace").rstrip()
+    return {"exit": code, "output": text if len(text) <= 4000 else "…" + text[-3999:], "seconds": round(time.monotonic() - start, 1)}
+
+
+def run_steps(spec: Any, *, cwd: Any = ".", timeout: float = 120) -> Any:
+    """🤖 Run the steps marked ``run: true`` in a page's runbooks — in ``cwd``, one ``bash -c`` each, in order, stdin empty — and return a copy of the spec
+    whose steps carry ``ran``: the exit code (or ``timeout``), the last 4000 characters of stdout and stderr together, the seconds, the UTC date,
+    the short commit and the machine. A step that fails is recorded, not raised. ``--page spec.json --run-steps`` does this before rendering;
+    the Pages workflow runs it in CI, so the guide shows what really came out."""
+    out = json.loads(json.dumps(spec))
+    shell = shutil.which("bash") or shutil.which("sh") or "sh"
+    try:
+        commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=cwd, capture_output=True, text=True, timeout=10).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        commit = ""
+    stamp = {"at": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "commit": commit[:40], "where": f"{platform_name()} · Python {sys.version.split()[0]}"}
+
+    def walk(blocks: Any) -> None:
+        for block in blocks if isinstance(blocks, list) else []:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "runbook":
+                for book in block.get("books", []) if isinstance(block.get("books"), list) else []:
+                    for step in (book.get("runbook") or {}).get("steps", []) if isinstance(book, dict) else []:
+                        if isinstance(step, dict) and step.get("run") is True and isinstance(step.get("command"), str):
+                            step["ran"] = {**_run_step(step["command"], cwd=cwd, timeout=timeout, shell=shell), **stamp}
+            walk(block.get("blocks"))
+            for tab in block.get("tabs", []) if isinstance(block.get("tabs"), list) else []:
+                walk(tab.get("blocks") if isinstance(tab, dict) else None)
+
+    walk(out.get("blocks") if isinstance(out, dict) else None)
+    return out
+
+
+def platform_name() -> str:
+    """The system the steps ran on, for ``run_steps``: an os-release ``PRETTY_NAME`` (Linux) or ``sys.platform``."""
+    try:
+        for line in Path("/etc/os-release").read_text(encoding="utf-8").splitlines():
+            if line.startswith("PRETTY_NAME="):
+                return line.split("=", 1)[1].strip().strip('"')[:40]
+    except OSError:
+        pass
+    return sys.platform
 
 
 def plotly_figure(
@@ -2307,10 +3079,7 @@ def plotly_figure(
         layout["width"] = width
     identity = _element_id(div_id)
     payload = json.dumps({"data": data, "layout": layout, "config": config}, ensure_ascii=True)
-    initializer = (
-        f'(function(){{var s={payload};var el=document.getElementById("{identity}");'
-        f'if(el&&window.Plotly){{window.Plotly.newPlot(el,s.data,s.layout,s.config);}}}})();'
-    )
+    initializer = _plotly_initializer(identity, payload, "s.config")
     return f'<div id="{identity}" class="ui-panel"></div>{classic_script(initializer, nonce=nonce)}'
 
 
@@ -2996,6 +3765,208 @@ def section_browser(sections: tuple[tuple[str, str], ...], *, id: str = "section
             f'<script type="application/json" data-ui-section-data>{payload}</script></section>')
 
 
+_HTML_IMPORT_JS = r"""import {setText,prettyJson} from __UI_MODULE__;
+// Browser companion to the pinned lab extractor. Input nodes never enter the live DOM.
+const excluded = new Set(['script', 'style', 'template', 'noscript']);
+export const MAX_BYTES = 2 * 1024 * 1024;
+import __NAV_MODULE__;
+export const sourceURL = globalThis.webUiNavigation.sourceURL;
+export function parseHTML(html) {
+  if (typeof html !== 'string' || new TextEncoder().encode(html).length > MAX_BYTES) throw Error('HTMLの上限は2 MiBです。');
+  const template = document.createElement('template');
+  template.innerHTML = html; // inert: no script, image, iframe or stylesheet activation
+  const root = {tag:'document', attrs:{}, parent:null, children:[]};
+  function convert(dom, parent, depth) {
+    if (dom.nodeType === 3) return dom.data;
+    if (dom.nodeType !== 1) return null;
+    if (depth >= 128) throw Error('HTMLの階層が128を超えています。');
+    const node = {tag:dom.localName, attrs:Object.fromEntries([...dom.attributes].map(a=>[a.name,a.value])), parent, children:[]};
+    // template content and excluded descendants are deliberately not visited.
+    if (!excluded.has(node.tag)) node.children = [...dom.childNodes].map(c=>convert(c,node,depth+1)).filter(c=>c!==null);
+    return node;
+  }
+  root.children = [...template.content.childNodes].map(c=>convert(c,root,1)).filter(c=>c!==null);
+  return root;
+}
+function walk(node) { if (excluded.has(node.tag)) return []; return [node,...node.children.filter(c=>typeof c!=='string').flatMap(walk)]; }
+function rawText(node) { return excluded.has(node.tag)?'':node.children.map(c=>typeof c==='string'?c:rawText(c)).join(' '); }
+// Python str.split whitespace includes NEL and U+001C..1F, but excludes BOM.
+const clean = n=>rawText(n).replace(/[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/g,' ').replace(/^ +| +$/g,'');
+const words = s=>(s||'').split(/\s+/);
+function select(nodes, selector) {
+  if (typeof selector!=='string' || !selector.trim() || selector.length>512) throw Error('selector must be a non-empty string of at most 512 characters');
+  const tokens=selector.match(/>|[^\s>]+/g), parts=[], relations=[];
+  let relation=null;
+  for (const t of tokens) {
+    if (t==='>') { if (!parts.length || relation==='>') throw Error('invalid selector combinator'); relation='>'; continue; }
+    if (t!==':root' && !/^(?:[a-zA-Z][\w-]*|\*)?(?:[.#][a-zA-Z_][\w-]*)*$/.test(t)) throw Error('unsupported selector syntax');
+    if(parts.length) relations.push(relation||' '); parts.push(t); relation=null;
+  }
+  if(relation || !parts.length) throw Error('invalid selector combinator');
+  function matches(n,t) {
+    if (t===':root') return n.parent?.tag==='document';
+    const tag=t.match(/^[a-zA-Z][\w-]*|^\*/)?.[0];
+    if (tag && tag!=='*' && n.tag!==tag.toLowerCase()) return false;
+    for(const m of t.matchAll(/([.#])([a-zA-Z_][\w-]*)/g)) if(m[1]==='#'?n.attrs.id!==m[2]:!words(n.attrs.class).includes(m[2])) return false;
+    return n.tag!=='document';
+  }
+  function chain(n,i) {
+    if(!n || !matches(n,parts[i])) return false;
+    if(!i) return true;
+    if(relations[i-1]==='>') return chain(n.parent,i-1);
+    for(let p=n.parent;p;p=p.parent) if(chain(p,i-1)) return true;
+    return false;
+  }
+  return nodes.filter(n=>chain(n,parts.length-1));
+}
+const resolve = (href,url)=>{try{const u=new URL(href,url);return ['http:','https:'].includes(u.protocol)?u.href:null;}catch{return null;}};
+export function extract(root, url, profile='generic', selector=null) {
+  sourceURL(url);
+  if(!['generic','github-readme'].includes(profile)) throw Error('unknown HTML profile');
+  const nodes=walk(root); let scopes=nodes.filter(n=>n.tag==='article'), scope='article';
+  if(selector!==null) {
+    if(profile!=='generic') throw Error('selector requires generic profile');
+    scopes=select(nodes,selector); scope=selector;
+    if(!scopes.length) throw Error('selector matched no elements');
+  } else if(profile==='github-readme') {
+    scopes=scopes.filter(n=>words(n.attrs.class).includes('markdown-body'));
+    if(scopes.length!==1) throw Error('github-readme requires exactly one article.markdown-body');
+  } else if(!scopes.length) { scopes=nodes.filter(n=>n.tag==='main'); if(!scopes.length) scopes=[root]; scope=scopes[0]===root?'document':'main'; }
+  const descendants=new Set(scopes.flatMap(n=>walk(n).slice(1)));
+  scopes=scopes.filter(n=>!descendants.has(n));
+  const content=scopes.flatMap(walk), text=scopes.map(clean).filter(Boolean).join(' ');
+  if(!text) throw Error('selected HTML scope has no text');
+  return {source_url:url,profile,scope,scope_count:scopes.length,title:clean(nodes.find(n=>n.tag==='title')||{children:[]}),
+    headings:content.filter(n=>/^h[1-6]$/.test(n.tag)).map(n=>({level:n.tag,text:clean(n)})),text,
+    links:content.filter(n=>n.tag==='a' && n.attrs.href && resolve(n.attrs.href,url)).map(n=>({text:clean(n),url:resolve(n.attrs.href,url)})),
+    structure:nodes.filter(n=>['main','article'].includes(n.tag)).map(n=>({tag:n.tag,id:n.attrs.id??null,class:n.attrs.class??null})),
+    stylesheets:nodes.filter(n=>n.tag==='link' && words((n.attrs.rel||'').toLowerCase()).includes('stylesheet') && n.attrs.href && resolve(n.attrs.href,url)).map(n=>resolve(n.attrs.href,url))};
+}
+
+function bindImportPage() {
+  const $=id=>document.getElementById(id);
+  let loaded=null, result=null, revision=0;
+  const sourceLink=globalThis.webUiNavigation.bindSourceLink($('source-url'),$('source-open'));
+  function clearResult(){result=null;setText($('body-result'),'');setText($('headings-result'),'');setText($('links-result'),'');setText($('provenance'),'');$('download').disabled=true;}
+  function fail(e){clearResult();setText($('status'),e.message);}
+  function apply(){
+    clearResult();
+    if(!loaded) return setText($('status'),'まずHTMLを取り込んでください。');
+    try {
+      const extraction=extract(loaded.root,loaded.snapshot.url,$('profile').value,$('selector').value.trim()||null);
+      const {html,...metadata}=loaded.snapshot;
+      result={snapshot:metadata,input:{kind:loaded.kind,name:loaded.name},extraction};
+      setText($('body-result'),extraction.text);setText($('headings-result'),prettyJson(extraction.headings));setText($('links-result'),prettyJson(extraction.links));
+      setText($('provenance'),prettyJson({...metadata,input:result.input,scope:extraction.scope,scope_count:extraction.scope_count}));
+      setText($('status'),'抽出しました。同じ取込データで条件を変更できます。');$('download').disabled=false;
+    }catch(e){fail(e);}
+  }
+  async function load(html,kind,name,url,token){
+    const root=parseHTML(html);
+    const bytes=new TextEncoder().encode(html);
+    const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+    if(token!==revision) return;
+    loaded={root,kind,name,snapshot:{schema:'html-snapshot/1',url,html,fetched_at:null,encoding:'utf-8',response_sha256:null,content_sha256:hash}};
+    apply();
+  }
+  $('paste-load').addEventListener('click',async()=>{
+    const token=++revision;loaded=null;clearResult();
+    try{await load($('html-input').value,'paste',null,sourceURL($('source-url').value.trim()),token);}catch(e){if(token===revision)fail(e);}
+  });
+  $('file-input').addEventListener('change',async()=>{
+    const token=++revision;loaded=null;clearResult();
+    const file=$('file-input').files[0];if(!file)return;
+    try{
+      const url=sourceURL($('source-url').value.trim());
+      if(file.size>MAX_BYTES)throw Error('HTMLの上限は2 MiBです。');
+      const html=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());
+      if(token===revision) await load(html,'file',file.name,url,token);
+    }catch(e){if(token===revision)fail(e);}
+  });
+  $('apply').addEventListener('click',apply);
+  $('download').addEventListener('click',()=>{
+    if(!result)return;
+    const url=URL.createObjectURL(new Blob([prettyJson(result)+'\n'],{type:'application/json'}));
+    const a=document.createElement('a');a.href=url;a.download='html-extraction.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  });
+  $('clear').addEventListener('click',()=>{++revision;loaded=null;clearResult();$('html-input').value='';$('file-input').value='';$('source-url').value='';sourceLink.update();setText($('status'),'取込データと結果を消去しました。');});
+}
+
+if (typeof document !== 'undefined' && document.querySelector('script[type="module"][src="./extract.mjs"]')) bindImportPage();
+"""
+
+
+_HTML_IMPORT_BODY = '''<main class="ui-page">
+<h1>📄 HTML文書取込</h1>
+<p>貼り付けたHTMLやローカルファイルから本文・見出し・リンクを取り出します。入力と結果はこのページのメモリ内で処理し、運営者へ自動送信・保存しません。HTML内のスクリプトや画像は実行・取得しません。</p>
+<section class="ui-panel" aria-labelledby="input-title"><h2 id="input-title">1. 取り込む</h2>
+<label for="source-url">取得元URL（絶対HTTP(S)、相対リンクの基準）</label>
+<input class="ui-input" id="source-url" type="url" placeholder="https://example.org/page" autocomplete="off">
+__SOURCE_LINK__
+<p>上のリンクを選んだ時だけ指定サイトへアクセスします。開いたサイトでHTMLを保存するかソースをコピーし、このページへ取り込んでください。サイトの表示内容を自動取得する機能ではありません。</p>
+<p>URLは出典の申告です。取込・抽出処理はアクセスしません。元URLが不明な場合は明示した仮のURLを使用してください。ダウンロード済みの証明にはなりません。</p>
+<label for="html-input">HTMLを貼り付ける</label><textarea class="ui-input" id="html-input" rows="8" spellcheck="false" placeholder="&lt;article&gt;&lt;h1&gt;見出し&lt;/h1&gt;&lt;p&gt;本文&lt;/p&gt;&lt;/article&gt;"></textarea>
+<button class="ui-button" id="paste-load" type="button">貼り付けを取り込む</button>
+<label for="file-input">またはHTMLファイルを選択（UTF-8、2 MiBまで）</label>
+<input class="ui-input" id="file-input" type="file" accept=".html,.htm,text/html">
+</section>
+<section class="ui-panel" aria-labelledby="options-title"><h2 id="options-title">2. 抽出条件</h2>
+<label for="profile">抽出プロファイル</label><select class="ui-input" id="profile"><option value="generic">一般（article → main → 文書全体）</option><option value="github-readme">GitHub README（article.markdown-bodyが1件）</option></select>
+<label for="selector">一般プロファイルのセレクター（任意）</label><input class="ui-input" id="selector" placeholder="main > article.note" autocomplete="off">
+<p>対応：タグ、#id、.class、子孫、&gt;、:root。CSS・外部参照は読み込みません。条件変更は取込済みデータを使い、ファイルを再読込しません。</p>
+<button class="ui-button" id="apply" type="button">条件を適用</button> <button class="ui-button" id="clear" type="button">入力と結果を消去</button>
+</section>
+<p id="status" role="status" aria-live="polite">まず取得元URLとHTMLを指定してください。</p>
+<section class="ui-panel"><h2>3. 結果</h2><button class="ui-button" id="download" type="button" disabled>結果JSONをダウンロード</button>
+<h3>取得元・取込方法</h3><pre class="ui-output" id="provenance"></pre>
+<h3>本文</h3><pre class="ui-output" id="body-result"></pre>
+<h3>見出し</h3><pre class="ui-output" id="headings-result"></pre>
+<h3>リンク（表示のみ、追跡しません）</h3><pre class="ui-output" id="links-result"></pre></section>
+<details class="ui-panel"><summary>対応範囲と制約</summary>
+<p>通常のHTML文書・整形式のarticle/main、見出しh1〜h6、HTTP(S)リンクを対象にします。script/style/template/noscriptの内容は除外します。HTMLのbase要素は無視します。隠された文字もCSSで判定せず、空白は正規化します。</p>
+<p>ブラウザはHTML5として木構造を補正します。省略・不正なタグ、tableの補正、重複属性、SVG/MathML、特殊な文字参照、URLの正規化ではPythonと差が出る場合があります。Python/JS一致は共有fixtureで確認した範囲です。完全なCSS、計算済みスタイル、PDF、JS生成ページ、外部ファイルの取得、文字コード自動判定は未対応です。</p>
+<p>JSONはhtml-snapshot/1のメタデータと抽出結果を含み、元HTML本文は含みません。fetched_atとresponse_sha256はnullです。入力はページを離れると失われます。保存は利用者がダウンロードを選んだ場合のみです。__DOCS_LINK__</p></details>
+</main>'''
+_HTML_IMPORT_CSS = 'label{display:block;margin:1rem 0 .3rem}input,textarea,select{width:100%;max-width:100%}button{margin:.3rem 0;min-height:44px}pre{overflow-wrap:anywhere}h1{font-size:1.8rem}'
+
+
+def html_import_files(*, shared_base: str | None = None, docs_href: str | None = None) -> dict[str, bytes]:
+    """Build the Japanese HTML import tool. Write the returned relative paths under one directory.
+    With shared_base, reuse an existing PSWB css/ and js/ deployment relative to the tool.
+    Without it, include the required browser helpers and inline the core stylesheet.
+    """
+    files = {}
+    base = "." if shared_base is None else shared_base.rstrip("/")
+    if shared_base is not None:
+        _require_local_script_path(shared_base, label="shared_base")
+        if base and not base.startswith(("./", "../", "/")) and base not in (".", ".."):
+            base = "./" + base
+    stylesheets = ()
+    css = _HTML_IMPORT_CSS
+    if shared_base is None:
+        for name in ("ui.js", "navigation.js"):
+            files["js/" + name] = js_source(name).encode()
+        css = core_css() + css
+    else:
+        stylesheets = tuple(f"{base}/css/{name}.css" for name in ("tokens", "base", "components", "themes/modern"))
+    link = ""
+    if docs_href is not None:
+        link = f'<a href="{escape(_spec_href(docs_href), quote=True)}">抽出契約と検証方法</a>'
+    document = render_document(title="HTML文書取込", trusted_html=_HTML_IMPORT_BODY.replace(
+        "__SOURCE_LINK__", source_link("source-url")).replace("__DOCS_LINK__", link),
+        css=css, stylesheets=stylesheets, scripts=("./extract.mjs",))
+    csp = (
+        "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "img-src 'self'; connect-src 'none'; frame-src 'none'; object-src 'none'; "
+        "base-uri 'none'; form-action 'none'"
+    )
+    document = document.replace("<head>", '<head><meta http-equiv="Content-Security-Policy" content="' + csp + '">', 1)
+    files["index.html"] = document.replace('<html lang="en">', '<html lang="ja">', 1).encode()
+    module = _HTML_IMPORT_JS.replace("__UI_MODULE__", json.dumps(f"{base}/js/ui.js"))
+    files["extract.mjs"] = module.replace("__NAV_MODULE__", json.dumps(f"{base}/js/navigation.js")).encode()
+    return files
+
+
 def source_link(input_id: str, *, link_id: str = "source-open", label: str = "取得元サイトを新しいタブで開く ↗") -> str:
     """Link to a visitor-selected HTTP(S) input. No request until clicked.
 
@@ -3125,26 +4096,26 @@ def adopt_document(page: str, *, asset_base: str | None = None, class_aliases: d
 
 
 # Exact snapshot of the locked stdlib launcher for single-file distribution.
-# Keep byte-for-byte parity with vendor/node_launch.py (covered by tests).
-_EMBEDDED_NODE_LAUNCH_SOURCE = '"""Shared Python launcher for Node.js scripts (stdlib only, Python 3.9+).\n\nLibrary: ``run(target, *args, node=..., input=..., timeout=..., max_input_bytes=...,\nresponse_max_bytes=..., env=..., env_var=...)`` returns stdout/stderr as ``bytes``.\n``run_argv(argv, ...)`` prepends a resolved Node executable to ``argv``.\n\nNode resolution (first match that runs Node 26+): explicit ``node``,\n``os.environ[env_var]`` when set, then ``shutil.which("node")``. Explicit ``node`` or a\nset ``env_var`` value does not fall back to later candidates. Windows ``.cmd``/``.bat``\nshims are never spawned with ``shell=True``; explicit paths are rejected.\n\n``env`` merges over ``os.environ`` case-insensitively on Windows. Optional\n``max_input_bytes`` / ``response_max_bytes`` raise errors with stable ``code`` values:\n``EINPUTTOOLARGE``, ``ERESPONSETOOLARGE``, ``ELAUNCHFAILURE``, and\n``ELAUNCHSTDINCLOSED`` when stdin breaks (``EPIPE``) before the child finishes reading.\nStdout is read incrementally when ``response_max_bytes`` is set (cap plus\n``HOST_RESPONSE_MARGIN_BYTES``, matching ``py_launch.cjs`` ``maxBuffer`` / ``ENOBUFS``).\n"""\nfrom __future__ import annotations\n\nimport errno\nimport os\nimport re\nimport shutil\nimport subprocess\nimport sys\nimport threading\nfrom typing import Any, Mapping, Optional, Sequence, Union\n\nMIN_NODE_MAJOR = 26\nDEFAULT_ENV_VAR = "NODE"\nDEFAULT_PROBE_TIMEOUT = 5.0\nHOST_RESPONSE_MARGIN_BYTES = 512\n_NODE_VERSION = re.compile(r"(?:^|\\s)v?(?P<major>\\d+)(?:\\.\\d+)*", re.IGNORECASE)\n_NODE_PROBE_CACHE: dict[str, str] = {}\n\n\nclass NodeNotFoundError(FileNotFoundError):\n    """Raised when Node.js cannot be located or does not meet the minimum version."""\n\n\nclass LaunchError(RuntimeError):\n    """Raised when the Node child fails to start, exceeds caps, or exits unexpectedly."""\n\n    def __init__(\n        self,\n        message: str,\n        *,\n        code: str = "ELAUNCHFAILURE",\n        status: Optional[int] = None,\n        stdout: bytes = b"",\n        stderr: bytes = b"",\n        signal: Optional[int] = None,\n    ) -> None:\n        super().__init__(message)\n        self.code = code\n        self.status = status\n        self.stdout = stdout\n        self.stderr = stderr\n        self.signal = signal\n\n\ndef is_node_target(path: Union[str, os.PathLike[str]]) -> bool:\n    """True when ``path`` names a JavaScript entry file by extension."""\n    return os.path.splitext(os.fspath(path))[1].lower() in (".js", ".cjs", ".mjs")\n\n\ndef _env_key_fold(key: str) -> str:\n    return str(key).casefold()\n\n\ndef env_lookup(env: Mapping[str, str], name: str) -> Optional[str]:\n    """Case-insensitive environment lookup (primarily for Windows tests)."""\n    fold = _env_key_fold(name)\n    for key, value in env.items():\n        if _env_key_fold(key) == fold:\n            return value\n    return None\n\n\ndef build_child_env(overrides: Optional[Mapping[str, str]]) -> Optional[dict[str, str]]:\n    """Merge ``overrides`` onto ``os.environ``; Windows overrides replace folded keys."""\n    if overrides is None:\n        return None\n    if os.name != "nt":\n        merged = dict(os.environ)\n        merged.update(overrides)\n        return merged\n    env = dict(os.environ)\n    index: dict[str, str] = {_env_key_fold(key): key for key in env}\n    for override_key, value in overrides.items():\n        fold = _env_key_fold(override_key)\n        existing = index.get(fold)\n        if existing is not None:\n            del env[existing]\n        env[override_key] = value\n        index[fold] = override_key\n    return env\n\n\ndef _reject_windows_batch_wrapper(path: str) -> None:\n    lowered = path.lower()\n    if lowered.endswith(".cmd") or lowered.endswith(".bat"):\n        raise NodeNotFoundError(\n            "node_launch: node batch wrappers (.cmd/.bat) are not supported: " + path\n        )\n\n\ndef _decode(data: bytes) -> str:\n    if not data:\n        return ""\n    return data.decode("utf-8", errors="replace")\n\n\ndef _probe_node_once(path: str, probe_timeout: float) -> str:\n    cached = _NODE_PROBE_CACHE.get(path)\n    if cached is not None:\n        return cached\n    _reject_windows_batch_wrapper(path)\n    try:\n        completed = subprocess.run(\n            (path, "--version"),\n            capture_output=True,\n            timeout=probe_timeout,\n            shell=False,\n            check=False,\n        )\n    except FileNotFoundError as exc:\n        raise NodeNotFoundError("node_launch: node executable not found: " + path) from exc\n    except OSError as exc:\n        raise NodeNotFoundError("node_launch: node version probe failed: " + path) from exc\n    except subprocess.TimeoutExpired as exc:\n        raise NodeNotFoundError("node_launch: node version probe timed out: " + path) from exc\n    output = _decode(completed.stdout) + _decode(completed.stderr)\n    match = _NODE_VERSION.search(output)\n    if completed.returncode != 0 or match is None:\n        raise NodeNotFoundError("node_launch: node version probe failed: " + path)\n    major = int(match.group("major"))\n    if major < MIN_NODE_MAJOR:\n        raise NodeNotFoundError(\n            f"node_launch: node version must be {MIN_NODE_MAJOR} or newer (found {major}): "\n            + path\n        )\n    _NODE_PROBE_CACHE[path] = path\n    return path\n\n\ndef _node_executable(\n    node: Optional[Union[str, os.PathLike[str]]],\n    *,\n    env_var: str,\n    probe: bool,\n    probe_timeout: float,\n) -> str:\n    explicit = node is not None\n    if not explicit and env_var and env_var in os.environ:\n        node = os.environ[env_var]\n        explicit = True\n    if explicit:\n        path = os.fspath(node)\n        _reject_windows_batch_wrapper(path)\n        return _probe_node_once(path, probe_timeout) if probe else path\n\n    if not probe:\n        discovered = shutil.which("node")\n        path = discovered if discovered else "node"\n        _reject_windows_batch_wrapper(path)\n        return path\n\n    discovered = shutil.which("node")\n    if discovered:\n        try:\n            return _probe_node_once(discovered, probe_timeout)\n        except NodeNotFoundError:\n            pass\n    raise NodeNotFoundError("node_launch: node executable not found")\n\n\ndef resolve_node(\n    node: Optional[Union[str, os.PathLike[str]]] = None,\n    *,\n    env_var: str = DEFAULT_ENV_VAR,\n    probe: bool = True,\n    probe_timeout: float = DEFAULT_PROBE_TIMEOUT,\n) -> str:\n    """Locate a Node 26+ executable.\n\n    Explicit ``node`` or a set ``env_var`` environment value must work as given;\n    auto-discovery uses ``shutil.which(\'node\')`` on ``PATH``.\n    """\n    return _node_executable(\n        node, env_var=env_var, probe=probe, probe_timeout=probe_timeout\n    )\n\n\ndef node_command(\n    target: Union[str, os.PathLike[str]],\n    *args: Union[str, os.PathLike[str]],\n    node: Optional[Union[str, os.PathLike[str]]] = None,\n    node_flags: Sequence[Union[str, os.PathLike[str]]] = (),\n    env_var: str = DEFAULT_ENV_VAR,\n    probe: bool = True,\n    probe_timeout: float = DEFAULT_PROBE_TIMEOUT,\n) -> list[str]:\n    """Build ``[node, *node_flags, target, *args]`` without reinterpreting passthrough argv."""\n    executable = _node_executable(\n        node, env_var=env_var, probe=probe, probe_timeout=probe_timeout\n    )\n    flags = [os.fspath(value) for value in node_flags]\n    script = os.fspath(target)\n    trailing = [os.fspath(value) for value in args]\n    return [executable, *flags, script, *trailing]\n\n\ndef node_or_command(\n    argv: Sequence[Union[str, os.PathLike[str]]],\n    *,\n    node: Optional[Union[str, os.PathLike[str]]] = None,\n    node_flags: Sequence[Union[str, os.PathLike[str]]] = (),\n    env_var: str = DEFAULT_ENV_VAR,\n    probe: bool = True,\n    probe_timeout: float = DEFAULT_PROBE_TIMEOUT,\n) -> list[str]:\n    """Prepend Node when ``argv[0]`` names a ``.js`` / ``.cjs`` / ``.mjs`` file."""\n    tokens = [os.fspath(value) for value in argv]\n    if not tokens:\n        return tokens\n    if is_node_target(tokens[0]):\n        return node_command(\n            tokens[0],\n            *tokens[1:],\n            node=node,\n            node_flags=node_flags,\n            env_var=env_var,\n            probe=probe,\n            probe_timeout=probe_timeout,\n        )\n    return tokens\n\n\ndef _nonnegative_int(name: str, value: int) -> None:\n    if not isinstance(value, int) or value < 0:\n        raise ValueError(f"node_launch: {name} must be a nonnegative integer")\n\n\ndef _input_byte_length(input_data: Optional[Union[str, bytes]]) -> int:\n    if input_data is None:\n        return 0\n    if isinstance(input_data, str):\n        return len(input_data.encode("utf-8"))\n    return len(input_data)\n\n\ndef _normalize_input(input_data: Optional[Union[str, bytes]]) -> Optional[bytes]:\n    if input_data is None:\n        return None\n    if isinstance(input_data, str):\n        return input_data.encode("utf-8")\n    return input_data\n\n\ndef _response_cap_bytes(response_max_bytes: int) -> int:\n    _nonnegative_int("response_max_bytes", response_max_bytes)\n    return response_max_bytes + HOST_RESPONSE_MARGIN_BYTES\n\n\ndef _launch_failure_from_returncode(\n    returncode: int,\n    stdout: bytes,\n    stderr: bytes,\n) -> LaunchError:\n    if returncode < 0:\n        signum = -returncode\n        return LaunchError(\n            f"node_launch: Node process terminated by signal {signum}",\n            code="ELAUNCHFAILURE",\n            signal=signum,\n            stdout=stdout,\n            stderr=stderr,\n        )\n    message = _decode(stderr).strip() or "Node script failed"\n    return LaunchError(\n        message,\n        code="ELAUNCHFAILURE",\n        status=returncode,\n        stdout=stdout,\n        stderr=stderr,\n    )\n\n\ndef _exit_code_for_main(returncode: Optional[int]) -> None:\n    if returncode is None or returncode == 0:\n        return\n    if returncode < 0:\n        sys.exit(128 + (-returncode))\n    sys.exit(returncode)\n\n\ndef _stream_communicate(\n    proc: subprocess.Popen,\n    input_bytes: Optional[bytes],\n    timeout: Optional[float],\n    response_max_bytes: Optional[int],\n) -> tuple[bytes, bytes, int]:\n    hard_limit = None\n    cap: Optional[int] = None\n    if response_max_bytes is not None:\n        _nonnegative_int("response_max_bytes", response_max_bytes)\n        cap = response_max_bytes\n        hard_limit = _response_cap_bytes(response_max_bytes)\n\n    stdout_chunks: list[bytes] = []\n    stderr_chunks: list[bytes] = []\n    stdout_len = 0\n    exceeded = threading.Event()\n    read_lock = threading.Lock()\n    stdin_code: list[Optional[str]] = [None]\n    stdin_os_error: list[Optional[OSError]] = [None]\n\n    def read_stdout() -> None:\n        nonlocal stdout_len\n        stream = proc.stdout\n        if stream is None:\n            return\n        try:\n            while True:\n                chunk = stream.read(65536)\n                if not chunk:\n                    break\n                if hard_limit is not None:\n                    with read_lock:\n                        stdout_len += len(chunk)\n                        if stdout_len > hard_limit:\n                            exceeded.set()\n                            try:\n                                proc.kill()\n                            except OSError:\n                                pass\n                            break\n                stdout_chunks.append(chunk)\n        finally:\n            stream.close()\n\n    def read_stderr() -> None:\n        stream = proc.stderr\n        if stream is None:\n            return\n        try:\n            while True:\n                chunk = stream.read(65536)\n                if not chunk:\n                    break\n                stderr_chunks.append(chunk)\n        finally:\n            stream.close()\n\n    def write_stdin() -> None:\n        stream = proc.stdin\n        if stream is None:\n            return\n        if input_bytes is None:\n            try:\n                stream.close()\n            except OSError:\n                pass\n            return\n        try:\n            offset = 0\n            chunk_size = 65536\n            while offset < len(input_bytes):\n                stream.write(input_bytes[offset : offset + chunk_size])\n                offset += chunk_size\n            stream.flush()\n            stream.close()\n        except BrokenPipeError:\n            stdin_code[0] = "ELAUNCHSTDINCLOSED"\n            try:\n                stream.close()\n            except OSError:\n                pass\n        except OSError as exc:\n            if exc.errno == errno.EPIPE:\n                stdin_code[0] = "ELAUNCHSTDINCLOSED"\n                try:\n                    stream.close()\n                except OSError:\n                    pass\n            else:\n                stdin_os_error[0] = exc\n                try:\n                    stream.close()\n                except OSError:\n                    pass\n\n    stdout_thread = threading.Thread(target=read_stdout, name="node_launch_stdout", daemon=True)\n    stderr_thread = threading.Thread(target=read_stderr, name="node_launch_stderr", daemon=True)\n    stdin_thread = threading.Thread(target=write_stdin, name="node_launch_stdin", daemon=True)\n    stdout_thread.start()\n    stderr_thread.start()\n    stdin_thread.start()\n\n    timed_out = False\n    returncode: Optional[int]\n    try:\n        returncode = proc.wait(timeout=timeout)\n    except subprocess.TimeoutExpired:\n        timed_out = True\n        try:\n            proc.kill()\n        except OSError:\n            pass\n        proc.wait()\n        returncode = proc.returncode\n\n    stdin_thread.join()\n    stdout_thread.join()\n    stderr_thread.join()\n\n    stdout = b"".join(stdout_chunks)\n    stderr = b"".join(stderr_chunks)\n    if returncode is None:\n        returncode = proc.returncode if proc.returncode is not None else -1\n\n    if stdin_os_error[0] is not None:\n        exc = stdin_os_error[0]\n        raise LaunchError(\n            f"node_launch: Node process failed: {exc}",\n            code="ELAUNCHFAILURE",\n            stdout=stdout,\n            stderr=stderr,\n        ) from exc\n\n    if timed_out:\n        raise LaunchError(\n            "node_launch: Node process timed out",\n            code="ELAUNCHFAILURE",\n            stdout=stdout,\n            stderr=stderr,\n        )\n\n    if stdin_code[0] == "ELAUNCHSTDINCLOSED":\n        raise LaunchError(\n            "node_launch: Node stdin pipe closed unexpectedly",\n            code="ELAUNCHSTDINCLOSED",\n            status=returncode,\n            stdout=stdout,\n            stderr=stderr,\n        )\n\n    if exceeded.is_set() or (cap is not None and len(stdout) > cap):\n        raise LaunchError(\n            f"node_launch: response exceeds response_max_bytes ({cap})",\n            code="ERESPONSETOOLARGE",\n            status=returncode,\n            stdout=stdout,\n            stderr=stderr,\n        )\n\n    return stdout, stderr, returncode\n\n\ndef _communicate(\n    proc: subprocess.Popen,\n    input_bytes: Optional[bytes],\n    timeout: Optional[float],\n    response_max_bytes: Optional[int],\n) -> tuple[bytes, bytes, int]:\n    return _stream_communicate(proc, input_bytes, timeout, response_max_bytes)\n\n\ndef run_argv(\n    argv: Sequence[Union[str, os.PathLike[str]]],\n    *,\n    node: Optional[Union[str, os.PathLike[str]]] = None,\n    env_var: str = DEFAULT_ENV_VAR,\n    probe: bool = True,\n    probe_timeout: float = DEFAULT_PROBE_TIMEOUT,\n    input: Optional[Union[str, bytes]] = None,\n    timeout: Optional[float] = None,\n    max_input_bytes: Optional[int] = None,\n    response_max_bytes: Optional[int] = None,\n    env: Optional[Mapping[str, str]] = None,\n    check: bool = True,\n) -> subprocess.CompletedProcess:\n    """Run ``[resolved_node, *argv]`` with ``shell=False`` and byte stdout/stderr."""\n    executable = _node_executable(\n        node, env_var=env_var, probe=probe, probe_timeout=probe_timeout\n    )\n    _reject_windows_batch_wrapper(executable)\n    command = [executable, *[os.fspath(value) for value in argv]]\n\n    input_len = _input_byte_length(input)\n    if max_input_bytes is not None:\n        _nonnegative_int("max_input_bytes", max_input_bytes)\n        if input_len > max_input_bytes:\n            raise LaunchError(\n                f"node_launch: input exceeds max_input_bytes ({max_input_bytes}; got {input_len} bytes)",\n                code="EINPUTTOOLARGE",\n            )\n\n    child_env = build_child_env(env)\n    input_bytes = _normalize_input(input)\n\n    try:\n        proc = subprocess.Popen(\n            command,\n            stdin=subprocess.PIPE,\n            stdout=subprocess.PIPE,\n            stderr=subprocess.PIPE,\n            shell=False,\n            env=child_env,\n        )\n    except OSError as exc:\n        raise LaunchError(\n            f"node_launch: Node process failed: {exc}",\n            code="ELAUNCHFAILURE",\n        ) from exc\n\n    stdout, stderr, returncode = _communicate(\n        proc, input_bytes, timeout, response_max_bytes\n    )\n\n    if returncode != 0 and check:\n        raise _launch_failure_from_returncode(returncode, stdout, stderr)\n\n    return subprocess.CompletedProcess(command, returncode, stdout, stderr)\n\n\ndef run(\n    target: Union[str, os.PathLike[str]],\n    *args: Union[str, os.PathLike[str]],\n    node: Optional[Union[str, os.PathLike[str]]] = None,\n    node_flags: Sequence[Union[str, os.PathLike[str]]] = (),\n    env_var: str = DEFAULT_ENV_VAR,\n    probe: bool = True,\n    probe_timeout: float = DEFAULT_PROBE_TIMEOUT,\n    input: Optional[Union[str, bytes]] = None,\n    timeout: Optional[float] = None,\n    max_input_bytes: Optional[int] = None,\n    response_max_bytes: Optional[int] = None,\n    env: Optional[Mapping[str, str]] = None,\n    check: bool = True,\n) -> subprocess.CompletedProcess:\n    """Run ``node_command(...)`` and return captured stdout/stderr as bytes."""\n    argv = node_command(\n        target,\n        *args,\n        node=node,\n        node_flags=node_flags,\n        env_var=env_var,\n        probe=probe,\n        probe_timeout=probe_timeout,\n    )\n    return run_argv(\n        argv[1:],\n        node=argv[0],\n        env_var=env_var,\n        probe=False,\n        input=input,\n        timeout=timeout,\n        max_input_bytes=max_input_bytes,\n        response_max_bytes=response_max_bytes,\n        env=env,\n        check=check,\n    )\n\n\ndef run_node(\n    target: Union[str, os.PathLike[str]],\n    *args: Union[str, os.PathLike[str]],\n    **kwargs: Any,\n) -> subprocess.CompletedProcess:\n    """Alias for :func:`run` matching the cli_args helper name."""\n    return run(target, *args, **kwargs)\n\n\ndef main(\n    script_path: Union[str, os.PathLike[str]],\n    opts: Optional[Mapping[str, Any]] = None,\n) -> None:\n    """Spawn a Node script with inherited stdio and forwarded exit code."""\n    options = dict(opts or {})\n    argv = options.pop("argv", None)\n    if argv is None:\n        argv = sys.argv[1:]\n    env_var = options.pop("env_var", DEFAULT_ENV_VAR)\n    node = options.pop("node", None)\n    node_flags = options.pop("node_flags", ())\n    probe_timeout = options.pop("probe_timeout", DEFAULT_PROBE_TIMEOUT)\n    child_env = build_child_env(options.pop("env", None))\n    try:\n        command = node_command(\n            script_path,\n            *argv,\n            node=node,\n            node_flags=node_flags,\n            env_var=env_var,\n            probe=True,\n            probe_timeout=probe_timeout,\n        )\n        _reject_windows_batch_wrapper(command[0])\n    except NodeNotFoundError as error:\n        sys.stderr.write(f"{error}\\n")\n        sys.exit(2)\n    try:\n        completed = subprocess.run(\n            command,\n            shell=False,\n            env=child_env,\n            check=False,\n        )\n    except OSError as error:\n        sys.stderr.write(f"node_launch: {error}\\n")\n        sys.exit(2)\n    if completed.returncode != 0:\n        _exit_code_for_main(completed.returncode)\n\n\ndef clear_probe_cache() -> None:\n    """Clear the version-probe cache (for tests)."""\n    _NODE_PROBE_CACHE.clear()\n'
+# Keep byte-for-byte parity with vendor/njs_launch.py (covered by tests).
+_EMBEDDED_NJS_LAUNCH_SOURCE = '"""Shared Python launcher for Node.js scripts (stdlib only, Python 3.9+).\n\nLibrary: ``run(target, *args, node=..., input=..., timeout=..., max_input_bytes=...,\nresponse_max_bytes=..., env=..., env_var=...)`` returns stdout/stderr as ``bytes``.\n``run_argv(argv, ...)`` prepends a resolved Node executable to ``argv``.\n\nNode resolution (first match that runs Node 26+): explicit ``node``,\n``os.environ[env_var]`` when set, then ``shutil.which("node")``. Explicit ``node`` or a\nset ``env_var`` value does not fall back to later candidates. Windows ``.cmd``/``.bat``\nshims are never spawned with ``shell=True``; explicit paths are rejected.\n\n``env`` merges over ``os.environ`` case-insensitively on Windows. Optional\n``max_input_bytes`` / ``response_max_bytes`` raise errors with stable ``code`` values:\n``EINPUTTOOLARGE``, ``ERESPONSETOOLARGE``, ``ELAUNCHFAILURE``, and\n``ELAUNCHSTDINCLOSED`` when stdin breaks (``EPIPE``) before the child finishes reading.\nStdout is read incrementally when ``response_max_bytes`` is set (cap plus\n``HOST_RESPONSE_MARGIN_BYTES``, matching ``py_launch.cjs`` ``maxBuffer`` / ``ENOBUFS``).\n"""\nfrom __future__ import annotations\n\nimport errno\nimport os\nimport re\nimport shutil\nimport subprocess\nimport sys\nimport threading\nfrom typing import Any, Mapping, Optional, Sequence, Union\n\nMIN_NODE_MAJOR = 26\nDEFAULT_ENV_VAR = "NODE"\nDEFAULT_PROBE_TIMEOUT = 5.0\nHOST_RESPONSE_MARGIN_BYTES = 512\n_NODE_VERSION = re.compile(r"(?:^|\\s)v?(?P<major>\\d+)(?:\\.\\d+)*", re.IGNORECASE)\n_NODE_PROBE_CACHE: dict[str, str] = {}\n\n\nclass NodeNotFoundError(FileNotFoundError):\n    """Raised when Node.js cannot be located or does not meet the minimum version."""\n\n\nclass LaunchError(RuntimeError):\n    """Raised when the Node child fails to start, exceeds caps, or exits unexpectedly."""\n\n    def __init__(\n        self,\n        message: str,\n        *,\n        code: str = "ELAUNCHFAILURE",\n        status: Optional[int] = None,\n        stdout: bytes = b"",\n        stderr: bytes = b"",\n        signal: Optional[int] = None,\n    ) -> None:\n        super().__init__(message)\n        self.code = code\n        self.status = status\n        self.stdout = stdout\n        self.stderr = stderr\n        self.signal = signal\n\n\ndef is_node_target(path: Union[str, os.PathLike[str]]) -> bool:\n    """True when ``path`` names a JavaScript entry file by extension."""\n    return os.path.splitext(os.fspath(path))[1].lower() in (".js", ".cjs", ".mjs")\n\n\ndef _env_key_fold(key: str) -> str:\n    return str(key).casefold()\n\n\ndef env_lookup(env: Mapping[str, str], name: str) -> Optional[str]:\n    """Case-insensitive environment lookup (primarily for Windows tests)."""\n    fold = _env_key_fold(name)\n    for key, value in env.items():\n        if _env_key_fold(key) == fold:\n            return value\n    return None\n\n\ndef build_child_env(overrides: Optional[Mapping[str, str]]) -> Optional[dict[str, str]]:\n    """Merge ``overrides`` onto ``os.environ``; Windows overrides replace folded keys."""\n    if overrides is None:\n        return None\n    if os.name != "nt":\n        merged = dict(os.environ)\n        merged.update(overrides)\n        return merged\n    env = dict(os.environ)\n    index: dict[str, str] = {_env_key_fold(key): key for key in env}\n    for override_key, value in overrides.items():\n        fold = _env_key_fold(override_key)\n        existing = index.get(fold)\n        if existing is not None:\n            del env[existing]\n        env[override_key] = value\n        index[fold] = override_key\n    return env\n\n\ndef _reject_windows_batch_wrapper(path: str) -> None:\n    lowered = path.lower()\n    if lowered.endswith(".cmd") or lowered.endswith(".bat"):\n        raise NodeNotFoundError(\n            "njs_launch: node batch wrappers (.cmd/.bat) are not supported: " + path\n        )\n\n\ndef _decode(data: bytes) -> str:\n    if not data:\n        return ""\n    return data.decode("utf-8", errors="replace")\n\n\ndef _probe_node_once(path: str, probe_timeout: float) -> str:\n    cached = _NODE_PROBE_CACHE.get(path)\n    if cached is not None:\n        return cached\n    _reject_windows_batch_wrapper(path)\n    try:\n        completed = subprocess.run(\n            (path, "--version"),\n            capture_output=True,\n            timeout=probe_timeout,\n            shell=False,\n            check=False,\n        )\n    except FileNotFoundError as exc:\n        raise NodeNotFoundError("njs_launch: node executable not found: " + path) from exc\n    except OSError as exc:\n        raise NodeNotFoundError("njs_launch: node version probe failed: " + path) from exc\n    except subprocess.TimeoutExpired as exc:\n        raise NodeNotFoundError("njs_launch: node version probe timed out: " + path) from exc\n    output = _decode(completed.stdout) + _decode(completed.stderr)\n    match = _NODE_VERSION.search(output)\n    if completed.returncode != 0 or match is None:\n        raise NodeNotFoundError("njs_launch: node version probe failed: " + path)\n    major = int(match.group("major"))\n    if major < MIN_NODE_MAJOR:\n        raise NodeNotFoundError(\n            f"njs_launch: node version must be {MIN_NODE_MAJOR} or newer (found {major}): "\n            + path\n        )\n    _NODE_PROBE_CACHE[path] = path\n    return path\n\n\ndef _node_executable(\n    node: Optional[Union[str, os.PathLike[str]]],\n    *,\n    env_var: str,\n    probe: bool,\n    probe_timeout: float,\n) -> str:\n    explicit = node is not None\n    if not explicit and env_var and env_var in os.environ:\n        node = os.environ[env_var]\n        explicit = True\n    if explicit:\n        path = os.fspath(node)\n        _reject_windows_batch_wrapper(path)\n        return _probe_node_once(path, probe_timeout) if probe else path\n\n    if not probe:\n        discovered = shutil.which("node")\n        path = discovered if discovered else "node"\n        _reject_windows_batch_wrapper(path)\n        return path\n\n    discovered = shutil.which("node")\n    if discovered:\n        try:\n            return _probe_node_once(discovered, probe_timeout)\n        except NodeNotFoundError:\n            pass\n    raise NodeNotFoundError("njs_launch: node executable not found")\n\n\ndef resolve_node(\n    node: Optional[Union[str, os.PathLike[str]]] = None,\n    *,\n    env_var: str = DEFAULT_ENV_VAR,\n    probe: bool = True,\n    probe_timeout: float = DEFAULT_PROBE_TIMEOUT,\n) -> str:\n    """Locate a Node 26+ executable.\n\n    Explicit ``node`` or a set ``env_var`` environment value must work as given;\n    auto-discovery uses ``shutil.which(\'node\')`` on ``PATH``.\n    """\n    return _node_executable(\n        node, env_var=env_var, probe=probe, probe_timeout=probe_timeout\n    )\n\n\ndef node_command(\n    target: Union[str, os.PathLike[str]],\n    *args: Union[str, os.PathLike[str]],\n    node: Optional[Union[str, os.PathLike[str]]] = None,\n    node_flags: Sequence[Union[str, os.PathLike[str]]] = (),\n    env_var: str = DEFAULT_ENV_VAR,\n    probe: bool = True,\n    probe_timeout: float = DEFAULT_PROBE_TIMEOUT,\n) -> list[str]:\n    """Build ``[node, *node_flags, target, *args]`` without reinterpreting passthrough argv."""\n    executable = _node_executable(\n        node, env_var=env_var, probe=probe, probe_timeout=probe_timeout\n    )\n    flags = [os.fspath(value) for value in node_flags]\n    script = os.fspath(target)\n    trailing = [os.fspath(value) for value in args]\n    return [executable, *flags, script, *trailing]\n\n\ndef node_or_command(\n    argv: Sequence[Union[str, os.PathLike[str]]],\n    *,\n    node: Optional[Union[str, os.PathLike[str]]] = None,\n    node_flags: Sequence[Union[str, os.PathLike[str]]] = (),\n    env_var: str = DEFAULT_ENV_VAR,\n    probe: bool = True,\n    probe_timeout: float = DEFAULT_PROBE_TIMEOUT,\n) -> list[str]:\n    """Prepend Node when ``argv[0]`` names a ``.js`` / ``.cjs`` / ``.mjs`` file."""\n    tokens = [os.fspath(value) for value in argv]\n    if not tokens:\n        return tokens\n    if is_node_target(tokens[0]):\n        return node_command(\n            tokens[0],\n            *tokens[1:],\n            node=node,\n            node_flags=node_flags,\n            env_var=env_var,\n            probe=probe,\n            probe_timeout=probe_timeout,\n        )\n    return tokens\n\n\ndef _nonnegative_int(name: str, value: int) -> None:\n    if not isinstance(value, int) or value < 0:\n        raise ValueError(f"njs_launch: {name} must be a nonnegative integer")\n\n\ndef _input_byte_length(input_data: Optional[Union[str, bytes]]) -> int:\n    if input_data is None:\n        return 0\n    if isinstance(input_data, str):\n        return len(input_data.encode("utf-8"))\n    return len(input_data)\n\n\ndef _normalize_input(input_data: Optional[Union[str, bytes]]) -> Optional[bytes]:\n    if input_data is None:\n        return None\n    if isinstance(input_data, str):\n        return input_data.encode("utf-8")\n    return input_data\n\n\ndef _response_cap_bytes(response_max_bytes: int) -> int:\n    _nonnegative_int("response_max_bytes", response_max_bytes)\n    return response_max_bytes + HOST_RESPONSE_MARGIN_BYTES\n\n\ndef _launch_failure_from_returncode(\n    returncode: int,\n    stdout: bytes,\n    stderr: bytes,\n) -> LaunchError:\n    if returncode < 0:\n        signum = -returncode\n        return LaunchError(\n            f"njs_launch: Node process terminated by signal {signum}",\n            code="ELAUNCHFAILURE",\n            signal=signum,\n            stdout=stdout,\n            stderr=stderr,\n        )\n    message = _decode(stderr).strip() or "Node script failed"\n    return LaunchError(\n        message,\n        code="ELAUNCHFAILURE",\n        status=returncode,\n        stdout=stdout,\n        stderr=stderr,\n    )\n\n\ndef _exit_code_for_main(returncode: Optional[int]) -> None:\n    if returncode is None or returncode == 0:\n        return\n    if returncode < 0:\n        sys.exit(128 + (-returncode))\n    sys.exit(returncode)\n\n\ndef _stream_communicate(\n    proc: subprocess.Popen,\n    input_bytes: Optional[bytes],\n    timeout: Optional[float],\n    response_max_bytes: Optional[int],\n) -> tuple[bytes, bytes, int]:\n    hard_limit = None\n    cap: Optional[int] = None\n    if response_max_bytes is not None:\n        _nonnegative_int("response_max_bytes", response_max_bytes)\n        cap = response_max_bytes\n        hard_limit = _response_cap_bytes(response_max_bytes)\n\n    stdout_chunks: list[bytes] = []\n    stderr_chunks: list[bytes] = []\n    stdout_len = 0\n    exceeded = threading.Event()\n    read_lock = threading.Lock()\n    stdin_code: list[Optional[str]] = [None]\n    stdin_os_error: list[Optional[OSError]] = [None]\n\n    def read_stdout() -> None:\n        nonlocal stdout_len\n        stream = proc.stdout\n        if stream is None:\n            return\n        try:\n            while True:\n                chunk = stream.read(65536)\n                if not chunk:\n                    break\n                if hard_limit is not None:\n                    with read_lock:\n                        stdout_len += len(chunk)\n                        if stdout_len > hard_limit:\n                            exceeded.set()\n                            try:\n                                proc.kill()\n                            except OSError:\n                                pass\n                            break\n                stdout_chunks.append(chunk)\n        finally:\n            stream.close()\n\n    def read_stderr() -> None:\n        stream = proc.stderr\n        if stream is None:\n            return\n        try:\n            while True:\n                chunk = stream.read(65536)\n                if not chunk:\n                    break\n                stderr_chunks.append(chunk)\n        finally:\n            stream.close()\n\n    def write_stdin() -> None:\n        stream = proc.stdin\n        if stream is None:\n            return\n        if input_bytes is None:\n            try:\n                stream.close()\n            except OSError:\n                pass\n            return\n        try:\n            offset = 0\n            chunk_size = 65536\n            while offset < len(input_bytes):\n                stream.write(input_bytes[offset : offset + chunk_size])\n                offset += chunk_size\n            stream.flush()\n            stream.close()\n        except BrokenPipeError:\n            stdin_code[0] = "ELAUNCHSTDINCLOSED"\n            try:\n                stream.close()\n            except OSError:\n                pass\n        except OSError as exc:\n            if exc.errno == errno.EPIPE:\n                stdin_code[0] = "ELAUNCHSTDINCLOSED"\n                try:\n                    stream.close()\n                except OSError:\n                    pass\n            else:\n                stdin_os_error[0] = exc\n                try:\n                    stream.close()\n                except OSError:\n                    pass\n\n    stdout_thread = threading.Thread(target=read_stdout, name="njs_launch_stdout", daemon=True)\n    stderr_thread = threading.Thread(target=read_stderr, name="njs_launch_stderr", daemon=True)\n    stdin_thread = threading.Thread(target=write_stdin, name="njs_launch_stdin", daemon=True)\n    stdout_thread.start()\n    stderr_thread.start()\n    stdin_thread.start()\n\n    timed_out = False\n    returncode: Optional[int]\n    try:\n        returncode = proc.wait(timeout=timeout)\n    except subprocess.TimeoutExpired:\n        timed_out = True\n        try:\n            proc.kill()\n        except OSError:\n            pass\n        proc.wait()\n        returncode = proc.returncode\n\n    stdin_thread.join()\n    stdout_thread.join()\n    stderr_thread.join()\n\n    stdout = b"".join(stdout_chunks)\n    stderr = b"".join(stderr_chunks)\n    if returncode is None:\n        returncode = proc.returncode if proc.returncode is not None else -1\n\n    if stdin_os_error[0] is not None:\n        exc = stdin_os_error[0]\n        raise LaunchError(\n            f"njs_launch: Node process failed: {exc}",\n            code="ELAUNCHFAILURE",\n            stdout=stdout,\n            stderr=stderr,\n        ) from exc\n\n    if timed_out:\n        raise LaunchError(\n            "njs_launch: Node process timed out",\n            code="ELAUNCHFAILURE",\n            stdout=stdout,\n            stderr=stderr,\n        )\n\n    if stdin_code[0] == "ELAUNCHSTDINCLOSED":\n        raise LaunchError(\n            "njs_launch: Node stdin pipe closed unexpectedly",\n            code="ELAUNCHSTDINCLOSED",\n            status=returncode,\n            stdout=stdout,\n            stderr=stderr,\n        )\n\n    if exceeded.is_set() or (cap is not None and len(stdout) > cap):\n        raise LaunchError(\n            f"njs_launch: response exceeds response_max_bytes ({cap})",\n            code="ERESPONSETOOLARGE",\n            status=returncode,\n            stdout=stdout,\n            stderr=stderr,\n        )\n\n    return stdout, stderr, returncode\n\n\ndef _communicate(\n    proc: subprocess.Popen,\n    input_bytes: Optional[bytes],\n    timeout: Optional[float],\n    response_max_bytes: Optional[int],\n) -> tuple[bytes, bytes, int]:\n    return _stream_communicate(proc, input_bytes, timeout, response_max_bytes)\n\n\ndef run_argv(\n    argv: Sequence[Union[str, os.PathLike[str]]],\n    *,\n    node: Optional[Union[str, os.PathLike[str]]] = None,\n    env_var: str = DEFAULT_ENV_VAR,\n    probe: bool = True,\n    probe_timeout: float = DEFAULT_PROBE_TIMEOUT,\n    input: Optional[Union[str, bytes]] = None,\n    timeout: Optional[float] = None,\n    max_input_bytes: Optional[int] = None,\n    response_max_bytes: Optional[int] = None,\n    env: Optional[Mapping[str, str]] = None,\n    check: bool = True,\n) -> subprocess.CompletedProcess:\n    """Run ``[resolved_node, *argv]`` with ``shell=False`` and byte stdout/stderr."""\n    executable = _node_executable(\n        node, env_var=env_var, probe=probe, probe_timeout=probe_timeout\n    )\n    _reject_windows_batch_wrapper(executable)\n    command = [executable, *[os.fspath(value) for value in argv]]\n\n    input_len = _input_byte_length(input)\n    if max_input_bytes is not None:\n        _nonnegative_int("max_input_bytes", max_input_bytes)\n        if input_len > max_input_bytes:\n            raise LaunchError(\n                f"njs_launch: input exceeds max_input_bytes ({max_input_bytes}; got {input_len} bytes)",\n                code="EINPUTTOOLARGE",\n            )\n\n    child_env = build_child_env(env)\n    input_bytes = _normalize_input(input)\n\n    try:\n        proc = subprocess.Popen(\n            command,\n            stdin=subprocess.PIPE,\n            stdout=subprocess.PIPE,\n            stderr=subprocess.PIPE,\n            shell=False,\n            env=child_env,\n        )\n    except OSError as exc:\n        raise LaunchError(\n            f"njs_launch: Node process failed: {exc}",\n            code="ELAUNCHFAILURE",\n        ) from exc\n\n    stdout, stderr, returncode = _communicate(\n        proc, input_bytes, timeout, response_max_bytes\n    )\n\n    if returncode != 0 and check:\n        raise _launch_failure_from_returncode(returncode, stdout, stderr)\n\n    return subprocess.CompletedProcess(command, returncode, stdout, stderr)\n\n\ndef run(\n    target: Union[str, os.PathLike[str]],\n    *args: Union[str, os.PathLike[str]],\n    node: Optional[Union[str, os.PathLike[str]]] = None,\n    node_flags: Sequence[Union[str, os.PathLike[str]]] = (),\n    env_var: str = DEFAULT_ENV_VAR,\n    probe: bool = True,\n    probe_timeout: float = DEFAULT_PROBE_TIMEOUT,\n    input: Optional[Union[str, bytes]] = None,\n    timeout: Optional[float] = None,\n    max_input_bytes: Optional[int] = None,\n    response_max_bytes: Optional[int] = None,\n    env: Optional[Mapping[str, str]] = None,\n    check: bool = True,\n) -> subprocess.CompletedProcess:\n    """Run ``node_command(...)`` and return captured stdout/stderr as bytes."""\n    argv = node_command(\n        target,\n        *args,\n        node=node,\n        node_flags=node_flags,\n        env_var=env_var,\n        probe=probe,\n        probe_timeout=probe_timeout,\n    )\n    return run_argv(\n        argv[1:],\n        node=argv[0],\n        env_var=env_var,\n        probe=False,\n        input=input,\n        timeout=timeout,\n        max_input_bytes=max_input_bytes,\n        response_max_bytes=response_max_bytes,\n        env=env,\n        check=check,\n    )\n\n\ndef run_node(\n    target: Union[str, os.PathLike[str]],\n    *args: Union[str, os.PathLike[str]],\n    **kwargs: Any,\n) -> subprocess.CompletedProcess:\n    """Alias for :func:`run` matching the cli_args helper name."""\n    return run(target, *args, **kwargs)\n\n\ndef main(\n    script_path: Union[str, os.PathLike[str]],\n    opts: Optional[Mapping[str, Any]] = None,\n) -> None:\n    """Spawn a Node script with inherited stdio and forwarded exit code."""\n    options = dict(opts or {})\n    argv = options.pop("argv", None)\n    if argv is None:\n        argv = sys.argv[1:]\n    env_var = options.pop("env_var", DEFAULT_ENV_VAR)\n    node = options.pop("node", None)\n    node_flags = options.pop("node_flags", ())\n    probe_timeout = options.pop("probe_timeout", DEFAULT_PROBE_TIMEOUT)\n    child_env = build_child_env(options.pop("env", None))\n    try:\n        command = node_command(\n            script_path,\n            *argv,\n            node=node,\n            node_flags=node_flags,\n            env_var=env_var,\n            probe=True,\n            probe_timeout=probe_timeout,\n        )\n        _reject_windows_batch_wrapper(command[0])\n    except NodeNotFoundError as error:\n        sys.stderr.write(f"{error}\\n")\n        sys.exit(2)\n    try:\n        completed = subprocess.run(\n            command,\n            shell=False,\n            env=child_env,\n            check=False,\n        )\n    except OSError as error:\n        sys.stderr.write(f"njs_launch: {error}\\n")\n        sys.exit(2)\n    if completed.returncode != 0:\n        _exit_code_for_main(completed.returncode)\n\n\ndef clear_probe_cache() -> None:\n    """Clear the version-probe cache (for tests)."""\n    _NODE_PROBE_CACHE.clear()\n'
 
-_NODE_LAUNCH: Any = None
+_NJS_LAUNCH: Any = None
 
 
-def _node_launch_module() -> Any:
-    global _NODE_LAUNCH
-    if _NODE_LAUNCH is None:
-        path = Path(__file__).resolve().parent / "vendor" / "node_launch.py"
+def _njs_launch_module() -> Any:
+    global _NJS_LAUNCH
+    if _NJS_LAUNCH is None:
+        path = Path(__file__).resolve().parent / "vendor" / "njs_launch.py"
         if path.is_file():
-            spec = importlib.util.spec_from_file_location("_vendored_node_launch", path)
+            spec = importlib.util.spec_from_file_location("_vendored_njs_launch", path)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
         else:
             import types
-            module = types.ModuleType("_embedded_node_launch")
-            exec(compile(_EMBEDDED_NODE_LAUNCH_SOURCE, "<embedded node_launch>", "exec"), module.__dict__)
-        _NODE_LAUNCH = module
-    return _NODE_LAUNCH
+            module = types.ModuleType("_embedded_njs_launch")
+            exec(compile(_EMBEDDED_NJS_LAUNCH_SOURCE, "<embedded njs_launch>", "exec"), module.__dict__)
+        _NJS_LAUNCH = module
+    return _NJS_LAUNCH
 
 
 def _decode_node_process_bytes(data: Any) -> str:
@@ -3181,10 +4152,10 @@ def _raise_node_not_found(exc: BaseException, node: str | os.PathLike[str] | Non
     if node is None and "node executable not found" in message:
         discovered = shutil.which("node")
         if discovered:
-            node_launch = _node_launch_module()
+            njs_launch = _njs_launch_module()
             try:
-                node_launch._probe_node_once(discovered, node_launch.DEFAULT_PROBE_TIMEOUT)
-            except node_launch.NodeNotFoundError as probe_exc:
+                njs_launch._probe_node_once(discovered, njs_launch.DEFAULT_PROBE_TIMEOUT)
+            except njs_launch.NodeNotFoundError as probe_exc:
                 version = re.search(r"must be \d+ or newer \(found (\d+)\)", str(probe_exc))
                 if version is not None:
                     raise RuntimeError(
@@ -3193,7 +4164,7 @@ def _raise_node_not_found(exc: BaseException, node: str | os.PathLike[str] | Non
     raise RuntimeError("node requires Node 26 or newer; node executable not found on PATH") from exc
 
 
-def _map_node_launch_error(
+def _map_njs_launch_error(
     exc: Any,
     command: list[str],
     timeout: float | None,
@@ -3218,24 +4189,24 @@ def _web_ui_node_run(
     timeout: float | None = 30,
     **kwargs: Any,
 ) -> subprocess.CompletedProcess[str]:
-    """Run vendored ``node_launch`` for pytest/CI helpers with subprocess-shaped errors."""
-    node_launch = _node_launch_module()
+    """Run vendored ``njs_launch`` for pytest/CI helpers with subprocess-shaped errors."""
+    njs_launch = _njs_launch_module()
     run_kwargs = dict(kwargs)
     node = run_kwargs.pop("node", None)
     env_var = run_kwargs.pop("env_var", None)
     run_kwargs.pop("probe", None)
     run_kwargs["timeout"] = timeout
     try:
-        executable = node_launch.resolve_node(node=node, env_var=env_var)
-    except node_launch.NodeNotFoundError as exc:
+        executable = njs_launch.resolve_node(node=node, env_var=env_var)
+    except njs_launch.NodeNotFoundError as exc:
         _raise_node_not_found(exc, node)
     trailing = [os.fspath(value) for value in argv]
     if trailing:
-        command = node_launch.node_command(
+        command = njs_launch.node_command(
             trailing[0], *trailing[1:], node=executable, probe=False, env_var=env_var
         )
         try:
-            completed = node_launch.run(
+            completed = njs_launch.run(
                 trailing[0],
                 *trailing[1:],
                 node=executable,
@@ -3243,24 +4214,24 @@ def _web_ui_node_run(
                 env_var=env_var,
                 **run_kwargs,
             )
-        except node_launch.NodeNotFoundError as exc:
+        except njs_launch.NodeNotFoundError as exc:
             _raise_node_not_found(exc, node)
-        except node_launch.LaunchError as exc:
-            return _map_node_launch_error(exc, command, timeout)
+        except njs_launch.LaunchError as exc:
+            return _map_njs_launch_error(exc, command, timeout)
         return _text_completed(completed)
     command = [executable]
     try:
-        completed = node_launch.run_argv(
+        completed = njs_launch.run_argv(
             [],
             node=executable,
             probe=False,
             env_var=env_var,
             **run_kwargs,
         )
-    except node_launch.NodeNotFoundError as exc:
+    except njs_launch.NodeNotFoundError as exc:
         _raise_node_not_found(exc, node)
-    except node_launch.LaunchError as exc:
-        return _map_node_launch_error(exc, command, timeout)
+    except njs_launch.LaunchError as exc:
+        return _map_njs_launch_error(exc, command, timeout)
     return _text_completed(completed)
 
 
@@ -3271,1292 +4242,43 @@ def run_node(*argv: str | Path, timeout: float | None = 30, **kwargs: Any) -> su
     return _web_ui_node_run(*argv, timeout=timeout, **run_kwargs)
 
 
-# --- World: one page, a camera, no page changes (scrolling "shots" and a pan/zoom map) -----------------
-# Everything is built here in memory: Python validates the data, does the arithmetic, and emits the HTML,
-# the CSS and a thin JavaScript module. JS only applies state (data-lit, camera variables); CSS does the rest.
+# --- Shared field checks (ids, tokens, text, emoji, bounded ints), WCAG contrast, the rotary dial and the theme wall --------------------
+# (the world that first used them now lives in the portfolio's scripts/world.py)
+_ID_RE = re.compile(r"[a-z][a-z0-9-]{0,31}")  # the world itself: it prefixes element ids, so it starts with a letter
 
-WORLD_SCHEMA = "web-ui-world/1"
-_WORLD_ID = re.compile(r"[a-z][a-z0-9-]{0,31}")  # the world itself: it prefixes element ids, so it starts with a letter
-_WORLD_TOKEN = re.compile(r"[a-z0-9][a-z0-9-]{0,31}")  # floors, shots, spots, categories (1f is fine)
-_WORLD_HEX = re.compile(r"#[0-9a-fA-F]{6}")
-
+_TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,31}")  # floors, shots, spots, categories (1f is fine)
 
 def _luminance(color: str) -> float:
     channels = [int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
     linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
     return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
 
-
 def contrast_ratio(foreground: str, background: str) -> float:
     """WCAG contrast ratio of two #rrggbb colors."""
     light, dark = sorted((_luminance(foreground), _luminance(background)), reverse=True)
     return (light + 0.05) / (dark + 0.05)
 
-
-def ink_for(background: str) -> str:
-    """Black or white text, whichever reads better on ``background``."""
-    return "#0b0b0c" if contrast_ratio("#0b0b0c", background) >= contrast_ratio("#ffffff", background) else "#ffffff"
-
-
-def fit_zoom(width: float, height: float, view_w: float, view_h: float) -> float:
-    """Zoom at which a width x height map just fits a view_w x view_h view."""
-    return min(view_w / width, view_h / height)
-
-
-def clamp_focus(fx: float, fy: float, zoom: float, width: float, height: float,
-                view_w: float, view_h: float) -> tuple[float, float]:
-    """Keep the camera's focal point (map units) so the view never leaves the map; a map smaller than the view is centered."""
-    half_w, half_h = view_w / (2 * zoom), view_h / (2 * zoom)
-    return (min(max(fx, half_w), width - half_w) if width > 2 * half_w else width / 2,
-            min(max(fy, half_h), height - half_h) if height > 2 * half_h else height / 2)
-
-
-# Motion uses elapsed monotonic seconds; boards use Unix UTC seconds. All inputs
-# are bounded so static documents cannot request unbounded plans or DOM nodes.
-def _motion_number(value: Any, label: str, low: float, high: float) -> float:
-    if type(value) not in (int, float) or not low <= value <= high or not math.isfinite(value):
-        raise ValueError(f"{label} must be finite and from {low} to {high}")
-    return float(value)
-
-
-def world_walk(start: list[float], target: list[float], *, at: float = 0,
-               speed: float = 40, width: float = 1024, height: float = 768) -> dict[str, Any]:
-    """One constant-velocity segment. Targets clamp at map edges; no overshoot.
-
-    For retarget/pause/resume first sample the old segment at the event's time,
-    then start a new segment from that point. Never integrate per frame.
-    """
-    width = _motion_number(width, "width", 64, 4096)
-    height = _motion_number(height, "height", 64, 4096)
-    at = _motion_number(at, "at", 0, 1e9)
-    speed = _motion_number(speed, "speed", 1, 480)
-    points = []
-    for point in (start, target):
-        if not isinstance(point, (list, tuple)) or len(point) != 2:
-            raise ValueError("point must have two coordinates")
-        points.append([min(bound, max(0., _motion_number(v, "coordinate", -1e6, 1e6)))
-                       for v, bound in zip(point, (width, height))])
-    a, b = points
-    return {"at": at, "duration": math.hypot(b[0] - a[0], b[1] - a[1]) / speed, "from": a, "to": b}
-
-
-def world_motion_sample(segment: dict[str, Any], elapsed: float) -> list[float]:
-    """Project a validated/generated segment at absolute elapsed seconds; endpoints hold."""
-    elapsed = _motion_number(elapsed, "elapsed", 0, 1e9)
-    at = _motion_number(segment["at"], "at", 0, 1e9)
-    duration = _motion_number(segment["duration"], "duration", 0, 1e6)
-    points = [segment[key] for key in ("from", "to")]
-    if any(not isinstance(p, (list, tuple)) or len(p) != 2 for p in points):
-        raise ValueError("point must have two coordinates")
-    a, b = [[_motion_number(v, "coordinate", 0, 4096) for v in p] for p in points]
-    fraction = (1. if elapsed >= at else 0.) if duration == 0 else min(1., max(0., (elapsed - at) / duration))
-    return [a[i] + (b[i] - a[i]) * fraction for i in (0, 1)]
-
-
-# A floor may carry a tile grid and props (desks, chairs, a blackboard ...). Solid props block walking; the walk
-# is planned on the grid (breadth first, fixed neighbour order, so Python and the browser pick the same path) and
-# played as a chain of the same constant-speed segments as above.
-WORLD_PROPS = {"desk": True, "board": True, "wall": True, "shelf": True, "chair": False, "rug": False, "fire": False,
-               "grass": False, "sand": False, "road": False, "bridge": False,
-               "water": True, "tree": True, "cactus": True, "mountain": True, "house": True, "castle": True}   # kind -> blocks walking
-# Ground kinds are laid first and open the tiles they cover (a road through trees, a bridge over water); the other kinds only block.
-WORLD_GROUND = frozenset({"grass", "sand", "road", "bridge"})
-# How the terrain kinds look: a colour (none: the ground shows through) and, for some, an emoji repeated once per tile, or drawn once across
-# the prop (CSS only, written for the kinds a world uses). A floor becomes another place by swapping its kinds; the walking rules above are
-# all the grid needs.
-WORLD_LOOK = {"grass": ("#8fd694", "", False), "sand": ("#efd9a0", "", False), "road": ("#d2b48c", "", False), "bridge": ("#a9784a", "", False),
-              "water": ("#5aaae0", "🌊", False), "mountain": ("#b8a58f", "⛰️", False), "tree": ("", "🌲", False), "cactus": ("", "🌵", False),
-              "house": ("", "🏠", False), "castle": ("", "🏰", True), "fire": ("", "🔥", False)}
-_WORLD_STEPS = ((1, 0), (-1, 0), (0, 1), (0, -1))
-WORLD_SIGNS = ("led", "wood")      # a spot drawn as a small board on a bold dot: an electronic one (amber on black) or a wooden one
-
-
-def world_blocked(width: int, height: int, tile: int, props: list[dict[str, Any]]) -> list[str]:
-    """The walking grid: one string per tile row, ``"1"`` for a tile covered by a solid prop and ``"0"`` otherwise."""
-    cells = [["0"] * (width // tile) for _ in range(height // tile)]
-    for prop in props:
-        if prop["kind"] in WORLD_GROUND or WORLD_PROPS[prop["kind"]]:
-            mark = "0" if prop["kind"] in WORLD_GROUND else "1"
-            for cy in range(prop["y"] // tile, (prop["y"] + prop["h"]) // tile):
-                for cx in range(prop["x"] // tile, (prop["x"] + prop["w"]) // tile):
-                    cells[cy][cx] = mark
-    return ["".join(row) for row in cells]
-
-
-def world_reach(blocked: list[str], start: tuple[int, int]) -> dict[tuple[int, int], tuple[int, int] | None]:
-    """Every cell that can be walked to from ``start`` (always allowed), each with the cell it was reached from (``None`` for ``start``).
-
-    Breadth first in a fixed neighbour order, so the dict's order is the search order and the paths are the same in Python and the browser.
-    """
-    cols, rows = len(blocked[0]), len(blocked)
-    parent: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
-    order = [start]
-    for cx, cy in order:
-        for dx, dy in _WORLD_STEPS:
-            n = (cx + dx, cy + dy)
-            if 0 <= n[0] < cols and 0 <= n[1] < rows and blocked[n[1]][n[0]] == "0" and n not in parent:
-                parent[n] = (cx, cy)
-                order.append(n)
-    return parent
-
-
-def world_path(blocked: list[str], start: list[int], goal: list[int]) -> list[list[int]]:
-    """Shortest 4-neighbour cell path from ``start`` (always allowed) to ``goal``.
-
-    A goal that is solid, outside or cut off ends the path at the reachable cell nearest to it (the first such
-    cell in search order). Cells clamp into the grid.
-    """
-    cols, rows = len(blocked[0]), len(blocked)
-    def clamp(c: list[int]) -> tuple[int, int]:
-        return min(cols - 1, max(0, int(c[0]))), min(rows - 1, max(0, int(c[1])))
-    start, goal = clamp(start), clamp(goal)
-    parent = world_reach(blocked, start)
-    end = goal if goal in parent else min(parent, key=lambda c: (c[0] - goal[0]) ** 2 + (c[1] - goal[1]) ** 2)
-    path = [end]
-    while parent[path[-1]] is not None:
-        path.append(parent[path[-1]])
-    return [list(c) for c in reversed(path)]
-
-
-def world_route_points(blocked: list[str], tile: int, start: list[float], target: list[float]) -> list[list[float]]:
-    """Points to walk from ``start`` toward ``target`` on the grid: tile centres, ending at ``target`` itself when its tile is reachable."""
-    def cell(p: list[float]) -> list[int]:
-        return [min(n - 1, max(0, math.floor(v / tile))) for v, n in zip(p, (len(blocked[0]), len(blocked)))]
-    path = world_path(blocked, cell(start), cell(target))
-    centres = [[(c[0] + .5) * tile, (c[1] + .5) * tile] for c in path[1:]]
-    return [list(start), *(centres[:-1] + [list(target)] if path[-1] == cell(target) else centres)]
-
-
-def world_route(points: list[list[float]], *, at: float = 0, speed: float = 40,
-                width: float = 1024, height: float = 768) -> list[dict[str, Any]]:
-    """Constant-speed segments one after another through ``points`` (a single still segment when there is nowhere to go)."""
-    route, t = [], _motion_number(at, "at", 0, 1e9)
-    for a, b in zip(points, points[1:]):
-        route.append(world_walk(a, b, at=t, speed=speed, width=width, height=height))
-        t += route[-1]["duration"]
-    return route or [world_walk(points[0], points[0], at=t, speed=speed, width=width, height=height)]
-
-
-def world_route_sample(route: list[dict[str, Any]], elapsed: float) -> list[float]:
-    """Position along a ``world_route`` at absolute elapsed seconds; the end holds."""
-    for segment in route:
-        if elapsed < segment["at"] + segment["duration"]:
-            return world_motion_sample(segment, elapsed)
-    return world_motion_sample(route[-1], elapsed)
-
-
-def travel_seconds(x0: float, y0: float, x1: float, y1: float, speed: float) -> float:
-    """Seconds to walk in a straight line at constant ``speed`` (map units per second)."""
-    x0, y0, x1, y1 = [_motion_number(v, "coordinate", -1e6, 1e6) for v in (x0, y0, x1, y1)]
-    speed = _motion_number(speed, "speed", 1, 480)
-    return math.hypot(x1 - x0, y1 - y0) / speed
-
-
-def minutes_until(now: float, at: int) -> int:
-    """Ceil minutes to the daily next occurrence; zero only at the exact target.
-
-    ``now`` is fractional minutes since midnight, ``at`` is an HH:MM minute.
-    Immediately after the target, the next occurrence is tomorrow (up to 1440).
-    """
-    now = _motion_number(now, "now (minutes since midnight)", 0, 1440)
-    at = _bounded_int(at, "at (minutes since midnight)", 0, 1439)
-    return math.ceil((at - now) % 1440)
-
-
-def board_clock(now: float, offset_minutes: int) -> dict[str, Any]:
-    """Injected Unix seconds + fixed UTC-offset minutes, independent of host TZ."""
-    now = _motion_number(now, "now (Unix seconds)", 0, 253402214400)
-    offset_minutes = _bounded_int(offset_minutes, "offset_minutes", -840, 840)
-    seconds = (now + offset_minutes * 60) % 86400
-    whole = math.floor(seconds)
-    return {"clock": f"{whole // 3600:02d}:{whole // 60 % 60:02d}", "minutes": seconds / 60}
-
-
-def board_seconds(chars: int, chars_per_second: float = 8.0) -> float:
-    """Seconds for one lap of the scrolling board: constant speed, never quicker than 8 s."""
-    return max(8.0, math.floor(chars / chars_per_second * 10 + 0.5) / 10)
-
-
-# Gauge glyph pairs, ``(elapsed, remaining)``. An hourglass is only one of them; any two short symbols work (``glyphs: ["🔥", "🪵"]``).
-GAUGE_GLYPHS: dict[str, tuple[str, str]] = {
-    "hourglass": ("⌛", "⏳"), "moon": ("🌕", "🌑"), "heart": ("❤️", "🤍"), "square": ("🟩", "⬜"),
-    "dot": ("●", "○"), "block": ("█", "░"), "star": ("⭐", "☆"),
-}
-
-
-def gauge_state(now: int, start: int, end: int, cells: int) -> tuple[int, int, str]:
-    """``(filled cells, percent, phase)`` of a window ``start``..``end`` (minutes since midnight; ``end`` before ``start`` runs past midnight)
-    at minute ``now``. Integer arithmetic only, so the page agrees exactly. Outside the window the nearer edge decides: ``before`` (empty)
-    or ``after`` (full); a tie counts as ``before``."""
-    span = (end - start) % 1440 or 1440
-    elapsed = (now - start) % 1440
-    if elapsed < span:
-        return elapsed * cells // span, elapsed * 100 // span, "active"
-    return (0, 0, "before") if (start - now) % 1440 <= (now - end) % 1440 else (cells, 100, "after")
-
-
-def gauge_cells(filled: int, cells: int, glyphs: tuple[str, str] | list[str]) -> str:
-    """The gauge as text: ``filled`` elapsed glyphs, then the remaining ones, ``cells`` in all."""
-    return glyphs[0] * filled + glyphs[1] * (cells - filled)
-
-
-def clock_label(minutes: int) -> str:
-    """``HH:MM`` for minutes since midnight: the clock and the stamp on a visitor's line."""
-    return f"{minutes // 60 % 24:02d}:{minutes % 60:02d}"
-
-
-ZONE_YEARS = (2020, 2040)   # the window a board's zone table covers, [start, end); outside it the nearest end's offset is kept
-
-
-@functools.lru_cache(maxsize=None)
-def zone_rows(tz: str) -> tuple[int, ...]:
-    """Flat ``(utc_epoch_seconds, offset_minutes, ...)`` pairs: the offset in force from each instant on, from the start of ``ZONE_YEARS``.
-    Built from the system IANA database with ``zoneinfo`` (no hand-written DST rules); the page only looks the table up.
-    The scan and the bisection of each change to the second follow flutter_navigation_basic ``python/generate_zone_table.py``."""
-    import datetime as dt
-    import zoneinfo
-    if not isinstance(tz, str) or not re.fullmatch(r"[A-Za-z0-9_+\-]+(?:/[A-Za-z0-9_+\-]+){0,2}", tz):
-        raise ValueError(f"not a time zone name: {tz!r}")
-    try:
-        zone = zoneinfo.ZoneInfo(tz)
-    except (zoneinfo.ZoneInfoNotFoundError, ValueError) as error:
-        raise ValueError(f"time zone {tz!r} is unknown or the system has no time zone data (install tzdata)") from error
-    utc = dt.timezone.utc
-    offset = lambda at: int(at.astimezone(zone).utcoffset().total_seconds() // 60)
-    start, end = dt.datetime(ZONE_YEARS[0], 1, 1, tzinfo=utc), dt.datetime(ZONE_YEARS[1], 1, 1, tzinfo=utc)
-    now, here = start, offset(start)
-    rows = [int(start.timestamp()), here]
-    while now < end:
-        nxt = min(now + dt.timedelta(hours=6), end)
-        there = offset(nxt)
-        if there != here and nxt < end:
-            low, high = int(now.timestamp()), int(nxt.timestamp())
-            while high - low > 1:                                   # the first second the new offset applies
-                mid = (low + high) // 2
-                low, high = (mid, high) if offset(dt.datetime.fromtimestamp(mid, utc)) == here else (low, mid)
-            rows += [high, there]
-            here = there
-        now = nxt
-    return tuple(rows)
-
-
-def zone_offset(rows: tuple[int, ...] | list[int], utc_seconds: float) -> int:
-    """Minutes east of UTC in force at ``utc_seconds`` according to ``zone_rows``; before the first row, the first row's offset."""
-    return rows[2 * max(bisect.bisect_right(rows[0::2], utc_seconds) - 1, 0) + 1]
-
-
-def utc_offset_label(offset_minutes: int) -> str:
-    """The time zone the board may show beside its clock: ``UTC``, ``UTC+9``, ``UTC+5:30``, ``UTC-5``. The offset only, never a place name."""
-    if offset_minutes == 0:
-        return "UTC"
-    hours, minutes = divmod(abs(offset_minutes), 60)
-    return f"UTC{'+' if offset_minutes > 0 else '-'}{hours}" + (f":{minutes:02d}" if minutes else "")
-
-
-# The spaces the board collapses (ASCII spaces, NBSP, the Unicode space separators, line/paragraph separators); the page uses the same set.
-_MESSAGE_SPACE = frozenset(" \t\n\r\f\v\u00a0\u1680\u2028\u2029\u202f\u205f\u3000") | {chr(c) for c in range(0x2000, 0x200B)}
-
-
-def clean_message(text: Any, limit: int = 60) -> str | None:
-    """What the board shows for a visitor's line: control characters dropped (a zero-width joiner stays, so emoji sequences survive),
-    whitespace collapsed, cut to ``limit`` characters;
-    ``None`` when nothing is left. The page applies the same rule and puts the result in as text, never as HTML."""
-    if not isinstance(text, str):
-        return None
-    kept = "".join(" " if c in _MESSAGE_SPACE else c for c in text if c in _MESSAGE_SPACE or c == "\u200d" or c.isprintable())
-    kept = " ".join(word for word in kept.split(" ") if word)[:limit].rstrip()
-    return kept or None
-
-
-def villager_path(seed: int, width: int, height: int, *, speed: float = 48.0, margin: int = 32, stops: int = 4) -> dict[str, Any]:
-    """A seeded loop for one villager: straight walks at constant ``speed`` to random points, a random pause at each (1..4 s),
-    then a walk back to the start so the loop is seamless. Returns ``{"duration": seconds, "keys": [(percent, x, y), ...]}``;
-    between keys the motion is linear, a pause is two keys at the same point."""
-    seed = _bounded_int(seed, "seed", 0, 2**32 - 1)
-    width = _bounded_int(width, "width", 64, 4096)
-    height = _bounded_int(height, "height", 64, 4096)
-    margin = _bounded_int(margin, "margin", 0, min(width, height) // 2)
-    stops = _bounded_int(stops, "stops", 1, 64)
-    speed = _motion_number(speed, "speed", 1, 480)
-    rng = random.Random(seed)
-    point = lambda: (round(margin + rng.random() * max(0, width - 2 * margin), 1), round(margin + rng.random() * max(0, height - 2 * margin), 1))
-    start = point()
-    here, clock, steps = start, 0.0, [(0.0, start)]
-    for _ in range(stops):
-        target = point()
-        clock += travel_seconds(*here, *target, speed)
-        steps.append((clock, target))
-        clock += 1.0 + rng.random() * 3.0
-        steps.append((clock, target))
-        here = target
-    clock += travel_seconds(*here, *start, speed)
-    steps.append((clock, start))
-    total = max(clock, 1.0)
-    return {"duration": total, "keys": [((t / total) * 100, x, y) for t, (x, y) in steps]}
-
-
-def _world_text(value: Any, label: str, limit: int, *, required: bool = True) -> str:
+def _text_field(value: Any, label: str, limit: int, *, required: bool = True) -> str:
     if not isinstance(value, str) or (required and not value.strip()) or len(value) > limit:
         raise ValueError(f"{label} must be {1 if required else 0}..{limit} characters")
     return value
 
-
-def _world_id(value: Any, label: str, seen: set[str]) -> str:
-    if not isinstance(value, str) or not _WORLD_TOKEN.fullmatch(value) or value in seen:
+def _id_field(value: Any, label: str, seen: set[str]) -> str:
+    if not isinstance(value, str) or not _TOKEN_RE.fullmatch(value) or value in seen:
         raise ValueError(f"{label} must be a unique lowercase token: {value!r}")
     seen.add(value)
     return value
 
-
-# Direction from two positions. A point is the centre of an object or the middle of one of its edges; the arrow says which way to go
-# from the first point to reach the second (screen y grows downward, so a target below is ⬇️ and a target above and to the right is ↗️).
-# The page repeats this arithmetic (``direction`` in WORLD_JS); integers only meet an integer slope test, so both always agree.
-WORLD_ANCHORS = {"center": (.5, .5), "left": (0, .5), "right": (1, .5), "top": (.5, 0), "bottom": (.5, 1),
-                 "top-left": (0, 0), "top-right": (1, 0), "bottom-left": (0, 1), "bottom-right": (1, 1)}
-WORLD_HERE = "📍"
-_WORLD_ARROWS = {(1, 0): "➡️", (1, 1): "↘️", (0, 1): "⬇️", (-1, 1): "↙️", (-1, 0): "⬅️", (-1, -1): "↖️", (0, -1): "⬆️", (1, -1): "↗️"}
-# Plain, text and emoji forms of an arrow name the same anchor, as in Ironmate's focus arrows; 🎯 and 📍 mean the centre.
-_WORLD_ARROW_ANCHORS = {"←": "left", "⬅": "left", "→": "right", "➡": "right", "↑": "top", "⬆": "top", "↓": "bottom", "⬇": "bottom",
-                        "↖": "top-left", "↗": "top-right", "↙": "bottom-left", "↘": "bottom-right", "🎯": "center", "📍": "center"}
-
-
-def world_point(rect: Any, at: str = "center") -> tuple[float, float]:
-    """The point of ``rect`` (``(x, y, w, h)``, or a dict with those keys) named by ``at``: ``center``, an edge (``left``, ``right``,
-    ``top``, ``bottom``) or a corner (``top-left`` ...). A spot or a person is a rect with no size."""
-    if at not in WORLD_ANCHORS:
-        raise ValueError(f"at is one of {', '.join(WORLD_ANCHORS)}: {at!r}")
-    x, y, w, h = (rect[k] for k in "xywh") if isinstance(rect, dict) else rect
-    return x + w * WORLD_ANCHORS[at][0], y + h * WORLD_ANCHORS[at][1]
-
-
-def world_direction(a: Any, b: Any, eps: float = 8) -> str:
-    """The arrow pointing from point ``a`` to point ``b``: eight sectors of 45 degrees, or 📍 when both axes are within ``eps``.
-
-    The sectors are tested with an integer slope (5/12, about 22.6 degrees), so no trigonometry and no rounding can differ in the browser."""
-    dx, dy = b[0] - a[0], b[1] - a[1]
-    if abs(dx) <= eps and abs(dy) <= eps:
-        return WORLD_HERE
-    ax, ay = abs(dx), abs(dy)
-    if ay * 12 <= ax * 5:
-        key = (1 if dx > 0 else -1, 0)
-    elif ax * 12 <= ay * 5:
-        key = (0, 1 if dy > 0 else -1)
-    else:
-        key = (1 if dx > 0 else -1, 1 if dy > 0 else -1)
-    return _WORLD_ARROWS[key]
-
-
-def world_arrow_anchor(arrow: str) -> str:
-    """The anchor an arrow emoji names (``↘️`` is ``bottom-right``, ``⬅`` is ``left``, ``🎯`` is ``center``); variation selectors are ignored."""
-    name = arrow.replace("︎", "").replace("️", "")
-    if name not in _WORLD_ARROW_ANCHORS:
-        raise ValueError(f"not an arrow: {arrow!r}")
-    return _WORLD_ARROW_ANCHORS[name]
-
-
-def _world_emoji(value: Any) -> str:
+def _emoji_field(value: Any) -> str:
     """An emoji (or any short non-ASCII symbol string); plain ASCII is refused so text cannot pose as a character."""
     if not isinstance(value, str) or not 1 <= len(value) <= 16 or any(c.isascii() for c in value):
         raise ValueError("emoji must be 1..16 non-ASCII characters")
     return value
 
-
-def _world_mark(value: Any) -> str:
-    """A spot's mark: the emoji (or 1..2 characters) drawn instead of the dot, and before the name when the name shows."""
-    if not isinstance(value, str) or not 1 <= len(value) <= 8 or len(value.strip()) != len(value) or any(unicodedata.category(c) in ("Cc", "Cs", "Zl", "Zp", "Zs") or c in "\\\"'" for c in value):
-        raise ValueError("a mark is one emoji or 1..2 characters, without spaces, quotes or control characters")
-    return value
-
-
-def _world_avatar(value: Any) -> str:
-    """A visitor's character: an emoji, a short text (an initial, a name), or both, 1..16 characters. One label, never markup (the page sets
-    it as text): control and line-separator characters, bidirectional overrides and spaces at either end are refused."""
-    if (not isinstance(value, str) or not 1 <= len(value) <= 16 or "Zs" in (unicodedata.category(value[0]), unicodedata.category(value[-1]))
-            or any(unicodedata.category(c) in ("Cc", "Cs", "Zl", "Zp") or c in "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069" for c in value)):
-        raise ValueError("an avatar is 1..16 characters of emoji or text, without control characters or edge spaces")
-    return value
-
-
-def _world_hhmm(value: Any, label: str) -> int:
-    """Minutes since midnight for an ``HH:MM`` string."""
-    if not (isinstance(value, str) and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value)):
-        raise ValueError(f"{label} must be HH:MM")
-    return int(value[:2]) * 60 + int(value[3:])
-
-
-def _gauge_glyph(value: Any) -> str:
-    """One gauge cell: 1..8 visible characters (emoji sequences welcome); no spaces or control characters."""
-    if not isinstance(value, str) or not 1 <= len(value) <= 8:
-        raise ValueError("a gauge glyph is 1..8 visible characters")
-    visible = any(unicodedata.category(c)[0] in "LNSP"
-                  and c not in "\u115f\u1160\u2800\u3164\uffa0" for c in value)
-    if not visible or any(c.isspace() or not (c.isprintable() or c == "\u200d") for c in value):
-        raise ValueError("a gauge glyph is 1..8 visible characters")
-    return value
-
-
-def _world_gauge(gauge: Any) -> dict[str, Any]:
-    """Checked, normalized gauge: ``{"from", "to", "cells", "glyphs": [elapsed, remaining]}``; ``glyphs`` may name a ``GAUGE_GLYPHS`` preset."""
-    if not isinstance(gauge, dict) or set(gauge) - {"from", "to", "cells", "glyphs"}:
-        raise ValueError("a gauge requires from and to; cells and glyphs are optional")
-    start, end = _world_hhmm(gauge.get("from"), "from"), _world_hhmm(gauge.get("to"), "to")
-    if start == end:
-        raise ValueError("a gauge needs a window: from and to differ")
-    glyphs = gauge.get("glyphs", "hourglass")
-    if isinstance(glyphs, str):
-        if glyphs not in GAUGE_GLYPHS:
-            raise ValueError(f"unknown glyph set {glyphs!r} (one of {', '.join(GAUGE_GLYPHS)})")
-        glyphs = GAUGE_GLYPHS[glyphs]
-    elif not isinstance(glyphs, (list, tuple)) or len(glyphs) != 2:
-        raise ValueError("glyphs is a preset name or [elapsed, remaining]")
-    return {"from": gauge["from"], "to": gauge["to"], "cells": _bounded_int(gauge.get("cells", 10), "cells", 3, 20),
-            "glyphs": [_gauge_glyph(g) for g in glyphs]}
-
-
-def _world_tile(value: Any) -> int:
-    """A tile size: 16..128 and a multiple of 8."""
-    tile = _bounded_int(value, "tile", 16, 128)
-    if tile % 8:
-        raise ValueError("tile is a multiple of 8")
-    return tile
-
-
 def _bounded_int(value: Any, label: str, low: int, high: int) -> int:
     if type(value) is not int or not low <= value <= high:
         raise ValueError(f"{label} must be an integer from {low} to {high}")
     return value
-
-
-def world_validate(spec: Any) -> dict[str, Any]:
-    """Checked copy of a ``web-ui-world/1`` spec: optional ``shots`` (scroll scenes) and ``floors`` (maps with spots)."""
-    if not isinstance(spec, dict) or spec.get("schema") != WORLD_SCHEMA:
-        raise ValueError(f"expected schema {WORLD_SCHEMA}")
-    if set(spec) - {"schema", "id", "title", "shots", "floors", "zoom_max", "board", "avatars", "shell", "tools", "names", "mark_scale"}:
-        raise ValueError("a world has schema, id, title, shots, floors, zoom_max, board, avatars, shell, tools, names and mark_scale")
-    mark_scale = spec.get("mark_scale", [1, 1])
-    if not isinstance(mark_scale, list) or len(mark_scale) != 2 or any(type(v) not in (int, float) or not .5 <= v <= 4 for v in mark_scale):
-        raise ValueError("mark_scale is [x, y], each from 0.5 to 4: the width and height factor of every mark (dot or emoji)")
-    names = spec.get("names", "names")
-    if names not in WORLD_NAMES:
-        raise ValueError("names is names (every spot shows its name), dots (a dot; the name beside the player, under the pointer or focused) or off (dots only)")
-    shell = spec.get("shell", False)
-    if not isinstance(shell, bool):
-        raise ValueError("shell is true or false")
-    avatars = spec.get("avatars", [])
-    if not isinstance(avatars, list) or len(avatars) > 24 or len(set(map(str, avatars))) != len(avatars):
-        raise ValueError("avatars is a list of up to 24 different emoji or short texts")
-    avatars = [_world_avatar(a) for a in avatars]
-    world_id = spec.get("id", "world")
-    if not isinstance(world_id, str) or not _WORLD_ID.fullmatch(world_id):
-        raise ValueError("id must be a lowercase token")
-    shots_in, floors_in = spec.get("shots", []), spec.get("floors", [])
-    if not isinstance(shots_in, list) or not isinstance(floors_in, list) or not (shots_in or floors_in):
-        raise ValueError("a world needs shots or floors")
-    if len(shots_in) > 12 or len(floors_in) > 8:
-        raise ValueError("at most 12 shots and 8 floors")
-    zoom_max = spec.get("zoom_max", 4)
-    if type(zoom_max) not in (int, float) or not 1 <= zoom_max <= 8:
-        raise ValueError("zoom_max must be from 1 to 8")
-    ids: set[str] = set()
-    shots = []
-    for shot in shots_in:
-        if not isinstance(shot, dict) or set(shot) - {"id", "label", "title", "body", "bg"}:
-            raise ValueError("a shot has id, label, title, body and an optional bg")
-        bg = shot.get("bg")
-        if bg is not None and not (isinstance(bg, str) and _WORLD_HEX.fullmatch(bg)):
-            raise ValueError("bg must be #rrggbb")
-        shots.append({"id": _world_id(shot.get("id"), "shot id", ids), "label": _world_text(shot.get("label"), "label", 40),
-                      "title": _world_text(shot.get("title"), "title", 80),
-                      "body": _world_text(shot.get("body", ""), "body", 400, required=False), "bg": bg})
-    floors, spot_ids = [], set()
-    for floor in map(_expand_floor, floors_in):
-        if not isinstance(floor, dict) or set(floor) - {"id", "label", "width", "height", "spots", "actors", "player", "tile", "props", "real"}:
-            raise ValueError("a floor has id, label, width, height, spots, actors, player, tile, props and real")
-        if not isinstance(floor.get("real", False), bool):
-            raise ValueError("real is true or false")
-        width, height = _bounded_int(floor.get("width"), "width", 64, 4096), _bounded_int(floor.get("height"), "height", 64, 4096)
-        tile, props_in, props = floor.get("tile"), floor.get("props", []), []
-        if tile is not None:
-            tile = _world_tile(tile)
-            if width % tile or height % tile:
-                raise ValueError("tile divides the floor width and height")
-        if not isinstance(props_in, list) or len(props_in) > 512 or (props_in and tile is None):
-            raise ValueError("props (at most 512) need a tile grid")
-        for prop in props_in:
-            if not isinstance(prop, dict) or set(prop) != {"kind", "x", "y", "w", "h"} or prop["kind"] not in tuple(WORLD_PROPS):
-                raise ValueError(f"a prop has kind ({', '.join(WORLD_PROPS)}), x, y, w and h")
-            x, y = _bounded_int(prop["x"], "x", 0, width), _bounded_int(prop["y"], "y", 0, height)
-            w, h = _bounded_int(prop["w"], "w", tile, width), _bounded_int(prop["h"], "h", tile, height)
-            if any(v % tile for v in (x, y, w, h)) or x + w > width or y + h > height:
-                raise ValueError("a prop lies on tiles, inside the floor")
-            props.append({"kind": prop["kind"], "x": x, "y": y, "w": w, "h": h})
-        spots_in = floor.get("spots")
-        if not isinstance(spots_in, list) or not 1 <= len(spots_in) <= 64:
-            raise ValueError("a floor lists 1..64 spots")
-        spots = []
-        for spot in spots_in:
-            if not isinstance(spot, dict) or set(spot) - {"id", "x", "y", "label", "category", "body", "flip", "sign", "mark"}:
-                raise ValueError("a spot has id, x, y, label, category, body, flip, sign and mark")
-            if "sign" in spot and spot["sign"] not in WORLD_SIGNS:
-                raise ValueError(f"sign is one of {', '.join(WORLD_SIGNS)}")
-            category = spot.get("category", "")
-            if category != "" and not (isinstance(category, str) and _WORLD_TOKEN.fullmatch(category)):
-                raise ValueError("category must be a lowercase token")
-            spots.append({"id": _world_id(spot.get("id"), "spot id", spot_ids), "x": _bounded_int(spot.get("x"), "x", 0, width),
-                          "y": _bounded_int(spot.get("y"), "y", 0, height), "label": _world_text(spot.get("label"), "label", 40),
-                          "category": category, "body": _world_text(spot.get("body", ""), "body", 400, required=False),
-                          **({"flip": _world_text(spot["flip"], "flip", 16)} if "flip" in spot else {}),
-                          **({"sign": spot["sign"]} if "sign" in spot else {}),
-                          **({"mark": _world_mark(spot["mark"])} if "mark" in spot else {})})
-        actors = []
-        actors_in = floor.get("actors", [])
-        if not isinstance(actors_in, list) or len(actors_in) > 16:
-            raise ValueError("a floor lists at most 16 actors")
-        for actor in actors_in:
-            if not isinstance(actor, dict) or set(actor) - {"id", "emoji", "label", "body", "seed", "speed"}:
-                raise ValueError("an actor has id, emoji, label, body, seed and speed")
-            seed = actor.get("seed")
-            if seed is not None:
-                _bounded_int(seed, "seed", 0, 2**31 - 1)
-            speed = actor.get("speed", 48)
-            if type(speed) not in (int, float) or not 8 <= speed <= 240:
-                raise ValueError("speed must be from 8 to 240 (map units per second)")
-            actors.append({"id": _world_id(actor.get("id"), "actor id", spot_ids), "emoji": _world_emoji(actor.get("emoji")),
-                           "label": _world_text(actor.get("label"), "label", 40),
-                           "body": _world_text(actor.get("body", ""), "body", 400, required=False), "seed": seed, "speed": speed})
-        player = floor.get("player")
-        if player is not None:
-            if not isinstance(player, dict) or set(player) - {"emoji", "x", "y", "speed"}:
-                raise ValueError("a player has emoji, x, y and speed")
-            speed = player.get("speed", 96)
-            if type(speed) not in (int, float) or not 8 <= speed <= 480:
-                raise ValueError("speed must be from 8 to 480 (map units per second)")
-            player = {"emoji": _world_avatar(player.get("emoji")), "x": _bounded_int(player.get("x"), "x", 0, width),
-                      "y": _bounded_int(player.get("y"), "y", 0, height), "speed": speed}
-            if tile and world_blocked(width, height, tile, props)[min(player["y"], height - 1) // tile][min(player["x"], width - 1) // tile] == "1":
-                raise ValueError("the player starts on a free tile")
-        floors.append({"id": _world_id(floor.get("id"), "floor id", ids), "label": _world_text(floor.get("label"), "label", 40),
-                       "width": width, "height": height, "spots": spots, "actors": actors, "player": player,
-                       **({"tile": tile, "props": props} if tile else {}), **({"real": True} if floor.get("real") else {})})
-    board = spec.get("board")
-    if board is not None:
-        if not isinstance(board, dict) or set(board) - {"title", "items", "post", "offset_label", "offset_minutes", "zones", "shared_issue"} or not isinstance(board.get("items"), list) \
-                or not 1 <= len(board["items"]) <= 12 or not isinstance(board.get("post", False), bool) \
-                or not isinstance(board.get("offset_label", False), bool):
-            raise ValueError("a board has a title, 1..12 items, and optional post, offset_label, offset_minutes, zones and shared_issue")
-        shared_issue = board.get("shared_issue")
-        if shared_issue is not None and (not isinstance(shared_issue, str) or (len(shared_issue.split("/")) == 3 and shared_issue.split("/")[1] in {".", ".."}) or not re.fullmatch(
-                r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}/[1-9][0-9]{0,8}", shared_issue)):
-            raise ValueError("shared_issue must be owner/repository/positive-issue-number")
-        zones, seen_zones = [], set()
-        zones_in = board.get("zones", [])
-        if not isinstance(zones_in, list) or len(zones_in) > 6:
-            raise ValueError("zones is a list of up to 6 clocks")
-        for entry in zones_in:
-            if not isinstance(entry, dict) or set(entry) - {"id", "label", "tz"}:
-                raise ValueError("a zone has id, label and tz")
-            zone_rows(entry.get("tz"))                                                         # unknown names are refused here
-            zones.append({"id": _world_id(entry.get("id"), "zone id", seen_zones), "label": _world_text(entry.get("label"), "label", 24),
-                          "tz": entry["tz"]})
-        items = []
-        for item in board["items"]:
-            if not isinstance(item, dict) or set(item) - {"text", "at", "gauge", "zone"}:
-                raise ValueError("a board item has text and an optional at or gauge, and an optional zone")
-            at, gauge = item.get("at"), item.get("gauge")
-            if at is not None and gauge is not None:
-                raise ValueError("a board item has either at or gauge, not both")
-            if at is not None:
-                _world_hhmm(at, "at")
-            where = item.get("zone")
-            if where is not None and (at is None and gauge is None or where not in seen_zones):
-                raise ValueError("an item's zone names one of the board's zones and goes with at or gauge")
-            items.append({"text": _world_text(item.get("text"), "text", 120), "at": at,
-                          "gauge": None if gauge is None else _world_gauge(gauge), "zone": where})
-        board = {"title": _world_text(board.get("title", "INFO"), "title", 24), "items": items, "post": board.get("post", False),
-                 "offset_label": board.get("offset_label", False), "zones": zones, "shared_issue": shared_issue,
-                 "offset_minutes": (_bounded_int(board["offset_minutes"], "offset_minutes", -840, 840)
-                                    if board.get("offset_minutes") is not None else None)}
-    tools: dict[str, dict[str, Any]] = {}
-    tools_in = spec.get("tools", {})
-    if not isinstance(tools_in, dict) or len(tools_in) > 8 or (tools_in and not floors):
-        raise ValueError("tools maps up to 8 emoji to a feature, on a world with floors")
-    floor_ids = {f["id"] for f in floors}
-    spot_ids_all = {s["id"] for f in floors for s in f["spots"]}
-    for key, tool in tools_in.items():
-        emoji = _world_emoji(key)
-        if _plain_emoji(emoji) in WORLD_BUILTIN_TOOLS or emoji in tools:
-            raise ValueError(f"{emoji} is already used by the page itself; tools take other emoji")
-        if not isinstance(tool, dict) or set(tool) - _WORLD_TOOL_KEYS or sum(k in tool for k in ("floor", "spots", "body")) != 1:
-            raise ValueError("a tool has label, label_en, labels, slot and exactly one of floor, spots or body")
-        slot = tool.get("slot", "head")
-        if slot not in ("head", "side"):
-            raise ValueError("slot is head or side")
-        label = _world_text(tool.get("label", emoji), "label", 24)
-        built = {"label": label, "label_en": _world_text(tool.get("label_en", label), "label_en", 24), "slot": slot}
-        more_labels = tool.get("labels", {})                                      # the other languages: {"fr": "Carte", "de": "Karte"}
-        if not isinstance(more_labels, dict) or set(more_labels) - set(_WORLD_LANG_CODES[2:]):
-            raise ValueError(f"labels maps language codes ({', '.join(_WORLD_LANG_CODES[2:])}) to words; ja and en are label and label_en")
-        if more_labels:
-            built["labels"] = {code: _world_text(text, "labels", 24) for code, text in more_labels.items()}
-        if "floor" in tool:
-            if tool["floor"] not in floor_ids:
-                raise ValueError(f"tool floor must be one of {sorted(floor_ids)}")
-            built["floor"] = tool["floor"]
-        elif "spots" in tool:
-            picked = tool["spots"]
-            if not isinstance(picked, list) or not 1 <= len(picked) <= 16 or any(p not in spot_ids_all for p in picked):
-                raise ValueError("tool spots lists 1..16 spot ids of the world")
-            built["spots"] = list(picked)
-        else:
-            built["body"] = _world_text(tool["body"], "body", 400)
-        tools[emoji] = built
-    return {"schema": WORLD_SCHEMA, "id": world_id, "title": _world_text(spec.get("title", "World"), "title", 80),
-            "shots": shots, "floors": floors, "zoom_max": zoom_max, "board": board, "names": names, "mark_scale": [float(v) for v in mark_scale], **({"avatars": avatars} if avatars else {}),
-            **({"shell": True} if shell else {}), **({"tools": tools} if tools else {})}
-
-
-def _floor_kit(tile: int, id: str) -> tuple[Any, Any]:
-    """Makers a generated floor shares, in tile units: ``prop(kind, x, y, w=1, h=1)`` and ``spot(name, label, x, y, body)`` (a spot may sit between tiles)."""
-    prop = lambda kind, x, y, w=1, h=1: {"kind": kind, "x": x * tile, "y": y * tile, "w": w * tile, "h": h * tile}  # noqa: E731
-    spot = lambda name, text, x, y, body: {"id": f"{id}-{name}", "x": int(x * tile), "y": int(y * tile), "label": text, "body": body}  # noqa: E731
-    return prop, spot
-
-
-def _expand_floor(floor: Any) -> Any:
-    """``{"id", "label", "classroom": {rows, groups, per_group, tile}}`` stands for ``classroom_floor(...)``, ``{"land": {theme, cols, rows, seed,
-    tile}}`` for ``land_floor(...)`` and ``{"place": {points, meters, ...}}`` for ``place_floor(...)``, so JSON alone (no Python in the calling
-    repository) can ask for a classroom, a land or a real place; ``spots``,
-    ``actors`` and ``player`` given beside it replace the generated ones, and ``real`` marks it as a floor with a photo or camera behind it."""
-    if not isinstance(floor, dict):
-        return floor
-    makers = {"classroom": (classroom_floor, {"rows", "groups", "per_group", "tile"}), "land": (land_floor, {"theme", "cols", "rows", "seed", "tile"}),
-              "place": (place_floor, _PLACE_KEYS)}
-    kind = next((k for k in makers if k in floor), None)
-    if kind is None:
-        return floor
-    build, allowed = makers[kind]
-    params, own = floor[kind], {"id", "label", kind, "spots", "actors", "player", "real"}
-    if (not isinstance(params, dict) or set(params) - allowed or set(floor) - own
-            or not all(isinstance(floor[k], str) for k in ("id", "label") if k in floor)):
-        raise ValueError(f"a {kind} floor has id, label, {kind} ({', '.join(sorted(allowed))}) and optionally spots, actors, player and real")
-    built = build(**params, **{k: floor[k] for k in ("id", "label") if k in floor})
-    return {**built, **{k: floor[k] for k in ("spots", "actors", "player", "real") if k in floor}}
-
-
-def classroom_floor(rows: int = 4, groups: int = 3, *, per_group: int = 2, tile: int = 32,
-                    id: str = "classroom", label: str = "教室") -> dict[str, Any]:
-    """A classroom floor: ``rows`` rows of desks, each with a chair below it, in ``groups`` blocks of ``per_group`` desks
-    with an aisle between blocks; a blackboard and teacher's desk at the front, shelves and a door at the back.
-    Every size is a multiple of ``tile`` (a multiple of 8). The player starts at the door.
-    """
-    rows, groups, per_group = (_bounded_int(rows, "rows", 1, 8), _bounded_int(groups, "groups", 1, 6),
-                               _bounded_int(per_group, "per_group", 1, 4))
-    tile = _world_tile(tile)
-    side, front, back = 2, 5, 3                                           # tiles: side walkway, board area, door area
-    cols, depth = 2 * side + groups * per_group + groups - 1, front + 2 * rows + back
-    prop, spot = _floor_kit(tile, id)
-    desk_w = min(3, cols - 2 * side)
-    props = [prop("board", side, 0, cols - 2 * side), prop("desk", (cols - desk_w) // 2, 2, desk_w)]
-    for r in range(rows):
-        for g in range(groups):
-            for k in range(per_group):
-                x, y = side + g * (per_group + 1) + k, front + 2 * r
-                props += [prop("desk", x, y), prop("chair", x, y + 1)]
-    door = cols // 2 - 1                                                  # a two-tile gap in the back shelves
-    props += [prop("shelf", 0, depth - 1, door), prop("shelf", door + 2, depth - 1, cols - door - 2)]
-    return {"id": id, "label": label, "width": cols * tile, "height": depth * tile, "tile": tile, "props": props, "actors": [],
-            "spots": [spot("board", "黒板", cols / 2, .5, "今日の連絡や課題を書く場所です。"),
-                      spot("teacher", "先生の机", cols / 2, 3.5, "先生の席です。"),
-                      spot("door", "出入口", cols / 2, depth - 1.5 - 1, "廊下や校庭へ出られます。")],
-            "player": {"emoji": "🙂", "x": int((door + .5) * tile), "y": int((depth - .5) * tile), "speed": 96}}
-
-
-# The lands of an overworld, like the countries of a Dragon Quest map: each theme swaps the objects (ground, edge, scatter, pond, houses) and
-# nothing else. ``houses`` is how many of the village's eight plots are built; ``pond`` is (w, h) tiles, or "sea" for a strip along the north.
-LAND_THEMES = {
-    "meadow": {"label": "🌱 草原", "ground": "grass", "edge": "water", "fill": "tree", "density": .07, "pond": (4, 3), "houses": 6, "castle": False,
-               "town": ("🏘️ はじまりの村", "家がならぶ、のどかな村です。"), "landmark": ("🌼 ひろば", "見晴らしのよい広場です。")},
-    "forest": {"label": "🌲 森", "ground": "grass", "edge": "tree", "fill": "tree", "density": .28, "pond": None, "houses": 2, "castle": False,
-               "town": ("🏡 森の家", "木々にかこまれた小さな家です。"), "landmark": ("⛩️ ほこら", "森の奥にある古いほこらです。")},
-    "mountain": {"label": "⛰️ 山", "ground": "grass", "edge": "mountain", "fill": "mountain", "density": .16, "pond": None, "houses": 2, "castle": False,
-                 "town": ("⛺ 山のふもと", "旅人が休むキャンプ地です。"), "landmark": ("🕳️ ほら穴", "山の奥へ続くほら穴です。")},
-    "desert": {"label": "🏜️ 砂漠", "ground": "sand", "edge": "mountain", "fill": "cactus", "density": .05, "pond": (3, 2), "houses": 4, "castle": False,
-               "town": ("🏜️ 砂の町", "日よけの屋根がならぶ町です。"), "landmark": ("🌴 オアシス", "水と木陰のある休み場です。")},
-    "coast": {"label": "🌊 海辺", "ground": "sand", "edge": "water", "fill": "tree", "density": .04, "pond": "sea", "houses": 6, "castle": False,
-              "town": ("⚓ みなと町", "船がとまる小さな港町です。"), "landmark": ("🐚 砂浜", "貝がらが落ちている浜辺です。")},
-    "castle": {"label": "🏰 城下町", "ground": "grass", "edge": "mountain", "fill": "tree", "density": .06, "pond": None, "houses": 4, "castle": True,
-               "town": ("🏰 お城", "町を見まもる大きなお城です。"), "landmark": ("🎪 広場", "市が立つにぎやかな広場です。")},
-}
-_LAND_PLOTS = ((-2, -1), (2, -1), (-2, 1), (2, 1), (-4, -1), (4, -1), (-4, 1), (4, 1))        # village plots beside the crossroads (tiles)
-
-
-def land_floor(theme: str = "meadow", cols: int = 24, rows: int = 16, *, seed: int = 1, tile: int = 32,
-               id: str = "land", label: str | None = None) -> dict[str, Any]:
-    """One land of an overworld: ground, an edge, scattered trees or rocks, perhaps a pond, a village on a crossroads and a road to it.
-
-    The same arguments always give the same land (a small seeded generator, not ``random``). The player starts at the foot of the road; two
-    spots, the town and a landmark (the nearest bank of the water, else the farthest reachable tile), sit on tiles that can be walked to.
-    """
-    look = LAND_THEMES.get(theme)
-    if look is None:
-        raise ValueError(f"theme is one of {', '.join(LAND_THEMES)}")
-    cols, rows, seed = _bounded_int(cols, "cols", 12, 48), _bounded_int(rows, "rows", 12, 32), _bounded_int(seed, "seed", 0, 2**31 - 1)
-    tile = _world_tile(tile)
-    if cols * tile > 4096 or rows * tile > 4096:
-        raise ValueError("the land fits in 4096 units")
-    state = seed % 2147483646 + 1
-    def rand() -> float:                                                                   # Park-Miller: the same numbers in every Python
-        nonlocal state
-        state = state * 48271 % 2147483647
-        return state / 2147483647
-    cx, cy = cols // 2, rows // 2
-    prop, spot = _floor_kit(tile, id)
-    props: list[dict[str, Any]] = []
-    put = lambda *args: props.append(prop(*args))                                            # noqa: E731  (laid in order: later kinds paint over earlier ones)
-    taken: set[tuple[int, int]] = set()                                                    # tiles with something solid on them
-    reserved: set[tuple[int, int]] = {(cx, y) for y in range(cy - 1 if look["castle"] else cy, rows - 1)}
-    reserved |= {(x, cy) for x in range(max(1, cx - 4), min(cols - 1, cx + 5))} | {(x, rows - 2) for x in range(cx - 1, cx + 2)}
-    put(look["ground"], 0, 0, cols, rows)
-    for kind_args in ((0, 0, cols, 1), (0, rows - 1, cols, 1), (0, 1, 1, rows - 2), (cols - 1, 1, 1, rows - 2)):
-        put(look["edge"], *kind_args)
-    water: set[tuple[int, int]] = set()
-    if look["pond"] == "sea":
-        put("water", 1, 1, cols - 2, 3)
-        water = {(x, y) for x in range(1, cols - 1) for y in range(1, 4)}
-    elif look["pond"]:
-        pw, ph = look["pond"]
-        for _ in range(40):                                                                # away from the crossroads, or no pond at all
-            x, y = 2 + int(rand() * (cols - pw - 3)), 2 + int(rand() * (rows - ph - 3))
-            if not any(abs(x + i - cx) <= 6 and y + j >= cy - 4 for i in range(pw) for j in range(ph)):
-                put("water", x, y, pw, ph)
-                water = {(x + i, y + j) for i in range(pw) for j in range(ph)}
-                break
-    taken |= water
-    plots = [(cx + dx, cy + dy) for dx, dy in _LAND_PLOTS[:look["houses"]]]
-    for x, y in plots:
-        put("house", x, y)
-    if look["castle"]:
-        put("castle", cx - 1, cy - 3, 3, 2)
-        taken |= {(cx + i, cy - 3 + j) for i in range(-1, 2) for j in range(2)}
-    taken |= set(plots)
-    for y in range(1, rows - 1):                                                           # scattered trees or rocks, a row of them in one prop
-        run = 0
-        for x in range(1, cols):
-            here = x < cols - 1 and (x, y) not in taken and (x, y) not in reserved and rand() < look["density"]
-            if here:
-                run += 1
-            elif run:
-                put(look["fill"], x - run, y, run, 1)
-                run = 0
-    put("road", cx, cy - (1 if look["castle"] else 0), 1, rows - 1 - cy + (1 if look["castle"] else 0))
-    put("road", max(1, cx - 4), cy, min(cols - 1, cx + 5) - max(1, cx - 4), 1)
-    blocked = world_blocked(cols * tile, rows * tile, tile, props)
-    dist: dict[tuple[int, int], int] = {}                                                  # steps from the start, in search order
-    for cell, came_from in world_reach(blocked, (cx, rows - 2)).items():
-        dist[cell] = 0 if came_from is None else dist[came_from] + 1
-    shore = [c for c in dist if c != (cx, cy) and any((c[0] + dx, c[1] + dy) in water for dx, dy in _WORLD_STEPS)]
-    far = (min(shore, key=lambda c: (dist[c], c[1], c[0])) if shore                       # with water: the nearest bank; without: the farthest tile
-           else min((c for c in dist if c != (cx, cy)), key=lambda c: (-dist[c], c[1], c[0])))
-    place = lambda name, text, at: spot(name, text[0], at[0] + .5, at[1] + .5, text[1])      # noqa: E731  (a spot stands in the middle of its tile)
-    return {"id": id, "label": label or look["label"], "width": cols * tile, "height": rows * tile, "tile": tile, "props": props, "actors": [],
-            "spots": [place("town", look["town"], (cx, cy)), place("landmark", look["landmark"], far)],
-            "player": {"emoji": "🙂", "x": int((cx + .5) * tile), "y": int((rows - 1.5) * tile), "speed": 96}}
-
-
-# A real place in miniature: points with a latitude and longitude laid on the tile grid (``meters`` of ground per tile), roads between linked
-# points, and rivers as bands of water that roads cross as bridges. The projection and the box come from the coordinate tools below (the same
-# Earth radius and ``tolerance_area``), so a place is only data: a list of points, nothing drawn by hand.
-_PLACE_KEYS = {"points", "meters", "tile", "links", "rivers", "area", "start", "scatter", "marks"}
-_PLACE_POINT_KEYS = {"id", "label", "lat", "lon", "maps", "category", "body", "flip", "sign", "mark"}
-
-
-def _place_point(point: Any, seen: set[str]) -> dict[str, Any]:
-    if not isinstance(point, dict) or set(point) - _PLACE_POINT_KEYS or ("maps" in point) == ("lat" in point or "lon" in point) \
-            or ("lat" in point) != ("lon" in point):
-        raise ValueError("a point has id, label, category, body, flip, sign, mark and either lat and lon or maps (a Maps URL)")
-    if "maps" in point:
-        found = try_parse_maps_url(point["maps"]) if isinstance(point["maps"], str) else None
-        if found is None:
-            raise ValueError("maps has no coordinates in it")
-        lat, lon = found
-    else:
-        lat, lon = parse_coordinate(point["lat"], point["lon"])
-    category = point.get("category", "")
-    if category != "" and not (isinstance(category, str) and _WORLD_TOKEN.fullmatch(category)):
-        raise ValueError("category must be a lowercase token")
-    if "sign" in point and point["sign"] not in WORLD_SIGNS:
-        raise ValueError(f"sign is one of {', '.join(WORLD_SIGNS)}")
-    return {"id": _world_id(point.get("id"), "point id", seen), "label": _world_text(point.get("label"), "label", 40), "lat": lat, "lon": lon,
-            "category": category, "body": _world_text(point.get("body", ""), "body", 400, required=False),
-            **({"flip": _world_text(point["flip"], "flip", 16)} if "flip" in point else {}),
-            **({"sign": point["sign"]} if "sign" in point else {}), **({"mark": _world_mark(point["mark"])} if "mark" in point else {})}
-
-
-def _place_meters(lat: float, lon: float, north: float, west: float, mid: float) -> tuple[float, float]:
-    """Metres east of ``west`` and south of ``north`` on a flat map whose scale is that of latitude ``mid`` (good for a few kilometres)."""
-    return ((lon - west) * math.cos(mid * math.pi / 180) * math.pi / 180 * EARTH_RADIUS_M, (north - lat) * math.pi / 180 * EARTH_RADIUS_M)
-
-
-def _place_rects(cells: set[tuple[int, int]]) -> list[tuple[int, int, int, int]]:
-    """Tiles as rectangles ``(x, y, w, h)``: horizontal runs, then equal runs on the rows below stacked into one, so a road is a few props, not one per tile."""
-    open_rects: dict[tuple[int, int], list[int]] = {}                                       # (x, w) -> [y, h] of the rectangle still growing
-    done: list[tuple[int, int, int, int]] = []
-    for y in range(min((c[1] for c in cells), default=0), max((c[1] for c in cells), default=-1) + 1):
-        xs = sorted(x for x, cy in cells if cy == y)
-        runs, start = [], None
-        for i, x in enumerate(xs):
-            if start is None:
-                start = x
-            if i + 1 == len(xs) or xs[i + 1] != x + 1:
-                runs.append((start, x - start + 1))
-                start = None
-        for key in [k for k in open_rects if k not in runs]:
-            top, height = open_rects.pop(key)
-            done.append((key[0], top, key[1], height))
-        for run in runs:
-            if run in open_rects:
-                open_rects[run][1] += 1
-            else:
-                open_rects[run] = [y, 1]
-    done += [(key[0], top, key[1], height) for key, (top, height) in open_rects.items()]
-    return sorted(done, key=lambda r: (r[1], r[0]))
-
-
-def place_floor(points: list[dict[str, Any]], *, meters: int = 64, tile: int = 32, links: Any = (), rivers: Any = (), area: Any = None,
-                start: str | None = None, scatter: Any = None, marks: Any = None, id: str = "place", label: str = "場所") -> dict[str, Any]:
-    """A real place as a floor: each point (``id``, ``label``, ``lat`` and ``lon``, or ``maps`` with a Maps URL; optional ``category`` and ``body``) becomes a
-    spot on the tile its position falls on, ``meters`` of ground per tile.
-
-    ``links`` are pairs of point ids joined by an L-shaped road; ``rivers`` are ``{"line": [[lat, lon], ...], "width": tiles}`` bands of water, and a road
-    that crosses one becomes a bridge. ``area`` is ``{"center": [lat, lon], "radius": metres}``, the box ``tolerance_area`` gives (without it the map is the
-    points' box and a margin of two tiles). Two points on one tile are moved to the nearest free tile (the earlier point keeps its tile), and a
-    point that is cut off from the player's start by water is an error, so every spot can be walked to. The player starts at ``start`` (a point id,
-    default the first point that is not a sign). A point's ``flip`` is a second face that its pill swaps with the label when it is pressed.
-
-    A point with a ``sign`` (``led`` or ``wood``) is a small board on a bold dot at the nearest **tile corner** instead of the middle of a tile, so
-    it takes no tile and sits between the stations; two signs on one corner go to the nearest free corner, and it must touch a tile that can be walked on.
-
-    ``marks`` is ``{category: emoji}``: a point without its own ``mark`` gets its category's emoji as the mark drawn instead of the dot
-    (``mark_scale`` on the world sets the marks' width and height factors).
-
-    ``scatter`` is ``{"kind": "fire", "every": 8, "seed": 1}``: the map is cut into blocks of ``every`` tiles and one free tile in each gets the kind
-    (a decoration such as ``fire``: not ground, not solid), chosen by a small seeded generator, so the same arguments give the same places.
-    """
-    tile, meters = _world_tile(tile), _bounded_int(meters, "meters", 8, 2000)
-    if not isinstance(points, list) or not 1 <= len(points) <= 64:
-        raise ValueError("a place lists 1..64 points")
-    seen: set[str] = set()
-    pts = [_place_point(p, seen) for p in points]
-    if area is not None:
-        if not isinstance(area, dict) or set(area) != {"center", "radius"} or not isinstance(area["center"], list) or len(area["center"]) != 2 \
-                or type(area["radius"]) not in (int, float):
-            raise ValueError("area is {center: [lat, lon], radius: metres}")
-        clat, clon = parse_coordinate(area["center"][0], area["center"][1])
-        box = tolerance_area(clat, clon, area["radius"])
-        if box["wraps"] or box["full_longitude"]:
-            raise ValueError("the area must not cross the date line or reach a pole")
-        north, west, south, east = box["north"], box["west"], box["south"], box["east"]
-        margin = 0
-    else:
-        lats, lons = [p["lat"] for p in pts], [p["lon"] for p in pts]
-        north, west, south, east, margin = max(lats), min(lons), min(lats), max(lons), 2
-    mid = (north + south) / 2
-    extent_x, extent_y = _place_meters(south, east, north, west, mid)
-    cols, rows = int(extent_x // meters) + 1 + 2 * margin, int(extent_y // meters) + 1 + 2 * margin
-    cols, rows = max(cols, 12), max(rows, 12)
-    if cols * tile > 4096 or rows * tile > 4096:
-        raise ValueError("the place fits in 4096 units: raise meters or lower tile")
-    ox, oy = (cols - int(extent_x // meters) - 1) // 2, (rows - int(extent_y // meters) - 1) // 2    # centre the box on the grid
-    def cell(lat: float, lon: float) -> tuple[int, int]:
-        x, y = _place_meters(lat, lon, north, west, mid)
-        return int(x // meters) + ox, int(y // meters) + oy
-    def corner(lat: float, lon: float) -> tuple[int, int]:
-        x, y = _place_meters(lat, lon, north, west, mid)
-        return math.floor(x / meters + .5) + ox, math.floor(y / meters + .5) + oy
-    signs = [p for p in pts if "sign" in p]
-    pts = [p for p in pts if "sign" not in p]
-    if not pts:
-        raise ValueError("a place needs a point that is not a sign")
-    for p in pts:
-        p["cell"] = cell(p["lat"], p["lon"])
-        if not (0 <= p["cell"][0] < cols and 0 <= p["cell"][1] < rows):
-            raise ValueError(f"{p['id']} lies outside the area")
-    for p in signs:
-        p["corner"] = corner(p["lat"], p["lon"])
-        if not (0 <= p["corner"][0] <= cols and 0 <= p["corner"][1] <= rows):
-            raise ValueError(f"{p['id']} lies outside the area")
-    water: set[tuple[int, int]] = set()
-    rivers = list(rivers or ())
-    for river in rivers:
-        if not isinstance(river, dict) or set(river) != {"line", "width"} or not isinstance(river["line"], list) or not 2 <= len(river["line"]) <= 32:
-            raise ValueError("a river is {line: [[lat, lon], ...] (2..32 points), width: tiles}")
-        width_tiles = _bounded_int(river["width"], "width", 1, 8)
-        line = [cell(*parse_coordinate(a, b)) for a, b in river["line"]]
-        for (x0, y0), (x1, y1) in zip(line, line[1:]):
-            steps = max(abs(x1 - x0), abs(y1 - y0), 1)
-            for i in range(steps + 1):
-                x, y = x0 + round((x1 - x0) * i / steps), y0 + round((y1 - y0) * i / steps)
-                for dx in range(-(width_tiles // 2), width_tiles - width_tiles // 2):
-                    for dy in range(-(width_tiles // 2), width_tiles - width_tiles // 2):
-                        if 0 <= x + dx < cols and 0 <= y + dy < rows:
-                            water.add((x + dx, y + dy))
-    taken: set[tuple[int, int]] = set()
-    for p in pts:                                                                        # one spot per tile, none in the water
-        cx, cy = p["cell"]
-        for ring in range(max(cols, rows)):
-            near = sorted(((cx + dx, cy + dy) for dx in range(-ring, ring + 1) for dy in range(-ring, ring + 1) if max(abs(dx), abs(dy)) == ring),
-                          key=lambda c: ((c[0] - cx) ** 2 + (c[1] - cy) ** 2, c[1], c[0]))
-            free = [c for c in near if 0 <= c[0] < cols and 0 <= c[1] < rows and c not in taken and c not in water]
-            if free:
-                p["cell"] = free[0]
-                break
-        taken.add(p["cell"])
-    touching = lambda c: [(x, y) for x, y in ((c[0] - 1, c[1] - 1), (c[0], c[1] - 1), (c[0] - 1, c[1]), c) if 0 <= x < cols and 0 <= y < rows]   # noqa: E731
-    corners: set[tuple[int, int]] = set()
-    for p in signs:                                                                      # one sign per corner, on dry land
-        cx, cy = p["corner"]
-        for ring in range(max(cols, rows) + 1):
-            near = sorted(((cx + dx, cy + dy) for dx in range(-ring, ring + 1) for dy in range(-ring, ring + 1) if max(abs(dx), abs(dy)) == ring),
-                          key=lambda c: ((c[0] - cx) ** 2 + (c[1] - cy) ** 2, c[1], c[0]))
-            free = [c for c in near if 0 <= c[0] <= cols and 0 <= c[1] <= rows and c not in corners and any(t not in water for t in touching(c))]
-            if free:
-                p["corner"] = free[0]
-                break
-        corners.add(p["corner"])
-    by_id = {p["id"]: p for p in pts}
-    if start is not None and start not in by_id:
-        raise ValueError("start is the id of one of the points that is not a sign")
-    road: set[tuple[int, int]] = set()
-    if not isinstance(links, (list, tuple)) or len(links) > 128:
-        raise ValueError("links is a list of up to 128 pairs of point ids")
-    for pair in links:
-        if not isinstance(pair, (list, tuple)) or len(pair) != 2 or any(k not in by_id for k in pair) or pair[0] == pair[1]:
-            raise ValueError("a link joins two different point ids of the place")
-        (x0, y0), (x1, y1) = by_id[pair[0]]["cell"], by_id[pair[1]]["cell"]
-        road |= {(x, y0) for x in range(min(x0, x1), max(x0, x1) + 1)} | {(x1, y) for y in range(min(y0, y1), max(y0, y1) + 1)}
-    bridge = road & water
-    prop, spot = _floor_kit(tile, id)
-    props = [prop("grass", 0, 0, cols, rows)]
-    for kind, cells in (("water", water), ("road", road - water), ("bridge", bridge)):               # roads after water: a bridge opens its tiles
-        props += [prop(kind, *rect) for rect in _place_rects(cells)]
-    if scatter is not None:
-        if not isinstance(scatter, dict) or set(scatter) != {"kind", "every", "seed"} or scatter["kind"] not in WORLD_PROPS \
-                or scatter["kind"] in WORLD_GROUND or WORLD_PROPS[scatter["kind"]]:
-            raise ValueError("scatter is {kind: a decoration (not ground, not solid), every: tiles per block, seed}")
-        every, state = _bounded_int(scatter["every"], "every", 2, 64), _bounded_int(scatter["seed"], "seed", 0, 2**31 - 1) % 2147483646 + 1
-        used = water | road | {p["cell"] for p in pts}
-        for by in range(0, rows, every):
-            for bx in range(0, cols, every):
-                free = [(x, y) for y in range(by, min(by + every, rows)) for x in range(bx, min(bx + every, cols)) if (x, y) not in used]
-                state = state * 48271 % 2147483647                                              # Park-Miller, as land_floor
-                if free:
-                    props.append(prop(scatter["kind"], *free[int(state / 2147483647 * len(free))], 1, 1))
-    if len(props) > 512:
-        raise ValueError("the place has too many tiles of road, water and scatter: raise meters")
-    first = by_id[start or pts[0]["id"]]
-    reach = world_reach(world_blocked(cols * tile, rows * tile, tile, props), first["cell"])
-    lost = [p["id"] for p in pts if p["cell"] not in reach] + [p["id"] for p in signs if not any(t in reach for t in touching(p["corner"]))]
-    if lost:
-        raise ValueError(f"cut off by water from {first['id']}: {', '.join(lost)} (add a link across the river)")
-    if marks is not None and not (isinstance(marks, dict) and all(isinstance(k, str) and _WORLD_TOKEN.fullmatch(k) for k in marks)):
-        raise ValueError("marks is {category: emoji}")
-    marks = {k: _world_mark(v) for k, v in (marks or {}).items()}
-    mark = lambda p: {"mark": p["mark"]} if "mark" in p else {"mark": marks[p["category"]]} if p["category"] in marks else {}   # noqa: E731
-    spots = [{"id": f"{id}-{p['id']}", "x": int((p["cell"][0] + .5) * tile), "y": int((p["cell"][1] + .5) * tile), "label": p["label"],
-              "category": p["category"], "body": p["body"], **({"flip": p["flip"]} if "flip" in p else {}), **mark(p)} for p in pts]
-    spots += [{"id": f"{id}-{p['id']}", "x": p["corner"][0] * tile, "y": p["corner"][1] * tile, "label": p["label"], "category": p["category"],
-               "body": p["body"], "sign": p["sign"], **({"flip": p["flip"]} if "flip" in p else {}), **mark(p)} for p in signs]
-    return {"id": id, "label": label, "width": cols * tile, "height": rows * tile, "tile": tile, "props": props, "actors": [], "spots": spots,
-            "player": {"emoji": "🙂", "x": int((first["cell"][0] + .5) * tile), "y": int((first["cell"][1] + .5) * tile), "speed": 96}}
-
-
-def _shots_html(world: dict[str, Any]) -> str:
-    wid, shots = world["id"], world["shots"]
-    articles = "".join(
-        f'<article class="ui-shot" data-i="{i}"><p class="ui-shot-hud">{escape(s["label"])} / {len(shots):02d}</p>'
-        f'<h3>{escape(s["title"])}</h3><p>{escape(s["body"])}</p></article>' for i, s in enumerate(shots))
-    marks = "".join(f'<div class="ui-shot-mark" data-i="{i}" style="--i:{i}"></div>' for i in range(len(shots)))
-    return (f'<section class="ui-world ui-world-shots" id="{wid}-shots" data-ui-world="shots" style="--shots:{len(shots)}" '
-            f'aria-label="{escape(world["title"], quote=True)}"><div class="ui-shots-scroll"><div class="ui-shots-track">'
-            f'<div class="ui-shots-stage">{articles}</div>{marks}</div></div></section>')
-
-
-def _board_html(board: dict[str, Any] | None) -> str:
-    """The info board: a clock and a constant-speed scrolling line; items with ``at`` get "in N min" from the page's clock."""
-    if not board:
-        return ""
-    def item(entry: dict[str, Any], hidden: bool) -> str:
-        extra, where = "", f' data-zone="{entry["zone"]}"' if entry["zone"] else ""
-        if entry["at"]:
-            extra = f' <span class="ui-board-min" data-at="{entry["at"]}"{where}></span>'
-        elif entry["gauge"]:
-            g = entry["gauge"]
-            done, todo = (escape(glyph, quote=True) for glyph in g["glyphs"])
-            extra = (f' <span class="ui-board-gauge" data-from="{g["from"]}" data-to="{g["to"]}" data-cells="{g["cells"]}"{where} '
-                     f'data-done="{done}" data-todo="{todo}"><span class="ui-board-cells" aria-hidden="true">'
-                     f'{escape(gauge_cells(0, g["cells"], g["glyphs"]))}</span> <span class="ui-board-pct">0%</span></span>')
-        aria_hidden = ' aria-hidden="true"' if hidden else ""
-        return f'<span class="ui-board-item"{aria_hidden}>{escape(entry["text"])}{extra}</span>'
-    def item_chars(entry: dict[str, Any]) -> int:
-        # Budget the longest cell combination and percentage, including separators.
-        gauge = entry["gauge"]
-        extra = 10 if entry["at"] else 0
-        if gauge:
-            extra += 1 + max(len(gauge_cells(n, gauge["cells"], gauge["glyphs"]))
-                             for n in range(gauge["cells"] + 1)) + len(" 100%")
-        return len(entry["text"]) + extra
-    chars = sum(item_chars(entry) for entry in board["items"])
-    run = "".join(item(e, False) for e in board["items"]) + "".join(item(e, True) for e in board["items"])
-    form = ('<form class="ui-board-post"><input class="ui-input" name="message" maxlength="60" placeholder="Leave a line" '
-            'aria-label="Leave a line on the board" autocomplete="off"><button class="ui-button" type="submit">Post</button></form>'
-            if board["post"] else "")
-    shared = ""
-    if board.get("shared_issue"):
-        owner, repo, number = board["shared_issue"].split("/")
-        issue_url = f"https://github.com/{owner}/{repo}/issues/{number}"
-        api_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{number}/comments?per_page=100"
-        shared = (f'<details class="ui-board-shared" data-api="{escape(api_url, quote=True)}">'
-                  '<summary>共有掲示板（GitHub公開コメント）</summary>'
-                  '<p>投稿はGitHubへのログインが必要です。本文・アカウント名・投稿時刻はインターネットに公開されます。'
-                  '個人情報や秘密の待ち合わせ情報は書かないでください。ページ内Postはこのページだけで、共有されません。</p>'
-                  f'<a href="{escape(issue_url, quote=True)}#new_comment_field" target="_blank" rel="noopener noreferrer">GitHubで公開投稿（別タブ）</a> '
-                  '<button type="button" data-shared-refresh>共有コメントを取得・更新</button>'
-                  '<p role="status" data-shared-status>未取得。自動更新なし。更新間隔は最低120秒。</p>'
-                  '<ul data-shared-comments></ul></details>')
-    label = " data-offset-label" if board["offset_label"] else ""
-    chips = "".join(f'<span class="ui-board-zone" data-zone-id="{z["id"]}" data-rows="{json.dumps(list(zone_rows(z["tz"])), separators=(",", ":"))}">'
-                    f'{escape(z["label"])} <b data-zone-clock>--:--</b></span>' for z in board["zones"])
-    chips = f'<span class="ui-board-zones">{chips}</span>' if chips else ""
-    offset = board["offset_minutes"] if board["offset_minutes"] is not None else ""
-    return (f'<div class="ui-board" aria-live="off" data-offset="{offset}" data-chars="{chars}"{label}><strong>{escape(board["title"])}</strong><span class="ui-board-clock" data-clock>--:--</span>{chips}'
-            f'<div class="ui-board-track"><div class="ui-board-run" style="animation-duration:{board_seconds(chars)}s">{run}</div></div>{form}{shared}</div>')
-
-
-# The words of a shell world's chrome. The page shows icons; these are the aria-label and tooltip. 🌐 picks the language, the same
-# eleven as flutter_navigation_basic (ja is the page's own, so it is what the markup carries until JS switches it).
-WORLD_NAMES = ("names", "dots", "off")   # the name layer of a map: see docs/world-classroom.md "Layers"
-WORLD_LANGS = (("ja", "日本語"), ("en", "English"), ("fr", "Français"), ("es", "Español"), ("pt", "Português"), ("ar", "العربية"),
-               ("zh", "中文"), ("ru", "Русский"), ("id", "Bahasa Indonesia"), ("de", "Deutsch"), ("sw", "Kiswahili"))
-WORLD_TEXT = {
-    #            ja  en  fr  es  pt  ar  zh  ru  id  de  sw
-    "home": ("ホーム", "Home", "Accueil", "Inicio", "Início", "الرئيسية", "首页", "Главная", "Beranda", "Startseite", "Mwanzo"),
-    "favorites": ("お気に入り", "Favorites", "Favoris", "Favoritos", "Favoritos", "المفضلة", "收藏", "Избранное", "Favorit", "Favoriten", "Vipendwa"),
-    "settings": ("全体設定", "Settings", "Réglages", "Ajustes", "Configurações", "الإعدادات", "设置", "Настройки", "Pengaturan", "Einstellungen", "Mipangilio"),
-    "places": ("行き先の一覧", "Places", "Lieux", "Lugares", "Lugares", "الأماكن", "地点", "Места", "Tempat", "Orte", "Maeneo"),
-    "screen": ("この画面の操作", "This screen", "Cet écran", "Esta pantalla", "Esta tela", "هذه الشاشة", "本屏幕", "Этот экран", "Layar ini", "Dieser Bildschirm", "Skrini hii"),
-    "pause": ("動きを止める", "Pause motion", "Arrêter le mouvement", "Pausar el movimiento", "Pausar o movimento", "إيقاف الحركة", "暂停动态", "Остановить движение", "Jeda gerakan", "Bewegung anhalten", "Simamisha mwendo"),
-    "avatar": ("絵文字を変える", "Change emoji", "Changer d'emoji", "Cambiar emoji", "Mudar emoji", "تغيير الرمز التعبيري", "更换表情", "Сменить эмодзи", "Ganti emoji", "Emoji ändern", "Badilisha emoji"),
-    "language": ("言語", "Language", "Langue", "Idioma", "Idioma", "اللغة", "语言", "Язык", "Bahasa", "Sprache", "Lugha"),
-    "zoom": ("ズーム（回して拡大・縮小）", "Zoom (turn to zoom in or out)", "Zoom (tournez pour agrandir ou réduire)", "Zoom (gira para acercar o alejar)",
-             "Zoom (gire para aproximar ou afastar)", "التكبير (أدر للتكبير أو التصغير)", "缩放（旋转以放大或缩小）", "Масштаб (поверните, чтобы приблизить или отдалить)",
-             "Zum (putar untuk memperbesar atau memperkecil)", "Zoom (drehen zum Vergrößern oder Verkleinern)", "Kuza (zungusha kukuza au kupunguza)"),
-    "overlay": ("地図の上の操作類の透け具合", "How see-through the controls over the map are", "Transparence des commandes sur la carte", "Transparencia de los controles sobre el mapa",
-                "Transparência dos controles sobre o mapa", "شفافية عناصر التحكم فوق الخريطة", "地图上控件的透明度", "Прозрачность элементов управления над картой",
-                "Transparansi kontrol di atas peta", "Durchsichtigkeit der Bedienelemente über der Karte", "Uwazi wa vidhibiti juu ya ramani"),
-    "names": ("名前の層: 🏷️ 名前 / ● 点（近く・指先で名前） / ✖️ 点だけ", "Name layer: 🏷️ names / ● dots (names near you or under the pointer) / ✖️ dots only",
-              "Couche des noms : 🏷️ noms / ● points (noms près de vous ou sous le pointeur) / ✖️ points seulement",
-              "Capa de nombres: 🏷️ nombres / ● puntos (nombres cerca de ti o bajo el puntero) / ✖️ solo puntos",
-              "Camada de nomes: 🏷️ nomes / ● pontos (nomes perto de você ou sob o ponteiro) / ✖️ só pontos",
-              "طبقة الأسماء: 🏷️ أسماء / ● نقاط (الأسماء قربك أو تحت المؤشر) / ✖️ نقاط فقط",
-              "名称层：🏷️ 名称 / ● 圆点（靠近或指向时显示名称） / ✖️ 仅圆点", "Слой имён: 🏷️ имена / ● точки (имена рядом или под указателем) / ✖️ только точки",
-              "Lapisan nama: 🏷️ nama / ● titik (nama di dekatmu atau di bawah penunjuk) / ✖️ titik saja",
-              "Namensebene: 🏷️ Namen / ● Punkte (Namen nahe bei dir oder unter dem Zeiger) / ✖️ nur Punkte",
-              "Tabaka ya majina: 🏷️ majina / ● nukta (majina karibu nawe au chini ya kielekezi) / ✖️ nukta tu"),
-    "me": ("自分の場所", "Find me", "Où suis-je", "Mi ubicación", "Minha posição", "موقعي", "我的位置", "Где я", "Posisi saya", "Mein Standort", "Nilipo"),
-    "walk": ("ここへ歩く", "Walk here", "Aller ici", "Caminar aquí", "Caminhar até aqui", "امشِ إلى هنا", "走到这里", "Идти сюда", "Jalan ke sini", "Hierhin gehen", "Tembea hapa"),
-    "close": ("閉じる", "Close", "Fermer", "Cerrar", "Fechar", "إغلاق", "关闭", "Закрыть", "Tutup", "Schließen", "Funga"),
-    "star": ("お気に入り", "Favorite", "Favori", "Favorito", "Favorito", "مفضلة", "收藏", "В избранное", "Favorit", "Favorit", "Pendwa"),
-    "floor": ("フロアを移動", "Go to floor", "Aller à l'étage", "Ir a la planta", "Ir para o andar", "الانتقال إلى طابق", "前往楼层", "Перейти на этаж", "Pindah lantai", "Zur Etage", "Nenda ghorofa"),
-    "move": ("移動", "Move", "Déplacer", "Mover", "Mover", "تحرك", "移动", "Движение", "Gerak", "Bewegen", "Sogea"),
-    "up": ("上へ", "Up", "Haut", "Arriba", "Cima", "أعلى", "上", "Вверх", "Atas", "Hoch", "Juu"),
-    "left": ("左へ", "Left", "Gauche", "Izquierda", "Esquerda", "يسار", "左", "Влево", "Kiri", "Links", "Kushoto"),
-    "right": ("右へ", "Right", "Droite", "Derecha", "Direita", "يمين", "右", "Вправо", "Kanan", "Rechts", "Kulia"),
-    "down": ("下へ", "Down", "Bas", "Abajo", "Baixo", "أسفل", "下", "Вниз", "Bawah", "Runter", "Chini"),
-    "pick": ("あなたの絵文字をえらんでください", "Pick your emoji", "Choisissez votre emoji", "Elige tu emoji", "Escolha seu emoji", "اختر رمزك التعبيري", "选择你的表情", "Выберите свой эмодзи", "Pilih emojimu", "Wähle dein Emoji", "Chagua emoji yako"),
-    "other": ("ほかの絵文字・文字（16文字まで）", "Another emoji or text (up to 16)", "Autre emoji ou texte (16 max)", "Otro emoji o texto (hasta 16)", "Outro emoji ou texto (até 16)", "رمز أو نص آخر (حتى 16)", "其他表情或文字（最多16个）", "Другой эмодзи или текст (до 16)", "Emoji atau teks lain (maks. 16)", "Anderes Emoji oder Text (bis 16)", "Emoji au maandishi mengine (hadi 16)"),
-    "ok": ("これにする", "Use this", "Choisir", "Usar este", "Usar este", "استخدم هذا", "就用这个", "Выбрать", "Pakai ini", "Nehmen", "Tumia hii"),
-    "invalid": ("1〜16文字の絵文字か文字を入力してください", "Enter 1 to 16 emoji or characters", "Saisissez 1 à 16 emoji ou caractères", "Escribe de 1 a 16 emoji o caracteres", "Digite de 1 a 16 emoji ou caracteres", "أدخل من 1 إلى 16 رمزًا أو حرفًا", "请输入1到16个表情或文字", "Введите от 1 до 16 эмодзи или символов", "Masukkan 1 sampai 16 emoji atau karakter", "Gib 1 bis 16 Emoji oder Zeichen ein", "Weka emoji au herufi 1 hadi 16"),
-    "backdrop": ("写真かカメラをうしろに映す", "Show a photo or the camera behind", "Afficher une photo ou la caméra derrière", "Mostrar una foto o la cámara detrás", "Mostrar uma foto ou a câmera atrás", "عرض صورة أو الكاميرا في الخلفية", "在背后显示照片或相机", "Показать фото или камеру на фоне", "Tampilkan foto atau kamera di belakang", "Foto oder Kamera dahinter zeigen", "Onyesha picha au kamera nyuma"),
-    "camera": ("カメラ", "Camera", "Caméra", "Cámara", "Câmera", "الكاميرا", "相机", "Камера", "Kamera", "Kamera", "Kamera"),
-    "photo": ("写真をえらぶ", "Choose a photo", "Choisir une photo", "Elegir una foto", "Escolher uma foto", "اختر صورة", "选择照片", "Выбрать фото", "Pilih foto", "Foto wählen", "Chagua picha"),
-    "clear": ("もとにもどす", "Clear it", "Effacer", "Quitar", "Remover", "مسح", "清除", "Убрать", "Hapus", "Entfernen", "Ondoa"),
-    "unavailable": ("つかえません（許可かカメラを確認）", "Not available (check permission or camera)", "Indisponible (vérifiez l'autorisation ou la caméra)", "No disponible (revisa el permiso o la cámara)", "Indisponível (verifique a permissão ou a câmera)", "غير متاح (تحقق من الإذن أو الكاميرا)", "无法使用（请检查权限或相机）", "Недоступно (проверьте разрешение или камеру)", "Tidak tersedia (periksa izin atau kamera)", "Nicht verfügbar (Berechtigung oder Kamera prüfen)", "Haipatikani (angalia ruhusa au kamera)"),
-}
-WORLD_BUILTIN_TOOLS = ("🏠", "⭐", "⚙", "🌐", "☰", "⋯", "🚪", "🖼", "📷", "🧹")       # emoji the page itself uses; a tool of your own takes another
-_WORLD_TOOL_KEYS = {"label", "label_en", "labels", "slot", "floor", "spots", "body"}
-_WORLD_LANG_CODES = tuple(code for code, _ in WORLD_LANGS)
-# What the page's script needs: the language codes and the words by index (one list per key), written once ahead of the script.
-WORLD_TEXT_JS = ("const WORLD_LANGS=" + json.dumps(list(_WORLD_LANG_CODES)) + ",WORLD_TEXT=" +
-                 json.dumps({k: list(v) for k, v in WORLD_TEXT.items()}, ensure_ascii=False, separators=(",", ":")) + ";\n")
-
-
-def _plain_emoji(value: str) -> str:
-    return value.replace("\ufe0e", "").replace("\ufe0f", "")
-
-
-def _wt(key: str, labels: dict[str, str] | None = None) -> str:
-    """aria-label and title of one word of the chrome in the page's own language (ja); ``data-t`` names the catalogue entry that 🌐 swaps in,
-    or ``labels`` (language code → words) carries the words of a tool of your own."""
-    ja = labels["ja"] if labels else WORLD_TEXT[key][0]
-    swap = f'data-labels="{escape(json.dumps(labels, ensure_ascii=False, separators=(",", ":")), quote=True)}"' if labels else f'data-t="{key}"'
-    return f'aria-label="{escape(ja, quote=True)}" title="{escape(ja, quote=True)}" {swap}'
-
-
-def _world_shell(world: dict[str, Any]) -> bool:
-    """Header, side and footer instead of chips on top and controls below: every grid world, or any world with ``"shell": true``."""
-    return bool(world.get("shell") or world.get("tools") or any(f.get("tile") or f.get("real") for f in world["floors"]))
-
-
-def _world_categories(floors: list[dict[str, Any]]) -> list[str]:
-    """The category tokens the spots use, sorted (the filter chips and the radios behind them)."""
-    return sorted({s["category"] for f in floors for s in f["spots"] if s["category"]})
-
-
-def _world_playable(world: dict[str, Any]) -> bool:
-    """Something moves (a board, a player or an actor), so the page gets its motion controls."""
-    return bool(world["board"] or any(f["player"] or f["actors"] for f in world["floors"]))
-
-
-def _floor_html(wid: str, f: dict[str, Any], close: str) -> tuple[str, list[str]]:
-    """One floor's stage (props, spots, actors, player) and the info sheet articles of its spots and actors (``close`` is their closing link)."""
-    flip = lambda s: (f' data-flip="{escape(s["flip"], quote=True)}"' if s.get("flip") else "") + (f' data-sign="{s["sign"]}"' if s.get("sign") else "")   # noqa: E731
-    mark = lambda s: f';--mark:\'{escape(s["mark"], quote=True)}\'' if s.get("mark") else ""   # noqa: E731  (the dot's replacement, read by CSS content)
-    spots = "".join(
-        f'<a class="ui-spot" href="#{wid}-spot-{s["id"]}" data-x="{s["x"]}" data-y="{s["y"]}" data-category="{s["category"]}" '
-        f'style="left:{s["x"]}px;top:{s["y"]}px{mark(s)}"{flip(s)}>{escape(s["label"])}</a>' for s in f["spots"])
-    actors = "".join(
-        f'<a class="ui-actor" id="{wid}-actor-{a["id"]}" href="#{wid}-spot-{a["id"]}" aria-label="{escape(a["label"], quote=True)}">'
-        f'<span>{escape(a["emoji"])}</span></a>' for a in f["actors"])
-    pl = f["player"]
-    player = (f'<span class="ui-player" data-x="{pl["x"]}" data-y="{pl["y"]}" data-speed="{pl["speed"]}" '
-              f'style="--px:{pl["x"]};--py:{pl["y"]}" role="img" aria-label="自分"><span>{escape(pl["emoji"])}</span></span>') if pl else ""
-    tile = f.get("tile")
-    props = "".join(f'<div class="ui-prop" data-kind="{q["kind"]}" aria-hidden="true" '
-                    f'style="left:{q["x"]}px;top:{q["y"]}px;width:{q["w"]}px;height:{q["h"]}px"></div>' for q in f.get("props", []))
-    grid = (f' data-tile="{tile}" data-blocked="{",".join(world_blocked(f["width"], f["height"], tile, f["props"]))}"') if tile else ""
-    stage = (f'<div class="ui-floor" data-floor="{f["id"]}" data-w="{f["width"]}" data-h="{f["height"]}"{grid}{" data-real" if f.get("real") else ""} '
-             f'style="width:{f["width"]}px;height:{f["height"]}px{f";--tile:{tile}px" if tile else ""}">{props}{spots}{actors}{player}</div>')
-    sheet = [f'<article class="ui-sheet-item" id="{wid}-spot-{s["id"]}"><h3>{escape(s["label"])}</h3><p>{escape(s["body"])}</p>{close}</article>'
-             for s in [*f["spots"], *f["actors"]]]
-    return stage, sheet
-
-
-def _pick_html(wid: str, avatars: list[str], shell: bool) -> str:
-    """The emoji picker (a plain ``div`` in the map, shown by the script): words for a classic world, icons and aria-labels for a shell world."""
-    if not avatars:
-        return ""
-    grid = '<div class="ui-world-pick-grid">' + "".join(f'<button type="button" data-emoji="{escape(e, quote=True)}">{escape(e)}</button>' for e in avatars) + '</div>'
-    if shell:
-        return (f'<div class="ui-world-pick" role="group" {_wt("pick")} hidden><div><h3 aria-hidden="true">🙂👇</h3>{grid}'
-                '<form class="ui-world-pick-form"><label><span aria-hidden="true">✏️</span> <input name="emoji" maxlength="32" size="8" autocomplete="off" '
-                f'placeholder="🙂 A" {_wt("other")}></label><button {_wt("ok")}>✅</button></form></div></div>')
-    return (f'<div class="ui-world-pick" role="group" aria-labelledby="{wid}-pick" hidden><div><h3 id="{wid}-pick">あなたの絵文字をえらんでください</h3>{grid}'
-            '<form class="ui-world-pick-form"><label>ほかの絵文字・文字 <input name="emoji" maxlength="32" size="8" autocomplete="off" placeholder="16文字まで"></label>'
-            '<button>これにする</button></form></div></div>')
-
-
-def _classic_html(world: dict[str, Any], *, head: str, radios: str, labels: str, view: str, tail: str) -> str:
-    """A world without a grid, tools or ``shell``: chips on top, the map, the controls below (the markup older worlds keep)."""
-    extra = '<button type="button" data-pick-open>絵文字を変える</button>' if world.get("avatars") else ""
-    controls = ('<div class="ui-world-motion-controls" hidden><button type="button" class="ui-world-pause" aria-pressed="false">動きを停止</button>'
-                '<form class="ui-world-walk"><label>X <input name="x" type="number" min="0" step="any" required></label>'
-                f'<label>Y <input name="y" type="number" min="0" step="any" required></label><button>ここへ歩く</button></form>{extra}</div>'
-                if _world_playable(world) else "")
-    return f'{head}{radios}<nav class="ui-world-bar">{labels}</nav>{_board_html(world["board"])}{view}{controls}{tail}'
-
-
-def _shell_html(world: dict[str, Any], *, head: str, radios: str, view: str, tail: str, floor_labels: str) -> str:
-    """A shell world keeps the page short and says it with icons (the words are the aria-label and title, in 11 languages):
-
-    header  the board and the tools of the whole world: 🏠 home, ⭐ favourites, ⚙️ settings, and any emoji of your own (``tools``)
-    side    ☰ the places of this floor, ⋯ the controls of this screen; 48px buttons whose panel opens over the map
-    footer  🚪 the pulldown that moves between floors (plain floor labels stand in for it until JS runs)
-    """
-    wid, floors, avatars, tools = world["id"], world["floors"], world.get("avatars", []), world.get("tools", {})
-    categories, playable, tiled = _world_categories(floors), _world_playable(world), any(f.get("tile") for f in floors)
-    def icon(kind: str, glyph: str, attrs: str, panel: str, hidden: bool = False) -> str:
-        return (f'<details class="ui-world-menu" data-menu="{kind}"{" hidden" if hidden else ""}><summary {attrs}>{glyph}</summary>'
-                f'<div class="ui-world-panel">{panel}</div></details>')
-    on_floor = {sp["id"]: f["id"] for f in floors for sp in f["spots"]}
-    def rows(ul_class: str, spots: list[dict[str, Any]], star: bool = False, data: str = "") -> str:
-        return f'<ul class="ui-world-rows {ul_class}"{data}>' + "".join(
-            f'<li data-category="{sp["category"]}"><a href="#{wid}-spot-{sp["id"]}" data-x="{sp["x"]}" data-y="{sp["y"]}" data-floor="{on_floor[sp["id"]]}">'
-            f'<span class="ui-world-arrow" aria-hidden="true">{WORLD_HERE}</span>{escape(sp["label"])}</a>'
-            + (f'<button type="button" class="ui-world-star" aria-pressed="false" {_wt("star")}>☆</button>' if star else "") + '</li>' for sp in spots) + '</ul>'
-    by_id = {sp["id"]: sp for f in floors for sp in f["spots"]}
-    def custom(emoji: str, tool: dict[str, Any]) -> str:
-        attrs = _wt("", {"ja": tool["label"], "en": tool["label_en"], **tool.get("labels", {})})
-        if "floor" in tool:                                                       # a floor shortcut: its radio, so it works without JS too
-            return f'<label class="ui-world-tool" for="{wid}-floor-{tool["floor"]}" {attrs}>{escape(emoji)}</label>'
-        panel = rows("", [by_id[i] for i in tool["spots"]]) if "spots" in tool else f'<p>{escape(tool["body"])}</p>'
-        return icon("tool", escape(emoji), attrs, panel)
-    chips = ("".join(f'<label for="{wid}-cat-{"value-" + c if c else "all"}" data-cat="{c}">{escape(c or "all")}</label>' for c in ["", *categories])
-             if categories else "")
-    side = icon("spots", "☰", _wt("places"), (f'<nav class="ui-world-chips">{chips}</nav>' if chips else "") +
-                "".join(rows("ui-world-spots", f["spots"], star=True, data=f' data-floor="{f["id"]}"') for f in floors))
-    side += "".join(custom(e, t) for e, t in tools.items() if t["slot"] == "side")
-    real = any(f.get("real") for f in floors)
-    if playable or real:
-        me = f'<button type="button" class="ui-world-grid-only" data-me hidden {_wt("me")}>🎯</button>' if tiled else ""
-        walk = ('<div class="ui-world-motion-controls" hidden><form class="ui-world-walk"><label>X <input name="x" type="number" min="0" step="any" required></label>'
-                f'<label>Y <input name="y" type="number" min="0" step="any" required></label><button {_wt("walk")}>🚶</button></form>{me}</div>') if playable else ""
-        backdrop = f'<button type="button" class="ui-world-real" data-real hidden {_wt("backdrop")}>🖼️📷</button>' if real else ""
-        side += icon("more", "⋯", _wt("screen"), walk + backdrop, hidden=True)
-    settings = ((f'<button type="button" class="ui-world-pause" aria-pressed="false" data-pause="⏸️" data-resume="▶️" {_wt("pause")}>⏸️</button>' if playable else "") +
-                (f'<button type="button" data-pick-open {_wt("avatar")}>🙂✏️</button>' if avatars else "") +
-                f'<label class="ui-world-lang">🌐 <select data-lang {_wt("language")}>' +
-                "".join(f'<option value="{code}" lang="{code}"{" selected" if i == 0 else ""}>{name}</option>' for i, (code, name) in enumerate(WORLD_LANGS)) +
-                '</select></label>' +
-                f'<label class="ui-world-zoom">🔍 {dial_html("zoom", minimum=0.1, maximum=world["zoom_max"], step=0.05, value=1, attrs=_wt("zoom"))}</label>' +
-                f'<label class="ui-world-alpha">🫥 <input type="range" data-alpha min="0.2" max="1" step="0.1" value="0.9" {_wt("overlay")}></label>' +
-                (f'<label class="ui-world-names">🏷️ <select data-names-pick {_wt("names")}>' +
-                 "".join(f'<option value="{v}"{" selected" if v == world["names"] else ""}>{t}</option>' for v, t in zip(WORLD_NAMES, ("🏷️", "●", "✖️"))) +
-                 '</select></label>' if any(f["spots"] for f in floors) else ""))
-    header_tools = (f'<a class="ui-world-home" href="#{wid}-map" data-home {_wt("home")}>🏠</a>' +
-                    "".join(custom(e, t) for e, t in tools.items() if t["slot"] == "head") +
-                    icon("favorites", "⭐", _wt("favorites"), '<p class="ui-world-empty" aria-hidden="true">☆</p><ul class="ui-world-rows ui-world-favs"></ul>', hidden=True) +
-                    icon("settings", "⚙️", _wt("settings"), settings, hidden=True))
-    steps = "".join(f'<button type="button" data-step="{d}" {_wt(k)}>{g}</button>'
-                    for d, k, g in (("0,-1", "up", "▲"), ("-1,0", "left", "◀"), ("1,0", "right", "▶"), ("0,1", "down", "▼")))
-    dpad = f'<div class="ui-world-dpad ui-world-grid-only" role="group" data-overlay {_wt("move")} hidden>{steps}</div>' if tiled and playable else ""
-    foot = (f'<footer class="ui-world-foot"><nav class="ui-world-bar">{floor_labels}</nav>'
-            f'<label class="ui-world-goto-wrap">🚪 <select class="ui-world-goto" {_wt("floor")}>' +
-            "".join(f'<option value="{f["id"]}"{" selected" if i == 0 else ""}>{escape(f["label"])}</option>' for i, f in enumerate(floors)) +
-            '</select></label></footer>') if len(floors) > 1 else ""
-    return (f'{head}{radios}<header class="ui-world-head">{_board_html(world["board"])}<nav class="ui-world-tools">{header_tools}</nav></header>'
-            f'<div class="ui-world-body">{view}{dpad}<div class="ui-world-side">{side}</div></div>{foot}{tail}')
-
-
-def _map_html(world: dict[str, Any]) -> str:
-    wid, floors, shell = world["id"], world["floors"], _world_shell(world)
-    categories = _world_categories(floors)
-    cat_ids = [""] + categories
-    radios = "".join(
-        f'<input class="ui-world-radio" type="radio" name="{wid}-floor" id="{wid}-floor-{f["id"]}" value="{f["id"]}"'
-        f'{" checked" if i == 0 else ""}>' for i, f in enumerate(floors))
-    radios += "".join(
-        f'<input class="ui-world-radio" type="radio" name="{wid}-cat" id="{wid}-cat-{"value-" + c if c else "all"}" value="{c}"'
-        f'{" checked" if not c else ""}>' for c in cat_ids)
-    floor_labels = labels = "".join(f'<label for="{wid}-floor-{f["id"]}">{escape(f["label"])}</label>' for f in floors)
-    if categories:
-        labels += "".join(f'<label for="{wid}-cat-{"value-" + c if c else "all"}" data-cat="{c}">{escape(c or "all")}</label>' for c in cat_ids)
-    close = f'<a class="ui-sheet-close" href="#{wid}-map"' + (f' {_wt("close")}>✖️</a>' if shell else ">Close</a>")          # an icon in a shell world
-    built = [_floor_html(wid, f, close) for f in floors]
-    scale = "" if world["mark_scale"] == [1, 1] else f' style="--mark-x:{world["mark_scale"][0]:g};--mark-y:{world["mark_scale"][1]:g}"'
-    head = (f'<section class="ui-world ui-world-map" id="{wid}-map" data-ui-world="map" data-zoom-max="{world["zoom_max"]}" data-names="{world["names"]}"{scale}'
-            f'{" data-grid" if any(f.get("tile") for f in floors) else ""}{" data-shell" if shell else ""} aria-label="{escape(world["title"], quote=True)}">')
-    view = f'<div class="ui-world-view" tabindex="0"><div class="ui-world-cam" style="--fx:0;--fy:0;--z:1">{"".join(stage for stage, _ in built)}</div></div>'
-    tail = f'<aside class="ui-sheet" aria-live="polite">{"".join(a for _, articles in built for a in articles)}</aside>{_pick_html(wid, world.get("avatars", []), shell)}</section>'
-    if shell:
-        return _shell_html(world, head=head, radios=radios, view=view, tail=tail, floor_labels=floor_labels)
-    return _classic_html(world, head=head, radios=radios, labels=labels, view=view, tail=tail)
-
-
-def world_html(spec: Any) -> str:
-    """Semantic HTML for a world; every label and body is escaped. Works without JavaScript (scroll, :target, radios)."""
-    world = world_validate(spec)
-    return (_shots_html(world) if world["shots"] else "") + (_map_html(world) if world["floors"] else "")
-
 
 DIAL_CSS = (
     # A rotary dial over a range input: the input keeps the value, the keys, the form and the accessibility; the dial is the drawing and the drag.
@@ -4584,456 +4306,11 @@ export function bindDial(root=document){
 if(typeof document!=="undefined")bindDial();
 """
 
-
-_WORLD_CSS = (
-    ".ui-world{--ui-world-h:min(70vh,560px);position:relative;margin:1rem 0;border:1px solid var(--ui-border);background:var(--ui-bg);"
-    "color:var(--ui-fg);border-radius:var(--ui-radius);overflow:hidden}"
-    ".ui-world-motion-controls{padding:8px}.ui-world-walk{display:flex;gap:8px;flex-wrap:wrap}.ui-world-walk input{width:6em}.ui-world-walk[hidden]{display:none}.ui-world[data-js] .ui-player{transition:none}.ui-world[data-motion-paused] .ui-actor,.ui-world[data-motion-paused] .ui-board-run{animation-play-state:paused!important}"
-    ".ui-world-radio{position:absolute;opacity:0;pointer-events:none}"
-    ".ui-world-bar{display:flex;flex-wrap:wrap;gap:8px;padding:8px;border-bottom:1px solid var(--ui-border)}"
-    ".ui-world-bar label{border:1px solid var(--ui-border);padding:.35rem .75rem;cursor:pointer;background:var(--ui-panel);border-radius:var(--ui-radius)}"
-    ".ui-world-view{position:relative;overflow:auto;height:var(--ui-world-h);container-type:size}"
-    ".ui-world[data-js] .ui-world-view{overflow:hidden;touch-action:none;cursor:grab}"
-    ".ui-world[data-js][data-drag] .ui-world-view{cursor:grabbing}"
-    ".ui-world-cam{position:relative;transform-origin:0 0}"
-    ".ui-world[data-js] .ui-world-cam{transform:translate(calc(50cqw - var(--fx,0) * var(--z,1) * 1px),calc(50cqh - var(--fy,0) * var(--z,1) * 1px)) "
-    "scale(var(--z,1));transition:transform .24s ease-out}"
-    ".ui-world[data-js][data-drag] .ui-world-cam{transition:none}"
-    ".ui-floor{position:relative;display:none;background-color:var(--ui-panel);background-image:linear-gradient(var(--ui-border) 1px,transparent 1px),"
-    "linear-gradient(90deg,var(--ui-border) 1px,transparent 1px);background-size:64px 64px}"
-    # Layers of a map, back to front, like the z-order of a slide: the ground (props), the names (spot pills), the marks (dots and signs),
-    # the player and actors, the sheet. data-names on .ui-world moves every plain spot between the name layer (names) and the mark layer
-    # (dots: a dot; the one the player stands by, the one under the pointer and the focused one show their names; off: dots only).
-    + DIAL_CSS +
-    ".ui-world-map{--ui-layer-ground:0;--ui-layer-name:1;--ui-layer-mark:2;--ui-layer-player:3;--ui-layer-sheet:4}"
-    ".ui-spot{position:absolute;z-index:var(--ui-layer-name);transform:translate(-50%,-50%) scale(calc(1 / var(--z,1)));white-space:nowrap;border:1px solid var(--ui-accent);"
-    "background:var(--ui-bg);color:var(--ui-fg);padding:.2rem .6rem;border-radius:999px;text-decoration:none;font-size:.85rem}"
-    ".ui-spot[data-sign],.ui-world[data-names=dots] .ui-spot:not([data-sign]):not([data-near]):not(:hover):not(:focus-visible),.ui-world[data-names=off] .ui-spot:not([data-sign]):not(:hover):not(:focus-visible)"
-    "{z-index:var(--ui-layer-mark);padding:.3rem .5rem;border-radius:4px;font-size:0;line-height:1;letter-spacing:.04em}"
-    ".ui-spot[data-sign]::before,.ui-world[data-names=dots] .ui-spot:not([data-sign]):not([data-near]):not(:hover):not(:focus-visible)::before,"
-    ".ui-world[data-names=off] .ui-spot:not([data-sign]):not(:hover):not(:focus-visible)::before{content:var(--mark,\"●\");font-size:.7rem}"
-    # A mark (an emoji in --mark) stands in for the dot and leads the name; --mark-x / --mark-y on the world scale every mark's width and height.
-    ".ui-spot::before{display:inline-block;transform:scale(var(--mark-x,1),var(--mark-y,1))}"
-    ".ui-world[data-names=names] .ui-spot:not([data-sign])::before,.ui-world[data-names=dots] .ui-spot[data-near]:not([data-sign])::before,"
-    ".ui-world:not([data-names=names]) .ui-spot:not([data-sign]):hover::before,.ui-world:not([data-names=names]) .ui-spot:not([data-sign]):focus-visible::before{content:var(--mark);margin-right:.3em}"
-    ".ui-world[data-names]:not([data-names=names]) .ui-spot:not([data-sign]){border-radius:999px}"
-    ".ui-world[data-names=dots] .ui-spot[data-near],.ui-world:not([data-names=names]) .ui-spot:hover,.ui-world:not([data-names=names]) .ui-spot:focus-visible{z-index:var(--ui-layer-mark)}"
-    ".ui-spot[data-sign][data-show]{padding:.05rem .4rem;font-size:.7rem}.ui-spot[data-sign][data-show]::before{content:var(--mark,\"●\");margin-right:.3em}"
-    ".ui-spot[data-sign=led]{background:#111;color:#ffb000;border-color:#ffb000;font-family:monospace;text-shadow:0 0 4px #ffb000}"
-    ".ui-spot[data-sign=wood]{background:#8b5a2b;color:#fff3d6;border:2px solid #5d3a1a}"
-    ".ui-sheet{position:absolute;z-index:var(--ui-layer-sheet);left:8px;right:8px;bottom:8px;max-height:45%;overflow:auto;border:1px solid var(--ui-border);"
-    "background:var(--ui-panel);border-radius:var(--ui-radius);padding:1rem}"
-    ".ui-world:not([data-js]) .ui-sheet:not(:has(.ui-sheet-item:target)){display:none}"
-    ".ui-world[data-js] .ui-sheet:not(:has(.ui-sheet-item[data-open])){display:none}"
-    ".ui-sheet-item{display:none}.ui-world:not([data-js]) .ui-sheet-item:target,.ui-world[data-js] .ui-sheet-item[data-open]{display:block}.ui-sheet h3{margin:0 0 .5rem}"
-    ".ui-shot{padding:1.5rem;transition:opacity .4s,transform .4s}"
-    ".ui-shot-hud{font-family:var(--ui-font-mono);letter-spacing:.12em;margin:0 0 .5rem;font-size:.8rem}"
-    ".ui-world[data-js] .ui-shots-scroll{height:var(--ui-world-h);overflow:auto;position:relative}"
-    ".ui-world[data-js] .ui-shots-track{position:relative;height:calc(var(--shots) * var(--ui-world-h))}"
-    ".ui-world[data-js] .ui-shots-stage{position:sticky;top:0;height:var(--ui-world-h);overflow:hidden;background:var(--ui-bg);transition:background .6s}"
-    ".ui-world[data-js] .ui-shot{position:absolute;inset:0;opacity:0;transform:translateY(16px)}"
-    ".ui-shot-mark{position:absolute;left:0;top:calc(var(--i) * var(--ui-world-h));width:1px;height:var(--ui-world-h);pointer-events:none}"
-    ".ui-actor{position:absolute;left:0;top:0;text-decoration:none;color:inherit}"
-    ".ui-actor span,.ui-player span{display:block;transform:translate(-50%,-50%) scale(calc(1 / var(--z,1)));font-size:1.5rem;line-height:1}"
-    ".ui-player{position:absolute;z-index:var(--ui-layer-player);left:0;top:0;pointer-events:none;transform:translate(calc(var(--px,0) * 1px),calc(var(--py,0) * 1px));"
-    "transition:transform var(--walk,0s) linear}"
-    ".ui-board{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:4px 8px;border-bottom:1px solid var(--ui-border);background:var(--ui-panel);"
-    "font-family:var(--ui-font-mono);font-size:.85rem;overflow:hidden}"
-    ".ui-board:has(.ui-board-shared){flex-wrap:wrap}.ui-board-shared{flex-basis:100%;white-space:normal;font-family:var(--ui-font);overflow-wrap:anywhere}.ui-board-shared ul{max-height:14rem;overflow:auto}"
-    ".ui-board-clock{flex:none;white-space:nowrap;border:1px solid var(--ui-accent);padding:0 .5rem;border-radius:var(--ui-radius)}"
-    ".ui-board-track{flex:4 1 14rem;min-width:0;overflow:hidden;white-space:nowrap}"
-    ".ui-board-run{display:inline-flex;animation:ui-board-scroll 24s linear infinite}"
-    ".ui-board-item{padding-right:3rem}"
-    ".ui-board-zones{display:flex;flex-wrap:wrap;gap:0 12px}"
-    ".ui-board-zone{flex:none;white-space:nowrap;color:var(--ui-muted)}.ui-board-zone b{color:var(--ui-fg);font-weight:400;font-variant-numeric:tabular-nums}"
-    ".ui-board-stamp{margin-right:.25rem;color:var(--ui-muted);font-variant-numeric:tabular-nums}"
-    ".ui-board-gauge{white-space:nowrap}.ui-board-cells{letter-spacing:.05em}.ui-board-pct{font-variant-numeric:tabular-nums}"
-    ".ui-board-post{display:flex;gap:4px;flex:1 1 13rem}.ui-board-post .ui-input{flex:1;min-width:0;width:auto;padding:.2rem .5rem}.ui-board-post .ui-button{padding:.2rem .6rem}"
-    "@keyframes ui-board-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}"
-    ".ui-floor[data-tile]{background-size:var(--tile) var(--tile)}"
-    ".ui-prop{position:absolute;z-index:var(--ui-layer-ground);box-sizing:border-box;pointer-events:none;border:2px solid var(--ui-border);border-radius:4px}"
-    ".ui-prop[data-kind=desk]{background:color-mix(in srgb,var(--ui-accent) 24%,var(--ui-panel))}"
-    ".ui-prop[data-kind=board]{background:color-mix(in srgb,var(--ui-accent) 55%,#000)}"
-    ".ui-prop[data-kind=wall]{background:var(--ui-border)}"
-    ".ui-prop[data-kind=shelf]{background:color-mix(in srgb,var(--ui-muted) 35%,var(--ui-panel))}"
-    ".ui-prop[data-kind=chair]{border:0;background:radial-gradient(circle,var(--ui-muted) 0 52%,transparent 54%)}"
-    ".ui-prop[data-kind=rug]{border-style:dashed;background:color-mix(in srgb,var(--ui-accent) 10%,transparent)}"
-    ".ui-world[data-shell]{--ui-world-h:min(56vh,512px);--ui-world-foot:56px}"
-    # Header: the info board. Side: this screen's own controls, as 48px buttons that open a panel over the map (the page never grows taller).
-    # Footer: the door-to-door pulldown.
-    ".ui-world-body{position:relative;display:flex}.ui-world-body>.ui-world-view{flex:1;min-width:0}"
-    ".ui-world-side{display:flex;flex-direction:column;gap:8px;padding:8px;z-index:2;border-left:1px solid var(--ui-border);background:var(--ui-panel)}"
-    ".ui-world-menu[hidden]{display:none}"
-    ".ui-world-menu>summary{display:flex;align-items:center;justify-content:center;width:48px;height:48px;box-sizing:border-box;list-style:none;cursor:pointer;"
-    "user-select:none;-webkit-user-select:none;font-size:1.25rem;line-height:1;border:1px solid var(--ui-border);background:var(--ui-bg);color:var(--ui-fg);border-radius:var(--ui-radius)}"
-    ".ui-world-menu>summary::-webkit-details-marker{display:none}.ui-world-menu[open]>summary{background:var(--ui-accent);color:var(--ui-bg)}"
-    ".ui-world-home,.ui-world-tool{display:flex;align-items:center;justify-content:center;width:48px;height:48px;box-sizing:border-box;text-decoration:none;color:var(--ui-fg);cursor:pointer;"
-    "font-size:1.25rem;line-height:1;border:1px solid var(--ui-border);background:var(--ui-bg);border-radius:var(--ui-radius)}"
-    ".ui-world-head{position:relative;z-index:3;display:flex;align-items:center;border-bottom:1px solid var(--ui-border);background:var(--ui-panel)}"
-    ".ui-world-head .ui-board{flex:1;min-width:0;border-bottom:0}.ui-world-head .ui-board-track{flex:4 1 4rem}"
-    ".ui-world-tools{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;padding:4px 8px}"   # at 320px seven 40px tools wrap into two rows instead of leaving the window
-    ".ui-world-tools .ui-world-home,.ui-world-tools .ui-world-tool,.ui-world-tools .ui-world-menu>summary{width:40px;height:40px}"
-    "@media(max-width:600px){.ui-world-head{flex-wrap:wrap}.ui-world-head .ui-board{flex-basis:100%;box-sizing:border-box}.ui-world-head .ui-world-tools{width:100%;box-sizing:border-box}}"
-    ".ui-world-panel p{margin:0}.ui-world-panel>button{min-width:48px}.ui-world-panel button[aria-pressed=true]{background:var(--ui-accent);color:var(--ui-bg)}"
-    ".ui-world-tools .ui-world-panel{top:100%;right:8px;width:min(320px,calc(100% - 16px));max-height:min(60vh,384px)}"
-    ".ui-world-settings,.ui-world-tools .ui-world-panel{display:flex;flex-wrap:wrap;gap:8px}.ui-world-tools .ui-world-panel[hidden]{display:none}"
-    ".ui-world-star{flex:none;min-width:40px;min-height:40px;border:0;background:none;color:var(--ui-accent);font-size:1.25rem;line-height:1;cursor:pointer;display:none}"
-    ".ui-world[data-js] .ui-world-star{display:inline-flex;align-items:center;justify-content:center}"
-    ".ui-world-rows li{display:flex;align-items:center}.ui-world-rows li>a{flex:1;min-width:0}"
-    ".ui-world-favs{width:100%}.ui-world-favs:empty{display:none}"
-    ".ui-world-empty{margin:0;width:100%;text-align:center;font-size:1.5rem;color:var(--ui-muted)}"
-    ".ui-world-panel:has(.ui-world-favs:not(:empty)) .ui-world-empty{display:none}"
-    ".ui-world-panel{position:absolute;top:8px;right:72px;width:min(320px,calc(100% - 88px));max-height:calc(100% - 16px);overflow:auto;box-sizing:border-box;"
-    "padding:16px;border:1px solid var(--ui-border);background:var(--ui-panel);color:var(--ui-fg);border-radius:var(--ui-radius);box-shadow:0 8px 24px rgb(0 0 0 / .25)}"
-    ".ui-world-panel h3{margin:0 0 8px}.ui-world-panel button{min-height:40px}"
-    ".ui-world[data-shell] .ui-world-motion-controls{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:0}"
-    ".ui-world[data-shell] .ui-world-motion-controls[hidden]{display:none}.ui-world-motion-controls .ui-world-walk{align-items:end}"
-    ".ui-world-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}"
-    ".ui-world-chips label{border:1px solid var(--ui-border);padding:.25rem .75rem;cursor:pointer;background:var(--ui-bg);border-radius:var(--ui-radius)}"
-    ".ui-world-rows{list-style:none;margin:0;padding:0}.ui-world-spots{display:none}"
-    ".ui-world-rows a{display:flex;align-items:center;gap:8px;min-height:40px;padding:0 8px;color:inherit;text-decoration:none;border-radius:var(--ui-radius)}"
-    ".ui-world-rows a:hover,.ui-world-rows a:focus-visible{background:var(--ui-bg)}"
-    ".ui-world-arrow{flex:none;width:2em;text-align:center}"
-    ".ui-world-foot{display:flex;align-items:center;gap:8px;box-sizing:border-box;min-height:var(--ui-world-foot);padding:8px;border-top:1px solid var(--ui-border)}"
-    ".ui-world-foot .ui-world-bar{padding:0;border:0}"
-    ".ui-world-goto-wrap{display:none;align-items:center;gap:8px;flex:1}.ui-world[data-js] .ui-world-goto-wrap{display:flex}.ui-world[data-js] .ui-world-foot .ui-world-bar{display:none}"
-    ".ui-world-goto{flex:1;min-width:0;max-width:384px;min-height:40px;font:inherit;color:var(--ui-fg);background:var(--ui-bg);border:1px solid var(--ui-border);border-radius:var(--ui-radius)}"
-    ".ui-world[data-shell] .ui-sheet{z-index:3;right:80px;bottom:calc(var(--ui-world-foot) + 8px)}.ui-world[data-shell]:not(:has(.ui-world-foot)) .ui-sheet{bottom:8px}"
-    # Controls drawn over the map (data-overlay: the pad) share one opacity, --ui-overlay-alpha, that 🫥 in ⚙️ sets from .2 to 1.
-    ".ui-world-body>.ui-world-dpad{position:absolute;left:8px;bottom:8px;z-index:1}.ui-world [data-overlay]{opacity:var(--ui-overlay-alpha,.9)}.ui-world-dpad[hidden]{display:none}"
-    ".ui-world-zoom,.ui-world-alpha{display:inline-flex;align-items:center;gap:8px}.ui-world-alpha input{width:96px;accent-color:var(--ui-accent)}"
-    ".ui-world-dpad{display:grid;grid-template-columns:repeat(3,48px);grid-auto-rows:48px;gap:8px}"
-    ".ui-world-dpad button{min-width:48px;min-height:48px;font-size:1.25rem;line-height:1;border:1px solid var(--ui-border);background:var(--ui-panel);"
-    "color:var(--ui-fg);border-radius:var(--ui-radius);cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}"
-    ".ui-world-dpad [data-step=\"0,-1\"]{grid-column:2}.ui-world-dpad [data-step=\"-1,0\"]{grid-column:1;grid-row:2}"
-    ".ui-world-dpad [data-step=\"1,0\"]{grid-column:3;grid-row:2}.ui-world-dpad [data-step=\"0,1\"]{grid-column:2;grid-row:3}"
-    ".ui-world-pick{position:absolute;inset:0;z-index:3;display:flex;padding:16px;overflow:auto;background:color-mix(in srgb,var(--ui-bg) 90%,transparent)}"
-    ".ui-world-pick[hidden]{display:none}"
-    ".ui-world-pick>div{margin:auto;max-width:384px;width:100%;box-sizing:border-box;text-align:center;border:1px solid var(--ui-border);"
-    "background:var(--ui-panel);border-radius:var(--ui-radius);padding:16px}"
-    ".ui-world-pick h3{margin:0 0 8px}"
-    ".ui-world-pick-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-bottom:8px}"
-    ".ui-world-pick-grid button{min-height:48px;font-size:1.5rem;line-height:1;border:1px solid var(--ui-border);background:var(--ui-bg);"
-    "border-radius:var(--ui-radius);cursor:pointer;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;min-width:48px;max-width:100%;padding:0 8px}"
-    ".ui-world-pick-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center}"
-    ".ui-real{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;user-select:none;-webkit-user-select:none}"
-    ".ui-world[data-js] .ui-floor[data-real]:not([data-backdrop])::after{content:\"🖼️📷\";position:absolute;left:50%;top:50%;font-size:48px;line-height:1;opacity:.5;"
-    "pointer-events:none;transform:translate(-50%,-50%) scale(calc(1 / var(--z,1)))}.ui-world-real{font-size:1.5rem;line-height:1}"
-    ".ui-world[data-pick] .ui-player{visibility:hidden}.ui-player span{white-space:nowrap}"
-    "@media(prefers-reduced-motion:reduce){.ui-world *{transition:none!important}.ui-actor,.ui-board-run{animation-play-state:paused!important}}"
-)
-
 _WALL_CSS = (
     ".ui-wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}"
     ".ui-wall-cell{border:1px solid var(--ui-border);padding:16px;border-radius:var(--ui-radius);background:var(--ui-bg);color:var(--ui-fg)}"
     ".ui-wall-cell h3{margin:0 0 8px}"
 )
-
-
-def world_css(spec: Any, *, base: bool = True) -> str:
-    """CSS for a world: fixed rules plus one rule per floor, category and shot (radios and data-lit drive them through :has).
-
-    ``base=False`` leaves the fixed rules out, for a second world on a page that already has them.
-    """
-    world = world_validate(spec)
-    wid, rules = world["id"], [_WORLD_CSS] if base else []
-    for f in world["floors"]:
-        radio = f"#{wid}-floor-{f['id']}"
-        rules.append(f'.ui-world:has({radio}:checked) .ui-floor[data-floor="{f["id"]}"]{{display:block}}')
-        rules.append(f'.ui-world:has({radio}:checked) label[for="{wid}-floor-{f["id"]}"]{{background:var(--ui-accent);color:var(--ui-bg)}}')
-    for kind in sorted({q["kind"] for f in world["floors"] for q in f.get("props", [])} & WORLD_LOOK.keys()):
-        colour, glyph, once = WORLD_LOOK[kind]
-        picture = ""
-        if glyph:
-            svg = f"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text x='16' y='25' font-size='26' text-anchor='middle'>{glyph}</text></svg>"
-            picture = f'url("data:image/svg+xml,{quote(svg)}") ' + ("center/contain no-repeat," if once else "0 0/var(--tile) var(--tile),")
-        rules.append(f".ui-prop[data-kind={kind}]{{border:0;border-radius:0;background:{picture}{colour or 'transparent'}}}")
-    categories = _world_categories(world["floors"])
-    if _world_shell(world):
-        for f in world["floors"]:
-            rules.append(f'.ui-world:has(#{wid}-floor-{f["id"]}:checked) .ui-world-spots[data-floor="{f["id"]}"]{{display:block}}')
-        for c in categories:
-            rules.append(f'.ui-world:has(#{wid}-cat-value-{c}:checked) .ui-world-spots li:not([data-category="{c}"]){{display:none}}')
-    for f in world["floors"]:
-        for a in f["actors"]:
-            path = villager_path(a["seed"] if a["seed"] is not None else zlib.crc32(f"{wid}:{a['id']}".encode()),
-                                 f["width"], f["height"], speed=a["speed"])
-            name = f"ui-walk-{wid}-{a['id']}"
-            frames = "".join(f"{pct}%{{transform:translate({x}px,{y}px)}}" for pct, x, y in path["keys"])
-            rules.append(f"@keyframes {name}{{{frames}}}#{wid}-actor-{a['id']}{{animation:{name} {path['duration']}s linear infinite}}")
-    for c in categories:
-        radio = f"#{wid}-cat-value-{c}"
-        rules.append(f'.ui-world:has({radio}:checked) .ui-spot:not([data-category="{c}"]){{display:none}}')
-    for c in [""] + categories if categories else []:
-        rules.append(f'.ui-world:has(#{wid}-cat-{"value-" + c if c else "all"}:checked) label[for="{wid}-cat-{"value-" + c if c else "all"}"]'
-                     f'{{background:var(--ui-accent);color:var(--ui-bg)}}')
-    if world["shots"]:
-        rules.append('.ui-world-shots[data-js]:not(:has(.ui-shot-mark[data-lit])) .ui-shot[data-i="0"]{opacity:1;transform:none}')
-    for i, s in enumerate(world["shots"]):
-        lit = f'#{wid}-shots:has(.ui-shot-mark[data-i="{i}"][data-lit])'
-        rules.append(f'{lit} .ui-shot[data-i="{i}"]{{opacity:1;transform:none}}')
-        if s["bg"]:
-            rules.append(f'{lit} .ui-shots-stage{{background:{s["bg"]};color:{ink_for(s["bg"])}}}')
-    return "@layer components{" + "".join(rules) + "}"
-
-
-# Browser arithmetic is a projection of the Python oracle, not Python execution.
-WORLD_MOTION_JS = r"""
-export function motionSample(s,t){const f=s.duration===0?(t>=s.at?1:0):Math.min(1,Math.max(0,(t-s.at)/s.duration));return s.from.map((v,i)=>v+(s.to[i]-v)*f)}
-export function motionWalk(a,b,t,speed,w,h){const point=p=>p.map((v,i)=>Math.min(i?h:w,Math.max(0,v)));a=point(a);b=point(b);return{at:t,duration:Math.hypot(b[0]-a[0],b[1]-a[1])/speed,from:a,to:b}}
-export function motionRoute(pts,t,speed,w,h){const out=[];for(let i=0;i<pts.length-1;i++){const s=motionWalk(pts[i],pts[i+1],t,speed,w,h);out.push(s);t+=s.duration}return out.length?out:[motionWalk(pts[0],pts[0],t,speed,w,h)]}
-export function routeSample(r,t){for(const s of r)if(t<s.at+s.duration)return motionSample(s,t);return motionSample(r[r.length-1],t)}
-export function gridPath(rows,s,g){const W=rows[0].length,H=rows.length,fit=c=>[Math.min(W-1,Math.max(0,c[0])),Math.min(H-1,Math.max(0,c[1]))],k=c=>c[1]*W+c[0];s=fit(s);g=fit(g);
- const parent=new Map([[k(s),null]]),order=[s];
- for(let i=0;i<order.length;i++){const[x,y]=order[i];for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){const n=[x+dx,y+dy];if(n[0]>=0&&n[0]<W&&n[1]>=0&&n[1]<H&&rows[n[1]][n[0]]==="0"&&!parent.has(k(n))){parent.set(k(n),order[i]);order.push(n)}}}
- let end=g;if(!parent.has(k(g))){const d=c=>(c[0]-g[0])**2+(c[1]-g[1])**2;end=order.reduce((a,b)=>d(b)<d(a)?b:a)}
- const path=[end];for(let p=parent.get(k(end));p;p=parent.get(k(p)))path.push(p);return path.reverse()}
-export function gridRoute(rows,tile,a,b){const cell=p=>[Math.min(rows[0].length-1,Math.max(0,Math.floor(p[0]/tile))),Math.min(rows.length-1,Math.max(0,Math.floor(p[1]/tile)))],t=cell(b),path=gridPath(rows,cell(a),t),mid=path.slice(1).map(c=>[(c[0]+.5)*tile,(c[1]+.5)*tile]),end=path[path.length-1];return end[0]===t[0]&&end[1]===t[1]?[a,...mid.slice(0,-1),b]:[a,...mid]}
-export function direction(a,b,eps=8){const dx=b[0]-a[0],dy=b[1]-a[1];if(Math.abs(dx)<=eps&&Math.abs(dy)<=eps)return"📍";const ax=Math.abs(dx),ay=Math.abs(dy),sx=dx>0?1:-1,sy=dy>0?1:-1;if(ay*12<=ax*5)return sx>0?"➡️":"⬅️";if(ax*12<=ay*5)return sy>0?"⬇️":"⬆️";return sx>0?(sy>0?"↘️":"↗️"):(sy>0?"↙️":"↖️")}
-export function cleanAvatar(text){const t=String(text).trim(),n=[...t].length;return n>=1&&n<=16&&!/[\p{Cc}\p{Cs}\p{Zl}\p{Zp}‪-‮⁦-⁩]|^\p{Zs}|\p{Zs}$/u.test(t)?t:null}
-function bindPlayer(el,floor,onMove){
- const controls=el.querySelector('.ui-world-motion-controls');if(!controls)return ()=>{};
- const reduced=matchMedia('(prefers-reduced-motion: reduce)'),states=new Map(),button=el.querySelector('.ui-world-pause'),form=controls.querySelector('form'),gridOnly=[...el.querySelectorAll('.ui-world-grid-only')];
- let paused=false,base=performance.now(),elapsed=0;
- const time=()=>Math.min(1e9,elapsed+(paused||reduced.matches?0:(performance.now()-base)/1000));
- const freeze=()=>{elapsed=time();base=performance.now()};
- for(const f of el.querySelectorAll('.ui-floor')){const player=f.querySelector('.ui-player');if(!player)continue;const w=+f.dataset.w,h=+f.dataset.h,speed=+player.dataset.speed,point=[+player.dataset.x,+player.dataset.y],grid=f.dataset.blocked?{rows:f.dataset.blocked.split(','),tile:+f.dataset.tile}:null;states.set(f,{w,h,speed,player,grid,own:motionRoute([point,point],0,speed,w,h)});}
- const place=(s,t)=>{const p=routeSample(s.own,t);s.player.style.setProperty('--px',p[0]);s.player.style.setProperty('--py',p[1]);return p};
- const walk=(x,y)=>{const s=states.get(floor());if(!s||![x,y].every(Number.isFinite))return;const t=time(),a=routeSample(s.own,t);s.own=motionRoute(s.grid?gridRoute(s.grid.rows,s.grid.tile,a,[x,y]):[a,[x,y]],t,s.speed,s.w,s.h);const end=s.own[s.own.length-1].to;if(reduced.matches)s.own=motionRoute([end,end],t,s.speed,s.w,s.h);s.player.style.setProperty('--walk',s.own.reduce((n,g)=>n+g.duration,0)+'s');s.player.dataset.targetX=end[0];s.player.dataset.targetY=end[1];place(s,t);};
- // One tile in a direction (arrow keys, WASD, the on-screen pad); false on a floor without a grid, true otherwise (a wall just stops).
- walk.step=(dx,dy)=>{const s=states.get(floor());if(!s||!s.grid)return false;const{rows,tile}=s.grid,p=routeSample(s.own,time()),cx=Math.floor(p[0]/tile)+dx,cy=Math.floor(p[1]/tile)+dy;if(rows[cy]?.[cx]==="0")walk((cx+.5)*tile,(cy+.5)*tile);return true};
- walk.where=()=>{const s=states.get(floor());return s&&routeSample(s.own,time())};
- for(const b of el.querySelectorAll('[data-step]')){const[dx,dy]=b.dataset.step.split(',').map(Number);let timer=0;const stop=()=>{clearInterval(timer);timer=0};
-  b.addEventListener('pointerdown',e=>{e.preventDefault();walk.step(dx,dy);stop();const s=states.get(floor());timer=setInterval(()=>walk.step(dx,dy),s&&s.grid?Math.max(40,500*s.grid.tile/s.speed):160)});
-  for(const n of['pointerup','pointercancel','pointerleave'])b.addEventListener(n,stop);
-  b.addEventListener('click',e=>{if(e.detail===0)walk.step(dx,dy)})}
- button.addEventListener('click',()=>{freeze();paused=!paused;el.toggleAttribute('data-motion-paused',paused);button.setAttribute('aria-pressed',String(paused));button.textContent=paused?(button.dataset.resume||'動きを再開'):(button.dataset.pause||'動きを停止');});
- let wasReduced=reduced.matches;
- reduced.addEventListener('change',()=>{if(!wasReduced&&!paused)elapsed=Math.min(1e9,elapsed+(performance.now()-base)/1000);base=performance.now();wasReduced=reduced.matches;for(const s of states.values())place(s,time());});
- form.addEventListener('submit',e=>{e.preventDefault();if(form.reportValidity())walk(+form.elements.x.value,+form.elements.y.value)});
- const tick=()=>{if(!el.isConnected)return;controls.hidden=false;const active=states.get(floor()),t=time();form.hidden=!active;for(const n of gridOnly)n.hidden=!(active&&active.grid);
-  if(active){form.elements.x.max=active.w;form.elements.y.max=active.h;const p=place(active,t);if(onMove)onMove(p);}
-  requestAnimationFrame(tick);
- };requestAnimationFrame(tick);return walk;
-}
-"""
-
-
-WORLD_SHARED_JS = r"""
-// GET only. No credentials, storage, Markdown rendering, or automatic polling.
-export function sharedLines(comments){
- if(!Array.isArray(comments))throw new Error("Invalid comments response");
- return comments.slice(0,100).filter(c=>c&&typeof c.body==="string"&&typeof c.user?.login==="string")
- .slice(-5).reverse().map(c=>({text:cleanMessage(c.body),author:c.user.login.slice(0,100),
- time:typeof c.created_at==="string"?c.created_at.slice(0,30):""})).filter(line=>line.text);
-}
-export function sharedWait(response,now){
- const retry=response.headers.get("retry-after"),reset=response.headers.get("x-ratelimit-reset");
- return Math.max(now+120000, retry&&Number.isFinite(Number(retry))?now+Number(retry)*1000:0,
- response.headers.get("x-ratelimit-remaining")==="0"&&Number.isFinite(Number(reset))?Number(reset)*1000:0);
-}
-export function bindSharedBoard(board){
- const panel=board.querySelector(".ui-board-shared");if(!panel)return;
- const button=panel.querySelector("[data-shared-refresh]"),status=panel.querySelector("[data-shared-status]"),list=panel.querySelector("[data-shared-comments]");
- let next=0,busy=false;
- button.addEventListener("click",async()=>{
-  if(busy)return;
-  if(Date.now()<next){status.textContent="更新待機中。"+Math.ceil((next-Date.now())/1000)+"秒後に再試行できます。";return}
-  busy=true;button.disabled=true;next=Date.now()+120000;
-  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),10000);
-  try{
-   const response=await fetch(panel.dataset.api,{method:"GET",cache:"no-store",credentials:"omit",referrerPolicy:"no-referrer",headers:{Accept:"application/vnd.github+json"},signal:controller.signal});
-   next=sharedWait(response,Date.now());
-   if(!response.ok)throw new Error("HTTP "+response.status);
-   const lines=sharedLines(await response.json());if(!panel.isConnected)return;
-   const nodes=lines.map(line=>{const li=document.createElement("li");li.textContent=line.author+" · "+line.time+" — "+line.text;return li});
-   list.replaceChildren(...nodes);
-   status.textContent="取得済み（"+new Date().toLocaleTimeString()+"）。先頭100コメント内の末尾最大5件、本文60文字。"+(response.headers.get("link")?.includes('rel="next"')?"続きはGitHubで確認してください。":"");
-  }catch(error){if(panel.isConnected)status.textContent="取得できませんでした（通信・API制限・公開設定を確認）。前回の表示を保持します。"}
-  finally{clearTimeout(timeout);busy=false;button.disabled=false}
- });
-}
-"""
-
-WORLD_JS = WORLD_MOTION_JS + WORLD_SHARED_JS + WORLD_TEXT_JS + DIAL_JS + r"""/* web-ui world: one page, a camera. Shots: scroll marks light up (data-lit). Map: drag, wheel and pinch move a camera; spots open a sheet. No page changes. */
-const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
-export function fitZoom(w,h,vw,vh){return Math.min(vw/w,vh/h)}
-export function travelSeconds(x0,y0,x1,y1,speed){return Math.hypot(x1-x0,y1-y0)/speed}
-export function minutesUntil(now,at){return Math.ceil(((at-now)%1440+1440)%1440)}
-export function boardClock(now,offset){const seconds=((now+offset*60)%86400+86400)%86400,whole=Math.floor(seconds);return{clock:[Math.floor(whole/3600),Math.floor(whole/60)%60].map(v=>String(v).padStart(2,"0")).join(":"),minutes:seconds/60}}
-export function boardSeconds(chars,cps=8){return Math.max(8,Math.round(chars/cps*10)/10)}
-export function gaugeState(now,start,end,cells){const m=n=>((n%1440)+1440)%1440,span=m(end-start)||1440,el=m(now-start);if(el<span)return[Math.floor(el*cells/span),Math.floor(el*100/span),"active"];return m(start-now)<=m(now-end)?[0,0,"before"]:[cells,100,"after"]}
-export function gaugeCells(filled,cells,done,todo){return done.repeat(filled)+todo.repeat(cells-filled)}
-export function clockLabel(minutes){const h=Math.floor(minutes/60)%24,m=minutes%60;return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0")}
-export function zoneOffset(rows,t){let lo=0,hi=rows.length/2-1;while(lo<hi){const mid=(lo+hi+1)>>1;if(rows[2*mid]<=t)lo=mid;else hi=mid-1}return rows[2*lo+1]}
-export function utcOffsetLabel(offset){if(offset===0)return"UTC";const a=Math.abs(offset),h=Math.floor(a/60),m=a%60;return"UTC"+(offset>0?"+":"-")+h+(m?":"+String(m).padStart(2,"0"):"")}
-export function cleanMessage(text,limit=60){if(typeof text!=="string")return null;const kept=[...text].map(c=>/[ \t\n\r\f\v\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/.test(c)?" ":(c!=="\u200d"&&/[\p{Cc}\p{Cf}\p{Cn}\p{Co}\p{Cs}\p{Zs}\p{Zl}\p{Zp}]/u.test(c)?"":c)).join("").split(" ").filter(Boolean).join(" ");const cut=[...kept].slice(0,limit).join("").trimEnd();return cut||null}
-export function clampFocus(fx,fy,z,w,h,vw,vh){const hw=vw/(2*z),hh=vh/(2*z);return[w>2*hw?clamp(fx,hw,w-hw):w/2,h>2*hh?clamp(fy,hh,h-hh):h/2]}
-function bindShots(el){el.dataset.js="";const marks=[...el.querySelectorAll(".ui-shot-mark")];if(typeof IntersectionObserver==="undefined"){marks[0].dataset.lit="";return el}const io=new IntersectionObserver(es=>{for(const e of es){if(e.isIntersecting)e.target.dataset.lit="";else delete e.target.dataset.lit}},{root:el.querySelector(".ui-shots-scroll"),threshold:0.5});for(const m of marks)io.observe(m);return el}
-function bindMap(el){el.dataset.js="";const view=el.querySelector(".ui-world-view"),cam=el.querySelector(".ui-world-cam"),zmax=Number(el.dataset.zoomMax||4),pts=new Map();let fx=0,fy=0,z=1,moved=0,onFloor=()=>{};
-// The floor and the category are radios (they work without JS): read the checked floor, tick a floor, or clear the category filter.
-const shown=()=>el.querySelector('input[name$="-floor"]:checked'),radio=(kind,value)=>el.querySelector(`input[name$="-${kind}"][value="${value}"]`),
- allCategories=()=>{const all=radio('cat','');if(all)all.checked=true},
- setFloor=(value,notify)=>{const r=radio('floor',value);if(r){r.checked=true;const select=el.querySelector('.ui-world-goto');if(select)select.value=r.value;if(notify)r.dispatchEvent(new Event('change',{bubbles:true}))}};
-const floor=()=>{const r=shown();return(r&&el.querySelector(`.ui-floor[data-floor="${r.value}"]`))||el.querySelector(".ui-floor")};
-const size=()=>{const f=floor();return[Number(f.dataset.w),Number(f.dataset.h),view.clientWidth,view.clientHeight]};
-// Reserve sheet space below the map too: the bottom-edge clamp must not undo the lift.
-const sheetInset=()=>{const s=el.querySelector(".ui-sheet");return s&&el.querySelector(".ui-sheet-item[data-open]")?s.offsetHeight+16:0};
-const zoomDial=el.querySelector('.ui-world-zoom input[type="range"]');
-const apply=()=>{const[w,h,vw,vh]=size();if(!vw||!vh)return;z=clamp(z,fitZoom(w,h,vw,vh),zmax);[fx,fy]=clampFocus(fx,fy,z,w,h+sheetInset()/z,vw,vh);cam.style.setProperty("--fx",fx);cam.style.setProperty("--fy",fy);cam.style.setProperty("--z",z);
- if(zoomDial&&Math.abs(Number(zoomDial.value)-z)>.001){syncing=true;zoomDial.value=z.toFixed(2);zoomDial.dispatchEvent(new Event("input"));syncing=false}onFloor()};
-// 🔍 the zoom dial (dial.js) turns the camera; the camera turns the dial back (syncing keeps the two from chasing each other across the clamp).
-// 🫥 sets the opacity of the controls over the map (data-overlay).
-let syncing=false;bindDial(el);zoomDial?.addEventListener("input",()=>{if(syncing)return;z=Number(zoomDial.value);apply()});
-const alpha=el.querySelector("[data-alpha]"),setAlpha=v=>{v=Number(v);if(!(v>=.2&&v<=1))return;el.style.setProperty("--ui-overlay-alpha",v);if(alpha)alpha.value=v};
-alpha?.addEventListener("input",()=>{setAlpha(alpha.value);save({alpha:Number(alpha.value)})});
-const go=(x,y,zoom)=>{fx=x;fy=y;z=zoom;apply()};
-const home=()=>{const[w,h,vw,vh]=size();go(w/2,h/2,vw&&vh?fitZoom(w,h,vw,vh):1)};
-const open=id=>{for(const i of el.querySelectorAll(".ui-sheet-item"))i.toggleAttribute("data-open",i.id===id)};
-// Side menus (☰ ⋯), the footer pulldown (door to door) and the arrows from the player to each listed spot.
-const menus=[...el.querySelectorAll('.ui-world-menu')],shut=()=>{for(const m of menus)m.open=false},goto=el.querySelector('.ui-world-goto'),rows='.ui-world-rows a';
-for(const m of menus)m.hidden=false;
-// The spot the player stands by (the closest within 1.5 tiles) carries data-near: in the dots layer it alone shows its name.
-const near=p=>{const f=floor(),t=(Number(f.dataset.tile)||16)*1.5;let best=null,bd=Infinity;for(const a of f.querySelectorAll(".ui-spot[data-x]")){const d=Math.max(Math.abs(Number(a.dataset.x)-p[0]),Math.abs(Number(a.dataset.y)-p[1]));if(d<=t&&d<bd){best=a;bd=d}}for(const a of f.querySelectorAll(".ui-spot[data-near]"))if(a!==best)a.removeAttribute("data-near");if(best&&!best.hasAttribute("data-near"))best.setAttribute("data-near","")};
-const aim=p=>{near(p);for(const a of el.querySelectorAll(rows)){if(!a.offsetParent)continue;const out=a.querySelector('.ui-world-arrow'),f=floor(),g=a.dataset.floor===f.dataset.floor?direction(p,[Number(a.dataset.x),Number(a.dataset.y)],Number(f.dataset.tile)||16):'🚪';if(out.textContent!==g)out.textContent=g}if(goto){const r=shown();if(r&&goto.value!==r.value)goto.value=r.value}};
-// While a sheet is open the camera aims below the player or the spot, so they stay in the view above the sheet.
-const lift=()=>sheetInset()/(2*z);
-let follow=false,lx,ly;const walk=bindPlayer(el,floor,p=>{if(follow&&(p[0]!==lx||p[1]!==ly)){lx=p[0];ly=p[1];go(p[0],p[1]+lift(),z)}aim(p)});
-for(const m of menus)m.addEventListener('toggle',()=>{if(m.open)for(const o of menus)if(o!==m)o.open=false});
-view.addEventListener('pointerdown',shut);
-// ⭐ favourites, 🌐 language and 🏷️ the name layer are all a world keeps, as a small cache in this browser (one key per world, nothing else is written):
-// the emoji you pick and the board messages you post stay in the page.
-const slot='ui-world:'+el.id,load=()=>{try{const v=JSON.parse(localStorage.getItem(slot));return v&&typeof v==='object'?v:{}}catch(e){return{}}},
- save=part=>{try{localStorage.setItem(slot,JSON.stringify({...load(),...part}))}catch(e){}};
-// 🌐: aria-labels and tooltips in one of eleven languages (data-t names a catalogue word, data-labels carries a tool's own words).
-let lang='ja';const sel=el.querySelector('[data-lang]'),
- say=root=>{const i=WORLD_LANGS.indexOf(lang);for(const n of root.querySelectorAll('[data-t],[data-labels]')){const m=n.dataset.labels&&JSON.parse(n.dataset.labels),w=m?m[lang]||m.en||m.ja:WORLD_TEXT[n.dataset.t][i];n.setAttribute('aria-label',w);n.setAttribute('title',w)}},
- setLang=to=>{if(!WORLD_LANGS.includes(to))return;lang=to;el.lang=to;if(sel)sel.value=to;say(el)};
-sel?.addEventListener('change',()=>{setLang(sel.value);save({lang})});
-// ⭐ the ★ of a place lists it in the header's ⭐ panel, on any floor.
-const favs=el.querySelector('.ui-world-favs'),fav=new Set(),spotRows=()=>[...el.querySelectorAll('.ui-world-spots a')],
- showFavs=()=>{for(const a of spotRows()){const on=fav.has(a.getAttribute('href')),b=a.parentElement.querySelector('.ui-world-star');b.setAttribute('aria-pressed',String(on));b.textContent=on?'★':'☆'}
-  favs.replaceChildren(...spotRows().filter(a=>fav.has(a.getAttribute('href'))).map(a=>{const li=document.createElement('li'),b=document.createElement('button');b.type='button';b.className='ui-world-star';b.setAttribute('aria-pressed','true');b.dataset.t='star';b.textContent='★';li.append(a.cloneNode(true),b);return li}));say(favs)};
-if(favs)el.addEventListener('click',e=>{const b=e.target.closest('.ui-world-star');if(!b)return;const h=b.parentElement.querySelector('a').getAttribute('href');if(fav.has(h))fav.delete(h);else fav.add(h);showFavs();save({fav:[...fav]})});
-const kept=load();
-if(favs){for(const a of spotRows())if(Array.isArray(kept.fav)&&kept.fav.includes(a.getAttribute('href')))fav.add(a.getAttribute('href'));if(fav.size)showFavs()}
-if(typeof kept.lang==='string'&&kept.lang!=='ja')setLang(kept.lang);
-// 🏷️ the name layer (names / dots / off) switches without a reload and is kept with the language.
-const namesPick=el.querySelector('[data-names-pick]'),setNames=to=>{if(!['names','dots','off'].includes(to))return;el.dataset.names=to;if(namesPick)namesPick.value=to};
-if(typeof kept.names==='string')setNames(kept.names);
-if(typeof kept.alpha==='number')setAlpha(kept.alpha);
-namesPick?.addEventListener('change',()=>{setNames(namesPick.value);save({names:namesPick.value})});
-goto?.addEventListener('change',()=>setFloor(goto.value,true));
-// Emoji picker: shown first (JS only); the choice replaces every floor's player emoji. Dragging the map stops the camera following.
-const pick=el.querySelector('.ui-world-pick'),showPick=on=>{pick.hidden=!on;el.toggleAttribute('data-pick',on)},choose=g=>{for(const s of el.querySelectorAll('.ui-player span'))s.textContent=g;showPick(false);follow=true;view.focus({preventScroll:true})};
-if(pick){showPick(true);pick.addEventListener('click',e=>{const b=e.target.closest('[data-emoji]');if(b)choose(b.dataset.emoji)});pick.querySelector('form').addEventListener('submit',e=>{e.preventDefault();const box=e.target.elements.emoji,g=cleanAvatar(box.value);if(g)choose(g);else{box.setCustomValidity(WORLD_TEXT.invalid[WORLD_LANGS.indexOf(lang)]);box.reportValidity()}});pick.querySelector('input').addEventListener('input',e=>e.target.setCustomValidity(''));el.querySelector('[data-pick-open]')?.addEventListener('click',()=>showPick(true))}
-// ask(glyph,choices,t): the world's one dialog for choosing or confirming. Icons in, the picked value out (a promise; null = ✖️, Esc or a tap outside).
-// A choice is {glyph,t,value} with t naming a catalogue word; el.ask lets the page that embeds the world call it too.
-let asking=null;
-const ask=(glyph,choices,t)=>new Promise(done=>{asking?.(null);const box=document.createElement('div'),card=document.createElement('div'),head=document.createElement('h3'),grid=document.createElement('div');
- box.className='ui-world-pick ui-world-ask';card.setAttribute('role','dialog');card.setAttribute('aria-modal','true');if(t)card.dataset.t=t;
- head.setAttribute('aria-hidden','true');head.textContent=glyph;grid.className='ui-world-pick-grid';
- const end=v=>{asking=null;box.remove();el.removeAttribute('data-ask');view.focus({preventScroll:true});done(v)};
- for(const c of[...choices,{glyph:'✖️',t:'close',value:null}]){const b=document.createElement('button');b.type='button';b.textContent=c.glyph;b.dataset.t=c.t;b.addEventListener('click',()=>end(c.value));grid.append(b)}
- box.addEventListener('click',e=>{if(e.target===box)end(null)});box.addEventListener('keydown',e=>{if(e.key==='Escape'){e.stopPropagation();end(null)}});
- card.append(head,grid);box.append(card);(pick?pick.parentElement:view.parentElement).append(box);say(box);el.setAttribute('data-ask','');asking=end;grid.querySelector('button').focus()});
-el.ask=ask;
-// 🖼️📷 a floor marked real can show a photo you pick or your camera behind its props. It is only shown (an object URL or a camera stream on an element of this page):
-// never drawn, read back, stored or sent. 🧹, leaving the floor (camera) or closing the page lets it go.
-const realBtn=el.querySelector('[data-real]'),file=realBtn&&document.createElement('input');
-let back=null,lastFloor=null;
-const unback=()=>{if(!back)return;back.stop();back.node.remove();back.floor.removeAttribute('data-backdrop');back=null},
- backdrop=(node,stop,live)=>{unback();const f=floor();node.className='ui-real';node.setAttribute('aria-hidden','true');f.prepend(node);f.setAttribute('data-backdrop','');back={node,stop,live,floor:f}},
- syncReal=()=>{const f=floor();if(f===lastFloor)return;lastFloor=f;if(realBtn)realBtn.hidden=!f.hasAttribute('data-real');if(back&&back.live&&back.floor!==f)unback()},
- camera=async()=>{try{const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false}),v=document.createElement('video');v.muted=true;v.autoplay=true;v.playsInline=true;v.srcObject=stream;
-  backdrop(v,()=>{for(const t of stream.getTracks())t.stop();v.srcObject=null},true);v.play?.().catch(()=>{})}catch(e){ask('⚠️',[],'unavailable')}};
-if(file){file.type='file';file.accept='image/*';file.hidden=true;el.append(file);
- file.addEventListener('change',()=>{const f=file.files[0];file.value='';if(!f||!f.type.startsWith('image/'))return;const url=URL.createObjectURL(f),img=new Image();img.alt='';img.draggable=false;img.src=url;backdrop(img,()=>URL.revokeObjectURL(url),false)})}
-realBtn?.addEventListener('click',()=>{shut();ask('🖼️📷',[{glyph:'📷',t:'camera',value:'camera'},{glyph:'🖼️',t:'photo',value:'photo'},...(back?[{glyph:'🧹',t:'clear',value:'clear'}]:[])],'backdrop').then(v=>{if(v==='camera')camera();else if(v==='photo')file.click();else if(v==='clear')unback()})});
-addEventListener('pagehide',unback);onFloor=syncReal;syncReal();
-el.querySelector('[data-me]')?.addEventListener('click',()=>{const p=walk.where?.();if(p){follow=true;lx=ly=undefined;go(p[0],p[1],Math.max(z,2))}});
-const board=el.querySelector(".ui-board"),hm=t=>{const[h,m]=t.split(":").map(Number);return h*60+m},clockNow=()=>{const d=new Date(),off=board.dataset.offset===""?(-Math.round(d.getTimezoneOffset())||0):Number(board.dataset.offset);return{...boardClock(d.getTime()/1000,off),off}},chips=board?[...board.querySelectorAll("[data-zone-id]")].map(z=>({id:z.dataset.zoneId,rows:JSON.parse(z.dataset.rows),out:z.querySelector("[data-zone-clock]")})):[],tick=()=>{const clock=clockNow(),t=new Date().getTime()/1000,zones=new Map(chips.map(z=>{const c=boardClock(t,zoneOffset(z.rows,t));z.out.textContent=c.clock;return[z.id,c]})),at=m=>(m.dataset.zone?zones.get(m.dataset.zone):clock).minutes,c=board.querySelector("[data-clock]");c.textContent=clock.clock+(board.dataset.offsetLabel!==undefined?" "+utcOffsetLabel(clock.off):"");for(const m of board.querySelectorAll("[data-at]")){const left=minutesUntil(at(m),hm(m.dataset.at));m.textContent=left===0?"いま":"あと"+left+"分"}for(const g of board.querySelectorAll(".ui-board-gauge")){const cells=Number(g.dataset.cells),[filled,pct]=gaugeState(Math.floor(at(g)),hm(g.dataset.from),hm(g.dataset.to),cells);g.querySelector(".ui-board-cells").textContent=gaugeCells(filled,cells,g.dataset.done,g.dataset.todo);g.querySelector(".ui-board-pct").textContent=pct+"%"}};
-if(board){bindSharedBoard(board);tick();const timer=setInterval(()=>{if(el.isConnected)tick();else clearInterval(timer)},1000);const form=board.querySelector(".ui-board-post");if(form){
-const run=board.querySelector(".ui-board-run"),items=[...run.querySelectorAll(".ui-board-item")],base=items.slice(0,items.length/2).map(n=>n.cloneNode(true)),baseChars=Number(board.dataset.chars),notes=[];
-form.addEventListener("submit",e=>{e.preventDefault();const input=form.elements.message,text=cleanMessage(input.value);if(!text)return;input.value="";notes.unshift({text,at:clockNow().clock});notes.splice(5);run.replaceChildren();
-for(const hidden of [false,true]){for(const note of notes){const span=document.createElement("span");span.className="ui-board-item ui-board-note";if(hidden)span.setAttribute("aria-hidden","true");const stamp=document.createElement("span");stamp.className="ui-board-stamp";stamp.textContent=note.at;span.append(stamp,document.createTextNode(" "+note.text));run.append(span)}for(const item of base){const copy=item.cloneNode(true);if(hidden)copy.setAttribute("aria-hidden","true");run.append(copy)}}
-const chars=baseChars+notes.reduce((n,note)=>n+[...note.text].length+6,0);board.dataset.chars=chars;run.style.animationDuration=boardSeconds(chars)+"s";tick()})}}
-
-// 🏠 asks first (the shared dialog: 🏠 goes, ✖️ stays): home resets the floor, the filter and the sheet.
-const goHome=()=>{shut();close();follow=false;allCategories();setFloor(el.querySelector('input[name$="-floor"]')?.value,true);home()};
-el.querySelector('[data-home]')?.addEventListener('click',e=>{e.preventDefault();shut();ask('🏠❓',[{glyph:'🏠',t:'home',value:true}],'home').then(v=>{if(v)goHome()})});
-const close=()=>{open(null);apply();if([...el.querySelectorAll(".ui-sheet-item")].some(i=>"#"+i.id===location.hash))history.replaceState(null,"",location.pathname+location.search)};
-const focusSpot=a=>{allCategories();setFloor(a.closest(".ui-floor").dataset.floor);const zoom=Math.max(z,2);go(Number(a.dataset.x),Number(a.dataset.y)+lift()*z/zoom,zoom)};
-view.addEventListener("pointerdown",e=>{if(e.button!==0)return;pts.set(e.pointerId,[e.clientX,e.clientY]);if(pts.size===1)moved=0;else moved=9;el.dataset.drag=""});
-view.addEventListener("pointermove",e=>{const p=pts.get(e.pointerId);if(!p)return;if(pts.size===1){const dx=e.clientX-p[0],dy=e.clientY-p[1];moved+=Math.abs(dx)+Math.abs(dy);if(moved>8){follow=false;if(!view.hasPointerCapture(e.pointerId))view.setPointerCapture(e.pointerId)}fx-=dx/z;fy-=dy/z;apply()}else if(pts.size===2){const q=[...pts].find(([id])=>id!==e.pointerId)[1],d0=Math.hypot(p[0]-q[0],p[1]-q[1]),d1=Math.hypot(e.clientX-q[0],e.clientY-q[1]);moved+=9;if(d0)z*=d1/d0;apply()}p[0]=e.clientX;p[1]=e.clientY});
-const end=e=>{const tapping=pts.has(e.pointerId)&&pts.size===1&&moved<=8&&e.type==="pointerup"&&view.contains(e.target)&&!e.target.closest("a,button,input");pts.delete(e.pointerId);if(!pts.size)delete el.dataset.drag;if(tapping&&walk){const f=floor(),r=f.getBoundingClientRect();walk((e.clientX-r.left)*Number(f.dataset.w)/r.width,(e.clientY-r.top)*Number(f.dataset.h)/r.height)}};
-addEventListener("pointerup",end);addEventListener("pointercancel",end);view.addEventListener("lostpointercapture",end);
-view.addEventListener("wheel",e=>{e.preventDefault();z*=e.deltaY<0?1.1:1/1.1;apply()},{passive:false});
-el.addEventListener("click",e=>{const l=e.target.closest(".ui-world-rows a"),a=l?[...el.querySelectorAll(".ui-spot")].find(s=>s.getAttribute("href")===l.getAttribute("href")):e.target.closest(".ui-spot,.ui-actor");if(e.target.closest(".ui-world-rows a,[data-me],[data-pick-open]"))shut();if(a){e.preventDefault();if(l)moved=0;if(e.detail!==0&&moved>8){moved=0;return}const id=a.getAttribute("href").slice(1);if(!l){const sg=a.dataset.sign!==undefined,two=a.dataset.flip;if(sg||two!==undefined){if(a.dataset.own===undefined)a.dataset.own=a.textContent;const cur=a.dataset.show||(sg?"":"label"),next=sg?(cur===""?"label":cur==="label"&&two?"flip":""):(cur==="label"?"flip":"label");if(next)a.dataset.show=next;else delete a.dataset.show;a.textContent=next==="flip"?two:a.dataset.own}}open(id);history.replaceState(null,"","#"+id);if(a.dataset.x!==undefined){focusSpot(a);walk(Number(a.dataset.x),Number(a.dataset.y))}}else if(e.target.closest(".ui-sheet-close")){e.preventDefault();close()}});
-const KEYS={ArrowUp:[0,-1],w:[0,-1],ArrowDown:[0,1],s:[0,1],ArrowLeft:[-1,0],a:[-1,0],ArrowRight:[1,0],d:[1,0]};
-el.addEventListener("keydown",e=>{if(e.key==="Escape"){close();shut()}const k=KEYS[e.key.length>1?e.key:e.key.toLowerCase()];if(k&&walk.step&&!(e.altKey||e.ctrlKey||e.metaKey)&&!e.target.closest("input,textarea,select,button,a")&&!el.hasAttribute("data-pick")&&!el.hasAttribute("data-ask")&&walk.step(...k))e.preventDefault()});
-el.addEventListener("change",e=>{if(e.target.name&&e.target.name.endsWith("-floor"))home()});
-if(typeof ResizeObserver!=="undefined")new ResizeObserver(apply).observe(view);
-const fromHash=()=>{const hash=location.hash.slice(1),a=hash&&el.querySelector(`.ui-spot[href="#${CSS.escape(hash)}"],.ui-actor[href="#${CSS.escape(hash)}"]`);if(a){open(hash);if(a.dataset.x!==undefined)focusSpot(a)}else open(null)};
-addEventListener("hashchange",fromHash);home();fromHash();
-return el}
-export function bindWorlds(root=document){return[...root.querySelectorAll("[data-ui-world]")].map(el=>el.hasAttribute("data-js")?el:el.dataset.uiWorld==="shots"?bindShots(el):bindMap(el))}
-globalThis.webUiWorld={fitZoom,clampFocus,travelSeconds,minutesUntil,boardClock,boardSeconds,gaugeState,gaugeCells,clockLabel,utcOffsetLabel,zoneOffset,cleanMessage,motionWalk,motionSample,motionRoute,routeSample,gridPath,gridRoute,direction,cleanAvatar,bindWorlds};
-bindWorlds();
-"""
-
-
-def world_document(spec: Any, *, theme: str = "modern") -> str:
-    """A single-file page: bundled CSS, the world's CSS, the world's HTML and one inline module."""
-    world = world_validate(spec)
-    return render_document(trusted_html=world_html(world), title=world["title"], theme=theme,
-                           css=bundled_css() + world_css(world), embedded_modules=("world.js",))
-
-
-def catalogue_world(items: Any, *, id: str = "catalogue", title: str = "Catalogue", columns: int = 8,
-                    cell: tuple[int, int] = (160, 64), margin: int = 64, shell: bool = False,
-                    tools: dict[str, Any] | None = None) -> dict[str, Any]:
-    """A ``web-ui-world/1`` map from a flat catalogue, one floor per ``group`` (more than 64 in a group continue on another floor).
-
-    Each item is ``{"id", "label", "group"}`` plus optional ``"emoji"``, ``"category"`` (a filter chip) and ``"body"`` (the info sheet).
-    The page never changes: tap a spot, read its sheet. ``shell=True`` gives it the header / side / footer layout (🏠 ⭐ ⚙️, ☰ the places, a
-    floor pulldown) so a long catalogue needs no scrolling and no page change; ``tools`` adds emoji of your own (see ``web-ui-world/1``). Spots sit on a grid whose sizes default to multiples of 8. For a list of screens like
-    flutter_navigation_basic's ``screens.json`` map the fields first, e.g. ``{"id": s["name"], "label": s["title"], "emoji": s["emoji"],
-    "group": s["category"], "category": s["domainKey"], "body": s["description"]}``; the data itself stays with its owner."""
-    if not isinstance(items, list) or not 1 <= len(items) <= 512:
-        raise ValueError("a catalogue lists 1..512 items")
-    if any(type(v) is not int or v <= 0 for v in (columns, margin, *cell)):
-        raise ValueError("columns, cell and margin are positive integers")
-    slug = lambda text: re.sub(r"[^a-z0-9]+", "-", str(text).lower()).strip("-")[:28] or "x"
-    groups: dict[str, list[dict[str, Any]]] = {}
-    taken: set[str] = set()
-    for item in items:
-        if not isinstance(item, dict) or set(item) - {"id", "label", "group", "emoji", "category", "body"}:
-            raise ValueError("an item has id, label, group, emoji, category and body")
-        base = slug(item.get("id"))
-        unique, n = base, 2
-        while unique in taken:                                   # the same slug twice: Screen1 and screen-1 become screen1 and screen1-2
-            unique, n = f"{base}-{n}", n + 1
-        taken.add(unique)
-        label = (f"{item.get('emoji')} " if item.get("emoji") else "") + _world_text(item.get("label"), "label", 80)
-        category = slug(item["category"]) if item.get("category") not in (None, "") else ""
-        groups.setdefault(_world_text(item.get("group"), "group", 80), []).append(
-            {"id": unique, "label": label if len(label) <= 40 else label[:39] + "…", "category": category, "body": item.get("body", "")})
-    floors = []
-    for group, spots in groups.items():
-        for part, start in enumerate(range(0, len(spots), 64)):
-            chunk = spots[start:start + 64]
-            rows = -(-len(chunk) // columns)
-            floors.append({"id": f"f{len(floors) + 1}", "label": (group if part == 0 else f"{group} {part + 1}")[:40],
-                           "width": 2 * margin + min(columns, len(chunk)) * cell[0], "height": 2 * margin + rows * cell[1],
-                           "spots": [{"id": spot["id"], "label": spot["label"], "category": spot["category"], "body": spot["body"],
-                                      "x": margin + (i % columns) * cell[0] + cell[0] // 2, "y": margin + (i // columns) * cell[1] + cell[1] // 2}
-                                     for i, spot in enumerate(chunk)]})
-    if len(floors) > 8:
-        raise ValueError("a world has at most 8 floors: fewer groups, or fewer than 64 items in each")
-    spec = {"schema": WORLD_SCHEMA, "id": id, "title": title, "floors": floors, **({"shell": True} if shell else {}), **({"tools": tools} if tools else {})}
-    return world_validate(spec)
-
 
 # --- App shell showcase: a header, a rail (wide) or bottom bar (narrow), sections that switch with no reload and no script ------------
 # Absorbs flutter_navigation_basic's UI Showcase layout (the HTML comparison experiment) as a theme-aware, data-driven component.
@@ -5064,7 +4341,7 @@ def showcase_validate(spec: Any) -> dict[str, Any]:
     if set(spec) - {"schema", "id", "title", "emoji", "favorite", "themes", "sections"}:
         raise ValueError("a showcase has schema, id, title, emoji, favorite, themes and sections")
     sid = spec.get("id", "showcase")
-    if not isinstance(sid, str) or not _WORLD_ID.fullmatch(sid):
+    if not isinstance(sid, str) or not _ID_RE.fullmatch(sid):
         raise ValueError("id must be a lowercase token")
     flags = {key: spec.get(key, False) for key in ("favorite", "themes")}
     if any(not isinstance(v, bool) for v in flags.values()):
@@ -5093,48 +4370,48 @@ def showcase_validate(spec: Any) -> dict[str, Any]:
                     or not 1 <= len(table["columns"]) <= 6 or not isinstance(table.get("rows"), list) or len(table["rows"]) > 16 \
                     or any(not isinstance(r, list) or len(r) != len(table["columns"]) for r in table["rows"]):
                 raise ValueError("a table has 1..6 columns and up to 16 rows of the same width")
-            table = {"columns": [_world_text(c, "column", 40) for c in table["columns"]],
-                     "rows": [[_world_text(c, "cell", 80, required=False) for c in r] for r in table["rows"]]}
+            table = {"columns": [_text_field(c, "column", 40) for c in table["columns"]],
+                     "rows": [[_text_field(c, "cell", 80, required=False) for c in r] for r in table["rows"]]}
         if not isinstance(sec.get("controls", False), bool):
             raise ValueError("controls is true or false")
         note = sec.get("notice")
         if note is not None:
             if not isinstance(note, dict) or set(note) - {"text", "tone", "title"}:
                 raise ValueError("a notice is {text, tone, title}")
-            note = {"text": _world_text(note.get("text"), "notice", 400), "tone": note.get("tone", "info"),
-                    "title": _world_text(note["title"], "notice title", 60) if note.get("title") else None}
+            note = {"text": _text_field(note.get("text"), "notice", 400), "tone": note.get("tone", "info"),
+                    "title": _text_field(note["title"], "notice title", 60) if note.get("title") else None}
             notice(note["text"], tone=note["tone"], title=note["title"])                     # the tone is checked there
         stats = sec.get("stats", [])
         if not isinstance(stats, list) or len(stats) > 8 or any(not isinstance(t, list) or len(t) not in (2, 3) for t in stats):
             raise ValueError("stats is a list of up to 8 [label, value] or [label, value, hint]")
-        stats = [[_world_text(t[0], "stat label", 40), _world_text(str(t[1]), "stat value", 24), *([_world_text(t[2], "stat hint", 80)] if len(t) == 3 else [])]
+        stats = [[_text_field(t[0], "stat label", 40), _text_field(str(t[1]), "stat value", 24), *([_text_field(t[2], "stat hint", 80)] if len(t) == 3 else [])]
                  for t in stats]
         steps = steps_validate(sec["steps"]) if sec.get("steps") is not None else None
         links = sec.get("links", [])
         if not isinstance(links, list) or len(links) > 8 or any(not isinstance(x, list) or len(x) != 2 for x in links):
             raise ValueError("links is a list of up to 8 [label, href]")
-        links = [[_world_text(x[0], "link", 40), _door_href(x[1])] for x in links]
+        links = [[_text_field(x[0], "link", 40), _door_href(x[1])] for x in links]
         stamp = sec.get("stamp")
         if stamp is not None:
             page_heading("x", stamp=stamp)                                                       # checked there
-            stamp = {k: _world_text(v, "stamp", 200, required=k == "value") for k, v in stamp.items()}
-        eyebrow = _world_text(sec.get("eyebrow", ""), "eyebrow", 60, required=False)
+            stamp = {k: _text_field(v, "stamp", 200, required=k == "value") for k, v in stamp.items()}
+        eyebrow = _text_field(sec.get("eyebrow", ""), "eyebrow", 60, required=False)
         out_cards = []
         for card in cards:
             if not isinstance(card, dict) or set(card) - {"icon", "title", "body"} or card.get("icon", "info") not in SHOWCASE_ICONS:
                 raise ValueError("a card has an icon name, title and body")
-            out_cards.append({"icon": card.get("icon", "info"), "title": _world_text(card.get("title"), "title", 60),
-                              "body": _world_text(card.get("body"), "body", 240)})
-        sections.append({"id": _world_id(sec.get("id"), "section id", seen), "label": _world_text(sec.get("label"), "label", 24), "icon": icon,
-                         "heading": _world_text(sec.get("heading"), "heading", 80), "lead": _world_text(sec.get("lead", ""), "lead", 240, required=False),
+            out_cards.append({"icon": card.get("icon", "info"), "title": _text_field(card.get("title"), "title", 60),
+                              "body": _text_field(card.get("body"), "body", 240)})
+        sections.append({"id": _id_field(sec.get("id"), "section id", seen), "label": _text_field(sec.get("label"), "label", 24), "icon": icon,
+                         "heading": _text_field(sec.get("heading"), "heading", 80), "lead": _text_field(sec.get("lead", ""), "lead", 240, required=False),
                          "eyebrow": eyebrow, "links": links, "stamp": stamp,
-                         "notice": note, "stats": stats, "tags": [_world_text(t, "tag", 40) for t in tags], "cards": out_cards, "table": table,
+                         "notice": note, "stats": stats, "tags": [_text_field(t, "tag", 40) for t in tags], "cards": out_cards, "table": table,
                          "steps": steps, "controls": sec.get("controls", False)})
     keys = [s["steps"]["key"] for s in sections if s["steps"]]
     if len(set(keys)) != len(keys):
         raise ValueError("each section's steps need their own key")
-    return {"schema": SHOWCASE_SCHEMA, "id": sid, "title": _world_text(spec.get("title", "Showcase"), "title", 60),
-            "emoji": _world_text(spec.get("emoji", ""), "emoji", 16, required=False), **flags, "sections": sections}
+    return {"schema": SHOWCASE_SCHEMA, "id": sid, "title": _text_field(spec.get("title", "Showcase"), "title", 60),
+            "emoji": _text_field(spec.get("emoji", ""), "emoji", 16, required=False), **flags, "sections": sections}
 
 
 def showcase_css(spec: Any) -> str:
@@ -5588,11 +4865,26 @@ def seed_roll_html(css: str = "") -> str:
     return f'<button{klass} type="button" data-ui-seed-roll aria-label="Random seed" title="Random seed">🎲</button>'
 
 
-def theme_switch_html(*, legend: str = "Theme") -> str:
-    """The named themes as radios (``bindTheme()`` binds them): modern is checked; the others are THEMES and CANDIDATE_THEMES."""
+def theme_switch_html(*, legend: str = "Theme", control: str = "radio", page_option: str | None = None) -> str:
+    """The named themes as radios (``bindTheme()`` binds them): modern is checked; the others are THEMES and CANDIDATE_THEMES.
+
+    ``control="select"`` gives one labeled dropdown instead (a header has no room for seven radios). ``page_option`` is the
+    label of an extra first choice, "the page's own theme": the palettes then recolour a page only when a visitor picks
+    one, and a page whose own look changes (display modes) reports it with ``pageTheme()`` from ui.js."""
+    if control not in ("radio", "select"):
+        raise ValueError("control must be 'radio' or 'select'")
+    themes = (*THEMES, *CANDIDATE_THEMES)
+    if control == "select":
+        marks = {name: ("⬛" if _luminance(tokens["--ui-bg"]) < 0.18 else "⬜") for name, tokens in theme_palettes().items()}
+        own = f'<option value="">{escape(page_option)}</option>' if page_option is not None else ""
+        return (f'<label class="ui-layout-switch">{escape(legend)} <select data-ui-theme-switch>{own}'
+                + "".join(f'<option value="{t}"{" selected" if t == "modern" and page_option is None else ""}>'
+                          f'{marks.get(t, "🎨")} {t}</option>' for t in themes) + "</select></label>")
+    if page_option is not None:
+        raise ValueError("page_option needs control='select'")
     return (f'<fieldset class="ui-layout-switch"><legend>{escape(legend)}</legend>'
             + "".join(f'<label><input type="radio" name="ui-theme" value="{t}"{" checked" if t == "modern" else ""}> {t}</label>'
-                      for t in (*THEMES, *CANDIDATE_THEMES)) + "</fieldset>")
+                      for t in themes) + "</fieldset>")
 
 
 _CSS["dial.css"] = "@layer components{" + DIAL_CSS + "}"
@@ -5738,13 +5030,162 @@ def scroll_html(trusted_html: str, *, label: str, kind: str = "row", id: str | N
 def dial_html(name: str, *, minimum: float = 0, maximum: float = 100, step: float = 1, value: float = 0, label: str = "", attrs: str = "") -> str:
     """A rotary dial (``bindDial()`` from dial.js turns it) over a range input named ``name``; DIAL_CSS draws it. The input is what forms, keys and screen
     readers see: ``label`` is its aria-label, ``attrs`` any further attributes (already escaped) for it."""
-    if not isinstance(name, str) or not _WORLD_TOKEN.fullmatch(name):
+    if not isinstance(name, str) or not _TOKEN_RE.fullmatch(name):
         raise ValueError("a dial's name is a token")
     nums = (minimum, maximum, step, value)
     if any(type(v) not in (int, float) for v in nums) or not minimum < maximum or step <= 0 or not minimum <= value <= maximum:
         raise ValueError("a dial has minimum < maximum, a positive step and a value between them")
     aria = (f' aria-label="{escape(label, quote=True)}"' if label else "") + (f" {attrs}" if attrs else "")
     return (f'<span class="ui-dial" data-ui-dial><input type="range" name="{name}" min="{minimum:g}" max="{maximum:g}" step="{step:g}" value="{value:g}"{aria}></span>')
+
+
+# --- 🖼️ A fixed display area and 🧭 page controls in variants: the slide-on-a-phone parts Ironmate's phone page drew by hand ----------------
+STAGE_CSS = (
+    # A stage keeps its ratio (--ui-stage-w / --ui-stage-h, which stage_html sets) and is never taller than --ui-stage-room, so the controls under
+    # it stay in reach; data-ui-stage=pinned keeps it at the top while what is under it scrolls. svg, img, canvas and video children (or any child
+    # marked data-ui-fill) fill it; any other child is an overlay the page places itself (a selection box in %, a badge).
+    ".ui-stage{--ui-stage-w:16;--ui-stage-h:9;--ui-stage-room:64dvh;position:relative;flex:none;align-self:center;box-sizing:border-box;margin:0 auto;"
+    "width:min(100%,calc(var(--ui-stage-room) * var(--ui-stage-w) / var(--ui-stage-h)));aspect-ratio:var(--ui-stage-w)/var(--ui-stage-h);"
+    "overflow:hidden;background:var(--ui-panel);border:1px solid var(--ui-border)}"
+    ".ui-stage[data-ui-stage=pinned]{position:sticky;top:0;z-index:1}"
+    ".ui-stage>:is(svg,img,canvas,video,[data-ui-fill]){position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:contain}"
+    # A phone on its side: the stage may take the whole height, and the page puts its controls beside it.
+    "@media(orientation:landscape) and (max-height:560px){.ui-stage{--ui-stage-room:100dvh}}")
+
+
+def stage_html(trusted_html: str, *, label: str, ratio: tuple[int, int] = (16, 9), pin: bool = True, id: str | None = None) -> str:
+    """🖼️ A fixed display area around trusted HTML (a slide's SVG, a canvas, a photo): it keeps ``ratio`` (width, height), is never taller than
+    ``--ui-stage-room`` (64dvh; on a phone on its side, the whole height) and, with ``pin``, stays at the top while what is under it scrolls.
+    svg / img / canvas / video children (or ``data-ui-fill``) fill it; other children are overlays the page places. STAGE_CSS only: no module.
+    16:9 is the stylesheet's own default, so it carries no ``style`` attribute (a page whose CSP forbids inline styles can use it)."""
+    w, h = ratio
+    if type(w) is not int or type(h) is not int or w <= 0 or h <= 0:
+        raise ValueError("a stage's ratio is two positive integers (width, height)")
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("a stage needs a label")
+    identity = f' id="{_element_id(id)}"' if id is not None else ""
+    shape = "" if (w, h) == (16, 9) else f' style="--ui-stage-w:{w};--ui-stage-h:{h}"'
+    return (f'<div class="ui-stage" role="region" aria-label="{escape(label, quote=True)}" data-ui-stage="{"pinned" if pin else "free"}"'
+            f'{shape}{identity}>{trusted_html}</div>')
+
+
+# One row per part of a pager: (part, emoji, action, the variants that show it), in the order they stand. Every variant is in the markup and the
+# stylesheet shows one, so setting data-ui-pager switches it with no reload: ⬅️ 1/N ➡️ (arrows), ⏮️ ⬅️ 1/N ➡️ ⏭️ (ends), a cross-key with
+# ⬆️ first and ⬇️ last around 1/N (dpad), one ● per page (dots), a range (slider) or a rotary dial (dial, turned by dial.js). A new variant is a word.
+PAGER_PARTS = (("up", "⬆️", "first", "dpad"), ("first", "⏮️", "first", "ends"), ("prev", "⬅️", "prev", "arrows ends dpad"),
+               ("dots", "", "", "dots"), ("slider", "", "", "slider"), ("dial", "", "", "dial"),
+               ("page", "", "", "arrows ends dpad dots slider dial"), ("next", "➡️", "next", "arrows ends dpad"),
+               ("last", "⏭️", "last", "ends"), ("down", "⬇️", "last", "dpad"))
+
+
+def pager_variants() -> tuple[str, ...]:
+    """The pager's variants, in the order PAGER_PARTS first names them (for a page that cycles through them, or a test that tries each)."""
+    return tuple(dict.fromkeys(v for *_, shows in PAGER_PARTS for v in shows.split()))
+
+
+def pager_index(index: int, count: int, action: str | int, *, wrap: bool = False) -> int:
+    """The page a pager goes to, the steps of pager.js's ``pagerIndex``: ``action`` is "first", "prev", "next", "last" or a page number from 0,
+    kept within the ``count`` pages; with ``wrap``, ⬅️ on the first page goes to the last and ➡️ on the last to the first."""
+    last = max(0, count - 1)
+    if type(action) is int:
+        return min(last, max(0, action))
+    if action in ("first", "last"):
+        return 0 if action == "first" else last
+    if action not in ("prev", "next"):
+        raise ValueError(f"unknown pager action: {action}")
+    target = index + (1 if action == "next" else -1)
+    return target % count if wrap and count > 0 else min(last, max(0, target))
+
+
+def pager_html(count: int, *, variant: str = "arrows", index: int = 0, label: str = "Pages", words: dict[str, str] | None = None,
+               wrap: bool = False, keys: bool = False, id: str | None = None) -> str:
+    """🧭 Page controls over ``count`` pages, showing ``variant`` (one of pager_variants()). The faces are emoji; ``words`` (first, prev, next,
+    last, page) are what screen readers and the tooltips say. pager.js keeps n/N, the ends, the dots and the ranges in step and sends ``ui-pager``
+    (detail: {index, count}) when the page changes; ``pagerSet(el, index, count)`` follows a change the page made itself (a page added).
+    ``keys`` also takes ←/→/Home/End anywhere on the page but in a text field. A tap does not take the focus, so a text field being typed in
+    keeps it and the layout does not move under the finger."""
+    if type(count) is not int or count < 1 or type(index) is not int or not 0 <= index < count:
+        raise ValueError("a pager has at least one page and starts on one of them")
+    if variant not in pager_variants():
+        raise ValueError(f"a pager variant is one of {', '.join(pager_variants())}")
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("a pager needs a label")
+    say = {"first": "First page", "prev": "Previous page", "next": "Next page", "last": "Last page", "page": "Page", **(words or {})}
+    if len(say) != 5 or not all(isinstance(v, str) and v.strip() for v in say.values()):
+        raise ValueError("a pager's words are first, prev, next, last and page, each some text")
+    page, top = escape(say["page"], quote=True), max(2, count)                     # a range needs two ends; one page disables it
+
+    def part(name: str, glyph: str, action: str, shows: str) -> str:
+        tag = f'data-ui-pager-part="{name}" data-ui-pager-in="{shows}"'
+        if action:
+            word, still = escape(say[action], quote=True), pager_index(index, count, action, wrap=wrap) == index
+            return f'<button type="button" {tag} data-ui-pager-go="{action}" aria-label="{word}" title="{word}"{" disabled" if still else ""}>{glyph}</button>'
+        if name == "page":
+            return f'<output {tag} aria-live="polite">{index + 1}/{count}</output>'
+        if name == "dots":
+            return (f'<span {tag} data-ui-pager-word="{page}">' + "".join(
+                f'<button type="button" data-ui-pager-to="{i}" aria-label="{page} {i + 1}" title="{page} {i + 1}"'
+                + (' aria-current="page">●' if i == index else ">○") + "</button>" for i in range(count)) + "</span>")
+        off = " disabled" if count < 2 else ""
+        if name == "slider":
+            return f'<input type="range" {tag} min="1" max="{top}" step="1" value="{index + 1}" aria-label="{page}"{off}>'
+        return f'<span {tag}>{dial_html("page", minimum=1, maximum=top, value=index + 1, label=say["page"], attrs=off.strip())}</span>'
+
+    flags = (" data-ui-pager-wrap" if wrap else "") + (" data-ui-pager-keys" if keys else "")
+    identity = f' id="{_element_id(id)}"' if id is not None else ""
+    return (f'<div class="ui-pager" role="group" aria-label="{escape(label, quote=True)}" data-ui-pager="{variant}" data-ui-pager-index="{index}" '
+            f'data-ui-pager-count="{count}"{flags}{identity}>' + "".join(part(*row) for row in PAGER_PARTS) + "</div>")
+
+
+PAGER_CSS = (
+    ".ui-pager{display:inline-flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;max-width:100%}"
+    ".ui-pager button{box-sizing:border-box;min-width:48px;min-height:48px;padding:0 8px;font-size:24px;line-height:1;color:var(--ui-fg);"
+    "background:var(--ui-panel);border:1px solid var(--ui-border);border-radius:var(--ui-radius);cursor:pointer;touch-action:manipulation}"
+    ".ui-pager button:disabled{opacity:.32;cursor:default}.ui-pager button:focus-visible{outline:2px solid var(--ui-accent);outline-offset:2px}"
+    ".ui-pager output{min-width:48px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}"
+    ".ui-pager>[data-ui-pager-part=dots]{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;max-width:100%}"
+    ".ui-pager>[data-ui-pager-part=dots] button{min-width:32px;min-height:32px;padding:0;font-size:16px;color:var(--ui-accent)}"
+    ".ui-pager>input[type=range]{width:160px;max-width:100%;min-height:48px;margin:0;accent-color:var(--ui-accent)}"
+    # The cross-key: a 3×3 grid with n/N in the middle.
+    ".ui-pager[data-ui-pager=dpad]{display:inline-grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px)}"
+    "[data-ui-pager=dpad]>[data-ui-pager-part=up]{grid-area:1/2}[data-ui-pager=dpad]>[data-ui-pager-part=prev]{grid-area:2/1}"
+    "[data-ui-pager=dpad]>[data-ui-pager-part=page]{grid-area:2/2;place-self:center}[data-ui-pager=dpad]>[data-ui-pager-part=next]{grid-area:2/3}"
+    "[data-ui-pager=dpad]>[data-ui-pager-part=down]{grid-area:3/2}"
+    # Each variant hides the parts it does not show (one selector per word in PAGER_PARTS).
+    + ",".join(f".ui-pager[data-ui-pager={v}]>:not([data-ui-pager-in~={v}])" for v in pager_variants()) + "{display:none}")
+
+PAGER_JS = r"""/* 🧭 Page controls (pager_html): every variant is in the markup and the stylesheet shows one, so data-ui-pager switches it with no reload.
+ pagerIndex takes pager_index's steps; a change sends ui-pager {index, count}; pagerSet(el, index, count) follows a change the page made itself. */
+export function pagerIndex(index,count,action,wrap=false){const last=Math.max(0,count-1);
+ if(typeof action==="number")return Math.min(last,Math.max(0,Math.trunc(action)));
+ if(action==="first"||action==="last")return action==="first"?0:last;
+ if(action!=="prev"&&action!=="next")throw Error("unknown pager action: "+action);
+ const target=index+(action==="next"?1:-1);return wrap&&count>0?((target%count)+count)%count:Math.min(last,Math.max(0,target))}
+export function pagerSet(el,index=Number(el.dataset.uiPagerIndex)||0,count=Number(el.dataset.uiPagerCount)||1){
+ count=Math.max(1,Math.trunc(count));index=pagerIndex(0,count,index);const wrap="uiPagerWrap"in el.dataset;el.dataset.uiPagerIndex=index;el.dataset.uiPagerCount=count;
+ for(const b of el.querySelectorAll("[data-ui-pager-go]"))b.disabled=pagerIndex(index,count,b.dataset.uiPagerGo,wrap)===index;
+ for(const o of el.querySelectorAll('output[data-ui-pager-part="page"]'))o.textContent=`${index+1}/${count}`;
+ for(const dots of el.querySelectorAll('[data-ui-pager-part="dots"]')){const word=dots.dataset.uiPagerWord||"Page";
+  while(dots.children.length<count)dots.append(Object.assign(document.createElement("button"),{type:"button"}));
+  while(dots.children.length>count)dots.lastElementChild.remove();
+  [...dots.children].forEach((d,i)=>{d.dataset.uiPagerTo=i;d.textContent=i===index?"●":"○";d.title=`${word} ${i+1}`;d.setAttribute("aria-label",d.title);
+   i===index?d.setAttribute("aria-current","page"):d.removeAttribute("aria-current")})}
+ for(const r of el.querySelectorAll('input[type="range"]')){r.max=Math.max(2,count);r.disabled=count<2;
+  if(r.value!==String(index+1)){r.value=index+1;r.dispatchEvent(new Event("input"))}}}
+export function bindPager(root=document){
+ for(const el of root.querySelectorAll("[data-ui-pager]")){if("uiPagerBound"in el.dataset)continue;el.dataset.uiPagerBound="";
+  const go=action=>{const index=Number(el.dataset.uiPagerIndex)||0,count=Number(el.dataset.uiPagerCount)||1,next=pagerIndex(index,count,action,"uiPagerWrap"in el.dataset);
+   pagerSet(el,next,count);if(next!==index)el.dispatchEvent(new CustomEvent("ui-pager",{bubbles:true,detail:{index:next,count}}))};
+  el.addEventListener("pointerdown",e=>{if(e.target.closest("button"))e.preventDefault()});
+  el.addEventListener("click",e=>{const b=e.target.closest("[data-ui-pager-go],[data-ui-pager-to]");if(b&&!b.disabled)go(b.dataset.uiPagerGo??Number(b.dataset.uiPagerTo))});
+  el.addEventListener("input",e=>{if(e.target.type==="range")go(Number(e.target.value)-1)});
+  if("uiPagerKeys"in el.dataset)document.addEventListener("keydown",e=>{const action={ArrowLeft:"prev",ArrowRight:"next",Home:"first",End:"last"}[e.key];
+   if(!action||e.defaultPrevented||e.altKey||e.ctrlKey||e.metaKey||!el.isConnected||e.target.closest?.("input,textarea,select,[contenteditable]"))return;e.preventDefault();go(action)});
+  pagerSet(el)}}
+if(typeof document!=="undefined")bindPager();
+"""
+_CSS["stage.css"] = "@layer components{" + STAGE_CSS + "}"
+_CSS["pager.css"] = "@layer components{" + PAGER_CSS + "}"
 
 
 # --- Repository diagnostics: the page ascii_artist, markdown and mcp-toolcall-lab each wrote by hand, as one builder ----------------------
@@ -5754,6 +5195,9 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     # does not bind itself on load, "spec" when the builder wants a checked spec, and "classic" for a classic script (not an ES module).
     # Specs and keyword arguments pass through to the builder.
     "dial": {"html": "dial_html", "css": ("dial.css",), "js": ("dial.js",)},
+    "gaze-avatar": {"html": "gaze_avatar_html", "css": ("gaze_avatar_css",), "js": ("gaze-avatar.js",)},
+    "stage": {"html": "stage_html", "css": ("stage.css",), "js": ()},
+    "pager": {"html": "pager_html", "css": ("pager.css", "dial.css"), "js": ("dial.js", "pager.js")},
     "scroll": {"html": "scroll_html", "css": ("scroll.css",), "js": ("scroll.js",)},
     "seed-dial": {"html": "seed_dial_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
     "theme-switch": {"html": "theme_switch_html", "css": (), "js": ("theme.js",), "mount": "bindTheme();"},
@@ -5769,8 +5213,6 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "photo": {"html": "photo_html", "css": ("photo.css",), "js": ("photo.js",)},
     "studio": {"html": "studio_html", "css": ("studio.css",), "js": ("composition.js", "studio-audio.js")},
     "source": {"html": "source_panel_html", "css": ("source.css",), "js": ("source.js",)},
-    "stub": {"html": "stub_html", "css": ("stub.css",), "js": ("stub.js",)},
-    "world": {"html": "world_html", "css": ("world_css",), "js": ("world.js",)},
     "showcase": {"html": "showcase_html", "css": ("showcase_css",), "js": ("ui.js", "records.js"), "mount": "bindTheme();bindToggles();bindCopy();", "spec": "showcase_validate"},
     "tempclip": {"html": "tempclip_html", "css": ("shelf.css",), "js": ("shelf.js",)},
     "curl": {"html": "curl_panel_html", "css": (), "js": ("curl.js",)},
@@ -5782,8 +5224,8 @@ COMPONENTS: dict[str, dict[str, Any]] = {
     "seed-roll": {"html": "seed_roll_html", "css": (), "js": ("theme.js",), "mount": "bindSeed();"},
 }
 # Stylesheets that are built rather than stored: the spec (the first argument) decides them.
-_COMPONENT_CSS = {"world_css": lambda *a: world_css(a[0], base=False), "showcase_css": lambda *a: showcase_css(showcase_validate(a[0])),
-                  "front_css": lambda *a: front_css()}
+_COMPONENT_CSS = {"showcase_css": lambda *a: showcase_css(showcase_validate(a[0])),
+                  "front_css": lambda *a: front_css(), "gaze_avatar_css": lambda: GAZE_AVATAR_CSS}
 
 
 def component_parts(name: str, /, *args: Any, **kwargs: Any) -> dict[str, str]:
@@ -6431,10 +5873,19 @@ def photo_png(width: int, height: int, rgba: bytes | None = None) -> bytes:
     rows = rgba if rgba is not None else bytes(width * height * 4)
     if len(rows) != width * height * 4:
         raise ValueError("rgba must hold width * height * 4 bytes")
-    raw = b"".join(b"\x00" + rows[y * width * 4:(y + 1) * width * 4] for y in range(height))
-    chunk = lambda kind, body: len(body).to_bytes(4, "big") + kind + body + zlib.crc32(kind + body).to_bytes(4, "big")
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", width.to_bytes(4, "big") + height.to_bytes(4, "big") + b"\x08\x06\x00\x00\x00")
-            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+    return _rgba_png(width, height, rows, compression=zlib.Z_DEFAULT_COMPRESSION)
+
+
+def _rgba_png(width: int, height: int, rgba: bytes, *, compression: int) -> bytes:
+    """Encode validated RGBA pixels as filter-0 scanlines."""
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    stride = width * 4
+    raw = b"".join(b"\x00" + rgba[y * stride:(y + 1) * stride] for y in range(height))
+    header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+            + chunk(b"IDAT", zlib.compress(raw, compression)) + chunk(b"IEND", b""))
 
 
 # Normalised rectangles are ``{"left", "top", "right", "bottom"}`` in 0..1 of the canvas.
@@ -7509,7 +6960,7 @@ def door_validate(spec: Any) -> dict[str, Any]:
     for page in pages_in:
         if not isinstance(page, dict) or set(page) - {"emoji", "label", "href", "group"}:
             raise ValueError("a page has emoji, label, href and group")
-        emoji = _world_emoji(page.get("emoji"))
+        emoji = _emoji_field(page.get("emoji"))
         key = emoji_key(emoji)
         group = page.get("group", "stable")
         if not key or group not in ("stable", "discover"):
@@ -7519,7 +6970,7 @@ def door_validate(spec: Any) -> dict[str, Any]:
             raise ValueError(f"two pages share {'an emoji' if key in seen_emoji else 'an href'}: {emoji!r} {href!r}")
         seen_emoji.add(key)
         seen_href.add(href)
-        pages.append({"emoji": emoji, "label": _world_text(page.get("label"), "label", 40), "href": href, "group": group})
+        pages.append({"emoji": emoji, "label": _text_field(page.get("label"), "label", 40), "href": href, "group": group})
     if not any(p["group"] == "stable" for p in pages):
         raise ValueError("a door needs at least one stable page (the first is Home)")
     current = spec.get("current")
@@ -9383,21 +8834,21 @@ def pattern_query(req: Any) -> Any:
         return [item for item in items if matches(item)]
     if op == "range":
         key, low, high = req.get("key"), req.get("minimum"), req.get("maximum")
-        _pat_need(isinstance(key, str) and _js_num(low) and _js_num(high) and low <= high, "invalid numeric range")
+        _pat_need(isinstance(key, str) and _finite_number(low) and _finite_number(high) and low <= high, "invalid numeric range")
         result = []
         for item in items:
             _pat_need(isinstance(item, dict) and key in item, "missing range key")
-            _pat_need(_js_num(item[key]), "invalid range value")
+            _pat_need(_finite_number(item[key]), "invalid range value")
             if low <= item[key] <= high:
                 result.append(item)
         return result
     if op == "geo":
         lat, lon, radius = (req.get(k) for k in ("latitude", "longitude", "radius_km"))
-        _pat_need(all(_js_num(v) for v in (lat, lon, radius)) and -90 <= lat <= 90 and -180 <= lon <= 180 and radius >= 0, "invalid geographic search")
+        _pat_need(all(_finite_number(v) for v in (lat, lon, radius)) and -90 <= lat <= 90 and -180 <= lon <= 180 and radius >= 0, "invalid geographic search")
         def distance(row: Any) -> float:
             _pat_need(isinstance(row, dict), "invalid point")
             a, b = row.get("latitude"), row.get("longitude")
-            _pat_need(_js_num(a) and _js_num(b) and -90 <= a <= 90 and -180 <= b <= 180, "invalid point coordinates")
+            _pat_need(_finite_number(a) and _finite_number(b) and -90 <= a <= 90 and -180 <= b <= 180, "invalid point coordinates")
             p1, p2 = math.radians(lat), math.radians(a)
             dp, dl = p2 - p1, math.radians(b - lon)
             h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
@@ -9542,7 +8993,7 @@ def pattern_score(payload: Any) -> Any:
     if operation == "minheap":
         _pat_need(not (set(payload) - {"operation", "values", "pops"}), "unexpected heap fields")
         values, pops = payload.get("values"), payload.get("pops", 0)
-        _pat_need(isinstance(values, list) and all(_js_num(x) for x in values), "heap values must be finite numbers")
+        _pat_need(isinstance(values, list) and all(_finite_number(x) for x in values), "heap values must be finite numbers")
         _pat_need(type(pops) is int and 0 <= pops <= len(values), "invalid pop count")
         heap = values.copy()
         heapq.heapify(heap)
@@ -9652,7 +9103,7 @@ def pattern_convert(req: Any) -> dict[str, Any]:
     if op == "unit":
         unit_from, unit_to = req.get("from"), req.get("to")
         try:      # math.isfinite converts ints to float: huge ints raise OverflowError
-            finite = type(value) in (int, float) and math.isfinite(value)
+            finite = _finite_number(value)
         except OverflowError:
             finite = False
         _pat_need(finite, "unit value must be finite number")
@@ -10309,11 +9760,6 @@ def _js_int(value: Any) -> bool:
     return type(value) is int or (type(value) is float and math.isfinite(value) and value.is_integer())
 
 
-def _js_num(value: Any) -> bool:
-    """typeof value === "number" && Number.isFinite(value)."""
-    return type(value) in (int, float) and math.isfinite(value)
-
-
 def _pat_js_json(value: Any) -> str:
     """JSON.stringify(value): key order kept, an integral number written as an int."""
     def plain(v: Any) -> Any:
@@ -10389,7 +9835,7 @@ def pattern_future(request: Any) -> dict[str, Any]:
             step = _pat_js_object(raw, "step")
             _pat_js_fields(step, ("op", "by"), ("op",))
             if step["op"] in ("add", "multiply"):
-                _pat_need(_js_num(step.get("by")), "numeric by required")
+                _pat_need(_finite_number(step.get("by")), "numeric by required")
             elif step["op"] == "uppercase":
                 _pat_js_fields(step, ("op",))
             else:
@@ -10411,7 +9857,7 @@ def pattern_future(request: Any) -> dict[str, Any]:
             _pat_need(isinstance(value, str), "string input required")
             value = value.upper()
         else:
-            _pat_need(_js_num(value), "numeric input required")
+            _pat_need(_finite_number(value), "numeric input required")
             value = value + step["by"] if step["op"] == "add" else value * step["by"]
     return {"schema": "future-patterns/1", "mode": mode, "value": value}
 
@@ -10473,7 +9919,7 @@ def pattern_stream(request: Any) -> dict[str, Any]:
             elif op == "map_add":
                 moved = []
                 for x in xs:
-                    _pat_need(_js_num(x["value"]) and _js_num(step.get("value")), "map_add numbers")
+                    _pat_need(_finite_number(x["value"]) and _finite_number(step.get("value")), "map_add numbers")
                     moved.append({**x, "value": x["value"] + step["value"]})
                 xs = moved
             else:
@@ -10580,7 +10026,7 @@ def pattern_event_loop(request: Any) -> dict[str, Any]:
         for raw in steps:
             step = _pat_event_fields(raw, ("op", "value"), ("op", "value"))
             if step["op"] == "map_add":
-                _pat_need(_js_num(step["value"]) and all(_js_num(x) for x in out), "numbers required")
+                _pat_need(_finite_number(step["value"]) and all(_finite_number(x) for x in out), "numbers required")
                 out = [x + step["value"] for x in out]
             elif step["op"] == "where_equals":
                 out = [x for x in out if _pat_js_json(x) == _pat_js_json(step["value"])]
@@ -10609,7 +10055,7 @@ class PatternDebouncer:
     that ``clear_timeout(handle)`` accepts."""
 
     def __init__(self, callback: Any, delay_ms: Any, set_timeout: Any, clear_timeout: Any) -> None:
-        if not callable(callback) or not _js_num(delay_ms) or delay_ms < 0:
+        if not callable(callback) or not _finite_number(delay_ms) or delay_ms < 0:
             raise TypeError("invalid debounce arguments")
         self.callback, self.delay_ms, self.set_timeout, self.clear_timeout = callback, delay_ms, set_timeout, clear_timeout
         self.timer: Any = None
@@ -10636,7 +10082,7 @@ def pattern_virtual_window(params: Any) -> dict[str, Any]:
     count, height, top, viewport = (params.get(k) for k in ("count", "itemHeight", "scrollTop", "viewportHeight"))
     overscan = params["overscan"] if "overscan" in params else 2
     for value in (count, height, top, viewport, overscan):
-        _pat_need(_js_num(value) and value >= 0, "invalid viewport number")
+        _pat_need(_finite_number(value) and value >= 0, "invalid viewport number")
     _pat_need(_js_int(count) and _js_int(overscan) and height != 0, "invalid viewport configuration")
     count, overscan = int(count), int(overscan)
     start = max(0, min(count, math.floor(top / height) - overscan))
@@ -12727,7 +12173,7 @@ def contract_locales(locales: Any) -> dict[str, Any]:
 def _con_num(boxes: dict[str, Any], name: str, field: str) -> float:
     """One measurement of one box, read only when a rule needs it (a box a rule does not look at may lack the fields that rule does not use, as in the original)."""
     box = boxes[name]
-    _pat_need(isinstance(box, dict) and _js_num(box.get(field)), f"box {name!r} needs a numeric {field}")
+    _pat_need(isinstance(box, dict) and _finite_number(box.get(field)), f"box {name!r} needs a numeric {field}")
     return box[field]
 
 
@@ -12744,7 +12190,7 @@ def contract_layout(request: Any) -> dict[str, Any]:
     ``y`` and ``height`` for the others); a number that is missing, not finite or a bool is a ``ValueError``."""
     _pat_need(isinstance(request, dict) and all(key in ("operation", "viewport", "boxes", "within", "aligned", "stacked") for key in request), "unknown request keys")
     viewport = request.get("viewport")
-    _pat_need(isinstance(viewport, dict) and _js_num(viewport.get("width")) and viewport["width"] > 0 and _js_num(viewport.get("height")) and viewport["height"] > 0,
+    _pat_need(isinstance(viewport, dict) and _finite_number(viewport.get("width")) and viewport["width"] > 0 and _finite_number(viewport.get("height")) and viewport["height"] > 0,
               "viewport needs a positive width and height")
     boxes = request.get("boxes")
     _pat_need(isinstance(boxes, dict) and len(boxes) <= CONTRACT_MAX_BOXES, f"boxes must be an object of at most {CONTRACT_MAX_BOXES} boxes")
@@ -12768,7 +12214,7 @@ def contract_layout(request: Any) -> dict[str, Any]:
         _pat_need(isinstance(entry, dict) and all(key in ("name", "below", "min_height") for key in entry) and isinstance(entry.get("name"), str) and entry["name"] in boxes, "stacked entries need a box name")
         floor = _con_names(entry, "below", boxes)
         minimum = entry.get("min_height", CONTRACT_MIN_ROW_HEIGHT)
-        _pat_need(_js_num(minimum) and minimum >= 0, "min_height must be a non-negative number")
+        _pat_need(_finite_number(minimum) and minimum >= 0, "min_height must be a non-negative number")
         name = entry["name"]
         if floor and num(name, "y") < max(num(other, "y") + num(other, "height") for other in floor) - CONTRACT_EDGE:
             failures.append(f"{name}: overlaps the row above")
@@ -12819,15 +12265,15 @@ def contract_swap(request: Any) -> dict[str, Any]:
     before, after = _con_png(request.get("before"), "before"), _con_png(request.get("after"), "after")
     _pat_need(before[:2] == after[:2], "capture dimensions changed during the gesture")
     scale = geometry.get("device_scale_factor")
-    _pat_need(_js_num(scale) and scale > 0, "invalid device scale factor")
+    _pat_need(_finite_number(scale) and scale > 0, "invalid device scale factor")
     viewport = geometry.get("viewport")
-    _pat_need(isinstance(viewport, dict) and all(_js_num(viewport.get(key)) for key in ("width", "height")), "viewport needs a width and height")
+    _pat_need(isinstance(viewport, dict) and all(_finite_number(viewport.get(key)) for key in ("width", "height")), "viewport needs a width and height")
     _pat_need(all(abs(before[index] - viewport[key] * scale) <= 1 for index, key in enumerate(("width", "height"))), "PNG dimensions do not match the recorded viewport")
     slots = geometry.get("slots")
     _pat_need(isinstance(slots, list) and len(slots) == 2, "exactly two pre-drag slots are required")
     boxes = []
     for slot in slots:
-        _pat_need(isinstance(slot, dict) and all(_js_num(slot.get(key)) for key in ("x", "y", "width", "height")), "invalid card bounds")
+        _pat_need(isinstance(slot, dict) and all(_finite_number(slot.get(key)) for key in ("x", "y", "width", "height")), "invalid card bounds")
         x, y, width, height = (slot[key] for key in ("x", "y", "width", "height"))
         _pat_need(width > 16 and height > 16, "card interior is too small")
         box = tuple(round(value * scale) for value in (x + 8, y + 8, x + width - 8, y + height - 8))
@@ -13992,7 +13438,7 @@ def _stu_need(condition: Any, message: str) -> None:
 
 
 def _stu_num(value: Any, low: float, high: float) -> bool:
-    return _js_num(value) and low <= value <= high
+    return _finite_number(value) and low <= value <= high
 
 
 def _stu_color(value: Any) -> bool:
@@ -14189,8 +13635,14 @@ def studio_cos(x: float) -> float:
     return _stu_kcos(y0, y1) if k == 0 else -_stu_ksin(y0, y1, 1) if k == 1 else -_stu_kcos(y0, y1) if k == 2 else _stu_ksin(y0, y1, 1)
 
 
-def studio_heat_color(value: Any, low: Any, high: Any, levels: Any = 0) -> str:
-    """A five-stop scale from violet to yellow; ``None`` (missing) is ``"none"``. The value is never changed, only shown."""
+def studio_heat_color(value: Any, low: Any, high: Any, levels: Any = 0, palette: Any = _STU_UNDEFINED) -> str:
+    """Map a value to evenly spaced RGB stops, defaulting to the original violet-to-yellow scale."""
+    if palette is _STU_UNDEFINED:
+        palette = STUDIO_PALETTE
+    else:
+        _stu_need(isinstance(palette, list) and 2 <= len(palette) <= 256 and all(
+            isinstance(stop, str) and re.fullmatch(r"#[0-9A-Fa-f]{6}", stop) for stop in palette
+        ), "配色には2〜256個の #RRGGBB が必要です")
     if value is None:
         return "none"
     finite = lambda v: type(v) in (int, float) and math.isfinite(v)
@@ -14199,9 +13651,9 @@ def studio_heat_color(value: Any, low: Any, high: Any, levels: Any = 0) -> str:
     t = 0.5 if high == low else max(0, min(1, (value - low) / (high - low)))
     if levels:
         t = _math_round(t * (levels - 1)) / (levels - 1)
-    p = t * 4
-    i = min(3, math.floor(p))
-    a, b = (bytes.fromhex(c[1:]) for c in STUDIO_PALETTE[i:i + 2])
+    p = t * (len(palette) - 1)
+    i = min(len(palette) - 2, math.floor(p))
+    a, b = (bytes.fromhex(c[1:]) for c in palette[i:i + 2])
     return "#" + "".join(f"{_math_round(x + (y - x) * (p - i)):02X}" for x, y in zip(a, b))
 
 
@@ -14296,7 +13748,7 @@ def studio_validate(scene: Any) -> dict[str, Any]:
             _stu_need(not _stu_defined(layer, "sampling") or layer["sampling"] in ("pixelated", "smooth"), "補間方式が不正です")
         elif kind == "heatmap":
             studio_matrix({"z": layer.get("z"), "x": layer.get("xlabels"), "y": layer.get("ylabels"), "zmin": layer.get("low"), "zmax": layer.get("high")})
-            studio_heat_color(layer.get("low", _STU_UNDEFINED), layer.get("low", _STU_UNDEFINED), layer.get("high", _STU_UNDEFINED), layer.get("levels", 0))
+            studio_heat_color(layer.get("low", _STU_UNDEFINED), layer.get("low", _STU_UNDEFINED), layer.get("high", _STU_UNDEFINED), layer.get("levels", 0), layer.get("palette", _STU_UNDEFINED))
         else:
             _stu_need(_stu_color(layer.get("fill")) and _stu_color(layer.get("stroke")) and _stu_num(layer.get("strokeWidth"), 0, 64), "図形の色または線幅が不正です")
         if kind == "arrow":
@@ -14700,7 +14152,7 @@ def studio_layer_svg(layer: dict[str, Any], image_source: Any = None) -> str:
         for y, row in enumerate(layer["z"]):
             for x, v in enumerate(row):
                 title = f'{js_string(layer["ylabels"][y])} / {js_string(layer["xlabels"][x])}: {"欠測" if v is None else js_string(v)}'
-                body += (f'<rect x="{n(left + x * cw)}" y="{n(top + y * ch)}" width="{n(cw)}" height="{n(ch)}" fill="{studio_heat_color(v, layer["low"], layer["high"], layer.get("levels", 0))}">'
+                body += (f'<rect x="{n(left + x * cw)}" y="{n(top + y * ch)}" width="{n(cw)}" height="{n(ch)}" fill="{studio_heat_color(v, layer["low"], layer["high"], layer.get("levels", 0), layer.get("palette", _STU_UNDEFINED))}">'
                          f'<title>{studio_escape(title)}</title></rect>')
                 if _stu_truthy(layer.get("labels")) and cw >= 35 and ch >= 24 and v is not None:
                     body += (f'<text x="{n(left + (x + 0.5) * cw)}" y="{n(top + (y + 0.5) * ch)}" text-anchor="middle" dominant-baseline="central" font-family="Meiryo,sans-serif" font-size="12" '
@@ -14973,10 +14425,7 @@ def studio_png_encode(width: int, height: int, rgba: bytes) -> bytes:
     """RGBA bytes as a PNG (8 bits, no interlace, no filter)."""
     if len(rgba) != width * height * 4:
         raise StudioError("PNGの大きさが合いません")
-    stride = width * 4
-    raw = b"".join(b"\x00" + rgba[y * stride:(y + 1) * stride] for y in range(height))
-    chunk = lambda kind, body: struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
-    return bytes([137, 80, 78, 71, 13, 10, 26, 10]) + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b"")
+    return _rgba_png(width, height, rgba, compression=9)
 
 
 def studio_image_source(scene: dict[str, Any]) -> Any:
@@ -15717,9 +15166,6 @@ def mask_curl(result: dict[str, Any]) -> dict[str, Any]:
     return masked
 
 
-STUB_SCHEMA = "web-ui-stub/1"
-# stub.js without its import line: it needs setText/prettyJson from ui.js, so an embedded module is ui.js + this.
-EMBEDDED_STUB_JS = _JS["stub.js"].split("\n", 1)[1]
 
 # Lines several modules share, spliced in like _RNG_JS and _SHA_JS: the Python str.strip whitespace, full-width ASCII folding, and a DOM element builder.
 _SPACE_JS = r"""const SPACE="\\t\\n\\v\\f\\r\\x1c-\\x1f \\x85\\xa0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000";
@@ -17547,109 +16993,18 @@ _JS["source.js"] = r"""/** web-ui source: read a name (one GET per press, never 
 """
 
 
-_STUB_FILL_JS = ('const fill=(t,q)=>typeof t==="string"?t.replaceAll("$input",()=>q):Array.isArray(t)?t.map(x=>fill(x,q)):'
-                 't&&typeof t==="object"?Object.fromEntries(Object.entries(t).map(([k,v])=>[k,fill(v,q)])):t;\n')
 
 
-def stub_response(template: Any, query: str) -> Any:
-    """What the mock answers for ``query``: ``template`` with every "$input" replaced by the query (same rule as the page)."""
-    if isinstance(template, str):
-        return template.replace("$input", query)
-    if isinstance(template, list):
-        return [stub_response(item, query) for item in template]
-    if isinstance(template, dict):
-        return {key: stub_response(value, query) for key, value in template.items()}
-    return template
 
 
-def stub_validate(spec: Any) -> dict[str, Any]:
-    """Checked ``web-ui-stub/1`` spec: id, title, heading, lead, tags, field, run, evidence, history and the mock template."""
-    keys = {"schema", "id", "title", "heading", "lead", "tags", "field", "run", "evidence", "history", "mock"}
-    if not isinstance(spec, dict) or spec.get("schema") != STUB_SCHEMA or set(spec) - keys:
-        raise ValueError(f"expected schema {STUB_SCHEMA} with keys {sorted(keys)}")
-    stub_id = spec.get("id", "stub")
-    if not isinstance(stub_id, str) or not _WORLD_ID.fullmatch(stub_id):
-        raise ValueError("id must be a lowercase token that starts with a letter")
-    tags = spec.get("tags", [])
-    if not isinstance(tags, list) or len(tags) > 6:
-        raise ValueError("tags must list at most 6 entries")
-    field = spec.get("field")
-    if not isinstance(field, dict) or set(field) - {"label", "placeholder", "value"} or "label" not in field:
-        raise ValueError("field has a label and optionally a placeholder or a value")
-    mock = spec.get("mock", {"status": "stub", "query": "$input"})
-    try:
-        encoded_mock = json.dumps(mock, allow_nan=False)
-        mock = json.loads(encoded_mock)
-    except (TypeError, ValueError, RecursionError) as exc:
-        raise ValueError("mock must be finite JSON data") from exc
-    if len(encoded_mock) > 4000:
-        raise ValueError("mock must be at most 4000 characters of JSON")
-    return {"schema": STUB_SCHEMA, "id": stub_id, "title": _world_text(spec.get("title", "Stub"), "title", 80),
-            "heading": _world_text(spec.get("heading", "Stub Explorer"), "heading", 80),
-            "lead": _world_text(spec.get("lead", ""), "lead", 200, required=False),
-            "tags": [_world_text(tag, "tag", 24) for tag in tags],
-            "field": {"label": _world_text(field["label"], "field label", 40),
-                      "placeholder": _world_text(field.get("placeholder", ""), "placeholder", 120, required=False),
-                      "value": _world_text(field.get("value", ""), "value", 120, required=False)},
-            "run": _world_text(spec.get("run", "Run"), "run", 24),
-            "evidence": _world_text(spec.get("evidence", ""), "evidence", 200, required=False),
-            "history": _world_text(spec.get("history", ""), "history", 200, required=False), "mock": mock}
 
 
-def stub_html(spec: Any, *, heading_level: int = 1) -> str:
-    """The stub workspace (request bar, result, evidence, history) with ids prefixed by the spec's id; text is escaped."""
-    s = stub_validate(spec)
-    level = heading_level if type(heading_level) is int and 1 <= heading_level <= 6 else 1
-    sid, field = s["id"], s["field"]
-    attrs = (f' placeholder="{escape(field["placeholder"], quote=True)}"' if field["placeholder"] else "") + \
-            (f' value="{escape(field["value"], quote=True)}"' if field["value"] else "")
-    tags = "".join(f'<span class="ui-tag">{escape(tag)}</span>' for tag in s["tags"])
-    mock = json.dumps(s["mock"], ensure_ascii=False).replace("</", "<\\/")
-    return (f'<div class="stub-shell" id="{sid}"><header class="stub-header"><div><h{level} class="ui-title">{escape(s["heading"])}</h{level}>'
-            f'<p class="ui-muted">{escape(s["lead"])}</p></div><div class="stub-meta">{tags}</div></header>'
-            f'<section class="ui-panel"><form class="stub-toolbar" id="{sid}-form"><fieldset><legend>Stub request</legend>'
-            f'<label for="{sid}-query">{escape(field["label"])}</label><input class="ui-input" id="{sid}-query"{attrs}>'
-            f'<button class="ui-button" id="{sid}-run" type="submit">{escape(s["run"])}</button></fieldset></form>'
-            '<p class="stub-status ui-muted">Endpoint: <span class="stub-endpoint">consumer-owned</span></p></section>'
-            f'<div class="stub-workspace"><section class="ui-panel stub-result"><h2>Result</h2>'
-            f'<pre class="ui-output" id="{sid}-output" aria-live="polite">Ready.</pre></section>'
-            '<aside aria-label="Supporting information"><section class="ui-card stub-evidence"><h2>Evidence</h2>'
-            f'<p class="ui-muted">{escape(s["evidence"])}</p></section><section class="ui-card stub-history"><h2>History</h2>'
-            f'<p class="ui-muted">{escape(s["history"])}</p><div class="stub-actions"><button class="ui-button" type="button">Export</button>'
-            f'<button class="ui-button" type="button">Clear</button></div></section></aside></div>'
-            f'<script type="application/json" id="{sid}-mock">{mock}</script></div>')
 
 
-def stub_script(*specs: Any) -> str:
-    """One inline module for any number of stubs on a page: ui.js, stub.js, the mock evaluator and one bind per stub."""
-    binds = "".join(
-        f'bindStub({{input:"#{s["id"]}-query",run:"#{s["id"]}-run",output:"#{s["id"]}-output",form:"#{s["id"]}-form",'
-        f'handler:q=>fill(JSON.parse(document.getElementById("{s["id"]}-mock").textContent),q)}});\n'
-        for s in (stub_validate(spec) for spec in specs))
-    return EMBEDDED_UI_JS + EMBEDDED_STUB_JS + _STUB_FILL_JS + binds
 
 
-def stub_document(spec: Any, *, theme: str = "modern") -> str:
-    """A single-file page for one stub."""
-    s = stub_validate(spec)
-    return render_document(trusted_html='<main class="ui-page">' + stub_html(s) + "</main>"
-                           + module_script(stub_script(s)), title=s["title"], theme=theme, css=bundled_css())
 
 
-EXAMPLE_STUBS = {
-    "mcp": {"schema": STUB_SCHEMA, "id": "mcp", "title": "MCP Stub", "heading": "MCP Stub Explorer",
-            "lead": "Protocol behavior stays with the consumer; web-ui supplies presentation and generic interaction.",
-            "tags": ["mcp", "ready"], "field": {"label": "Tool or filter", "placeholder": "tools/list"}, "run": "Run",
-            "evidence": "Trace, source, SHA, or request metadata can be rendered here by the consumer.",
-            "history": "Consumer-owned history/export controls.",
-            "mock": {"kind": "mcp", "query": "$input", "status": "stub"}},
-    "api": {"schema": STUB_SCHEMA, "id": "api", "title": "API Stub", "heading": "API Stub Explorer",
-            "lead": "A generic request/result surface without API-specific logic in web-ui.",
-            "tags": ["api", "ready"], "field": {"label": "Path", "value": "/api/example"}, "run": "Send",
-            "evidence": "Status, headers, provenance, or timing metadata belongs here.",
-            "history": "Consumer-owned request history and export actions.",
-            "mock": {"method": "GET", "path": "$input", "status": 200, "body": {"stub": True}}},
-}
 
 
 _JS["photo.js"] = r"""/* web-ui photo: the photo studio in the page (memory only). Format hints, header sizes, EXIF orientation, import rules, frame and stamp geometry, undo history and the editing state machine.
@@ -17981,17 +17336,25 @@ def _studio_js_constants() -> str:
 
 
 
-_JS["imagestudio.js"] = "/* web-ui imagestudio: the Ironmate image studio in the page (memory only). Scene checks, SVG, history, workspace files and the layers a click places are the functions of pysaiyanweboo.py (studio_*) and give the same text; the editor on top is the page's. Python is the reference; this must agree. Differences: text is measured with the installed fonts here (a fixed 0.65 em / 1 em estimate in Python), words and graphemes follow the same rules as Python (Latin, Hangul, kana and Han; the Japanese dictionary of Intl.Segmenter is not used, so every engine gives the same lines), and the clock hands use fdlibm's sin and cos written out here and in Python (V8's of Node 22), not the engine's Math.sin and Math.cos, which differ in the last bit between engines and versions. */\n" + _CLIPBOARD_JS + _studio_js_constants() + r"""export class StudioError extends Error{}
+# A small standalone browser module for heatmap consumers that do not need the editor.
+_JS["heatmap-color.js"] = f"const heatmapDefaultPalette={json.dumps(STUDIO_PALETTE)};\n" + r"""export function heatmapColor(v,lo,hi,levels=0,palette=heatmapDefaultPalette){
+ if(!Array.isArray(palette)||palette.length<2||palette.length>256||
+    [...palette].some(stop=>typeof stop!=="string"||stop.length!==7||!/^#[0-9a-f]{6}$/i.test(stop)))throw new TypeError("配色には2〜256個の #RRGGBB が必要です");
+ if(v===null)return"none";
+ if(![v,lo,hi].every(Number.isFinite)||lo>hi||!Number.isInteger(levels)||(levels!==0&&(levels<2||levels>256)))throw new TypeError("色の範囲または段階数が不正です");
+ let t=hi===lo?0.5:Math.max(0,Math.min(1,(v-lo)/(hi-lo)));if(levels)t=Math.round(t*(levels-1))/(levels-1);
+ const p=t*(palette.length-1),i=Math.min(palette.length-2,Math.floor(p)),a=palette[i].match(/\w\w/g).map(x=>parseInt(x,16)),b=palette[i+1].match(/\w\w/g).map(x=>parseInt(x,16));
+ return"#"+a.map((x,j)=>Math.round(x+(b[j]-x)*(p-i)).toString(16).padStart(2,"0")).join("").toUpperCase()}
+"""
+
+
+_JS["imagestudio.js"] = "/* web-ui imagestudio: the Ironmate image studio in the page (memory only). Scene checks, SVG, history, workspace files and the layers a click places are the functions of pysaiyanweboo.py (studio_*) and give the same text; the editor on top is the page's. Python is the reference; this must agree. Differences: text is measured with the installed fonts here (a fixed 0.65 em / 1 em estimate in Python), words and graphemes follow the same rules as Python (Latin, Hangul, kana and Han; the Japanese dictionary of Intl.Segmenter is not used, so every engine gives the same lines), and the clock hands use fdlibm's sin and cos written out here and in Python (V8's of Node 22), not the engine's Math.sin and Math.cos, which differ in the last bit between engines and versions. */\n" + _CLIPBOARD_JS + _studio_js_constants() + _JS["heatmap-color.js"] + r"""export class StudioError extends Error{}
 const fail=message=>{throw new StudioError(message)};
 export const clone=x=>JSON.parse(JSON.stringify(x));
 export const escape=x=>String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&apos;"})[c]);
 const num=(v,lo,hi)=>typeof v==="number"&&Number.isFinite(v)&&v>=lo&&v<=hi,color=c=>typeof c==="string"&&/^(#[0-9a-f]{6}|none)$/i.test(c);
-export function heatColor(v,lo,hi,levels=0){
- if(v===null)return"none";
- if(![v,lo,hi].every(Number.isFinite)||lo>hi||!Number.isInteger(levels)||(levels!==0&&(levels<2||levels>256)))fail("色の範囲または段階数が不正です");
- let t=hi===lo?0.5:Math.max(0,Math.min(1,(v-lo)/(hi-lo)));if(levels)t=Math.round(t*(levels-1))/(levels-1);
- const p=t*4,i=Math.min(3,Math.floor(p)),a=PALETTE[i].match(/\w\w/g).map(x=>parseInt(x,16)),b=PALETTE[i+1].match(/\w\w/g).map(x=>parseInt(x,16));
- return"#"+a.map((x,j)=>Math.round(x+(b[j]-x)*(p-i)).toString(16).padStart(2,"0")).join("").toUpperCase()}
+export function heatColor(v,lo,hi,levels=0,palette){
+ try{return heatmapColor(v,lo,hi,levels,palette)}catch(error){fail(error.message)}}
 const safe=v=>Number.isFinite(v)&&!(Number.isInteger(v)&&!Number.isSafeInteger(v));
 export function matrix(source){
  let t;
@@ -18031,7 +17394,7 @@ export function validate(scene){
    imageBytes+=l.src.length;if(imageBytes>20000000)fail("シーンの画像合計は20MB以下にしてください");
    if(!Number.isInteger(l.cell)||!num(l.cell,1,512)||!Number.isInteger(l.levels)||!num(l.levels,2,256))fail("モザイク設定が不正です");
    if(l.sampling!==undefined&&!["pixelated","smooth"].includes(l.sampling))fail("補間方式が不正です")}
-  else if(l.kind==="heatmap"){matrix({z:l.z,x:l.xlabels,y:l.ylabels,zmin:l.low,zmax:l.high});heatColor(l.low,l.low,l.high,l.levels)}
+  else if(l.kind==="heatmap"){matrix({z:l.z,x:l.xlabels,y:l.ylabels,zmin:l.low,zmax:l.high});heatColor(l.low,l.low,l.high,l.levels,l.palette)}
   else if(!color(l.fill)||!color(l.stroke)||!num(l.strokeWidth,0,64))fail("図形の色または線幅が不正です");
   if(l.kind==="arrow"){arrowGeometry(l.w,l.h,l.headSize,l.headPlacement);if(l.headStyle!==undefined&&!["triangle","beginner"].includes(l.headStyle))fail("矢羽根の形が不正です")}
   if(l.kind==="clock"&&(!Number.isInteger(l.hour)||!num(l.hour,0,23)||!Number.isInteger(l.minute)||!num(l.minute,0,59)))fail("時計の時刻が不正です")}
@@ -18220,7 +17583,7 @@ export function layerSVG(l,imageSource=x=>x.src){
   for(let y=0;y<l.z.length;y++){
    for(let x=0;x<l.z[y].length;x++){
     const v=l.z[y][x],title=`${l.ylabels[y]} / ${l.xlabels[x]}: ${v===null?"欠測":v}`;
-    body+=`<rect x="${left+x*cw}" y="${top+y*ch}" width="${cw}" height="${ch}" fill="${heatColor(v,l.low,l.high,l.levels)}"><title>${escape(title)}</title></rect>`;
+    body+=`<rect x="${left+x*cw}" y="${top+y*ch}" width="${cw}" height="${ch}" fill="${heatColor(v,l.low,l.high,l.levels,l.palette)}"><title>${escape(title)}</title></rect>`;
     if(l.labels&&cw>=35&&ch>=24&&v!==null)body+=`<text x="${left+(x+0.5)*cw}" y="${top+(y+0.5)*ch}" text-anchor="middle" dominant-baseline="central" font-family="Meiryo,sans-serif" font-size="12" fill="#111827" stroke="#FFFFFF" stroke-width="2" paint-order="stroke">${escape(v)}</text>`}
    body+=`<text x="${left-10}" y="${top+(y+0.5)*ch}" text-anchor="end" dominant-baseline="central" font-family="Meiryo,sans-serif" font-size="12">${escape(l.ylabels[y])}</text>`}
   for(let x=0;x<l.z[0].length;x++)body+=`<text x="${left+(x+0.5)*cw}" y="${l.h-bottom+20}" text-anchor="middle" font-family="Meiryo,sans-serif" font-size="12">${escape(l.xlabels[x])}</text>`;
@@ -18608,8 +17971,8 @@ def timeline_events(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for row in entries:
         if not isinstance(row, dict) or set(row) != {"id", "title", "zone", "utc_ms"}:
             raise ValueError("an event has id, title, zone and utc_ms")
-        identifier = _world_id(row["id"], "event id", ids)
-        title = _world_text(row["title"], "title", 120)
+        identifier = _id_field(row["id"], "event id", ids)
+        title = _text_field(row["title"], "title", 120)
         zone = row["zone"]
         if not isinstance(zone, str) or not re.fullmatch(r"[A-Za-z0-9_+-]+(?:/[A-Za-z0-9_+-]+)*", zone):
             raise ValueError("zone must be an IANA name")
@@ -18720,25 +18083,27 @@ if(typeof document!=="undefined")bindAudio();
 
 
 
-def _example_cards() -> str:
+def _example_cards(base: str = "./") -> str:
+    """The example pages as cards; ``base`` is the way to examples/ (``./examples/`` from the front page)."""
     return ('<section class="ui-grid"><article class="ui-card"><h2>Components</h2><p>Tokens, panels, cards, tags, controls and output surfaces.</p>'
             '<span class="ui-tag">modern</span> <span class="ui-tag">static</span></article>'
-            '<article class="ui-card"><h2>Stub examples</h2><p><a href="./mcp-stub.html">MCP Stub</a> · <a href="./api-stub.html">API Stub</a></p></article>'
-            '<article class="ui-card"><h2>Themes</h2><p><a href="./github-like.html">GitHub-like theme</a> · <a href="./parts.html">Parts × themes × layouts</a>: every block under every theme, the regression baseline.</p></article>'
-            '<article class="ui-card"><h2>App shell</h2><p><a href="./showcase.html">Showcase</a>: header, rail or bottom bar, sections.</p></article>'
-            '<article class="ui-card"><h2>Clipboard shelf</h2><p><a href="./clipboard-shelf.html">Shelf and prompt workbench</a>: paste, filter, copy a bundle.</p></article>'
-            '<article class="ui-card"><h2>Door-to-Door</h2><p><a href="./door.html">Pull-down and emoji transitions</a>: A → B, A ↔ B.</p></article>'
-            '<article class="ui-card"><h2>Composition studio</h2><p><a href="./composition-studio.html">Metronome, chords, notes, song seed</a>.</p></article>'
-            '<article class="ui-card"><h2>Play studio</h2><p><a href="./play-studio.html">Counter garden and Irony quest</a>.</p></article>'
-            '<article class="ui-card"><h2>Timeline</h2><p><a href="./timeline.html">Dated events in UTC order</a>.</p></article>'
-            '<article class="ui-card"><h2>Coordinates</h2><p><a href="./coordinates.html">Check a point, read a Maps URL, frame an area</a>.</p></article>'
-            '<article class="ui-card"><h2>Photo studio</h2><p><a href="./photo-studio.html">Frames and stamps on a photo, EXIF-safe import, PNG export</a>.</p></article>'
-            '<article class="ui-card"><h2>Playground</h2><p><a href="./playground.html">A counter with a history, a hold-to-repeat button, and a draggable irony card</a>.</p></article>'
-            '<article class="ui-card"><h2>Test report</h2><p><a href="./test-report.html">Read a JUnit report or Flutter test events; what is new, recurring or resolved</a>.</p></article>'
-            '<article class="ui-card"><h2>MCP lab</h2><p><a href="./mcp-lab.html">An MCP server in the page: both protocol eras, PKCE, header names, Bearer and OAuth metadata</a>.</p></article>'
-            '<article class="ui-card"><h2>792 patterns</h2><p><a href="./patterns.html">The flutter_navigation_basic catalogue and the processing behind it: filter, sort, page, validate, convert, workflow</a>.</p></article>'
-            '<article class="ui-card"><h2>198 screens</h2><p><a href="./screens.html">The Hub and every numbered screen of flutter_navigation_basic in eleven languages, and its native examples: counters, drag to reorder or swap, insert, select, a sum in a Web Worker</a>.</p></article>'
-            '<article class="ui-card"><h2>Image studio</h2><p><a href="./image-studio.html">Layer shapes, text, photos and heatmaps; export SVG, PNG or Base64; keep the history</a>.</p></article></section>')
+            '<article class="ui-card"><h2>🌍 World · 🤖🔁 Stubs</h2><p>Moved to the portfolio: <a href="https://myon-bioinformatics.github.io/tools/demos/">'
+            '🧭 Tools &amp; Demos</a> (the world, the school, the parallel cities, the MCP and API stubs).</p></article>'
+            '<article class="ui-card"><h2>Themes</h2><p><a href=\"' + base + 'github-like.html\">GitHub-like theme</a> · <a href=\"' + base + 'parts.html\">Parts × themes × layouts</a>: every block under every theme, the regression baseline.</p></article>'
+            '<article class="ui-card"><h2>App shell</h2><p><a href=\"' + base + 'showcase.html\">Showcase</a>: header, rail or bottom bar, sections.</p></article>'
+            '<article class="ui-card"><h2>Clipboard shelf</h2><p><a href=\"' + base + 'clipboard-shelf.html\">Shelf and prompt workbench</a>: paste, filter, copy a bundle.</p></article>'
+            '<article class="ui-card"><h2>Door-to-Door</h2><p><a href=\"' + base + 'door.html\">Pull-down and emoji transitions</a>: A → B, A ↔ B.</p></article>'
+            '<article class="ui-card"><h2>Composition studio</h2><p><a href=\"' + base + 'composition-studio.html\">Metronome, chords, notes, song seed</a>.</p></article>'
+            '<article class="ui-card"><h2>Play studio</h2><p><a href=\"' + base + 'play-studio.html\">Counter garden and Irony quest</a>.</p></article>'
+            '<article class="ui-card"><h2>Timeline</h2><p><a href=\"' + base + 'timeline.html\">Dated events in UTC order</a>.</p></article>'
+            '<article class="ui-card"><h2>Coordinates</h2><p><a href=\"' + base + 'coordinates.html\">Check a point, read a Maps URL, frame an area</a>.</p></article>'
+            '<article class="ui-card"><h2>Photo studio</h2><p><a href=\"' + base + 'photo-studio.html\">Frames and stamps on a photo, EXIF-safe import, PNG export</a>.</p></article>'
+            '<article class="ui-card"><h2>Playground</h2><p><a href=\"' + base + 'playground.html\">A counter with a history, a hold-to-repeat button, and a draggable irony card</a>.</p></article>'
+            '<article class="ui-card"><h2>Test report</h2><p><a href=\"' + base + 'test-report.html\">Read a JUnit report or Flutter test events; what is new, recurring or resolved</a>.</p></article>'
+            '<article class="ui-card"><h2>MCP lab</h2><p><a href=\"' + base + 'mcp-lab.html\">An MCP server in the page: both protocol eras, PKCE, header names, Bearer and OAuth metadata</a>.</p></article>'
+            '<article class="ui-card"><h2>792 patterns</h2><p><a href=\"' + base + 'patterns.html\">The flutter_navigation_basic catalogue and the processing behind it: filter, sort, page, validate, convert, workflow</a>.</p></article>'
+            '<article class="ui-card"><h2>198 screens</h2><p><a href=\"' + base + 'screens.html\">The Hub and every numbered screen of flutter_navigation_basic in eleven languages, and its native examples: counters, drag to reorder or swap, insert, select, a sum in a Web Worker</a>.</p></article>'
+            '<article class="ui-card"><h2>Image studio</h2><p><a href=\"' + base + 'image-studio.html\">Layer shapes, text, photos and heatmaps; export SVG, PNG or Base64; keep the history</a>.</p></article></section>')
 
 
 def example_pages() -> dict[str, str]:
@@ -18763,8 +18128,6 @@ def example_pages() -> dict[str, str]:
     return {
         "examples/index.html": page('<main class="ui-page"><h1 class="ui-title">PySaiyanWeBoo</h1><p class="ui-muted">Shared static UI contract for '
                                     'myon-bioinformatics projects.</p>' + _example_cards() + "</main>", "web-ui examples"),
-        "examples/mcp-stub.html": stub_document(EXAMPLE_STUBS["mcp"]),
-        "examples/api-stub.html": stub_document(EXAMPLE_STUBS["api"]),
         "examples/github-like.html": page(github_like, "web-ui GitHub-like theme", "github-like"),
         "examples/showcase.html": showcase_document(EXAMPLES["showcase"]),
         "examples/clipboard-shelf.html": shelf_document(),
@@ -18846,7 +18209,10 @@ EXAMPLES: dict[str, Any] = {'flutter-pages': {'schema': 'web-ui-flutter-pages/1'
                      {'type': 'section', 'title': 'Detail',
                       'blocks': [{'type': 'text', 'text': 'Two paragraphs,\n\nseparated by a blank line.', 'muted': True},
                                  {'type': 'output', 'text': '$ run\nok'},
-                                 {'type': 'links', 'items': [{'label': 'receipt', 'href': './receipt.json'}]}]}]},
+                                 {'type': 'links', 'items': [{'label': 'receipt', 'href': './receipt.json'}]}]},
+                     {'type': 'tabs', 'tabs': [{'label': '🎞 Demo', 'blocks': [{'type': 'text', 'text': 'A GIF or image goes here.'}]},
+                                               {'label': '🧩 Features', 'blocks': [{'type': 'table', 'headers': ['feature', 'how'],
+                                                                                    'rows': [['report', 'one page from JSON']]}]}]}]},
  'page-layouts': {'schema': 'web-ui-layout-presets/1',
                   'default': 'comfortable',
                   'presets': [{'id': 'comfortable', 'label': 'Comfortable', 'note': 'default: 16px text, 16px spacing, 960px page',
@@ -18941,291 +18307,12 @@ EXAMPLES: dict[str, Any] = {'flutter-pages': {'schema': 'web-ui-flutter-pages/1'
                             'icon': 'media',
                             'heading': 'Media',
                             'lead': 'Images are plain img elements with alt text; data-ui-lightbox opens them larger.',
-                            'tags': ['img', 'alt text', 'lightbox']}]},
- 'world': {'schema': 'web-ui-world/1',
-           'id': 'demo',
-           'title': 'web-ui world (prototype)',
-           'zoom_max': 4,
-           'shots': [{'id': 'gate',
-                      'label': 'SHOT 01',
-                      'title': 'Arrive',
-                      'body': 'One page, no page changes. Scroll to move the camera through the shots.',
-                      'bg': '#0d1f3a'},
-                     {'id': 'hall',
-                      'label': 'SHOT 02',
-                      'title': 'Look around',
-                      'body': 'Each shot is data: a label, a title, a text and a color. Python writes the HTML and '
-                              'CSS.',
-                      'bg': '#164a41'},
-                     {'id': 'deck',
-                      'label': 'SHOT 03',
-                      'title': 'Zoom in',
-                      'body': 'The only JavaScript marks what is on screen; CSS reacts to that mark.',
-                      'bg': '#5a2a1a'},
-                     {'id': 'exit',
-                      'label': 'SHOT 04',
-                      'title': 'Find it',
-                      'body': 'Scrolling reaches the information you came for.',
-                      'bg': '#2a2a5a'}],
-           'floors': [{'id': '1f',
-                       'label': '1F',
-                       'width': 960,
-                       'height': 640,
-                       'spots': [{'id': 'gate',
-                                  'x': 120,
-                                  'y': 320,
-                                  'label': 'Gate',
-                                  'category': 'info',
-                                  'body': 'Entrance and help desk.'},
-                                 {'id': 'hall',
-                                  'x': 480,
-                                  'y': 320,
-                                  'label': 'Hall',
-                                  'category': 'info',
-                                  'body': 'The central hall connects every area.'},
-                                 {'id': 'cafe',
-                                  'x': 800,
-                                  'y': 160,
-                                  'label': 'Cafe',
-                                  'category': 'food',
-                                  'body': 'Drinks and light meals.'},
-                                 {'id': 'shop',
-                                  'x': 800,
-                                  'y': 480,
-                                  'label': 'Shop',
-                                  'category': 'food',
-                                  'body': 'Snacks and souvenirs.'}],
-                       'actors': [{'id': 'farmer',
-                                   'emoji': '🧑\u200d🌾',
-                                   'label': 'Farmer',
-                                   'body': 'Walks at a steady pace and stops to look around. Tap to ask.'},
-                                  {'id': 'cat',
-                                   'emoji': '🐈',
-                                   'label': 'Cat',
-                                   'body': 'Wanders; no destination.',
-                                   'speed': 64},
-                                  {'id': 'duck',
-                                   'emoji': '🦆',
-                                   'label': 'Duck',
-                                   'body': 'Slow and sure.',
-                                   'speed': 32},
-                                  {'id': 'robot',
-                                   'emoji': '🤖',
-                                   'label': 'Robot',
-                                   'body': 'Moves in straight lines at constant speed.',
-                                   'speed': 56}],
-                       'player': {'emoji': '🧙', 'x': 120, 'y': 320}},
-                      {'id': '2f',
-                       'label': '2F',
-                       'width': 960,
-                       'height': 640,
-                       'spots': [{'id': 'deck',
-                                  'x': 240,
-                                  'y': 160,
-                                  'label': 'Deck',
-                                  'category': 'info',
-                                  'body': 'Open-air deck with a view of the hall.'},
-                                 {'id': 'lab',
-                                  'x': 720,
-                                  'y': 400,
-                                  'label': 'Lab',
-                                  'category': 'info',
-                                  'body': 'Hands-on corner for the curious.'}],
-                       'actors': [{'id': 'owl',
-                                   'emoji': '🦉',
-                                   'label': 'Owl',
-                                   'body': 'Keeps the deck company.',
-                                   'speed': 40}]}],
-           'board': {'title': 'INFO',
-                     'items': [{'text': 'Gate: wait about 10 min'},
-                               {'text': 'Show starts', 'at': '10:30'},
-                               {'text': 'Guided walk', 'at': '14:00'},
-                               {'text': 'Last entry', 'at': '17:30'},
-                               {'text': 'London lunch', 'at': '12:00', 'zone': 'london'},
-                               {'text': 'Open hours', 'gauge': {'from': '09:00', 'to': '18:00', 'cells': 10, 'glyphs': 'hourglass'}},
-                               {'text': 'Daylight', 'gauge': {'from': '06:00', 'to': '22:00', 'cells': 8, 'glyphs': 'moon'}}],
-                     'shared_issue': 'myon-bioinformatics/PySaiyanWeBoo/110',
-                     'post': True,
-                     'offset_label': True,
-                     'zones': [{'id': 'tokyo', 'label': 'Tokyo', 'tz': 'Asia/Tokyo'},
-                               {'id': 'london', 'label': 'London', 'tz': 'Europe/London'},
-                               {'id': 'ny', 'label': 'New York', 'tz': 'America/New_York'}]}}}
+                            'tags': ['img', 'alt text', 'lightbox']}]}}
 
 
 # Synthetic consumer data, not fetched research results or a second source of
 # repository metadata. Consumers adapt their existing source of truth to this.
-# Real places in miniature (the `place` floor): latitude and longitude in, tiles out. The coordinates are approximate (about 100 m, read off public
-# maps), which is all a miniature needs; the point is where things stand relative to each other, so nothing here is a facility's exact position.
-_CITY_MARKS = {"exit": "🚪", "station": "🚉", "terminus": "🚆"}   # the mark drawn instead of the dot, by category: the cities are their transport
-
-
-def _pt(id: str, label: str, lat: float, lon: float, category: str, body: str = "", flip: str = "", sign: str = "") -> dict[str, Any]:
-    return {"id": id, "label": label, "lat": lat, "lon": lon, "category": category, "body": body, **({"flip": flip} if flip else {}),
-            **({"sign": sign} if sign else {})}
-
-
-_TOKYO_POINTS = [
-    _pt("marunouchi-c", "丸の内中央口", 35.68134, 139.7665, "exit", "東京駅の丸の内側、ちょうど真ん中の出入口です。"),
-    _pt("marunouchi-n", "丸の内北口", 35.6824, 139.7664, "exit", "東京駅の丸の内側、北の出入口です。"),
-    _pt("marunouchi-s", "丸の内南口", 35.68025, 139.76625, "exit", "東京駅の丸の内側、南の出入口です。"),
-    _pt("yaesu-c", "八重洲中央口", 35.6813, 139.7686, "exit", "東京駅の八重洲側、ちょうど真ん中の出入口です。"),
-    _pt("yaesu-n", "八重洲北口", 35.6825, 139.7685, "exit", "東京駅の八重洲側、北の出入口です。"),
-    _pt("yaesu-s", "八重洲南口", 35.6801, 139.7684, "exit", "東京駅の八重洲側、南の出入口です。"),
-    _pt("otemachi", "大手町", 35.6867, 139.7631, "station", "東京駅の北西、歩いて行ける駅です。"),
-    _pt("nijubashimae", "二重橋前", 35.6804, 139.7612, "station", "東京駅の西、丸の内の駅です。"),
-    _pt("yurakucho", "有楽町", 35.6751, 139.7631, "station", "東京駅の南、ひと駅となりです。"),
-    _pt("hibiya", "日比谷", 35.674, 139.7598, "station", "有楽町の西にある駅です。"),
-    _pt("ginza", "銀座", 35.6719, 139.7639, "station", "有楽町の南にある駅です。"),
-    _pt("ginza-itchome", "銀座一丁目", 35.6745, 139.7672, "station", "銀座の北東にある駅です。"),
-    _pt("kyobashi", "京橋", 35.6768, 139.7702, "station", "東京駅の南東、八重洲のむこうの駅です。"),
-    _pt("nihombashi", "日本橋", 35.682, 139.7743, "station", "東京駅の東、八重洲のむこうの駅です。"),
-    _pt("mitsukoshimae", "三越前", 35.6868, 139.7737, "station", "日本橋の北にある駅です。"),
-    _pt("shin-nihombashi", "新日本橋", 35.6898, 139.7741, "station", "三越前の北にある駅です。"),
-    _pt("kanda", "神田", 35.6918, 139.7709, "station", "東京駅の北、ひと駅となりです。"),
-    _pt("takebashi", "竹橋", 35.6906, 139.7586, "station", "大手町の北西にある駅です。"),
-    _pt("shimbashi", "新橋", 35.6663, 139.7583, "station", "有楽町の南、ふた駅となりです。"),
-    _pt("concourse", "◀ 丸の内 | 八重洲 ▶", 35.68075, 139.76755, "sign", "東京駅の、丸の内口と八重洲口のあいだです。", "", "led"),
-    _pt("north-south", "▲ 神田 | 有楽町 ▼", 35.6838, 139.7676, "sign", "東京駅の北と南、となりの駅の方向です。", "", "led"),
-]
-_TOKYO_LINKS = [["marunouchi-n", "marunouchi-c"], ["marunouchi-c", "marunouchi-s"], ["yaesu-n", "yaesu-c"], ["yaesu-c", "yaesu-s"], ["marunouchi-c", "yaesu-c"],
-    ["otemachi", "marunouchi-n"], ["takebashi", "otemachi"], ["nijubashimae", "marunouchi-s"], ["yurakucho", "marunouchi-s"], ["hibiya", "yurakucho"],
-    ["ginza", "yurakucho"], ["shimbashi", "ginza"], ["ginza-itchome", "yaesu-s"], ["kyobashi", "yaesu-s"], ["nihombashi", "yaesu-c"],
-    ["mitsukoshimae", "nihombashi"], ["shin-nihombashi", "mitsukoshimae"], ["kanda", "shin-nihombashi"]]
-_LONDON_POINTS = [
-    _pt("kings-cross", "キングス・クロス", 51.5309, -0.1233, "terminus", "北へ向かう列車が出る大きな駅です。"),
-    _pt("st-pancras", "セント・パンクラス", 51.5322, -0.1269, "terminus", "海をわたる列車も出る、赤れんがの駅です。"),
-    _pt("euston", "ユーストン", 51.5282, -0.1337, "terminus", "北西へ向かう列車の駅です。"),
-    _pt("paddington", "パディントン", 51.5154, -0.1755, "terminus", "西へ向かう列車の駅です。"),
-    _pt("marylebone", "マリルボーン", 51.5225, -0.1631, "terminus", "こぢんまりとした北西の駅です。"),
-    _pt("liverpool-street", "リバプール・ストリート", 51.5178, -0.0823, "terminus", "東へ向かう列車の駅です。"),
-    _pt("fenchurch-street", "フェンチャーチ・ストリート", 51.5115, -0.0789, "terminus", "東の海辺へ向かう列車の駅です。"),
-    _pt("cannon-street", "キャノン・ストリート", 51.5113, -0.0904, "terminus", "川の北岸にある、南東へ向かう駅です。"),
-    _pt("london-bridge", "ロンドン・ブリッジ", 51.5052, -0.0864, "terminus", "川の南岸にある、南へ向かう駅です。"),
-    _pt("blackfriars", "ブラックフライアーズ", 51.512, -0.103, "terminus", "橋の上に駅がある、川をまたぐ駅です。"),
-    _pt("waterloo", "ウォータールー", 51.5031, -0.1132, "terminus", "川の南岸にある、いちばん大きな駅です。"),
-    _pt("charing-cross", "チャリング・クロス", 51.508, -0.1247, "terminus", "川の北岸にある、南東へ向かう駅です。"),
-    _pt("victoria", "ヴィクトリア", 51.4952, -0.1441, "terminus", "南へ向かう列車の駅です。"),
-    _pt("edgware-road", "エッジウェア・ロード", 51.5199, -0.1679, "station", "パディントンとマリルボーンの間の駅です。"),
-    _pt("baker-street", "ベイカー・ストリート", 51.5226, -0.1571, "station", "マリルボーンのとなりの駅です。"),
-    _pt("warren-street", "ウォーレン・ストリート", 51.5247, -0.1384, "station", "ユーストンのとなりの駅です。"),
-    _pt("angel", "エンジェル", 51.5322, -0.1058, "station", "キングス・クロスの東のとなりの駅です。"),
-    _pt("russell-square", "ラッセル・スクエア", 51.523, -0.1244, "station", "キングス・クロスの南のとなりの駅です。"),
-    _pt("farringdon", "ファリンドン", 51.5203, -0.1053, "station", "キングス・クロスの南東のとなりの駅です。"),
-    _pt("moorgate", "ムーアゲート", 51.5186, -0.0886, "station", "リバプール・ストリートの西のとなりの駅です。"),
-    _pt("aldgate", "オールドゲート", 51.5143, -0.0755, "station", "リバプール・ストリートの南東のとなりの駅です。"),
-    _pt("tower-hill", "タワー・ヒル", 51.5098, -0.0766, "station", "フェンチャーチ・ストリートのとなりの駅です。"),
-    _pt("bank", "バンク", 51.5133, -0.0886, "station", "キャノン・ストリートのとなりの駅です。"),
-    _pt("monument", "モニュメント", 51.5108, -0.0863, "station", "キャノン・ストリートの東のとなりの駅です。"),
-    _pt("borough", "ボロー", 51.5011, -0.0943, "station", "ロンドン・ブリッジの南西のとなりの駅です。"),
-    _pt("st-pauls", "セント・ポールズ", 51.5146, -0.0973, "station", "ブラックフライアーズの北東のとなりの駅です。"),
-    _pt("temple", "テンプル", 51.5111, -0.1141, "station", "ブラックフライアーズの西のとなりの駅です。"),
-    _pt("southwark", "サザーク", 51.504, -0.1052, "station", "川の南、ウォータールーの東のとなりの駅です。"),
-    _pt("lambeth-north", "ランベス・ノース", 51.4991, -0.1115, "station", "ウォータールーの南のとなりの駅です。"),
-    _pt("embankment", "エンバンクメント", 51.5074, -0.1223, "station", "チャリング・クロスのとなりの駅です。"),
-    _pt("westminster", "ウェストミンスター", 51.501, -0.1254, "station", "チャリング・クロスの南のとなりの駅です。"),
-    _pt("green-park", "グリーン・パーク", 51.5067, -0.1428, "station", "ヴィクトリアの北のとなりの駅です。"),
-    _pt("pimlico", "ピムリコ", 51.4893, -0.1334, "station", "ヴィクトリアの南東のとなりの駅です。"),
-    _pt("nogard", "nogard", 51.5024, -0.1118, "sign", "うしろから読んでみて。", "🐉", "wood"),
-    _pt("mind-the-gap", "mind the gap", 51.4958, -0.1445, "sign", "駅のホームでよく聞く言葉です。", "", "led"),
-    _pt("platform", "◀ 北 | 南 ▶", 51.5290, -0.1270, "sign", "キングス・クロスとセント・パンクラスの前です。", "", "led"),
-]
-_LONDON_LINKS = [["paddington", "edgware-road"], ["marylebone", "edgware-road"], ["marylebone", "baker-street"], ["euston", "warren-street"], ["kings-cross",
-    "euston"], ["kings-cross", "st-pancras"], ["kings-cross", "russell-square"], ["kings-cross", "angel"], ["farringdon", "kings-cross"],
-    ["liverpool-street", "moorgate"], ["liverpool-street", "aldgate"], ["fenchurch-street", "tower-hill"], ["fenchurch-street", "aldgate"],
-    ["cannon-street", "bank"], ["cannon-street", "monument"], ["london-bridge", "borough"], ["london-bridge", "monument"], ["blackfriars", "temple"],
-    ["blackfriars", "st-pauls"], ["blackfriars", "southwark"], ["waterloo", "lambeth-north"], ["waterloo", "southwark"], ["waterloo",
-    "charing-cross"], ["charing-cross", "embankment"], ["charing-cross", "westminster"], ["victoria", "green-park"], ["victoria", "pimlico"],
-    ["moorgate", "bank"]]
-_THAMES = {"line": [[51.4852, -0.1495], [51.4875, -0.127], [51.4945, -0.123], [51.5008, -0.1219], [51.5062, -0.1198], [51.5086, -0.1169], [51.5099, -0.1043], [51.5095, -0.0985], [51.5088, -0.0937], [51.5079, -0.0877], [51.5055, -0.0754], [51.504, -0.06]], "width": 2}
-
-_PARIS_POINTS = [
-    _pt("gare-du-nord", "パリ北駅", 48.8809, 2.3553, "terminus", "北へ向かう列車の大きな駅です。"),
-    _pt("gare-de-lest", "パリ東駅", 48.8768, 2.3592, "terminus", "東へ向かう列車の駅です。"),
-    _pt("saint-lazare", "サン・ラザール駅", 48.8763, 2.3258, "terminus", "西へ向かう列車の駅です。"),
-    _pt("gare-de-lyon", "リヨン駅", 48.8443, 2.3736, "terminus", "南東へ向かう列車の駅です。"),
-    _pt("austerlitz", "オステルリッツ駅", 48.8421, 2.3652, "terminus", "川の南岸にある、南西へ向かう駅です。"),
-    _pt("montparnasse", "モンパルナス駅", 48.8412, 2.3203, "terminus", "川の南にある、西へ向かう駅です。"),
-    _pt("poissonniere", "ポワソニエール", 48.8772, 2.3492, "station", "北駅の西のとなりの駅です。"),
-    _pt("barbes", "バルベス・ロシュシュアール", 48.8838, 2.3498, "station", "北駅の北西のとなりの駅です。"),
-    _pt("chateau-deau", "シャトー・ドー", 48.8737, 2.3552, "station", "東駅の南のとなりの駅です。"),
-    _pt("louis-blanc", "ルイ・ブラン", 48.8812, 2.3649, "station", "東駅の北東のとなりの駅です。"),
-    _pt("havre-caumartin", "アーヴル・コーマルタン", 48.8737, 2.3282, "station", "サン・ラザール駅の南のとなりの駅です。"),
-    _pt("europe", "ヨーロッパ", 48.8788, 2.3225, "station", "サン・ラザール駅の北西のとなりの駅です。"),
-    _pt("bastille", "バスティーユ", 48.8531, 2.3692, "station", "リヨン駅の北西のとなりの駅です。"),
-    _pt("quai-de-la-rapee", "ケ・ド・ラ・ラペ", 48.8465, 2.366, "station", "リヨン駅とオステルリッツ駅のあいだの駅です。"),
-    _pt("saint-marcel", "サン・マルセル", 48.8383, 2.3603, "station", "オステルリッツ駅の南のとなりの駅です。"),
-    _pt("jussieu", "ジュシュー", 48.8463, 2.3548, "station", "オステルリッツ駅の北西のとなりの駅です。"),
-    _pt("edgar-quinet", "エドガー・キネ", 48.8409, 2.3252, "station", "モンパルナス駅の東のとなりの駅です。"),
-    _pt("vavin", "ヴァヴァン", 48.8421, 2.3282, "station", "モンパルナス駅の北東のとなりの駅です。"),
-    _pt("falguiere", "ファルギエール", 48.8444, 2.3098, "station", "モンパルナス駅の西のとなりの駅です。"),
-    _pt("to-lyon", "▶ Lyon", 48.8449, 2.3728, "sign", "リヨン駅から、リヨンへ向かう列車が出ます。", "", "led"),
-    _pt("rive-gauche", "rive gauche ▼", 48.8530, 2.3440, "sign", "川の南がわ、左岸という意味です。", "", "wood"),
-]
-_PARIS_LINKS = [["gare-du-nord", "poissonniere"], ["gare-du-nord", "barbes"], ["gare-de-lest", "chateau-deau"], ["gare-de-lest", "louis-blanc"], ["gare-du-nord",
-    "gare-de-lest"], ["saint-lazare", "havre-caumartin"], ["saint-lazare", "europe"], ["gare-de-lyon", "bastille"], ["gare-de-lyon",
-    "quai-de-la-rapee"], ["quai-de-la-rapee", "austerlitz"], ["austerlitz", "saint-marcel"], ["austerlitz", "jussieu"], ["montparnasse",
-    "edgar-quinet"], ["montparnasse", "vavin"], ["montparnasse", "falguiere"]]
-_SEINE = {"line": [[48.833, 2.38], [48.8372, 2.3737], [48.845, 2.3668], [48.8506, 2.3622], [48.8545, 2.354], [48.856, 2.349], [48.8573, 2.3413], [48.8585, 2.3377], [48.8609, 2.3306], [48.8637, 2.3203], [48.864, 2.3135], [48.8638, 2.3012], [48.8613, 2.2935], [48.855, 2.2877], [48.848, 2.276]], "width": 1}
-
-
 EXAMPLES.update({
-    "school": {
-        "schema": WORLD_SCHEMA, "id": "school", "title": "School (prototype)", "zoom_max": 4,
-        "avatars": ["🙂", "😎", "🤓", "🐱", "🐶", "🐰", "🦊", "🐼", "🐸", "🦄", "🐙", "🌸", "⭐", "🍎", "⚽", "🚀", "先生", "A"],
-        "tools": {"🗺️": {"label": "見どころ", "label_en": "Highlights", "spots": ["classroom-board", "flowers"]},
-                  "🏫": {"label": "学校", "label_en": "School", "body": "教室と校庭があります。フッターの🚪で行き来できます。"}},
-        "board": {"title": "INFO", "items": [
-            {"text": "朝の会", "at": "08:40"}, {"text": "1時間目", "at": "09:00"}, {"text": "給食", "at": "12:20"},
-            {"text": "下校", "at": "15:30"}, {"text": "今日の授業", "gauge": {"from": "09:00", "to": "15:30"}}]},
-        "floors": [
-            classroom_floor(),
-            {"id": "yard", "label": "校庭", "width": 640, "height": 448,
-             "spots": [{"id": "bar", "x": 160, "y": 128, "label": "鉄棒", "body": "ここで体を動かします。"},
-                       {"id": "flowers", "x": 480, "y": 96, "label": "花だん", "body": "季節の花が咲いています。"}],
-             "actors": [{"id": "kid", "emoji": "🧒", "label": "こども", "body": "走り回っています。", "speed": 48},
-                        {"id": "dog", "emoji": "🐕", "label": "いぬ", "body": "迷い込んだようです。", "speed": 64},
-                        {"id": "bird", "emoji": "🐦", "label": "とり", "body": "屋根にとまっています。", "speed": 32}],
-             "player": {"emoji": "🙂", "x": 320, "y": 320, "speed": 96}}],
-    },
-    # Lands side by side, like the countries of a Dragon Quest map: one line each (`land`), the footer's 🚪 pulldown travels between them.
-    # Swap `theme` (meadow, forest, mountain, desert, coast, castle) or the `seed` and the land is another place; spots/actors/player given
-    # beside `land` replace the generated ones.
-    "overworld": {
-        "schema": WORLD_SCHEMA, "id": "overworld", "title": "Overworld (prototype)", "zoom_max": 4,
-        "avatars": ["🙂", "🧙", "🧝", "🦸", "🐱", "🐶", "🦊", "🐉", "🦄", "⚔️", "🛡️", "🚀"],
-        "tools": {"🧭": {"label": "町", "label_en": "Towns", "labels": {"fr": "Villes", "es": "Pueblos", "de": "Orte", "zh": "城镇"},
-                         "spots": ["meadow-town", "forest-town", "desert-town", "coast-town", "castle-town"]}},
-        "board": {"title": "TRAVEL", "items": [{"text": "旅のはじまり"}, {"text": "🚪で土地をわたろう"}, {"text": "道をたどると町に着きます"}]},
-        "floors": [{"id": "meadow", "land": {"theme": "meadow", "seed": 1}},
-                   {"id": "forest", "land": {"theme": "forest", "seed": 2}},
-                   {"id": "mountain", "land": {"theme": "mountain", "seed": 3}},
-                   {"id": "desert", "land": {"theme": "desert", "seed": 4}},
-                   {"id": "coast", "land": {"theme": "coast", "seed": 5}},
-                   {"id": "castle", "land": {"theme": "castle", "seed": 6}},
-                   {"id": "real", "label": "実空間×仮想", "width": 384, "height": 384, "tile": 32, "real": True,
-                    "spots": [{"id": "real-gate", "label": "入口", "x": 192, "y": 96, "body": "⋯ の 🖼️📷 で、写真かカメラをうしろに映せます（ページの中だけ。保存も送信もしません）。"}],
-                    "player": {"emoji": "🙂", "x": 192, "y": 288, "speed": 96}}],
-    },
-    # The overworld's sequel in real space, as its other sides: Parallel Tokyo (Tokyo Station with its six exits and the stations around it, on foot),
-    # Reverse London (the main termini and the stations beside them, the Thames and its bridges; a sign, nogard, that turns into a dragon)
-    # and Fake Paris (the main stations, the metro beside them, the Seine; a fire in each block). Transport only, no sights or institutions,
-    # so a map stays readable with every name on. `place` turns latitude/longitude into tiles.
-    "cities": {
-        "schema": WORLD_SCHEMA, "id": "cities", "title": "Parallel cities", "zoom_max": 4, "names": "dots", "mark_scale": [1.5, 1.5],
-        "avatars": ["🙂", "🧳", "🚶", "🎒", "🐱", "🐶", "🦊", "🐼", "🚃", "☂️", "🎩", "🗼"],
-        "tools": {"🗼": {"label": "パラレル東京", "label_en": "Parallel Tokyo", "floor": "tokyo"},
-                  "🎡": {"label": "リバースロンドン", "label_en": "Reverse London", "floor": "london"},
-                  "🥖": {"label": "フェイクパリ", "label_en": "Fake Paris", "floor": "paris"},
-                  "🚉": {"label": "東京駅", "label_en": "Tokyo Station",
-                         "spots": ["tokyo-marunouchi-n", "tokyo-marunouchi-c", "tokyo-marunouchi-s", "tokyo-yaesu-n", "tokyo-yaesu-c", "tokyo-yaesu-s"]}},
-        "board": {"title": "PARALLEL", "items": [{"text": "実在の街の、もうひとつの姿"}, {"text": "🚪で3つの街を行き来"}, {"text": "歩いて駅から駅へ"}]},
-        "floors": [{"id": "tokyo", "label": "Parallel Tokyo", "place": {"points": _TOKYO_POINTS, "meters": 32, "links": _TOKYO_LINKS, "marks": _CITY_MARKS}},
-                   {"id": "london", "label": "Reverse London",
-                    "place": {"points": _LONDON_POINTS, "meters": 150, "links": _LONDON_LINKS, "rivers": [_THAMES], "marks": _CITY_MARKS}},
-                   {"id": "paris", "label": "Fake Paris",
-                    "place": {"points": _PARIS_POINTS, "meters": 150, "links": _PARIS_LINKS, "rivers": [_SEINE],
-                              "scatter": {"kind": "fire", "every": 8, "seed": 5}, "marks": _CITY_MARKS}}],
-    },
     "catalog-report": {
         "schema": "web-ui-catalog/1", "title": "Analysis report",
         "description": "Synthetic example: compare observations and inspect their evidence.",
@@ -19271,10 +18358,97 @@ _INDEX_LAYOUT_CANDIDATES = {"schema": "web-ui-layout-candidates/1", "presets": {
 # to the page, add a room made from a builder; to improve the page, improve the builder. The main view fills one 48px-barred viewport; a room opens over it
 # through :target (no script; :has(:target) so a link to an anchor inside a room opens it too). Pixel values are multiples of 8.
 FRONT_RESERVED = "rooms"
+
+
+def gaze_avatar_html(*, label: str = "Blink") -> str:
+    """Button markup for the gaze-avatar component. The label names the blink action."""
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("the avatar label must be nonempty text")
+    return (f'<button type="button" class="ui-gaze" aria-label="{escape(label, quote=True)}">'
+            '<span class="ui-gaze-face" aria-hidden="true"><span class="ui-gaze-look">'
+            '<span class="ui-gaze-eyes"></span></span></span></button>')
+
+
+GAZE_AVATAR_CSS = """
+button.ui-gaze,.ui-front-bar button.ui-gaze {
+  display:inline-grid;place-items:center;width:44px;height:44px;padding:0;border:0;
+  background:transparent;border-radius:50%;vertical-align:middle;cursor:pointer;
+}
+.ui-gaze:focus-visible {outline:2px solid currentColor;outline-offset:-2px}
+.ui-gaze-face {
+  display:grid;place-items:center;width:36px;height:34px;border-radius:49% 57% 46% 43%;
+  background:radial-gradient(ellipse at 32% 20%,#d8fbff 0%,#83deed 45%,#45afcc 100%);
+  box-shadow:inset 0 -2px 2px #2186a34d;transform:rotate(-6deg);
+}
+.ui-gaze-look {display:grid;place-items:center;animation:ui-gaze-wander 7s ease-in-out infinite}
+.ui-gaze-eyes {display:block;width:15px;height:8px;position:relative;animation:ui-gaze-blink 4.6s linear infinite}
+.ui-gaze-eyes::before,.ui-gaze-eyes::after {
+  content:"";position:absolute;top:0;width:4px;height:100%;border-radius:50%;background:#172f40;
+}
+.ui-gaze-eyes::before {left:0}.ui-gaze-eyes::after {right:0}
+.ui-gaze[data-looking] .ui-gaze-look {animation:none;transform:translate(var(--gaze-x),var(--gaze-y));transition:transform 110ms ease-out}
+@keyframes ui-gaze-wander {
+  0%,20%,95%,100% {transform:translate(0,0)} 32%,48% {transform:translate(3px,-1px)} 65%,80% {transform:translate(-3px,1px)}
+}
+@keyframes ui-gaze-blink {0%,90%,96%,100% {transform:scaleY(1)} 93% {transform:scaleY(.14)}}
+@media (prefers-reduced-motion:reduce) {
+  .ui-gaze .ui-gaze-eyes,.ui-gaze .ui-gaze-look,.ui-gaze[data-looking] .ui-gaze-look {animation:none;transform:none;transition:none}
+}
+"""
+
+
+GAZE_AVATAR_JS = """
+for (const face of (typeof document === 'undefined' ? [] : document.querySelectorAll('.ui-gaze'))) {
+  if (face.hasAttribute('data-gaze-bound')) continue;
+  face.setAttribute('data-gaze-bound', '');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const eyes = face.querySelector('.ui-gaze-eyes');
+  let idleTimer, frame, x, y;
+  function rest() {
+    cancelAnimationFrame(frame);
+    clearTimeout(idleTimer);
+    frame = 0;
+    delete face.dataset.looking;
+  }
+  function look() {
+    frame = 0;
+    const rect = face.getBoundingClientRect();
+    const dx = x - rect.left - rect.width / 2;
+    const dy = y - rect.top - rect.height / 2;
+    const distance = Math.max(22, Math.hypot(dx, dy));
+    face.style.setProperty('--gaze-x', (5 * dx / distance) + 'px');
+    face.style.setProperty('--gaze-y', (4 * dy / distance) + 'px');
+    face.dataset.looking = '';
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(rest, 1500);
+  }
+  function point(event) {
+    if (reduced.matches || !event.isPrimary) return;
+    x = event.clientX;
+    y = event.clientY;
+    if (!frame) frame = requestAnimationFrame(look);
+  }
+  document.addEventListener('pointermove', point, {passive:true});
+  document.addEventListener('pointerdown', point, {passive:true});
+  // A short tap leaves the viewport before its queued gaze frame can run.
+  document.documentElement.addEventListener('pointerleave', e => {if (e.pointerType !== 'touch') rest()});
+  window.addEventListener('blur', rest);
+  reduced.addEventListener('change', rest);
+  face.addEventListener('click', () => {
+    if (!reduced.matches) eyes.animate([
+      {transform:'scaleY(1)'}, {transform:'scaleY(.12)',offset:.4}, {transform:'scaleY(1)'}
+    ], 260);
+  });
+}
+"""
+
+
 _FRONT_CSS = (
     ".ui-front{display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden;background:var(--ui-bg);color:var(--ui-fg)}"
     ".ui-front-bar,.ui-room-bar{display:flex;align-items:center;gap:8px;box-sizing:border-box;height:48px;padding:0 8px;border-bottom:1px solid var(--ui-border);"
     "background:var(--ui-panel)}.ui-front-bar{flex:none}.ui-room-bar{position:sticky;top:0;z-index:2;justify-content:flex-end}"
+    ".ui-front-bar:has(>.ui-gaze){position:relative}.ui-front-bar>.ui-gaze{position:absolute;left:50%;transform:translateX(-50%)}"
+    ".ui-front-bar:has(>.ui-gaze) .ui-front-title{max-width:calc(50% - 72px);margin-right:auto}"
     ".ui-front-bar img{flex:none;width:32px;height:32px;border-radius:var(--ui-radius)}"
     ".ui-front-title{flex:1;min-width:0;margin:0;font-size:1rem;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
     ".ui-front-bar a,.ui-front-bar button,.ui-room-bar a{display:flex;align-items:center;justify-content:center;flex:none;width:40px;height:40px;box-sizing:border-box;"
@@ -19282,6 +18456,7 @@ _FRONT_CSS = (
     "border-radius:var(--ui-radius);cursor:pointer}"
     ".ui-front>.ui-world{flex:1;min-height:0;display:flex;flex-direction:column;margin:0;border:0;border-radius:0}"
     ".ui-front>.ui-world .ui-world-body{flex:1;min-height:0}.ui-front>.ui-world .ui-world-view{height:auto}"
+    ".ui-front>.ui-front-view{flex:1;min-height:0;overflow:auto}"
     ".ui-room{position:fixed;inset:0;z-index:20;overflow:auto;scroll-padding-top:56px;visibility:hidden;background:var(--ui-bg);color:var(--ui-fg)}"
     ".ui-room:is(:target,:has(:target)){visibility:visible}"
     ".ui-seed{align-items:center}.ui-seed-dial{flex:1;min-width:8rem;accent-color:var(--ui-accent)}.ui-seed-out{min-width:3ch;text-align:center}"
@@ -19303,20 +18478,21 @@ def front_rooms(rooms: Any) -> list[dict[str, str]]:
         if not isinstance(room, dict) or set(room) - {"id", "emoji", "title", "text", "link", "html"} or not {"id", "emoji", "title", "html"} <= set(room):
             raise ValueError("a room has id, emoji, title, html and optionally text and link")
         rid = room["id"]
-        if not isinstance(rid, str) or not _WORLD_TOKEN.fullmatch(rid) or rid == FRONT_RESERVED or rid in seen:
+        if not isinstance(rid, str) or not _TOKEN_RE.fullmatch(rid) or rid == FRONT_RESERVED or rid in seen:
             raise ValueError("a room id is a unique lowercase token, and not " + FRONT_RESERVED)
         if not isinstance(room["html"], str) or f'id="{rid}"' not in room["html"]:
             raise ValueError("a room's html holds the element whose id is the room's id")
         seen.add(rid)
-        out.append({"id": rid, "emoji": _world_text(room["emoji"], "emoji", 16), "title": _world_text(room["title"], "title", 60),
-                    "text": _world_text(room.get("text", ""), "text", 200, required=False),
-                    "link": _world_text(room.get("link", "Open"), "link", 40), "html": room["html"]})
+        out.append({"id": rid, "emoji": _text_field(room["emoji"], "emoji", 16), "title": _text_field(room["title"], "title", 60),
+                    "text": _text_field(room.get("text", ""), "text", 200, required=False),
+                    "link": _text_field(room.get("link", "Open"), "link", 40), "html": room["html"]})
     return out
 
 
-def front_html(main: str, rooms: Any, *, title: str, lead: str = "", tags: Any = (), icon: str | None = None, tools: str = "") -> str:
+def front_html(main: str, rooms: Any, *, title: str, lead: str = "", tags: Any = (), icon: str | None = None, tools: str = "", back: Any = None) -> str:
     """A page that is one view and a door: ``main`` (trusted HTML) fills the viewport under a bar (``icon``, the ``title``, trusted ``tools`` such as seed_roll_html(),
-    and 🚪); 🚪 opens the menu of ``rooms`` and each room opens over the view, ✖️ closes it. The menu's cards and the bars are built here from the rooms' data."""
+    and 🚪); 🚪 opens the menu of ``rooms`` and each room opens over the view, ✖️ closes it. The menu's cards and the bars are built here from the rooms' data.
+    ``back`` (as back_nav_html) puts the way back first in the menu, so the view keeps the whole screen."""
     checked = front_rooms(rooms)
     if not isinstance(main, str) or not isinstance(tools, str):
         raise ValueError("main and tools are HTML strings")
@@ -19324,30 +18500,38 @@ def front_html(main: str, rooms: Any, *, title: str, lead: str = "", tags: Any =
         raise ValueError("tags list at most 6 entries")
     if icon is not None:
         _require_local_or_https(icon, label="icon", allow_query=False)
-    name = _world_text(title, "title", 80)
+    name = _text_field(title, "title", 80)
     door = '<a href="#rooms" aria-label="Rooms" title="Rooms">🚪</a>'
     close = '<a href="#" aria-label="Close" title="Close">✖️</a>'
     room = lambda inner, bar, rid="": ('<section class="ui-room"' + (f' id="{rid}"' if rid else "") + f'><nav class="ui-room-bar" aria-label="Rooms">{bar}</nav>'
                                        f'<div class="ui-page">{inner}</div></section>')
     cards = "".join(f'<article class="ui-card"><h2>{escape(r["emoji"])} {escape(r["title"])}</h2><p>{escape(r["text"])}</p><a href="#{r["id"]}">{escape(r["link"])} →</a></article>'
                     for r in checked)
-    menu = room(f'<header class="stub-header"><div><h2 class="ui-title">🚪 {escape(name)}</h2><p class="ui-muted">{escape(lead)}</p></div>'
-                f'<div class="stub-meta">{"".join(badge(_world_text(t, "tag", 24)) for t in tags)}</div></header><section class="ui-grid">{cards}</section>', close, FRONT_RESERVED)
+    menu = room((back_nav_html(back) if back is not None else "") + f'<header class="stub-header"><div><h2 class="ui-title">🚪 {escape(name)}</h2><p class="ui-muted">{escape(lead)}</p></div>'
+                f'<div class="stub-meta">{"".join(badge(_text_field(t, "tag", 24)) for t in tags)}</div></header><section class="ui-grid">{cards}</section>', close, FRONT_RESERVED)
     picture = f'<img src="{escape(icon, quote=True)}" width="32" height="32" alt="{escape(name, quote=True)} icon">' if icon else ""
     return (f'<main class="ui-front"><header class="ui-front-bar">{picture}<h1 class="ui-front-title">{escape(name)}</h1>{tools}{door}</header>{main}</main>'
             + menu + "".join(room(r["html"], door + close) for r in checked))
 
 
 def front_document(main: str, rooms: Any, *, title: str, lead: str = "", tags: Any = (), icon: str | None = None, tools: str = "", css: str = "",
-                   scripts: str = "", document_title: str | None = None, favicon: str | None = None, theme: str = "modern") -> str:
-    """front_html() as a single-file page: the bundled CSS, front_css(), your ``css`` (trusted), and ``scripts`` (trusted module script tags, e.g. from module_script())."""
-    return render_document(trusted_html=front_html(main, rooms, title=title, lead=lead, tags=tags, icon=icon, tools=tools) + scripts,
+                   scripts: str = "", document_title: str | None = None, favicon: str | None = None, theme: str = "modern",
+                   gaze_label: str | None = None, back: Any = None) -> str:
+    """front_html() as a single-file page: the bundled CSS, front_css(), your ``css`` (trusted), and ``scripts`` (trusted module script tags, e.g. from module_script()).
+    Set gaze_label to the blink action name to include the interactive header avatar."""
+    if gaze_label is not None:
+        avatar = component_parts("gaze-avatar", label=gaze_label)
+        tools = avatar["html"] + tools
+        css += avatar["css"]
+        scripts += module_script(avatar["js"])
+    return render_document(trusted_html=front_html(main, rooms, title=title, lead=lead, tags=tags, icon=icon, tools=tools, back=back) + scripts,
                            title=document_title or title, theme=theme, css=bundled_css() + front_css() + css, favicon=favicon, touch_icon=icon)
 
 
 def _index_page() -> str:
-    """The front page (index.html): front_document() over the library's own builders and the EXAMPLES specs; nothing in it is written for the page alone.
-    The overworld is the main view; every other example is a room. Needs a checkout (tools/layout_presets.py)."""
+    """The front page (index.html): front_document() over the library's own builders; nothing in it is written for the page alone.
+    🎛️ The switches and 🎲 the seeded wall are the main view (the web UI and its themes); the parts, the request draft and the way to the
+    portfolio's demos are rooms behind 🚪. Needs a checkout (tools/layout_presets.py)."""
     import importlib
     root = Path(__file__).resolve().parent
     sys.path.insert(0, str(root / "tools"))
@@ -19355,53 +18539,42 @@ def _index_page() -> str:
         layout_presets = importlib.import_module("layout_presets")
     finally:
         sys.path.pop(0)
-    world, school, overworld, presets = example_data("world"), example_data("school"), example_data("overworld"), example_data("layout-presets")
-    cities = example_data("cities")
+    presets = example_data("layout-presets")
     tiles = "".join(f"<li>tile {i}</li>" for i in range(1, 9))
-    section = lambda inner: f"<section>{inner}</section>"
+    main = ('<div class="ui-front-view"><div class="ui-page"><section class="ui-panel" id="try"><h2>🎛️ Try it</h2><p class="ui-muted">The switches act at once: '
+            'no reload. The theme and the seed are saved in this browser; the layout is plain CSS. The seed is the same palette Python draws '
+            f'(<code>web_ui.random_theme</code>).</p>{theme_switch_html()}{seed_dial_html()}{layout_presets.controls_html(presets, _INDEX_LAYOUT_CANDIDATES)}'
+            f'<ul class="ui-matrix-tiles">{tiles}</ul></section><section class="ui-panel" id="wall"><h2>🎲 Random themes, side by side</h2>'
+            f'<p class="ui-muted">Twelve seeded palettes at once; tap one to wear it. Every text pair meets WCAG AA by construction.</p>{theme_wall(range(12))}'
+            '</section></div></div>')
+    demos = "https://myon-bioinformatics.github.io/tools/demos/"
     rooms = [
-        {"id": "try", "emoji": "🎛️", "title": "Try it", "text": "Switch theme, layout and seed live: no reload, no stylesheet swap.", "link": "Open the switches",
-         "html": '<section class="ui-panel" id="try"><h2>🎛️ Try it</h2><p class="ui-muted">The switches act at once: no reload. The theme and the seed are saved in '
-                 'this browser; the layout is plain CSS. The seed is the same palette Python draws (<code>web_ui.random_theme</code>).</p>'
-                 f'{theme_switch_html()}{seed_dial_html()}{layout_presets.controls_html(presets, _INDEX_LAYOUT_CANDIDATES)}<ul class="ui-matrix-tiles">{tiles}</ul></section>'},
-        {"id": "mcp", "emoji": "🔌", "title": "MCP workspace", "text": "Reusable MCP-style result/evidence/history structure, with a declarative mock.",
-         "link": "Open MCP stub", "html": section(stub_html(EXAMPLE_STUBS["mcp"], heading_level=2))},
-        {"id": "api", "emoji": "🔗", "title": "API workspace", "text": "Same semantic workspace with consumer-owned API behavior.",
-         "link": "Open API stub", "html": section(stub_html(EXAMPLE_STUBS["api"], heading_level=2))},
+        {"id": "parts", "emoji": "🧩", "title": "Parts", "text": "Every example page: components, themes, the app shell, studios, patterns and screens.",
+         "link": "Open the parts", "html": f'<section class="ui-panel" id="parts"><h2>🧩 Parts</h2>{_example_cards("./examples/")}</section>'},
         {"id": "curl", "emoji": "📋", "title": "Request draft", "text": "Paste a curl command: it is read in the page and never run.",
          "link": "Open the draft", "html": curl_panel_html()},
-        {"id": "world", "emoji": "🌍", "title": "World (prototype)", "text": "One page, a camera: scroll the shots, pan and zoom the map.", "link": "Open the world",
-         "html": '<section class="ui-panel" id="world"><h2>🌍 World (prototype)</h2><p class="ui-muted">One page, a camera, no page changes. Scroll the shots; '
-                 'drag, wheel or pinch the map and open a spot. Python writes this HTML, the CSS and the small script from '
-                 f'<code>EXAMPLES["world"]</code>.</p>{world_html(world)}</section>'},
-        {"id": "school", "emoji": "🏫", "title": "School (prototype)", "text": "Pick an emoji, then walk between desks by tap, keys or the pad.",
-         "link": "Open the school",
-         "html": '<section class="ui-panel" id="school"><h2>🏫 School (prototype)</h2><p class="ui-muted">The same world with a tile grid and props: pick an emoji, '
-                 'then walk by tap, arrow keys / WASD or the on-screen pad. Desks, the board and shelves are solid; chairs are not. '
-                 f'From <code>EXAMPLES["school"]</code>; Python plans the walk, the page only plays it.</p>{world_html(school)}</section>'},
-        {"id": "cities", "emoji": "🗼", "title": "Parallel cities", "text": "Parallel Tokyo, Reverse London and Fake Paris from latitude and longitude: walk from station to station.",
-         "link": "Open the cities",
-         "html": '<section class="ui-panel" id="cities"><h2>🗼 Parallel cities</h2><p class="ui-muted">The overworld\'s sequel: real places as tiles, each the other side of '
-                 'its city, drawn as its transport. Parallel Tokyo is Tokyo Station (six exits) and the stations within walking distance; Reverse London is the main '
-                 'termini and the stations beside them, with the Thames, its bridges and a sign that turns into a dragon; Fake Paris is the main stations, the metro beside '
-                 'them and the Seine, with a fire in each block. Use 🚪 to travel between them. '
-                 f'From <code>EXAMPLES["cities"]</code>: each floor is a list of latitude/longitude points (<code>place</code>).</p>{world_html(cities)}</section>'},
-        {"id": "wall", "emoji": "🎲", "title": "Random themes", "text": "Seeded palettes side by side; tap one to wear it. Every text pair meets WCAG AA.",
-         "link": "Open the wall",
-         "html": '<section class="ui-panel" id="wall"><h2>🎲 Random themes, side by side</h2><p class="ui-muted">Twelve seeded palettes at once; tap one to wear it. '
-                 f'Every text pair meets WCAG AA by construction.</p>{theme_wall(range(12))}</section>'},
+        {"id": "demos", "emoji": "🧭", "title": "Tools & Demos", "text": "🌍 The world, 🏫 the school, 🗼 the parallel cities and 🤖🔁 the stubs: built on these parts, "
+         "they live in the portfolio.", "link": "Open the demos",
+         "html": '<section class="ui-panel" id="demos"><h2>🧭 Tools &amp; Demos</h2><p class="ui-muted">Built on these parts and themes, they live in the portfolio now.</p>'
+                 '<p class="ui-links">' + " · ".join(f'<a href="{demos}{href}">{label}</a>' for label, href in (
+                     ("🌍 World", "world.html"), ("🏫 School", "school.html"), ("🗼 Parallel cities", "cities.html"), ("🎬 Camera", "world-shots.html"),
+                     ("🤖 MCP stub", "mcp-stub.html"), ("🔁 API stub", "api-stub.html"))) + "</p></section>"},
+        {"id": "guide", "emoji": "🧩", "title": "機能一覧", "text": "Every CLI option and public name, read from the code.",
+         "link": "Open the guide", "html": '<section class="ui-panel" id="guide"><h2>🧩 機能一覧</h2><p class="ui-muted">The usage guide lists '
+                                           'every option and every public name of pysaiyanweboo.py, read from the code at build time.</p>'
+                                           '<p class="ui-links"><a href="./guide/">🧩 機能一覧</a></p></section>'},
     ]
-    css = layout_presets.css(presets) + world_css(world) + world_css(overworld, base=False) + world_css(school, base=False) + world_css(cities, base=False) + _WALL_CSS
-    scripts = (module_script(stub_script(EXAMPLE_STUBS["mcp"], EXAMPLE_STUBS["api"]) + "bindTheme();\n") + module_script(_JS["theme.js"] + "bindSeed();\n")
-               + module_script(_JS["curl.js"]) + module_script(WORLD_JS))
-    return front_document(world_html(overworld), rooms, title="PySaiyanWeBoo", lead="Shared static-first UI contract for myon-bioinformatics projects.",
-                          tags=("v1", "build-free"), icon="./docs/brand/icon.png", tools=seed_roll_html(), css=css, scripts=scripts,
-                          document_title="PySaiyanWeBoo — static UI contract", favicon="./docs/brand/favicon.png")
+    css = layout_presets.css(presets) + _WALL_CSS
+    scripts = (module_script(EMBEDDED_UI_JS + "bindTheme();\n") + module_script(_JS["theme.js"] + "bindSeed();\n") + module_script(_JS["curl.js"]))
+    return front_document(main, rooms, title="PySaiyanWeBoo", lead="Shared static-first UI contract for myon-bioinformatics projects.",
+                          tags=("v1", "build-free"), icon="./docs/brand/icon.png", tools=seed_roll_html(), gaze_label="Blink", css=css, scripts=scripts,
+                          document_title="PySaiyanWeBoo — static UI contract", favicon="./docs/brand/favicon.png",
+                          back="myon-bioinformatics/PySaiyanWeBoo")   # 🏠 first behind the 🚪 door
 
 
 def js_modules() -> dict[str, str]:
-    """Every browser module by file name (ui.js, stub.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, scroll.js, world.js)."""
-    return {**_JS, "dial.js": DIAL_JS, "world.js": WORLD_JS}
+    """Every browser module by file name (ui.js, controls.js, collection.js, navigation.js, repository-diagnostics.js, gif.js, curl.js, theme.js, shelf.js, door.js, source.js, composition.js, coordinates.js, dial.js, pager.js, scroll.js, gaze-avatar.js)."""
+    return {**_JS, "dial.js": DIAL_JS, "pager.js": PAGER_JS, "gaze-avatar.js": GAZE_AVATAR_JS}
 
 
 def js_source(name: str) -> str:
@@ -19530,8 +18703,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--parts", action="store_true", help="print the parts × themes × layouts page (see parts_document; --brand adds a registered theme) and exit")
     parser.add_argument("--page", type=Path, metavar="FILE",
                         help="print a self-contained page for a web-ui-page/1 JSON spec (see page_document; --brand registers its theme, --layouts adds presets) and exit")
-    parser.add_argument("--world", type=Path, metavar="FILE",
-                        help="print a single-file page for a web-ui-world/1 JSON spec and exit; `-` reads the spec from stdin")
+    parser.add_argument("--repository", metavar="OWNER/REPO", help="with --page: put the way back first — 🏠 the owner's portfolio · 🐙 the repository (see back_nav_html)")
+    parser.add_argument("--home-screen", type=Path, metavar="DIR", help="with --page: 🏠 read the spec's icon under DIR and write icon-180/192/512.png, the manifest and the spec with home (Base64 cache) there (see home_screen)")
+    parser.add_argument("--features", type=Path, action="append", default=[], metavar="FILE", help="with --page: 🧩 add every CLI command and public name of this Python file to the 機能一覧 tab (repeatable; see add_features)")
+    parser.add_argument("--features-config", type=Path, metavar="FILE",
+                        help="with --page: JSON list of Python sources and required CLI invocations")
+    parser.add_argument("--run-steps", action="store_true", help="with --page: 🤖 run the runbook steps marked run: true here first and show what came out (see run_steps)")
     parser.add_argument("--component", metavar="NAME", help="print one component of COMPONENTS (a page by default; --part html, css, js or json)."
                         " A spec comes from --spec FILE (- for stdin), keyword arguments from --set KEY=VALUE (JSON values, else text); --component list names them")
     parser.add_argument("--spec", type=Path, metavar="FILE", help="with --component: the spec, the builder's first argument (- reads stdin)")
@@ -19539,6 +18716,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--part", choices=("page", "html", "css", "js", "json"), default="page", help="with --component: what to print (default %(default)s)")
     parser.add_argument("--example", metavar="NAME", help="print one example spec as JSON and exit (including catalog-report, catalog-projects)")
     parser.add_argument("--btk-adapter", metavar="ID", help="print one browser-test-kit platform adapter (btk-platform-adapter/1) as JSON and exit; `list` names them")
+    parser.add_argument("--collection", action="store_true", help="filter, sort, window and group the JSON collection request in stdin and print the JSON result (filter_request; was collection_filter.py)")
     parser.add_argument("--pattern", metavar="FAMILY", help="run one pattern reference on the JSON request in stdin and print its JSON result (see PATTERN_RUNNERS); `list` names the families, `catalogue` prints the 792 patterns")
     parser.add_argument("--url", metavar="URL", help="with --btk-adapter: the address of the page to check (default: the local example server)")
     parser.add_argument("--pattern-serve", action="store_true", help="serve the patterns page and run every pattern reference over HTTP on 127.0.0.1 only (POST /pattern/FAMILY with JSON); stop with Ctrl-C")
@@ -19635,8 +18813,22 @@ def main(argv: list[str] | None = None) -> int:
                 brand = json.loads(args.brand.read_text(encoding="utf-8"))
                 theme_css(str(brand["name"]), dict(brand["tokens"]))
             layouts = json.loads(args.layouts.read_text(encoding="utf-8")) if args.layouts else None
-            sys.stdout.write(page_document(spec, layouts=layouts))
-        except (OSError, ValueError, KeyError, TypeError) as exc:
+            if args.features_config:
+                if args.features:
+                    parser.error("--features-config cannot be combined with --features")
+                config = json.loads(args.features_config.read_text(encoding="utf-8"))
+                spec = _put_features(spec, _feature_config_sections(config))
+            for module in args.features:
+                spec = add_features(spec, module)
+            if args.run_steps:
+                spec = run_steps(spec, cwd=Path.cwd())
+            if args.home_screen:
+                spec, files = home_screen(spec, args.home_screen)
+                for name, data in {**files, args.page.name: (json.dumps(spec, ensure_ascii=False, indent=2) + "\n").encode("utf-8")}.items():
+                    (args.home_screen / name).write_bytes(data)
+            page = page_document(spec, layouts=layouts)
+            sys.stdout.write(add_back_nav(page, args.repository) if args.repository else page)
+        except (OSError, ValueError, KeyError, TypeError, SyntaxError) as exc:
             parser.error(str(exc))
         return 0
     if args.check_theme:
@@ -19693,6 +18885,14 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             parser.error(str(exc))
         return 0
+    if args.collection:                                               # the former collection_filter.py's exact output and exit codes
+        try:
+            request = json.load(sys.stdin, parse_constant=_collection_reject_non_json)
+            sys.stdout.write(json.dumps(filter_request(request), ensure_ascii=False, separators=(",", ":"), allow_nan=False) + "\n")
+            return 0
+        except (ValueError, TypeError, UnicodeError) as error:
+            print("error: " + str(error), file=sys.stderr)
+            return 2
     if args.pattern:
         if args.pattern == "list":
             sys.stdout.write("\n".join(sorted(PATTERN_RUNNERS)) + "\n")
@@ -19734,17 +18934,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             sys.stdout.write(result)
         return 0
-    if args.world or args.theme_wall is not None:
+    if args.theme_wall is not None:
         try:
-            if args.world == Path("-"):
-                raw = sys.stdin.buffer.read(PATTERN_MAX_INPUT + 1)
-                if len(raw) > PATTERN_MAX_INPUT:
-                    raise ValueError(f"spec is larger than {PATTERN_MAX_INPUT} bytes")
-                text = raw.decode("utf-8")
-            else:
-                text = args.world.read_text(encoding="utf-8") if args.world else ""
-            sys.stdout.write(world_document(json.loads(text), theme=args.theme)
-                             if args.world else theme_wall_document(args.theme_wall))
+            sys.stdout.write(theme_wall_document(args.theme_wall))
         except (OSError, ValueError) as exc:
             parser.error(str(exc))
         return 0
