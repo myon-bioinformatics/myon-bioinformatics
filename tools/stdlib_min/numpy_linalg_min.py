@@ -1229,25 +1229,32 @@ def _svd_onesided(data, rows: int, cols: int):
     """片側 Jacobi。小さい特異値も潰さない（lstsq / pinv の階数判定、c001 の 200 未満）。"""
     transposed = rows < cols
     if transposed:
-        original = data
-        data = [original[r * cols + c] for c in range(cols) for r in range(rows)]
+        columns = [data[r * cols:(r + 1) * cols] for r in range(rows)]
         rows, cols = cols, rows
     else:
-        data = list(data)
-    vectors = [0.0] * (cols * cols)
+        columns = [data[c::cols] for c in range(cols)]
+    vectors = [[0.0] * cols for _ in range(cols)]
     for i in range(cols):
-        vectors[i * cols + i] = 1.0
+        vectors[i][i] = 1.0
+
+    # A column's squared norm changes only when that column is rotated.
+    # Sum in row order both here and after each rotation to preserve rounding.
+    squared_norms = []
+    for column in columns:
+        total = 0.0
+        for value in column:
+            total += value * value
+        squared_norms.append(total)
+
     for _sweep in range(40):
         rotations = 0
         for p in range(cols - 1):
+            column_p = columns[p]
             for q in range(p + 1, cols):
-                app = aqq = apq = 0.0
-                for i in range(rows):
-                    base = i * cols
-                    cp = data[base + p]
-                    cq = data[base + q]
-                    app += cp * cp
-                    aqq += cq * cq
+                column_q = columns[q]
+                app, aqq = squared_norms[p], squared_norms[q]
+                apq = 0.0
+                for cp, cq in zip(column_p, column_q):
                     apq += cp * cq
                 scale = _math.sqrt(app * aqq) if app > 0.0 and aqq > 0.0 else 0.0
                 if abs(apq) <= _EPS * scale:
@@ -1257,27 +1264,22 @@ def _svd_onesided(data, rows: int, cols: int):
                 tangent = _math.copysign(1.0, tau) / (abs(tau) + _math.sqrt(1.0 + tau * tau))
                 cosine = 1.0 / _math.sqrt(1.0 + tangent * tangent)
                 sine = tangent * cosine
-                for i in range(rows):
-                    base = i * cols
-                    cp = data[base + p]
-                    cq = data[base + q]
-                    data[base + p] = cosine * cp - sine * cq
-                    data[base + q] = sine * cp + cosine * cq
-                for i in range(cols):
-                    base = i * cols
-                    vp = vectors[base + p]
-                    vq = vectors[base + q]
-                    vectors[base + p] = cosine * vp - sine * vq
-                    vectors[base + q] = sine * vp + cosine * vq
+                app = aqq = 0.0
+                for i, (cp, cq) in enumerate(zip(column_p, column_q)):
+                    new_p = cosine * cp - sine * cq
+                    new_q = sine * cp + cosine * cq
+                    column_p[i] = new_p
+                    column_q[i] = new_q
+                    app += new_p * new_p
+                    aqq += new_q * new_q
+                squared_norms[p], squared_norms[q] = app, aqq
+                vector_p, vector_q = vectors[p], vectors[q]
+                for i, (vp, vq) in enumerate(zip(vector_p, vector_q)):
+                    vector_p[i] = cosine * vp - sine * vq
+                    vector_q[i] = sine * vp + cosine * vq
         if rotations == 0:
             break
-    norms = []
-    for comp in range(cols):
-        total = 0.0
-        for i in range(rows):
-            value = data[i * cols + comp]
-            total += value * value
-        norms.append(_math.sqrt(total))
+    norms = [_math.sqrt(total) for total in squared_norms]
     order = sorted(range(cols), key=lambda i: (-norms[i], i))
     singular = [norms[i] for i in order]
     k = cols
@@ -1286,10 +1288,9 @@ def _svd_onesided(data, rows: int, cols: int):
     for new, old in enumerate(order):
         sigma = singular[new]
         scale = 1.0 / sigma if sigma > 0.0 else 0.0
-        for i in range(rows):
-            left[i * k + new] = data[i * cols + old] * scale
-        for j in range(cols):
-            vt[new * cols + j] = vectors[j * cols + old]
+        for i, value in enumerate(columns[old]):
+            left[i * k + new] = value * scale
+        vt[new * cols:(new + 1) * cols] = vectors[old]
     _positive_columns(left, vt, rows, cols, k)
     if transposed:
         # 転置の SVD を戻す。元の形は (cols, rows) だったので U と Vt を入れ替える。
