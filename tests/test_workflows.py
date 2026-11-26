@@ -992,8 +992,10 @@ def test_pages_artifact_must_pass_uploaded_tar_inspection_before_deployment():
     assert upload["with"]["name"] == build["outputs"]["artifact_name"] == "${{ steps.artifact.outputs.name }}"
     assert download["with"]["name"] == gate["outputs"]["artifact_name"] == "${{ needs.build.outputs.artifact_name }}"
     assert deploy["steps"][-1]["with"]["artifact_name"] == "${{ needs.verify.outputs.artifact_name }}"
-    # A selective retry can have a different run_attempt from the successful build.
-    assert "run_attempt" not in repr(gate) + repr(deploy)
+    # The report has its own retry identity. The download and deploy still use the build output asserted above.
+    report = next(step for step in gate["steps"] if step.get("name") == "Upload Pages inspection report")
+    assert report["with"]["name"] == "pages-inspection-${{ needs.build.outputs.artifact_name }}-${{ github.run_attempt }}"
+    assert report["with"]["path"] == "pages-inspection.json"
     assert (checkout["with"]["repository"], checkout["with"]["ref"]) == ("${{ job.workflow_repository }}", "${{ job.workflow_sha }}")
     assert "scripts/verify_pages_artifact.py .downloaded-pages/artifact.tar" in verify["run"]
     assert not any("deploy-pages" in step.get("uses", "") for step in build["steps"] + gate["steps"])

@@ -134,8 +134,10 @@ class PublicationTests(unittest.TestCase):
     def test_success_builds_relocatable_ui_report_data_and_history(self):
         with tempfile.TemporaryDirectory() as tmp:
             out=Path(tmp)/'dist'
+            manifest=Path(tmp)/'pages-links.json'
+            manifest.write_text('{"sites":[{"base_url":"https://example.github.io/Demo/"}]}', encoding='utf-8')
             with patch.object(build,'public_repositories',return_value=['Demo']),patch.object(ci,'audit',return_value=snapshot()) as audit:
-                build.build(out)
+                build.build(out, pages_links_manifest=manifest)
             self.assertTrue(audit.call_args.kwargs['strict'])
             self.assertFalse((out/'scroll-controls.js').exists())
             for path in ('index.html','app.js','style.css','audit-model.js','compaction.html','compaction-review.js','pswb-shell.css','pswb-scroll.js','pswb-records.js','data.json','report.html','history.json','pages-source.zip','.nojekyll'):
@@ -159,6 +161,12 @@ class PublicationTests(unittest.TestCase):
             self.assertIn('root.AuditModel=model', html)
             self.assertLess(html.index('root.AuditModel=model'),html.index('root.UnifiedModel=api'))
             self.assertIn('id="data"', html)
+            self.assertIn('Pagesサイト間のリンク検証', html)
+            links = json.loads((out/'unified-data.json').read_text())['pages_links']
+            self.assertEqual(links['schema'], 'pages-links-audit/1')
+            self.assertEqual(links['summary']['unavailable_sites'], 1)
+            self.assertEqual(links['summary']['missing_file'], 0)
+            self.assertNotIn(str(manifest), html)
             self.assertIn('pswb-scroll.js', html)
             self.assertIn('../index.html#ops', (out/'component-ops/index.html').read_text())
             for legacy, target in [('workspace.html','queue'), ('evidence.html','queue'), ('dependencies.html','audit'), ('records.html','records')]:

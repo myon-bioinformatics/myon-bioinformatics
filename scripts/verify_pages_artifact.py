@@ -1,98 +1,137 @@
 """Inspect the uploaded GitHub Pages tar archive without extracting it (stdlib only)."""
 import argparse
+from dataclasses import dataclass, field
+import html.parser
 import json
 import os
-import hashlib
-from pathlib import Path
-import html.parser
 import posixpath
 import tarfile
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlsplit
+
+
+HTML_SUFFIXES = ('.html', '.htm')
+
+
+def srcset_urls(value):
+    # A comma inside the URL can be part of a data URL or a filename.
+    while value := value.lstrip(' \t\n\r\f,'):
+        parts = value.split(maxsplit=1)
+        url = parts[0]
+        value = parts[1] if len(parts) > 1 else ''
+        if not url.endswith(','):
+            _, _, value = value.partition(',')
+        yield url.rstrip(',')
 
 
 class References(html.parser.HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.ids = set()
+        self.named_anchors = set()
         self.links = []
         self.back_nav = 0
+        self.base_href = None
 
     def handle_starttag(self, tag, attributes):
         attrs = dict(attributes)
         if attrs.get('id'):
             self.ids.add(attrs['id'])
+        if tag == 'a' and attrs.get('name'):
+            self.named_anchors.add(attrs['name'])
+        if tag == 'base' and self.base_href is None and attrs.get('href') is not None:
+            self.base_href = attrs['href']
         if 'data-ui-back' in attrs:
             self.back_nav += 1
         for key in ('src', 'href'):
-            if key in attrs and attrs[key]:
+            if attrs.get(key) and (tag, key) != ('base', 'href'):
                 self.links.append((key, attrs[key]))
-        if 'srcset' in attrs and 'data:' not in attrs['srcset']:
-            for candidate in attrs['srcset'].split(','):
-                value = candidate.strip().split(' ', 1)[0]
-                if value:
-                    self.links.append(('srcset', value))
+        if attrs.get('srcset'):
+            self.links.extend(('srcset', url) for url in srcset_urls(attrs['srcset']))
 
     handle_startendtag = handle_starttag
 
 
-def verify(archive, report=None):
-    """Check files and local URL targets in the precise uploaded tarball."""
-    errors = []
-    files = set()
-    total_bytes = 0
-    htmls = {}
-    gifs = {}
+@dataclass
+class ArtifactIndex:
+    files: set = field(default_factory=set)
+    documents: dict = field(default_factory=dict)
+    gifs: dict = field(default_factory=dict)
+    inventory_errors: list = field(default_factory=list)
+    html_errors: list = field(default_factory=list)
+    total_bytes: int = 0
+
+
+def index_archive(archive):
+    """Read the uploaded file inventory and parse HTML without extracting the tar."""
+    result = ArtifactIndex()
     try:
         with tarfile.open(archive, 'r:*') as bundle:
             members = bundle.getmembers()
             if not members:
-                return ['empty Pages artifact']
+                return ArtifactIndex(inventory_errors=['empty Pages artifact'])
             for member in members:
                 name = member.name.removeprefix('./')
                 if not name or name == '.':
                     continue
                 path = PurePosixPath(name)
-                if name.startswith('/') or '..' in path.parts or '\\' in name or name in files:
-                    errors.append(f'unsafe or duplicate archive path: {name}')
+                if name.startswith('/') or '..' in path.parts or '\\' in name or name != path.as_posix() or name in result.files:
+                    result.inventory_errors.append(f'unsafe or duplicate archive path: {name}')
                     continue
                 if member.isdir():
                     continue
                 if not member.isfile():
-                    errors.append(f'unsupported archive member: {name}')
+                    result.inventory_errors.append(f'unsupported archive member: {name}')
                     continue
-                stream = bundle.extractfile(member)
-                if stream is None:
-                    errors.append(f'unreadable file: {name}')
-                    continue
-                files.add(name)
-                total_bytes += member.size
-                if name.lower().endswith(('.html', '.htm')):
-                    data = stream.read(16 * 1024 * 1024 + 1)
+                result.files.add(name)
+                result.total_bytes += member.size
+                if name.lower().endswith(HTML_SUFFIXES):
+                    with bundle.extractfile(member) as stream:
+                        data = stream.read(16 * 1024 * 1024 + 1)
                     if len(data) > 16 * 1024 * 1024:
-                        errors.append(f'{name}: HTML exceeds 16 MiB inspection limit')
-                    else:
-                        htmls[name] = data
+                        result.html_errors.append(f'{name}: HTML exceeds 16 MiB inspection limit')
+                        continue
+                    try:
+                        parser = References()
+                        parser.feed(data.decode('utf-8'))
+                        parser.close()
+                        result.documents[name] = parser
+                    except (UnicodeError, ValueError) as exc:
+                        result.html_errors.append(f'{name}: invalid HTML: {exc}')
                 elif name.lower().endswith('.gif'):
-                    gifs[name] = stream.read(13)
+                    with bundle.extractfile(member) as stream:
+                        result.gifs[name] = stream.read(13)
     except (OSError, tarfile.TarError, EOFError) as exc:
-        return [f'invalid Pages artifact: {exc}']
+        return ArtifactIndex(inventory_errors=[f'invalid Pages artifact: {exc}'])
+    return result
+
+
+def resolve_file(files, path, *, directory=False):
+    if directory:
+        index = posixpath.join(path, 'index.html')
+        return index if index in files else None
+    if path in files:
+        return path
+    if '.' not in posixpath.basename(path) and path + '.html' in files:
+        return path + '.html'
+    index = posixpath.join(path, 'index.html')
+    return index if index in files else None
+
+
+def verify(archive, report=None):
+    """Check files and local URL targets in the precise uploaded tarball."""
+    index = index_archive(archive)
+    files, documents, gifs = index.files, index.documents, index.gifs
+    errors = index.inventory_errors + index.html_errors
+    if not files and errors and errors[0].startswith(('empty Pages artifact', 'invalid Pages artifact:')):
+        return errors
     if not files:
         errors.append('no files in Pages artifact')
-    if not htmls:
+    if not any(name.lower().endswith(HTML_SUFFIXES) for name in files):
         errors.append('no HTML documents in Pages artifact')
-    documents = {}
-    for name, data in sorted(htmls.items()):
-        try:
-            parser = References()
-            parser.feed(data.decode('utf-8'))
-            parser.close()
-            documents[name] = parser
-            if parser.back_nav > 1:
-                errors.append(f'{name}: duplicated common back navigation ({parser.back_nav})')
-        except (UnicodeError, ValueError) as exc:
-            errors.append(f'{name}: invalid HTML: {exc}')
-    for name, parser in documents.items():
+    for name, parser in sorted(documents.items()):
+        if parser.back_nav > 1:
+            errors.append(f'{name}: duplicated common back navigation ({parser.back_nav})')
         for kind, url in parser.links:
             if url == '#' or url.startswith('//'):
                 continue
@@ -110,12 +149,7 @@ def verify(archive, report=None):
             if resolved == '..' or resolved.startswith('../'):
                 errors.append(f'{name}: path escapes artifact: {url}')
                 continue
-            candidates = [resolved]
-            if relative.endswith('/'):
-                candidates = [posixpath.join(resolved, 'index.html')]
-            elif '.' not in posixpath.basename(resolved):
-                candidates.extend([resolved + '.html', posixpath.join(resolved, 'index.html')])
-            target = next((candidate for candidate in candidates if candidate in files), None)
+            target = resolve_file(files, resolved, directory=relative.endswith('/'))
             if target is None:
                 errors.append(f'{name}: missing local {kind}: {url}')
             elif parsed.fragment and target in documents:
@@ -127,7 +161,7 @@ def verify(archive, report=None):
             errors.append(f'{name}: invalid GIF header')
     print(f'Pages artifact inspection: {len(files)} files, {len(documents)} HTML, {len(gifs)} GIF; {len(errors)} error(s)')
     if report is not None:
-        report.update(files=len(files), bytes=total_bytes, html=len(documents), gifs=len(gifs),
+        report.update(files=len(files), bytes=index.total_bytes, html=len(documents), gifs=len(gifs),
                       css=sum(n.endswith('.css') for n in files), js=sum(n.endswith(('.js', '.mjs')) for n in files))
     return errors
 

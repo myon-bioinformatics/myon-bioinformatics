@@ -511,6 +511,7 @@ def view_data(snapshot, evidence, history, operations, previous=None):
             'pins': snapshot.get('vendor_pins', []), 'conventions': snapshot.get('conventions', []),
             'fleet': snapshot.get('fleet', {}), 'history': history, 'operations': operations,
             'pages_inspections': snapshot.get('pages_inspections', []),
+            'pages_links': snapshot.get('pages_links'),
             'main_workflows': snapshot.get('main_workflows', {'runs': [], 'errors': [], 'scope': '未取得'}),
             'pswb_migration': migration,
             'transfer_registry': snapshot.get('transfer_registry', {'status':'未取得'}),
