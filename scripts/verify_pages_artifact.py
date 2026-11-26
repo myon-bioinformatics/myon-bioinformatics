@@ -1,5 +1,9 @@
 """Inspect the uploaded GitHub Pages tar archive without extracting it (stdlib only)."""
 import argparse
+import json
+import os
+import hashlib
+from pathlib import Path
 import html.parser
 import posixpath
 import tarfile
@@ -32,10 +36,11 @@ class References(html.parser.HTMLParser):
     handle_startendtag = handle_starttag
 
 
-def verify(archive):
+def verify(archive, report=None):
     """Check files and local URL targets in the precise uploaded tarball."""
     errors = []
     files = set()
+    total_bytes = 0
     htmls = {}
     gifs = {}
     try:
@@ -61,6 +66,7 @@ def verify(archive):
                     errors.append(f'unreadable file: {name}')
                     continue
                 files.add(name)
+                total_bytes += member.size
                 if name.lower().endswith(('.html', '.htm')):
                     data = stream.read(16 * 1024 * 1024 + 1)
                     if len(data) > 16 * 1024 * 1024:
@@ -120,13 +126,25 @@ def verify(archive):
         if len(data) < 13 or data[:6] not in (b'GIF87a', b'GIF89a') or not int.from_bytes(data[6:8], 'little') or not int.from_bytes(data[8:10], 'little'):
             errors.append(f'{name}: invalid GIF header')
     print(f'Pages artifact inspection: {len(files)} files, {len(documents)} HTML, {len(gifs)} GIF; {len(errors)} error(s)')
+    if report is not None:
+        report.update(files=len(files), bytes=total_bytes, html=len(documents), gifs=len(gifs),
+                      css=sum(n.endswith('.css') for n in files), js=sum(n.endswith(('.js', '.mjs')) for n in files))
     return errors
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('archive', help='path to the uploaded Pages tar archive')
-    failures = verify(parser.parse_args().archive)
+    parser.add_argument('--report', type=Path)
+    args = parser.parse_args()
+    report = {}
+    failures = verify(args.archive, report)
+    if args.report:
+        report.update(schema='pages-artifact-inspection/1', errors=failures[:100], error_count=len(failures),
+                      status='failure' if failures else 'success', head_sha=os.environ.get('PAGES_HEAD_SHA'),
+                      run_id=os.environ.get('GITHUB_RUN_ID'), artifact_name=os.environ.get('PAGES_ARTIFACT_NAME'),
+                      browser_status='未検証')
+        args.report.write_text(json.dumps(report, ensure_ascii=False), encoding='utf-8')
     for failure in failures[:100]:
         print(f'::error::{failure}')
     raise SystemExit(bool(failures))
