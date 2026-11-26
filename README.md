@@ -1,6 +1,6 @@
 <!-- PRESENTATION:START title -->
 <p align="center">
-  <img src="./assets/brand/profile-icon.png" width="160" height="160" alt="myon-bioinformatics: a cat beside a DNA helix and a laptop" />
+  <img src="https://myon-bioinformatics.github.io/myon-bioinformatics/icon.png" width="160" height="160" alt="myon-bioinformatics: a cat beside a DNA helix and a laptop" />
 </p>
 <h1 align="center">🐍 myon-bioinformatics 🎸</h1>
 <p align="center">
