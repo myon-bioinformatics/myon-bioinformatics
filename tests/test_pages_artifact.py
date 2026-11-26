@@ -168,3 +168,34 @@ def test_pages_links_rejects_ambiguous_mount(tmp_path):
                              {'base_url': 'https://DEMO.github.io/Project/'})
     with pytest.raises(ValueError, match='duplicate Pages base URL'):
         audit_pages_links.audit(manifest)
+
+
+def test_repository_navigation_duplicates_report_and_optional_gate(tmp_path):
+    path = archive(tmp_path, {'index.html': b'''
+        <nav data-ui-back><a href="https://github.com/Owner/Repo">GitHub</a></nav>
+        <a href="https://github.com/owner/repo/">Repository</a>
+        <a href="https://github.com/Owner/Repo#readme">README</a>
+        <a href="https://github.com/Owner/Repo/issues">Issues</a>
+        <a href="https://github.com/Owner/Child">Child</a>
+        <a href="https://github.com/Owner/Repo?tab=readme">Query</a>
+    '''})
+    report = {}
+    assert validator.verify(path, report, repository='Owner/Repo') == []
+    assert report['navigation_duplicates'] == [
+        {'file': 'index.html', 'target': 'https://github.com/Owner/Repo', 'count': 2}
+    ]
+    assert report['navigation_duplicate_count'] == 1
+    assert any('duplicate repository navigation target' in e for e in
+               validator.verify(path, repository='Owner/Repo', strict_navigation=True))
+
+
+def test_repository_navigation_ignores_distinct_links_and_pages_without_nav(tmp_path):
+    path = archive(tmp_path, {'index.html': b'''
+        <nav data-ui-back><a href="https://github.com/Owner/Repo">GitHub</a></nav>
+        <a href="https://github.com/Owner/Repo#readme">README</a>
+        <a href="https://github.com/Owner/Child">Child</a>
+        <a href="https://github.com.evil.example/Owner/Repo">Other host</a>
+        ''', 'content.html': b'<a href="https://github.com/Owner/Repo">1</a><a href="https://github.com/Owner/Repo">2</a>'})
+    report = {}
+    assert validator.verify(path, report, repository='Owner/Repo', strict_navigation=True) == []
+    assert report['navigation_duplicates'] == []
