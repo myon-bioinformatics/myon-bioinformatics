@@ -13,7 +13,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Install existing Playwright browser runner
@@ -24,7 +24,7 @@ jobs:
         run: python scripts/check_live_pages.py
       - name: Preserve results and screenshots
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v7
         with:
           name: live-pages-guide-smoke
           path: pages-smoke-results/
