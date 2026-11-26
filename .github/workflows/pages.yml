@@ -10,6 +10,7 @@ on:
       - scripts/unified_operations.py
       - assets/brand/favicon.ico
       - assets/brand/favicon.png
+      - assets/brand/profile-icon.png
       - vendor_fleet_plan.py
       - fleet_records.py
       - pyproject.toml
@@ -27,6 +28,7 @@ on:
       - scripts/unified_operations.py
       - assets/brand/favicon.ico
       - assets/brand/favicon.png
+      - assets/brand/profile-icon.png
       - vendor_fleet_plan.py
       - fleet_records.py
       - site/**

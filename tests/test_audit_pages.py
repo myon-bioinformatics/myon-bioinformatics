@@ -210,6 +210,7 @@ class PublicationTests(unittest.TestCase):
             self.assertEqual(json.loads((out/'data.json').read_text())['schema'],'parent-audit/1')
             self.assertEqual(len(json.loads((out/'history.json').read_text())['weeks']),1)
             self.assertEqual((out/'favicon.ico').read_bytes(), (build.ROOT/'assets/brand/favicon.ico').read_bytes())
+            self.assertEqual((out/'icon.png').read_bytes(), (build.ROOT/'assets/brand/profile-icon.png').read_bytes())
             self.assertEqual((out/'favicon.png').read_bytes(), (build.ROOT/'assets/brand/favicon.png').read_bytes())
             self.assertIn('rel="icon" href="favicon.ico"', html)
             self.assertIn('rel="icon" type="image/png" href="favicon.png"', html)
