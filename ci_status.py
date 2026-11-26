@@ -717,17 +717,17 @@ def render_audit_html(snapshot, *, asset_base=".", title="Repository audit — m
             + (f'<details class="ui-panel"><summary>取得できなかったリポジトリ</summary><ul>{errors}</ul></details>' if errors else ""))
     bar = (f'<div class="ui-records-bar">{ui.filter_input("table-queue", id="filter-queue", label="絞り込み", count_id="count-queue")}'
            f'<span id="count-queue" class="ui-muted"></span>{ui.records_io(filename="records.json")}</div>')
-    queue = f'<section data-ui-view="queue">{bar}{table("queue", lambda r: r["state"] != "done", "未完了の PR / Issue")}</section>'
-    compare = (f'<section data-ui-view="compare" hidden><p class="ui-muted">base が他のオープン PR の head と一致するものを依存候補、GitHub の mergeable=false を競合として表示します。</p>'
+    queue = f'<section id="queue" data-ui-view="queue">{bar}{table("queue", lambda r: r["state"] != "done", "未完了の PR / Issue")}</section>'
+    compare = (f'<section id="compare" data-ui-view="compare" hidden><p class="ui-muted">base が他のオープン PR の head と一致するものを依存候補、GitHub の mergeable=false を競合として表示します。</p>'
                f'{render_dependency_report(snapshot)}{table("compare", lambda r: r["kind"] == "pr" and (r.get("depends_on") or r.get("conflict")), "依存・競合のある PR")}</section>')
-    weekly = (f'<section data-ui-view="weekly" hidden><p class="ui-muted">前回の公開スナップショットと比べて新規・head/CI 変化のあった記録。消えた記録: '
+    weekly = (f'<section id="weekly" data-ui-view="weekly" hidden><p class="ui-muted">前回の公開スナップショットと比べて新規・head/CI 変化のあった記録。消えた記録: '
               f'{escape(", ".join(changes.get("gone", [])) or "なし")}</p>{table("weekly", lambda r: r["id"] in changed, "変化した記録")}</section>')
     findings = snapshot.get("conventions", [])
-    rules = (f'<section data-ui-view="rules" hidden><p class="ui-muted">templates/README.md の命名規約（ci.yml=CI、pages.yml=Pages、resolve-vendor / vendor-locked / failure-identity、docs/ はケバブケース）との差。'
+    rules = (f'<section id="rules" data-ui-view="rules" hidden><p class="ui-muted">templates/README.md の命名規約（ci.yml=CI、pages.yml=Pages、resolve-vendor / vendor-locked / failure-identity、docs/ はケバブケース）との差。'
              f'直すときは該当リポジトリに 1 PR（リネームだけなら他 PR より先にマージ）。</p>'
              + ui.data_table(("リポジトリ", "規約", "対象", "現状", "期待"), [(f["repository"], f["rule"], f["path"], str(f["found"]), f["expected"]) for f in findings],
                              id="table-rules", caption=f"規約ずれ（{len(findings)}件）") + "</section>")
-    done = f'<section data-ui-view="done" hidden>{table("done", lambda r: r["state"] == "done", "完了記録")}</section>'
+    done = f'<section id="done" data-ui-view="done" hidden>{table("done", lambda r: r["state"] == "done", "完了記録")}</section>'
     body = ui.records_board(head + queue + compare + weekly + rules + render_fleet_section(ui, fleet) + done, id="audit")
     return ui.render_document(trusted_html=f'<main class="ui-page">{body}</main>', title=title, css=ui.bundled_css(),
                               scripts=ui.shared_scripts(asset_base, names=("navigation.js", "records.js")))
@@ -780,7 +780,7 @@ def render_fleet_section(ui, fleet):
     if not fleet:
         return ""
     if fleet.get("status") == "unavailable":
-        return (f'<section data-ui-view="fleet" hidden><p class="ui-muted">依存・更新の解析は今回取得できませんでした'
+        return (f'<section id="fleet" data-ui-view="fleet" hidden><p class="ui-muted">依存・更新の解析は今回取得できませんでした'
                 f'（{escape(str(fleet.get("error", "")))}）。前回までの結果を現在の結果として表示しません。</p></section>')
     counts, targets, graph, plan = fleet["counts"], fleet["targets"]["counts"], fleet["graph"], fleet["plan"]
     code = sum(m["kind"] == "code" for m in graph.get("mutual", []))
@@ -828,7 +828,7 @@ def render_fleet_section(ui, fleet):
                  + ui.data_table(("リポジトリ", "再テスト登録済み", "未登録", "生成物", "記録と検証証拠"),
                                  _fleet_evidence_rows(evidence.get("coverage") or {}), id="table-fleet-evidence", trusted_cells=True,
                                  caption=f"判断の根拠・再テスト（自動、{len(evidence.get('coverage') or {})}件）"))
-    return (f'<section data-ui-view="fleet" hidden><p class="ui-muted">{notice}</p>{tiles}{changed}{left}{steps}{results}{proof}{old}</section>')
+    return (f'<section id="fleet" data-ui-view="fleet" hidden><p class="ui-muted">{notice}</p>{tiles}{changed}{left}{steps}{results}{proof}{old}</section>')
 
 
 def write_audit_site(snapshot, directory):

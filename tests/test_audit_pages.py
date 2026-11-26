@@ -3,13 +3,14 @@ import copy
 import io
 import json
 from pathlib import Path
+import tarfile
 import tempfile
 import unittest
 import urllib.error
 from unittest.mock import patch
 
 import ci_status as ci
-from scripts import build_audit_pages as build
+from scripts import build_audit_pages as build, verify_pages_artifact
 
 
 def snapshot(at='2026-11-08T00:00:00+00:00'):
@@ -139,6 +140,18 @@ class PublicationTests(unittest.TestCase):
             with patch.object(build,'public_repositories',return_value=['Demo']),patch.object(ci,'audit',return_value=snapshot()) as audit:
                 build.build(out, pages_links_manifest=manifest)
             self.assertTrue(audit.call_args.kwargs['strict'])
+            archive_path = Path(tmp) / 'dashboard.tar'
+            with tarfile.open(archive_path, 'w') as archive:
+                archive.add(out, arcname='.')
+            self.assertEqual(verify_pages_artifact.verify(archive_path), [])
+            typo = out / 'fragment-typo.html'
+            typo.write_text('<a href="index.html#opss">invalid tab</a>', encoding='utf-8')
+            with tarfile.open(archive_path, 'w') as archive:
+                archive.add(out, arcname='.')
+            self.assertEqual(verify_pages_artifact.verify(archive_path), [
+                'fragment-typo.html: missing fragment #opss in index.html',
+            ])
+            typo.unlink()
             self.assertFalse((out/'scroll-controls.js').exists())
             for path in ('index.html','app.js','style.css','audit-model.js','compaction.html','compaction-review.js','pswb-shell.css','pswb-scroll.js','pswb-records.js','data.json','report.html','history.json','pages-source.zip','.nojekyll'):
                 self.assertTrue((out/path).is_file(),path)
