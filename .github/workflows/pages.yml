@@ -6,6 +6,7 @@ on:
     paths:
       - ci_status.py
       - scripts/build_audit_pages.py
+      - scripts/verify_pages_artifact.py
       - scripts/unified_operations.py
       - assets/brand/favicon.ico
       - assets/brand/favicon.png
@@ -22,6 +23,7 @@ on:
     paths:
       - ci_status.py
       - scripts/build_audit_pages.py
+      - scripts/verify_pages_artifact.py
       - scripts/unified_operations.py
       - assets/brand/favicon.ico
       - assets/brand/favicon.png
@@ -92,6 +94,10 @@ jobs:
           uv run --locked --only-group pages python scripts/build_audit_pages.py
           --repos cli_args,xprobe --previous '' --previous-history ''
           --out /tmp/audit-live-smoke
+      - name: Verify generated dashboard artifact
+        run: |
+          tar -cf "$RUNNER_TEMP/audit-live-smoke.tar" -C /tmp/audit-live-smoke .
+          python3 -S scripts/verify_pages_artifact.py "$RUNNER_TEMP/audit-live-smoke.tar"
   guide-backlinks:
     # Pull requests only: on the default branch this would upload and deploy the fixture.
     # pages/id-token write is required to call the reusable workflow (it declares a deploy
