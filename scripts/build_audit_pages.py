@@ -217,14 +217,15 @@ def favicon_link_tags(href_prefix=""):
     )
 
 
-def publish_brand_favicons(stage, source_root):
-    """Copy assets/brand favicon files to the published site root."""
+def publish_brand_assets(stage, source_root):
+    """Publish the profile icon and favicons from their original brand files."""
     brand = Path(source_root) / "assets/brand"
-    for name in ("favicon.ico", "favicon.png"):
+    for name, output in (("favicon.ico", "favicon.ico"), ("favicon.png", "favicon.png"),
+                         ("profile-icon.png", "icon.png")):
         src = brand / name
         if not src.is_file():
             raise FileNotFoundError("missing %s" % src)
-        shutil.copyfile(src, Path(stage) / name)
+        shutil.copyfile(src, Path(stage) / output)
 
 
 def observatory_page(snapshot=None, theme=THEME):
@@ -676,7 +677,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         if fleet_graph is not None:  # the whole graph as JSON-LD for agents and other tools
             (stage / 'fleet.jsonld').write_text(json.dumps(fleet_graph, ensure_ascii=False) + '\n', encoding='utf-8')
         (stage / '.nojekyll').touch()
-        publish_brand_favicons(stage, source_root)
+        publish_brand_assets(stage, source_root)
         progress = source_root / 'site/progress.json'
         (stage / 'progress.json').write_text(progress.read_text(encoding='utf-8') if progress.exists() else '{}\n', encoding='utf-8')
         with zipfile.ZipFile(stage / 'pages-source.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
