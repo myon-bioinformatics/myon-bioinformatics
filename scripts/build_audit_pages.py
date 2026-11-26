@@ -602,7 +602,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         produce = fleet if getattr(fleet, 'takes_snapshot', False) else (lambda names, before, snapshot=None: fleet(names, before))
         snapshot['fleet'], fleet_graph = split_fleet(produce(names, (before or {}).get('fleet'), snapshot=snapshot))
     snapshot['pswb_migration'] = pswb_migration(snapshot, ci.get)
-    from scripts.unified_operations import collect_main_runs, collect_repository_counts, collect_transfer_registry
+    from scripts.unified_operations import collect_main_runs, collect_repository_counts, collect_transfer_registry, collect_pages_inspections
     snapshot['repository_counts'] = collect_repository_counts(snapshot, ci.get)
 
     if observe_details:
@@ -618,6 +618,8 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
                 snapshot['catalog_observation'] = {'status': '取得不能', 'error': type(exc).__name__}
     history = weekly_history(snapshot, old_history)
     snapshot['main_workflows'] = collect_main_runs(snapshot, ci.get)
+    if observe_details:
+        snapshot['pages_inspections'] = collect_pages_inspections(snapshot, ci.get)
     snapshot['transfer_registry'] = collect_transfer_registry(snapshot, ci.get)
     # Build away from the destination. No partial generation overwrites a good local output.
     out.parent.mkdir(parents=True, exist_ok=True)
