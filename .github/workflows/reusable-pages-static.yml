@@ -58,7 +58,7 @@ env:
   #    The parent's pyproject.toml pages group (the audit pages) holds the same string (tests/test_workflows.py);
   #    each repository's own pin may trail it on PySaiyanWeBoo main (🟡) but never leave main (❌).
   # ♻️ The CaChereCyCle commit whose store (icons and favicons, Base64 in JSONL) guide_brand reads.
-  CACHERECYCLE: "7e50f9f9f66026437254c4cc7b63bc2a697cceff"
+  CACHERECYCLE: "3eb4a41f420a556331853129bb97655cfd8b1b88"
   PSWB: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@7909683ff5f5ee748b79822a3c0718d57c527a76"
 
 jobs:
