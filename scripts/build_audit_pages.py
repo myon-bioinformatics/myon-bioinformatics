@@ -562,7 +562,8 @@ def write_github_evidence(snapshot, stage, *, source_root, observe_details=False
     return result
 
 
-def build(out, *, repos=None, previous=None, previous_history=None, source_root=ROOT, fleet=None, observe_details=False):
+def build(out, *, repos=None, previous=None, previous_history=None, source_root=ROOT, fleet=None,
+          observe_details=False, pages_links_manifest=None):
     out = Path(out)
     before = previous_json(previous)
     if before is not None and before.get('schema') != 'parent-audit/1':
@@ -602,7 +603,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         produce = fleet if getattr(fleet, 'takes_snapshot', False) else (lambda names, before, snapshot=None: fleet(names, before))
         snapshot['fleet'], fleet_graph = split_fleet(produce(names, (before or {}).get('fleet'), snapshot=snapshot))
     snapshot['pswb_migration'] = pswb_migration(snapshot, ci.get)
-    from scripts.unified_operations import collect_main_runs, collect_repository_counts, collect_transfer_registry
+    from scripts.unified_operations import collect_main_runs, collect_repository_counts, collect_transfer_registry, collect_pages_inspections
     snapshot['repository_counts'] = collect_repository_counts(snapshot, ci.get)
 
     if observe_details:
@@ -618,6 +619,11 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
                 snapshot['catalog_observation'] = {'status': '取得不能', 'error': type(exc).__name__}
     history = weekly_history(snapshot, old_history)
     snapshot['main_workflows'] = collect_main_runs(snapshot, ci.get)
+    if observe_details:
+        snapshot['pages_inspections'] = collect_pages_inspections(snapshot, ci.get)
+    if pages_links_manifest is not None:
+        from scripts.audit_pages_links import audit as audit_pages_links
+        snapshot['pages_links'] = audit_pages_links(pages_links_manifest)
     snapshot['transfer_registry'] = collect_transfer_registry(snapshot, ci.get)
     # Build away from the destination. No partial generation overwrites a good local output.
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -707,6 +713,7 @@ def main(argv=None):
     parser.add_argument('--previous', default=BASE_URL + '/data.json')
     parser.add_argument('--previous-history', default=BASE_URL + '/history.json')
     parser.add_argument('--no-fleet', action='store_true', help='skip the vendor_fleet_plan dependency/update section')
+    parser.add_argument('--pages-links-manifest', type=Path, help='local public Pages artifact manifest for the link audit')
     args = parser.parse_args(argv)
     scoped = bool(args.repos)
 
@@ -716,7 +723,8 @@ def main(argv=None):
     try:
         snapshot = build(args.out, repos=args.repos.split(',') if args.repos else None,
                          previous=args.previous, previous_history=args.previous_history,
-                         fleet=None if args.no_fleet else produce, observe_details=True)
+                         fleet=None if args.no_fleet else produce, observe_details=True,
+                         pages_links_manifest=args.pages_links_manifest)
     except (OSError, ValueError, RuntimeError, KeyError) as exc:
         print(f'audit build failed: {type(exc).__name__}; deployment retained', file=sys.stderr)
         return 2
