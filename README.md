@@ -56,9 +56,10 @@ I design and build practical CLI and browser tools: mostly single-file, standard
 
 ### Languages
 - Python (90%)
-- Go (65%)
-- TypeScript (60%)
+- Node.js (70%)
 - Bash (70%)
+- TypeScript (45%)
+- Go (35%)
 
 ### Domain
 - Bioinformatics (85%)
@@ -69,6 +70,8 @@ I design and build practical CLI and browser tools: mostly single-file, standard
 ### Tools & Infra
 - Linux / CLI (85%)
 - Docker (60%)
+- AWS (70%)
+- Azure (70%)
 - Git / GitHub (80%)
 - Wireshark / Scapy / Ghidra (70%)
 - Flutter / Dart (60%)
