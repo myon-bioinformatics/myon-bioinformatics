@@ -31,12 +31,15 @@ class References(html.parser.HTMLParser):
         self.named_anchors = set()
         self.links = []
         self.back_nav = 0
+        self.anchor_hrefs = []
         self.base_href = None
 
     def handle_starttag(self, tag, attributes):
         attrs = dict(attributes)
         if attrs.get('id'):
             self.ids.add(attrs['id'])
+        if tag == 'a' and attrs.get('href'):
+            self.anchor_hrefs.append(attrs['href'])
         if tag == 'a' and attrs.get('name'):
             self.named_anchors.add(attrs['name'])
         if tag == 'base' and self.base_href is None and attrs.get('href') is not None:
@@ -118,7 +121,23 @@ def resolve_file(files, path, *, directory=False):
     return index if index in files else None
 
 
-def verify(archive, report=None):
+def repository_target(url):
+    """Canonical GitHub repository root only; retain README, query and subpage links."""
+    try:
+        parsed = urlsplit(url)
+        if parsed.scheme not in ('https', 'http') or parsed.netloc.lower() != 'github.com':
+            return None
+        if parsed.query or parsed.fragment:
+            return None
+        parts = parsed.path.strip('/').split('/')
+        if len(parts) == 2 and all(parts):
+            return '/'.join(parts).lower()
+    except ValueError:
+        pass
+    return None
+
+
+def verify(archive, report=None, *, repository=None, strict_navigation=False):
     """Check files and local URL targets in the precise uploaded tarball."""
     index = index_archive(archive)
     files, documents, gifs = index.files, index.documents, index.gifs
@@ -129,7 +148,15 @@ def verify(archive, report=None):
         errors.append('no files in Pages artifact')
     if not any(name.lower().endswith(HTML_SUFFIXES) for name in files):
         errors.append('no HTML documents in Pages artifact')
+    navigation_duplicates = []
     for name, parser in sorted(documents.items()):
+        if parser.back_nav and repository:
+            count = sum(repository_target(url) == repository.lower() for url in parser.anchor_hrefs)
+            if count > 1:
+                finding = {'file': name, 'target': f'https://github.com/{repository}', 'count': count}
+                navigation_duplicates.append(finding)
+                if strict_navigation:
+                    errors.append(f'{name}: duplicate repository navigation target ({count})')
         if parser.back_nav > 1:
             errors.append(f'{name}: duplicated common back navigation ({parser.back_nav})')
         for kind, url in parser.links:
@@ -161,6 +188,8 @@ def verify(archive, report=None):
             errors.append(f'{name}: invalid GIF header')
     print(f'Pages artifact inspection: {len(files)} files, {len(documents)} HTML, {len(gifs)} GIF; {len(errors)} error(s)')
     if report is not None:
+        report['navigation_duplicates'] = navigation_duplicates
+        report['navigation_duplicate_count'] = len(navigation_duplicates)
         report.update(files=len(files), bytes=index.total_bytes, html=len(documents), gifs=len(gifs),
                       css=sum(n.endswith('.css') for n in files), js=sum(n.endswith(('.js', '.mjs')) for n in files))
     return errors
@@ -170,9 +199,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('archive', help='path to the uploaded Pages tar archive')
     parser.add_argument('--report', type=Path)
+    parser.add_argument('--repository', default=os.environ.get('GITHUB_REPOSITORY'))
+    parser.add_argument('--strict-navigation', action='store_true')
     args = parser.parse_args()
     report = {}
-    failures = verify(args.archive, report)
+    failures = verify(args.archive, report, repository=args.repository, strict_navigation=args.strict_navigation)
+    for finding in report.get('navigation_duplicates', []):
+        print(f"::warning::{finding['file']}: duplicate repository navigation target ({finding['count']})")
     if args.report:
         report.update(schema='pages-artifact-inspection/1', errors=failures[:100], error_count=len(failures),
                       status='failure' if failures else 'success', head_sha=os.environ.get('PAGES_HEAD_SHA'),
