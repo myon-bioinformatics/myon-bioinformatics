@@ -197,6 +197,35 @@ def collect_main_runs(snapshot, fetch):
     return {'runs': results, 'errors': errors, 'scope': '各repoの既定ブランチ直近30 run内、workflow/eventの最新。失敗jobは現mainの最新attemptのみ。ログ本文・必須チェックは未取得。'}
 
 
+def collect_pages_inspections(snapshot, fetch):
+    """Read report artifact metadata from observed main runs; no invented metrics."""
+    owner = snapshot.get('owner', 'myon-bioinformatics')
+    rows = []
+    runs = snapshot.get('main_workflows', {}).get('runs', [])
+    for name in snapshot.get('repositories', []):
+        candidates = [r for r in runs if r['repository'] == name and 'pages' in r['name'].lower()]
+        row = {'repository': name, 'status': '未取得', 'browser_status': '未検証'}
+        if candidates:
+            run = max(candidates, key=lambda r: (r['at'], r['run_id'], r['attempt']))
+            row.update(run_id=run['run_id'], head_sha=run['head_sha'], current_main=run['current_main'],
+                       url=run['url'], workflow_status=run['conclusion'])
+            try:
+                page = fetch(f"/repos/{owner}/{name}/actions/runs/{run['run_id']}/artifacts?per_page=100")
+                reports = [a for a in page['artifacts'] if a['name'].startswith('pages-inspection-') and not a['expired']]
+                if reports:
+                    latest = max(reports, key=lambda a: a['id'])
+                    row.update(status='報告Artifactあり・内容未取得', report_id=latest['id'],
+                               report_url=f"{run['url']}/artifacts/{latest['id']}")
+                elif page.get('total_count', 0) > len(page['artifacts']):
+                    row['status'] = '一覧不完全'
+                else:
+                    row['status'] = '報告Artifactなし'
+            except (ValueError, KeyError, RuntimeError, OSError):
+                row['status'] = '取得不能'
+        rows.append(row)
+    return rows
+
+
 def snapshot_comparison(snapshot, previous):
     """Compare consecutive published observations; absence is never a closure."""
     result = {'available': previous is not None, 'previous_at': (previous or {}).get('generated_at'),
@@ -481,6 +510,8 @@ def view_data(snapshot, evidence, history, operations, previous=None):
             'comparison': snapshot_comparison(snapshot, previous),
             'pins': snapshot.get('vendor_pins', []), 'conventions': snapshot.get('conventions', []),
             'fleet': snapshot.get('fleet', {}), 'history': history, 'operations': operations,
+            'pages_inspections': snapshot.get('pages_inspections', []),
+            'pages_links': snapshot.get('pages_links'),
             'main_workflows': snapshot.get('main_workflows', {'runs': [], 'errors': [], 'scope': '未取得'}),
             'pswb_migration': migration,
             'transfer_registry': snapshot.get('transfer_registry', {'status':'未取得'}),

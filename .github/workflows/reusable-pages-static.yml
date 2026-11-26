@@ -59,7 +59,7 @@ env:
   #    each repository's own pin may trail it on PySaiyanWeBoo main (🟡) but never leave main (❌).
   # ♻️ The CaChereCyCle commit whose store (icons and favicons, Base64 in JSONL) guide_brand reads.
   CACHERECYCLE: "3eb4a41f420a556331853129bb97655cfd8b1b88"
-  PSWB: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@546971762de8d074d0923fcd518c9ccfff2064d6"
+  PSWB: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@7909683ff5f5ee748b79822a3c0718d57c527a76"
 
 jobs:
   build:
@@ -206,7 +206,17 @@ jobs:
           name: ${{ needs.build.outputs.artifact_name }}
           path: .downloaded-pages
       - name: Verify uploaded Pages artifact
-        run: python3 -S .pages-verifier/scripts/verify_pages_artifact.py .downloaded-pages/artifact.tar
+        env:
+          PAGES_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          PAGES_ARTIFACT_NAME: ${{ needs.build.outputs.artifact_name }}
+        run: python3 -S .pages-verifier/scripts/verify_pages_artifact.py .downloaded-pages/artifact.tar --report pages-inspection.json
+      - name: Upload Pages inspection report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pages-inspection-${{ needs.build.outputs.artifact_name }}-${{ github.run_attempt }}
+          path: pages-inspection.json
+          if-no-files-found: warn
 
   deploy:
     needs: verify

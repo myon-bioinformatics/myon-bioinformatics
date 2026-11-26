@@ -22,6 +22,38 @@ PRではPython標準unittestとNode 26の組込みテストを実行します。
 
 「概要」ビューは同じ観測JSONの `repository_counts` と `main_workflows` から、リポジトリ別のオープンPR・純Issue件数と最新main実行の結論を1表に並べます。集計と最新runの選択は `site/ui/audit-model.js` の `repoOverview` が担い、新規の取得は行いません。表示は既存の統計タイル・pill・表とPSWBのトークンを再利用し、main CIが失敗しているリポジトリを先頭に寄せて失敗runへのリンクをまとめます。対象は監査の取得範囲（`repository_counts` に載るリポジトリ）で、全公開リポジトリの一覧ではありません。本番の `index.html` は統合運用アプリ（unified）が組み立てるため、同じ集計を統合アプリの「概要」タブにも表示します。統合JSONの `counts` と `main_workflows` は `site/ui/unified-model.js` から同じ `AuditModel.repoOverview` へ渡します。不明な件数は「未取得」と表示し、確認済みの0件と区別します。合計は指標ごとに確認できたリポジトリ数を表示します。
 
+## 公開Artifactの横断リンク検証
+
+配備に使った `github-pages` または `github-pages-<attempt>` のArtifactをダウンロードし、展開された `artifact.tar` をサイトの公開URLと対応づける。GitHub ActionsのZIPを手動で取得した場合は、内側の `artifact.tar` を取り出す。マニフェストには検証対象の公開サイトをすべて登録する。未取得のサイトにも `base_url` を指定すると、同じホストのルートサイトに誤って割り当てずに済む。
+
+```json
+{
+  "sites": [
+    {
+      "repository": "myon-bioinformatics.github.io",
+      "base_url": "https://myon-bioinformatics.github.io/",
+      "archive": "portfolio/artifact.tar"
+    },
+    {
+      "repository": "Ironmate",
+      "base_url": "https://myon-bioinformatics.github.io/Ironmate/",
+      "archive": null
+    }
+  ]
+}
+```
+
+`archive` の相対パスはマニフェストの置き場所が基準。`head_sha` と `artifact_url` を指定するとJSONとダッシュボードに証跡が残る。ローカルパスは公開JSONに含まれない。
+
+```sh
+python3 -S scripts/audit_pages_links.py sites.json --report pages-links-audit.json
+uv run --locked --only-group pages python scripts/build_audit_pages.py --pages-links-manifest sites.json
+```
+
+横断検証のCLIはローカルArtifactだけを読み、マニフェストに登録した公開URLのうち最も長く一致するパスを参照先として使う。HTMLの `href`、`src`、`srcset` から他サイトへの参照と、検査対象サイト内の絶対参照を照合する。同一サイト内の通常の相対参照は単体検査で扱う。ファイルの欠落、HTMLアンカーの欠落、Artifactの未取得、HTMLを解析できずアンカーが未検証の場合をJSONで区別する。配信時のHTTP応答やJavaScriptで追加されるアンカーの判定にはブラウザが必要。
+
+CLIの終了コードは、確認済みの不整合なし・全Artifact検査済みが `0`、不整合ありが `1`、入力や出力のエラーが `2`、不整合の確認なし・検査範囲に未取得または一部検証を含む場合が `3`。監査ダッシュボードのビルドに指定すると「公開Artifact」タブと `unified-data.json` に結果が出る。ダッシュボードでは不整合も観測結果として掲載する。
+
 ## 共通スクロール操作
 
 固定した PSWB（`pyproject.toml` の `pages` グループ）の `css_source('tokens.css')`（配色トークン）と `css_source('shell.css')` から、
