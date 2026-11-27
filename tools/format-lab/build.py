@@ -8,7 +8,7 @@ import zipfile
 def publish(destination):
     source = Path(__file__).resolve().parent
     assets = ('index.html', 'app.js', 'formats.js', 'style.css', 'verify.py',
-              'inspect_format.py', 'vendor/js-yaml/js-yaml.min.js', 'vendor/js-yaml/LICENSE.txt')
+              'pptx_bench.py', 'inspect_format.py', 'vendor/js-yaml/js-yaml.min.js', 'vendor/js-yaml/LICENSE.txt')
     destination.mkdir(parents=True)
     with zipfile.ZipFile(destination / 'format-lab.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
         for name in assets:
