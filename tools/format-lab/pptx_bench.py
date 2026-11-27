@@ -9,12 +9,31 @@ import tempfile
 import time
 
 
+def render_final(deck, work, slide_count):
+    """Rasterize the final PPTX, including native objects added after Marp."""
+    work = Path(work).resolve()
+    subprocess.run(["soffice", "-env:UserInstallation=" + (work / "profile").as_uri(),
+                    "--headless", "--convert-to", "pdf", "--outdir", str(work), str(deck.resolve())],
+                   check=True, timeout=180, capture_output=True)
+    pdf = work / "slides.pdf"
+    subprocess.run(["pdftoppm", "-scale-to", "1200", "-png", str(pdf), str(work / "slide")],
+                   check=True, timeout=180, capture_output=True)
+    images = sorted(work.glob("slide-*.png"), key=lambda p: int(p.stem.split("-")[-1]))
+    if len(images) != slide_count or not images:
+        raise ValueError("rendered page count differs from the inspected PPTX")
+    entries = [{"file": p.name, "sha256": hashlib.sha256(p.read_bytes()).hexdigest()} for p in images]
+    for path in [pdf, *images]:
+        path.rename(deck.parent / path.name)
+    return entries
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path, help="Markdown file; relative assets resolve beside it")
     parser.add_argument("--ironmate", required=True, type=Path, help="Ironmate checkout")
     parser.add_argument("--out", required=True, type=Path, help="New benchmark directory")
     parser.add_argument("--marp", default="marp", help="Marp CLI executable")
+    parser.add_argument("--preview", action="store_true", help="Render the final PPTX to PDF and slide PNGs with LibreOffice and Poppler")
     native = parser.add_mutually_exclusive_group()
     native.add_argument("--table-slide", type=int, help="Place the first Markdown table on this reserved slide as a native PowerPoint table")
     native.add_argument("--enrich", type=Path, help="Optional Ironmate native OOXML pattern TOML")
@@ -44,12 +63,20 @@ def main():
             report.update(slides=result["inspection"]["slides"], bytes=deck.stat().st_size,
                           pptx_sha256=hashlib.sha256(deck.read_bytes()).hexdigest())
             deck.rename(args.out / "slides.pptx")
+        preview_failed = False
+        if args.preview and proc.returncode == 0:
+            try:
+                report["preview_pages"] = render_final(args.out / "slides.pptx", work, len(report["slides"]))
+            except (OSError, subprocess.SubprocessError, ValueError) as error:
+                report["preview_error"] = str(error)
+                print(error, file=sys.stderr)
+                preview_failed = True
         output = args.out / "benchmark.json"
         output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(output)
         if proc.returncode:
             print(proc.stderr, file=sys.stderr)
-        return proc.returncode
+        return proc.returncode or int(preview_failed)
 
 
 if __name__ == "__main__":

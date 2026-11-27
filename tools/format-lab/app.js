@@ -32,7 +32,47 @@ function download(name,s,type){const a=document.createElement("a"),url=URL.creat
 function show(){const d=doc();nav();$("title").textContent=d.name;select($("state"),d.state);$("src").value=d.source;$("b64").value=d.base64;convert();switchTab(tab)}
 function switchTab(k){tab=k;for(const b of document.querySelectorAll("[data-tab]")){b.className=b.dataset.tab===k?"active":"";$(b.dataset.tab).hidden=b.dataset.tab!==k}if(k==="links")links();if(k==="evidence")records()}
 function links(){const area=$("refs");area.replaceChildren();const seen=new Set();for(const {url,img} of selectedRefs){if(seen.has(url))continue;seen.add(url);const d=doc(),row=document.createElement("div"),c=document.createElement("code"),sel=document.createElement("select"),note=document.createElement("input");row.className="ref";c.textContent=(img?"画像":/^(?:[a-z]+:|\/\/)/i.test(url)?"外部リンク":url.startsWith("#")?"ページ内参照":"ファイル参照")+"　"+url;const v=Object.hasOwn(d.checks,url)?d.checks[url]:{};select(sel,v.state||states[0]);sel.setAttribute("aria-label",url+" 確認状態");note.placeholder="解決先・検査結果・証跡";note.setAttribute("aria-label",url+" 検査結果");note.value=v.note||"";sel.onchange=note.oninput=()=>{Object.defineProperty(d.checks,url,{value:{state:sel.value,note:note.value},enumerable:true,configurable:true});save()};row.append(c,sel,note);area.append(row)}if(!seen.size)area.textContent="参照はありません。"}
-function records(){const area=$("fields");area.replaceChildren();const d=doc();for(const [key,title] of fields){const l=document.createElement("label");l.textContent=title;const el=document.createElement(key==="pageState"?"select":["exit","pages","command"].includes(key)?"input":"textarea");if(key==="pageState")select(el,d.evidence[key]||states[0]);else el.value=d.evidence[key]||"";el.oninput=()=>{d.evidence[key]=el.value;save()};l.append(el);area.append(l)}}
+let previewUrls=[];
+function clearDeck(){
+ for(const url of previewUrls)URL.revokeObjectURL(url);
+ previewUrls=[];
+ $("deck-pages").replaceChildren();
+ $("deck-images").value="";
+}
+function deckReport(){
+ try{
+  const evidence=doc().evidence.pptx||"";
+  const report=JSON.parse(evidence.slice(evidence.indexOf("\n")+1));
+  return Array.isArray(report.preview_pages)&&report.preview_pages.length?report:null;
+ }catch{return null}
+}
+$("deck-images").onchange=async event=>{
+ const files=new Map(Array.from(event.target.files,f=>[f.name,f]));
+ const report=deckReport(),target=doc(),source=target.source,view=previewUrls;
+ if(!report)return;
+ const digest=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",bytes)),n=>n.toString(16).padStart(2,"0")).join("");
+ try{
+  if(await digest(enc.encode(source))!==report.source_sha256)throw Error("原稿が計測時と異なります");
+  const pages=[];
+  for(const [index,entry] of report.preview_pages.entries()){
+   const file=files.get(entry.file);
+   if(!file)continue;
+   if(await digest(await file.arrayBuffer())!==entry.sha256)throw Error(entry.file+" が計測結果と一致しません");
+   pages.push({file,index});
+  }
+  if(!pages.length)throw Error("この計測結果に対応するPNGを選んでください");
+  if(target!==doc()||target.source!==source||view!==previewUrls)return;
+  clearDeck();
+  for(const {file,index} of pages){
+   const figure=document.createElement("figure"),image=document.createElement("img"),caption=document.createElement("figcaption");
+   const url=URL.createObjectURL(file);previewUrls.push(url);
+   caption.textContent=(index+1)+" / "+report.preview_pages.length;
+   image.src=url;image.alt="スライド "+(index+1);image.style.maxWidth="100%";
+   figure.append(caption,image);$("deck-pages").append(figure);
+  }
+ }catch(error){if(view===previewUrls){clearDeck();$("deck-pages").textContent=error.message}}
+};
+function records(){clearDeck();$("deck-preview").hidden=!deckReport();const area=$("fields");area.replaceChildren();const d=doc();for(const [key,title] of fields){const l=document.createElement("label");l.textContent=title;const el=document.createElement(key==="pageState"?"select":["exit","pages","command"].includes(key)?"input":"textarea");if(key==="pageState")select(el,d.evidence[key]||states[0]);else el.value=d.evidence[key]||"";el.oninput=()=>{d.evidence[key]=el.value;save()};l.append(el);area.append(l)}}
 function changed(){const d=doc();if(Object.values(d.evidence).some(Boolean)||Object.keys(d.checks).length||d.state==="完了"){d.state="調査中";d.evidence.pageState="調査中";for(const v of Object.values(d.checks))v.state="調査中";$("notice").textContent="変換内容を変更しました。以前の証跡を再確認してください。";select($("state"),d.state)}convert();save()}
 $("src").oninput=()=>{doc().source=$("src").value;doc().base64=encode(doc().source);$("b64").value=doc().base64;changed()};$("b64").oninput=()=>{doc().base64=$("b64").value;changed()};$("reset").onclick=()=>{doc().base64=encode(doc().source);$("b64").value=doc().base64;changed()};$("state").onchange=()=>{doc().state=$("state").value;save()};for(const b of document.querySelectorAll("[data-tab]"))b.onclick=()=>switchTab(b.dataset.tab);
 $("mode").onchange=()=>{$("code").hidden=$("mode").selectedIndex===0;$("preview").hidden=!$("code").hidden};$("artifact").onclick=()=>download(doc().name.replace(/\.md$/i,"")+".html",html,"text/html");$("exp").onclick=()=>download("markdown-workspace.json",pack(),"application/json");$("imp").onclick=()=>$("json").click();$("json").onchange=async e=>{try{const incoming=read(await e.target.files[0].text());if(!confirm("現在のドキュメントを読み込んだJSONで置き換えますか？"))return;docs=incoming;idx=0;save();show()}catch(err){$("notice").textContent=err.message}finally{e.target.value=""}};
