@@ -37,6 +37,20 @@ def test_pages_artifact_accepts_local_links_and_fragments(tmp_path):
     assert validator.verify(path) == []
 
 
+def test_pages_artifact_resolves_the_parent_folder_to_the_front_page(tmp_path):
+    """A guide one folder down (guide_dir) links back to the Pages' own front page as ../ (or .., ./ at the top)."""
+    page = b'<a href="../">UI</a><a href="..">UI</a><a href="../#top">Top</a><a href="../index.html">UI</a>'
+    for prefix in ('./', ''):
+        files = {f'{prefix}index.html': b'<p id="top">front</p><a href="./">Me</a>', f'{prefix}guide/index.html': page}
+        assert validator.verify(archive(tmp_path, files)) == []
+    errors = validator.verify(archive(tmp_path, {'guide/index.html': page}))          # no front page: still reported
+    assert sum('missing local href: ..' in error for error in errors) == 4
+    errors = validator.verify(archive(tmp_path, {'index.html': b'<p>front</p>', 'guide/index.html': b'<a href="../#nowhere">x</a>'}))
+    assert errors == ['guide/index.html: missing fragment #nowhere in index.html']
+    errors = validator.verify(archive(tmp_path, {'index.html': b'<a href="../">out</a>'}))   # above the top: still escapes
+    assert errors == ['index.html: path escapes artifact: ../']
+
+
 def test_pages_artifact_rejects_missing_local_link(tmp_path):
     errors = validator.verify(archive(tmp_path, {'index.html': b'<a href="tools/ironmate/">Old</a>'}))
     assert any('missing local href' in error for error in errors)
