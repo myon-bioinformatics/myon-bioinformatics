@@ -32,7 +32,124 @@ function download(name,s,type){const a=document.createElement("a"),url=URL.creat
 function show(){const d=doc();nav();$("title").textContent=d.name;select($("state"),d.state);$("src").value=d.source;$("b64").value=d.base64;convert();switchTab(tab)}
 function switchTab(k){tab=k;for(const b of document.querySelectorAll("[data-tab]")){b.className=b.dataset.tab===k?"active":"";$(b.dataset.tab).hidden=b.dataset.tab!==k}if(k==="links")links();if(k==="evidence")records()}
 function links(){const area=$("refs");area.replaceChildren();const seen=new Set();for(const {url,img} of selectedRefs){if(seen.has(url))continue;seen.add(url);const d=doc(),row=document.createElement("div"),c=document.createElement("code"),sel=document.createElement("select"),note=document.createElement("input");row.className="ref";c.textContent=(img?"画像":/^(?:[a-z]+:|\/\/)/i.test(url)?"外部リンク":url.startsWith("#")?"ページ内参照":"ファイル参照")+"　"+url;const v=Object.hasOwn(d.checks,url)?d.checks[url]:{};select(sel,v.state||states[0]);sel.setAttribute("aria-label",url+" 確認状態");note.placeholder="解決先・検査結果・証跡";note.setAttribute("aria-label",url+" 検査結果");note.value=v.note||"";sel.onchange=note.oninput=()=>{Object.defineProperty(d.checks,url,{value:{state:sel.value,note:note.value},enumerable:true,configurable:true});save()};row.append(c,sel,note);area.append(row)}if(!seen.size)area.textContent="参照はありません。"}
-function records(){const area=$("fields");area.replaceChildren();const d=doc();for(const [key,title] of fields){const l=document.createElement("label");l.textContent=title;const el=document.createElement(key==="pageState"?"select":["exit","pages","command"].includes(key)?"input":"textarea");if(key==="pageState")select(el,d.evidence[key]||states[0]);else el.value=d.evidence[key]||"";el.oninput=()=>{d.evidence[key]=el.value;save()};l.append(el);area.append(l)}}
+const sha256Pattern=/^[a-f0-9]{64}$/;
+const stageLabels={
+ passed:"成功", failed:"失敗", not_run:"未実施", page_count_mismatch:"ページ数不一致"
+};
+async function sha256(bytes){
+ const digest=await crypto.subtle.digest("SHA-256",bytes);
+ return Array.from(new Uint8Array(digest),n=>n.toString(16).padStart(2,"0")).join("");
+}
+function pptxStages(report){
+ const hasDeck=Number.isSafeInteger(report.bytes)&&report.bytes>0&&sha256Pattern.test(report.pptx_sha256);
+ const inspected=Array.isArray(report.slides)&&report.slides.length>0;
+ const pages=report.preview_pages;
+ let generation,inspection,rendering;
+ if(report.schema==="format-lab-pptx/1"){
+  generation=hasDeck?"passed":report.exit_code?"failed":"not_run";
+  inspection=hasDeck&&inspected?"passed":"not_run";
+  rendering=inspection!=="passed"?"not_run":report.preview_error?"failed":
+   Array.isArray(pages)&&pages.length?"passed":"not_run";
+ }else if(report.schema==="format-lab-pptx/2"){
+  generation=report.generation?.status;
+  inspection=report.inspection?.status;
+  rendering=report.rendering?.status;
+  if(![generation,inspection,rendering].every(status=>Object.hasOwn(stageLabels,status)))throw Error("検証段階の状態が不正です");
+ }else throw Error("計測形式が一致しません");
+
+ if((generation==="passed"&&!hasDeck)||(inspection==="passed"&&(generation!=="passed"||!inspected))){
+  throw Error("生成物の計測値が不足しています");
+ }
+ if(rendering==="passed"){
+  if(report.exit_code||inspection!=="passed"||(report.schema==="format-lab-pptx/2"&&report.rendering.requested!==true)){
+   throw Error("描画の計測結果が矛盾しています");
+  }
+  if(!Array.isArray(pages)||pages.length!==report.slides.length)rendering="page_count_mismatch";
+  else if(!pages.every((entry,index)=>{
+   const page=entry?.file?.match?.(/^slide-(\d+)\.png$/);
+   return page&&Number(page[1])===index+1&&sha256Pattern.test(entry.sha256);
+  }))throw Error("PNGのページ番号またはSHA-256が不正です");
+ }
+ return {generation,inspection,rendering};
+}
+function pptxSummary(report,stages){
+ const details=stages.inspection==="passed"
+  ? " ／ "+report.slides.length+" 枚 ／ "+report.bytes+" B"
+  : "";
+ return "PPTX生成 "+stageLabels[stages.generation]+" ／ 構造検査 "+stageLabels[stages.inspection]+
+  " ／ 最終描画 "+stageLabels[stages.rendering]+details+
+  " ／ "+report.elapsed_seconds+" 秒 ／ 終了コード "+report.exit_code;
+}
+let previewUrls=[], deckSelection=0;
+function clearDeck(){
+ deckSelection++;
+ for(const url of previewUrls)URL.revokeObjectURL(url);
+ previewUrls=[];
+ $("deck-pages").replaceChildren();
+ $("deck-images").value="";
+ $("deck-status").textContent="";
+}
+function deckReport(){
+ try{
+  const evidence=(doc().evidence.pptx||"").trim();
+  return JSON.parse(evidence.startsWith("{")?evidence:evidence.slice(evidence.indexOf("\n")+1));
+ }catch{return null}
+}
+function showDeckReport(){
+ clearDeck();
+ const report=deckReport();
+ $("deck-summary").textContent="";
+ $("deck-preview").hidden=true;
+ if(!report)return;
+ try{
+  const stages=pptxStages(report);
+  $("deck-summary").textContent=pptxSummary(report,stages);
+  if(stages.rendering==="passed"){
+   $("deck-preview").hidden=false;
+   $("deck-status").textContent="PNG未照合";
+  }
+ }catch(error){
+  $("deck-summary").textContent=error.message;
+ }
+}
+$("deck-images").onchange=async event=>{
+ const files=new Map(Array.from(event.target.files,f=>[f.name,f]));
+ clearDeck();
+ const ticket=deckSelection, report=deckReport(), source=doc().source, urls=[];
+ if(!files.size){
+  $("deck-status").textContent="PNG未照合";
+  return;
+ }
+ $("deck-status").textContent="PNGを照合中";
+ try{
+  if(!report||pptxStages(report).rendering!=="passed")throw Error("照合できる描画結果がありません");
+  if(await sha256(enc.encode(source))!==report.source_sha256)throw Error("原稿が計測時と異なります");
+  const figures=[];
+  for(const [index,entry] of report.preview_pages.entries()){
+   const file=files.get(entry.file);
+   if(!file)throw Error("PNGページ不足　"+entry.file);
+   if(await sha256(await file.arrayBuffer())!==entry.sha256)throw Error("PNGのSHA-256不一致　"+entry.file);
+   const figure=document.createElement("figure"), image=document.createElement("img"), caption=document.createElement("figcaption");
+   image.src=URL.createObjectURL(file);
+   urls.push(image.src);
+   image.alt="スライド "+(index+1);
+   image.style.maxWidth="100%";
+   await image.decode().catch(()=>{throw Error("PNGを表示できません　"+entry.file)});
+   caption.textContent=(index+1)+" / "+report.preview_pages.length;
+   figure.append(caption,image);
+   figures.push(figure);
+  }
+  if(ticket!==deckSelection||source!==doc().source)return;
+  previewUrls=urls.splice(0);
+  $("deck-pages").replaceChildren(...figures);
+  $("deck-status").textContent="全"+figures.length+"ページのPNGを照合済み";
+ }catch(error){
+  if(ticket===deckSelection)$("deck-status").textContent="PNG照合失敗　"+error.message;
+ }finally{
+  for(const url of urls)URL.revokeObjectURL(url);
+ }
+};
+function records(){showDeckReport();const area=$("fields");area.replaceChildren();const d=doc();for(const [key,title] of fields){const l=document.createElement("label");l.textContent=title;const el=document.createElement(key==="pageState"?"select":["exit","pages","command"].includes(key)?"input":"textarea");if(key==="pageState")select(el,d.evidence[key]||states[0]);else el.value=d.evidence[key]||"";el.oninput=()=>{d.evidence[key]=el.value;save();if(key==="pptx")showDeckReport()};l.append(el);area.append(l)}}
 function changed(){const d=doc();if(Object.values(d.evidence).some(Boolean)||Object.keys(d.checks).length||d.state==="完了"){d.state="調査中";d.evidence.pageState="調査中";for(const v of Object.values(d.checks))v.state="調査中";$("notice").textContent="変換内容を変更しました。以前の証跡を再確認してください。";select($("state"),d.state)}convert();save()}
 $("src").oninput=()=>{doc().source=$("src").value;doc().base64=encode(doc().source);$("b64").value=doc().base64;changed()};$("b64").oninput=()=>{doc().base64=$("b64").value;changed()};$("reset").onclick=()=>{doc().base64=encode(doc().source);$("b64").value=doc().base64;changed()};$("state").onchange=()=>{doc().state=$("state").value;save()};for(const b of document.querySelectorAll("[data-tab]"))b.onclick=()=>switchTab(b.dataset.tab);
 $("mode").onchange=()=>{$("code").hidden=$("mode").selectedIndex===0;$("preview").hidden=!$("code").hidden};$("artifact").onclick=()=>download(doc().name.replace(/\.md$/i,"")+".html",html,"text/html");$("exp").onclick=()=>download("markdown-workspace.json",pack(),"application/json");$("imp").onclick=()=>$("json").click();$("json").onchange=async e=>{try{const incoming=read(await e.target.files[0].text());if(!confirm("現在のドキュメントを読み込んだJSONで置き換えますか？"))return;docs=incoming;idx=0;save();show()}catch(err){$("notice").textContent=err.message}finally{e.target.value=""}};
@@ -45,16 +162,11 @@ $("pptx-result").onchange=async event=>{
  const input=event.target, target=doc(), source=target.source;
  try{
   const report=JSON.parse(await input.files[0].text());
-  const digest=new Uint8Array(await crypto.subtle.digest("SHA-256",enc.encode(source)));
-  const hash=Array.from(digest,n=>n.toString(16).padStart(2,"0")).join("");
-  if(report.schema!=="format-lab-pptx/1"||report.source_sha256!==hash)throw Error("原稿または計測形式が一致しません");
+  if(report.source_sha256!==await sha256(enc.encode(source)))throw Error("原稿が計測時と異なります");
   if(!Number.isInteger(report.exit_code)||!Number.isFinite(report.elapsed_seconds))throw Error("計測値が不正です");
-  if(!report.exit_code&&(!Array.isArray(report.slides)||!Number.isSafeInteger(report.bytes)||!/^[a-f0-9]{64}$/.test(report.pptx_sha256)))throw Error("生成物の計測値が不足しています");
+  pptxStages(report);
   if(target!==doc()||target.source!==source)throw Error("原稿が変更されました");
-  const summary=report.exit_code===0
-   ? report.slides.length+" 枚 ／ "+report.bytes+" B ／ "+report.elapsed_seconds+" 秒"
-   : "変換失敗　終了コード "+report.exit_code;
-  target.evidence.pptx=summary+"\n"+JSON.stringify(report,null,2);
+  target.evidence.pptx=JSON.stringify(report,null,2);
   save();switchTab("evidence");$("notice").textContent="原稿のSHA-256を照合して計測結果を保存しました";
  }catch(error){$("notice").textContent=error.message}
  finally{input.value=""}
