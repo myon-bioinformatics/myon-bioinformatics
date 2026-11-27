@@ -173,6 +173,8 @@ def verify(archive, report=None, *, repository=None, strict_navigation=False):
                 errors.append(f'{name}: invalid local URL: {url}')
                 continue
             resolved = posixpath.normpath(posixpath.join(posixpath.dirname(name), relative)) if relative else name
+            if resolved == '.':
+                resolved = ''  # ../ from a folder (or ./ at the top) is the artifact's own front page
             if resolved == '..' or resolved.startswith('../'):
                 errors.append(f'{name}: path escapes artifact: {url}')
                 continue
