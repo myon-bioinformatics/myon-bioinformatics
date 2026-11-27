@@ -22,6 +22,14 @@ PRではPython標準unittestとNode 26の組込みテストを実行します。
 
 「概要」ビューは同じ観測JSONの `repository_counts` と `main_workflows` から、リポジトリ別のオープンPR・純Issue件数と最新main実行の結論を1表に並べます。集計と最新runの選択は `site/ui/audit-model.js` の `repoOverview` が担い、新規の取得は行いません。表示は既存の統計タイル・pill・表とPSWBのトークンを再利用し、main CIが失敗しているリポジトリを先頭に寄せて失敗runへのリンクをまとめます。対象は監査の取得範囲（`repository_counts` に載るリポジトリ）で、全公開リポジトリの一覧ではありません。本番の `index.html` は統合運用アプリ（unified）が組み立てるため、同じ集計を統合アプリの「概要」タブにも表示します。統合JSONの `counts` と `main_workflows` は `site/ui/unified-model.js` から同じ `AuditModel.repoOverview` へ渡します。不明な件数は「未取得」と表示し、確認済みの0件と区別します。合計は指標ごとに確認できたリポジトリ数を表示します。
 
+## CI失敗の根拠
+
+「優先確認」のmain失敗行とPR詳細の実行イベントから、該当するErr-o-RoadRunnerの収録ケースを開けます。「失敗コーパスの履歴」では、現在の監査対象に出ていない過去のrunもリポジトリ名・run ID・ケース名で検索できます。JUnit、保存済みトリアージ、原本欠損の台帳はコーパスのコミットに固定したリンクで参照します。トリアージの判定は保存済み出力に基づきます。
+
+照合の起点は `repository`（大文字小文字を区別しない `owner/name`）と `run_id` です。現行の観測と一致する表示には、コーパス側とGitHubの実行側のattemptと40桁のhead SHAがともに一致する必要があります。旧SHA、履歴記録、情報不足は履歴参照になります。コーパス取り込みでGitHubのCI結論は変わりません。
+
+ビルドは観測済みのErr-o-RoadRunner main SHAからコーパスを読み、固定した `case-graph`（Err-o-RoadRunner #113）と `audit-links`（ONTO #27）を実行します。既存の `ontautology-snapshot.json` にはPR・リポジトリの観測の `evidence` と `gaps` に参照と件数を出力します。ONTOの `unavailable-endpoint`（取得不能）、`missing-endpoint`（ノード未登録）、`unlinked`（リンク欠落）は別々に保持します。実行一覧から外れたrunでも、これらの指摘はリポジトリ単位で残ります。コーパス全体を取得できない場合は「取得不能」を表示します。XML、トリアージ本文、グラフ本体は公開成果物に含めません。
+
 ## 公開Artifactの横断リンク検証
 
 配備に使った `github-pages` または `github-pages-<attempt>` のArtifactをダウンロードし、展開された `artifact.tar` をサイトの公開URLと対応づける。GitHub ActionsのZIPを手動で取得した場合は、内側の `artifact.tar` を取り出す。マニフェストには検証対象の公開サイトをすべて登録する。未取得のサイトにも `base_url` を指定すると、同じホストのルートサイトに誤って割り当てずに済む。

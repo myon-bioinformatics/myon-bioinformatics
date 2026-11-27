@@ -1,6 +1,10 @@
 """Read-only Pages view from the existing audit/evidence producers. Python 3.11+."""
 from __future__ import annotations
 import json
+import re
+import subprocess
+import sys
+import tempfile
 import datetime as dt
 from pathlib import Path
 from urllib.parse import quote
@@ -197,6 +201,168 @@ def collect_main_runs(snapshot, fetch):
     return {'runs': results, 'errors': errors, 'scope': '各repoの既定ブランチ直近30 run内、workflow/eventの最新。失敗jobは現mainの最新attemptのみ。ログ本文・必須チェックは未取得。'}
 
 
+# Only these reviewed revisions supply executable code. The observed corpus
+# revision is read as data and may advance independently.
+CORPUS_TOOLS = {
+    'Err-o-RoadRunner': '4e718ab0c5fe4f210a3d7bc8bc842526858d68ed',
+    'ONTO': 'efc8fa92365d84f439645eda347de80da1d9cda6',
+}
+CORPUS_PATH = 'tests/fixtures/junit_corpus'
+CORPUS_OWNER = 'myon-bioinformatics'
+
+
+def _full_sha(value):
+    return value if isinstance(value, str) and re.fullmatch('[0-9a-f]{40}', value) else None
+
+
+def _public_checkout(directory, repository, sha, env):
+    directory.mkdir()
+    for args in (('init', '--quiet'), ('fetch', '--quiet', '--depth', '1', '--no-tags',
+                  f'https://github.com/{CORPUS_OWNER}/{repository}.git', sha),
+                 ('checkout', '--quiet', '--detach', sha)):
+        subprocess.run(['git', '-C', directory, '-c', 'core.hooksPath=/dev/null',
+                        '-c', 'credential.helper=', *args], env=env, stdin=subprocess.DEVNULL,
+                       capture_output=True, timeout=90, check=True)
+    return directory
+
+
+def collect_failure_evidence(snapshot):
+    """Run the existing EoRR and ONTO CLIs. Publish references and findings only."""
+    integrations = {r['repository']: r for r in snapshot.get('integrations', [])}
+    source = integrations.get('Err-o-RoadRunner', {})
+    revision = _full_sha(source.get('head_sha')) if source.get('branch') == 'main' else None
+    result = {'status': 'not-observed', 'runs': {}, 'source_sha': revision}
+    if (snapshot.get('owner', CORPUS_OWNER) != CORPUS_OWNER
+            or 'Err-o-RoadRunner' not in snapshot.get('repositories', [])):
+        return result
+    if not revision:
+        return dict(result, status='unavailable')
+    from vendor_fleet_plan import clean_env
+
+    env = clean_env()
+    for name in ('GH_TOKEN', 'GITHUB_TOKEN'):
+        env.pop(name, None)
+    try:
+        with tempfile.TemporaryDirectory(prefix='failure-evidence-') as tmp:
+            root = Path(tmp)
+            err = _public_checkout(root / 'errorr', 'Err-o-RoadRunner', CORPUS_TOOLS['Err-o-RoadRunner'], env)
+            onto = _public_checkout(root / 'onto', 'ONTO', CORPUS_TOOLS['ONTO'], env)
+            corpus = err if revision == CORPUS_TOOLS['Err-o-RoadRunner'] else _public_checkout(
+                root / 'corpus', 'Err-o-RoadRunner', revision, env)
+            data = corpus / CORPUS_PATH
+            if data.resolve() != data or any(p.is_symlink() for p in data.rglob('*')):
+                raise ValueError('unexpected symlink in the corpus')
+            graph = subprocess.run([sys.executable, '-I', '-S', err / 'scripts/usage_graph.py',
+                                    'case-graph', '--corpus', data],
+                                   env=env, capture_output=True, check=True, timeout=60).stdout
+            audit = subprocess.run([sys.executable, '-E', '-S', onto / 'onto_cli.py', 'audit-links', '-'],
+                                   cwd=onto, env=env, input=graph, capture_output=True, timeout=60)
+            if audit.returncode not in (0, 1):  # ONTO uses 1 for a successful audit with findings.
+                raise ValueError('ONTO audit-links failed')
+            public = {f'{CORPUS_OWNER}/{name}'.casefold() for name in snapshot['repositories']}
+            return project_failure_evidence(json.loads(graph), json.loads(audit.stdout), revision, public)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
+        return dict(result, status='unavailable', error=type(exc).__name__)
+
+
+def project_failure_evidence(graph, findings, revision, public):
+    """Project existing graph links into navigable URLs grouped by repository and run."""
+    if graph['schema'] != 'errorr-case-graph/v1' or not isinstance(findings, list):
+        raise ValueError('invalid failure evidence input')
+    root = f'https://github.com/{CORPUS_OWNER}/Err-o-RoadRunner/blob/{revision}/{CORPUS_PATH}/'
+    nodes = {node['id']: node for node in graph['nodes']}
+    cases, runs = {}, {}
+    for node in nodes.values():
+        if node['type'] != 'FailureCase' or node['repository'].casefold() not in public:
+            continue
+        repo, run_id = node['repository'], node['run_id']
+        key = f'{repo.casefold()}:{run_id}'
+        run = runs.setdefault(key, {'repository': repo, 'run_id': run_id,
+                                   'url': f'https://github.com/{repo}/actions/runs/{run_id}', 'cases': []})
+        attempt = node.get('run_attempt')
+        case = {'id': node['id'], 'name': node['name'], 'historical': node.get('historical') is True,
+                'attempt': attempt if type(attempt) is int and attempt > 0 else None,
+                'head_sha': _full_sha(node.get('head_sha')), 'links': {}, 'findings': []}
+        run['cases'].append(case)
+        cases[node['id']] = case
+    relations = {'has_junit': 'junit', 'has_triage': 'triage', 'has_assessment': 'assessment',
+                 'records_missing': 'ledger'}
+    ledgers = {edge['source']: nodes.get(edge['target'], {}) for edge in graph['edges']
+               if edge['relation'] == 'documented_by'}
+    for edge in graph['edges']:
+        case = cases.get(edge['source'])
+        role = relations.get(edge['relation'])
+        if case is None or role is None:
+            continue
+        target = nodes.get(edge['target'])
+        if target is None:
+            continue
+        if role == 'assessment':
+            case['assessment'] = target['name']
+        else:
+            if role == 'ledger':
+                target = ledgers.get(target['id'], {})
+            if target.get('available') is True and target.get('path'):
+                case['links'][role] = root + quote(target['path'])
+    for finding in findings:
+        for ident in dict.fromkeys((finding['source'], finding['target'])):
+            case_id = ident if ident in cases else ident.rpartition(':')[0]
+            case = cases.get(case_id)
+            if case is not None:
+                detail = {'kind': finding['kind'], 'relation': finding['relation']}
+                if detail not in case['findings']:
+                    case['findings'].append(detail)
+    return {'status': 'available', 'source_sha': revision, 'runs': runs}
+
+
+def _corpus_reference(snapshot, repository, run, *, current):
+    run_id = run.get('run_id')
+    if type(run_id) is str and run_id.isascii() and run_id.isdecimal():
+        run_id = int(run_id)  # Older check events derived this ID from the Actions URL.
+    if type(run_id) is not int or run_id < 1:
+        return None
+    repo = repository if '/' in repository else snapshot.get('owner', CORPUS_OWNER) + '/' + repository
+    key = f'{repo.casefold()}:{run_id}'
+    corpus = snapshot.get('ci_failure_evidence') or {}
+    source = corpus.get('runs', {}).get(key)
+    if source is None:
+        return None
+    attempt, head = run.get('attempt'), _full_sha(run.get('head_sha'))
+    exact = [case['id'] for case in source['cases']
+             if current and not case['historical'] and type(attempt) is int and attempt > 0 and head
+             and case['attempt'] == attempt and case['head_sha'] == head]
+    return {'key': key, 'exact_cases': exact}
+
+
+def _pr_corpus_reference(snapshot, record, event):
+    current = (event.get('type') == 'ci' and event.get('phase') != 'post_merge' and
+               record.get('fresh') and record.get('github_state') == 'open' and
+               not record.get('inventory_absent') and not event.get('historical') and
+               event.get('head_sha') == record.get('head_sha') ==
+               (record.get('current_collection') or {}).get('head_sha'))
+    return _corpus_reference(snapshot, record['repository'], event, current=current)
+
+
+def _export_corpus_references(snapshot, references):
+    corpus = snapshot.get('ci_failure_evidence') or {}
+    evidence, gaps = [], []
+    for ref in references:
+        source = corpus['runs'][ref['key']]
+        exact = set(ref['exact_cases'])
+        base = {'repository': source['repository'], 'run_id': source['run_id'],
+                'source_sha': corpus['source_sha'], 'evidence_url': source['url']}
+        links = [dict(case_id=case['id'], urls=case['links'], exact=case['id'] in exact)
+                 for case in source['cases'] if case['links']]
+        evidence.append(dict(base, kind='errorr-corpus-reference', references=links,
+                             case_count=len(source['cases']), exact_case_count=len(exact),
+                             scope='exact-run-attempt-sha' if exact else 'run-reference-only'))
+        for kind in ('unavailable-endpoint', 'missing-endpoint', 'unlinked'):
+            count = sum(any(g['kind'] == kind for g in case['findings']) for case in source['cases'])
+            if count:
+                gaps.append(dict(base, reason=kind, case_count=count, scope='corpus-link-audit'))
+    return evidence, gaps
+
+
 def collect_pages_inspections(snapshot, fetch):
     """Read report artifact metadata from observed main runs; no invented metrics."""
     owner = snapshot.get('owner', 'myon-bioinformatics')
@@ -298,13 +464,11 @@ def ontology_export(snapshot, records, dependencies, repository_counts=None):
     Only GitHub observation fields are exported. Browser-local completion is not merge evidence.
     Missing SHA/attempt stays unknown; all uninterpreted facts remain in source_record.
     """
-    import re
     owner = snapshot.get('owner', 'myon-bioinformatics')
     current = {r['id'] for r in snapshot['records']}
     mains = {r['repository']: r.get('head_sha') for r in snapshot.get('integrations', [])
              if r.get('branch') == 'main'}
-    def sha(value):
-        return value if isinstance(value, str) and re.fullmatch('[0-9a-f]{40}', value) else None
+    sha = _full_sha
     def reference(value):
         if value.startswith('https://github.com/'):
             match = re.fullmatch(r'https://github.com/([^/]+/[^/]+)/pull/([1-9][0-9]*)', value)
@@ -318,10 +482,14 @@ def ontology_export(snapshot, records, dependencies, repository_counts=None):
             continue
         repo = r['repository'] if '/' in r['repository'] else owner + '/' + r['repository']
         gaps = [{'reason': 'required checks・生成物バイト・main包含・全attemptは未検証'}]
-        runs, jobs = {}, [e for e in r.get('events', []) if e.get('type') == 'job']
+        runs, refs = {}, {}
+        jobs = [e for e in r.get('events', []) if e.get('type') == 'job']
         for e in r.get('events', []):
             if e.get('type') != 'ci':
                 continue
+            ref = _pr_corpus_reference(snapshot, r, e)
+            if ref and (ref['key'] not in refs or ref['exact_cases']):
+                refs[ref['key']] = ref
             ident, attempt = e.get('run_id'), e.get('attempt')
             if not isinstance(ident, int) or isinstance(ident, bool) or ident < 1:
                 gaps.append({'reason': 'run ID未取得。check-runをActionsRunへ推測変換しない'})
@@ -367,6 +535,7 @@ def ontology_export(snapshot, records, dependencies, repository_counts=None):
             files = None
         if files is None:
             gaps.append({'reason': '現headに対応する変更ファイル未取得'})
+        corpus_refs, corpus_gaps = _export_corpus_references(snapshot, refs.values())
         row = {'repository': repo, 'number': r['number'], 'title': r.get('title'), 'url': r.get('url'),
                'state': state, 'github_state': r.get('github_state'), 'merged': r.get('merged'),
                'merged_at': r.get('merged_at'), 'merge_commit_sha': r.get('merge_sha') or r.get('merge_commit_sha'),
@@ -377,7 +546,7 @@ def ontology_export(snapshot, records, dependencies, repository_counts=None):
                'reviews': [dict(e) for e in r.get('events', []) if e.get('type') == 'review'],
                'issues': [{'url': i.get('url'), 'title': i.get('title'), 'relation_basis': 'same repository only'}
                           for i in records if i['id'] in current and i.get('kind') == 'issue' and i['repository'] == r['repository']],
-               'pins': [], 'artifacts': [], 'evidence': [], 'gaps': gaps,
+               'pins': [], 'artifacts': [], 'evidence': corpus_refs, 'gaps': gaps + corpus_gaps,
                'tasks': [], 'completion_records': [], 'source_record': r}
         for p in snapshot.get('vendor_pins', []):
             if (p.get('repository') == r['repository'] and sha(p.get('commit'))
@@ -388,12 +557,21 @@ def ontology_export(snapshot, records, dependencies, repository_counts=None):
     inventory = []
     workflows = snapshot.get('main_workflows', {}).get('runs', [])
     names = set(snapshot.get('repositories', [])) | {r['repository'] for r in snapshot.get('integrations', [])}
+    corpus_gaps_by_repo = {}
+    for key, run in (snapshot.get('ci_failure_evidence') or {}).get('runs', {}).items():
+        if any(case['findings'] for case in run['cases']):
+            corpus_gaps_by_repo.setdefault(run['repository'].casefold(), {})[key] = {'key': key, 'exact_cases': []}
     for name in sorted(names):
+        repo = name if '/' in name else owner + '/' + name
         main = sha(mains.get(name))
         runs = []
+        refs = corpus_gaps_by_repo.get(repo.casefold(), {}).copy()
         for w in workflows:
             if w['repository'] != name or not w.get('current_main') or not main or w.get('head_sha') != main:
                 continue
+            ref = _corpus_reference(snapshot, name, w, current=True)
+            if ref:
+                refs[ref['key']] = ref
             runs.append({'id': w['run_id'], 'run_attempt': w.get('attempt'), 'head_sha': sha(w.get('head_sha')),
                          'name': w.get('name'), 'workflow_id': w.get('workflow_id'), 'event': w.get('event'),
                          'status': w.get('status'), 'conclusion': w.get('conclusion'), 'html_url': w.get('url'),
@@ -402,13 +580,15 @@ def ontology_export(snapshot, records, dependencies, repository_counts=None):
         pins = [dict(repository=p['source_repository'], commit=p['commit'], destination=p.get('destination'))
                 for p in snapshot.get('vendor_pins', []) if p.get('repository') == name and sha(p.get('commit'))
                 and isinstance(p.get('source_repository'), str) and p['source_repository'].count('/') == 1]
-        inventory.append({'repo': name if '/' in name else owner + '/' + name,
+        corpus_refs, corpus_gaps = _export_corpus_references(snapshot, refs.values())
+        inventory.append({'repo': repo,
                           'main': main, 'main_runs': runs, 'pin_records': pins,
                           'issues': [dict(number=r['number'], title=r.get('title'), url=r.get('url'))
                                      for r in records if r['id'] in current and r.get('kind') == 'issue' and r['repository'] == name],
                           'state': 'ブロッカー' if any(w['conclusion'] in ('failure','timed_out','action_required','startup_failure') for w in runs) else '調査中',
                           'source_url': 'https://github.com/' + (name if '/' in name else owner + '/' + name),
-                          'gaps': ['main runは既存の取得範囲。jobは取得済みのみ。artifacts・required checks・コピー内容は未検証']})
+                          'evidence': corpus_refs,
+                          'gaps': ['main runは既存の取得範囲。jobは取得済みのみ。artifacts・required checks・コピー内容は未検証'] + corpus_gaps})
     registry = snapshot.get('transfer_registry', {})
     ledger = registry.get('document', {}) if registry.get('status') == '取得済み' else {}
     export = {'schema': 'integration-audit/3', 'captured_at': snapshot['generated_at'], 'records': result, 'inventory': inventory,
@@ -499,6 +679,17 @@ def view_data(snapshot, evidence, history, operations, previous=None):
     # Reuse the parent's existing TopologicalSorter contract, including missing/cycle propagation.
     from ci_status import dependency_plan
     plan = dependency_plan([dict(r, depends_on=sorted(graph[r['id']])) for r in active])
+    main_workflows = snapshot.get('main_workflows', {'runs': [], 'errors': [], 'scope': '未取得'})
+    main_workflows = dict(main_workflows, runs=[
+        dict(w, corpus_ref=_corpus_reference(snapshot, w['repository'], w, current=w.get('current_main') is True))
+        for w in main_workflows['runs']])
+    for record in normalized:
+        events = []
+        for event in record['events']:
+            ref = (_pr_corpus_reference(snapshot, record, event)
+                   if event.get('type') in ('ci', 'post_merge', 'main_ci') else None)
+            events.append(dict(event, corpus_ref=ref) if ref else event)
+        record['events'] = events
     counts = [dict(c, fresh=c.get('complete', False)) for c in evidence.get('repository_counts', [])]
     changes = [{'id': c['id'], 'change': key, 'before': value.get('before'), 'after': value.get('after')}
                for c in evidence.get('changes', []) for key, value in c.get('changes', {}).items()]
@@ -512,7 +703,8 @@ def view_data(snapshot, evidence, history, operations, previous=None):
             'fleet': snapshot.get('fleet', {}), 'history': history, 'operations': operations,
             'pages_inspections': snapshot.get('pages_inspections', []),
             'pages_links': snapshot.get('pages_links'),
-            'main_workflows': snapshot.get('main_workflows', {'runs': [], 'errors': [], 'scope': '未取得'}),
+            'main_workflows': main_workflows,
+            'ci_failure_evidence': snapshot.get('ci_failure_evidence'),
             'pswb_migration': migration,
             'transfer_registry': snapshot.get('transfer_registry', {'status':'未取得'}),
             'catalog': snapshot.get('catalog_observation', {'status': '未取得'}),

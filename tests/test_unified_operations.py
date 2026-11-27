@@ -406,3 +406,101 @@ class TransferRegistryTests(unittest.TestCase):
         snapshot['integrations']=[{'repository':'OnTautoLogy','branch':'main','head_sha':'a'*40}]
         def unavailable(_):raise RuntimeError('missing registry')
         self.assertEqual(collect_transfer_registry(snapshot,unavailable)['status'],'未取得')
+
+
+class FailureCorpusTests(unittest.TestCase):
+    def setUp(self):
+        from scripts.unified_operations import project_failure_evidence
+
+        self.snapshot, self.evidence = OntologyExportTests().values()
+        self.snapshot['repositories'] = ['Demo']
+        repo = 'myon-bioinformatics/Demo'
+        cases = [
+            dict(id='case:exact', name='exact', run_attempt=2, head_sha='a'*40),
+            dict(id='case:legacy', name='legacy'),
+            dict(id='case:lost', name='lost', historical=True, run_attempt=2, head_sha='a'*40),
+        ]
+        graph = {
+            'schema': 'errorr-case-graph/v1',
+            'nodes': [dict(c, type='FailureCase', repository=repo, run_id=10) for c in cases] + [
+                dict(id='case:exact:junit', type='JUnitEvidence', available=True, path='cases/one.xml'),
+                dict(id='case:legacy:junit', type='JUnitEvidence', available=True, path='cases/other.xml'),
+                dict(id='case:lost:junit', type='JUnitEvidence', available=False, path='cases/survivor.xml'),
+                dict(id='case:lost:missing', type='UnavailableRecord'),
+                dict(id='ledger', type='EvidenceLedger', available=True, path='unavailable-evidence.json'),
+            ],
+            'edges': [
+                dict(source='case:exact', relation='has_junit', target='case:exact:junit'),
+                dict(source='case:legacy', relation='has_triage', target='case:legacy:triage'),
+                dict(source='case:lost', relation='records_missing', target='case:lost:missing'),
+                dict(source='case:lost:missing', relation='documented_by', target='ledger'),
+            ],
+        }
+        # These are the three distinct outputs from ONTO audit-links.
+        findings = [
+            dict(kind='unlinked', source='case:legacy', relation='has_junit', target='case:legacy:junit'),
+            dict(kind='missing-endpoint', source='case:legacy', relation='has_triage', target='case:legacy:triage'),
+            dict(kind='unavailable-endpoint', source='case:lost', relation='has_junit', target='case:lost:junit'),
+        ]
+        self.snapshot['ci_failure_evidence'] = project_failure_evidence(graph, findings, 'c'*40, {repo.lower()})
+        record = self.evidence['records'][0]
+        record['current_collection'] = {'head_sha': 'a'*40}
+        record['events'] = [dict(type='ci', run_id=10, attempt=2, head_sha='a'*40, conclusion='failure')]
+
+    def test_projects_only_linked_originals_and_preserves_each_onto_finding(self):
+        data = view_data(self.snapshot, self.evidence, {}, [])
+        run, = data['ci_failure_evidence']['runs'].values()
+        exact, legacy, lost = run['cases']
+        self.assertIn('/' + 'c'*40 + '/', exact['links']['junit'])
+        self.assertEqual(legacy['links'], {})
+        self.assertEqual({g['kind'] for g in legacy['findings']}, {'unlinked', 'missing-endpoint'})
+        self.assertEqual(set(lost['links']), {'ledger'})
+        self.assertEqual(lost['findings'][0]['kind'], 'unavailable-endpoint')
+        row, = data['aoi_integration']['records']
+        ref, = row['evidence']
+        self.assertEqual(ref['exact_case_count'], 1)
+        self.assertEqual({g['reason'] for g in row['gaps'] if g.get('scope') == 'corpus-link-audit'},
+                         {'unlinked', 'missing-endpoint', 'unavailable-endpoint'})
+        self.assertEqual(row['runs'][0]['conclusion'], 'failure')
+        self.assertEqual(data['records'][0]['events'][0]['corpus_ref']['exact_cases'], ['case:exact'])
+        self.assertNotIn('corpus_ref', self.evidence['records'][0]['events'][0])
+
+    def test_same_run_id_needs_repository_then_exact_attempt_and_sha_to_match(self):
+        record, = self.evidence['records']
+        event, = record['events']
+        for change in ({'attempt': None}, {'head_sha': None}, {'attempt': 1},
+                       {'head_sha': 'b'*40}, {'historical': True}, {'phase': 'post_merge'}):
+            with self.subTest(change=change):
+                record['events'] = [dict(event, **change)]
+                data = view_data(self.snapshot, self.evidence, {}, [])
+                self.assertEqual(data['records'][0]['events'][0]['corpus_ref']['exact_cases'], [])
+                self.assertEqual(data['aoi_integration']['records'][0]['evidence'][0]['scope'], 'run-reference-only')
+        record['repository'] = 'Different'
+        self.assertNotIn('corpus_ref', view_data(self.snapshot, self.evidence, {}, [])['records'][0]['events'][0])
+
+    def test_main_inventory_keeps_run_result_and_corpus_evidence_independent(self):
+        self.snapshot['integrations'][0]['head_sha'] = 'a'*40
+        run = dict(repository='Demo', run_id=10, attempt=2, head_sha='a'*40,
+                   current_main=True, conclusion='success', jobs=[])
+        self.snapshot['main_workflows'] = {'runs': [run]}
+        data = view_data(self.snapshot, self.evidence, {}, [])
+        inventory, = data['aoi_integration']['inventory']
+        self.assertEqual(inventory['main_runs'][0]['conclusion'], 'success')
+        self.assertEqual(inventory['evidence'][0]['exact_case_count'], 1)
+        run['current_main'] = False
+        data = view_data(self.snapshot, self.evidence, {}, [])
+        self.assertEqual(data['main_workflows']['runs'][0]['corpus_ref']['exact_cases'], [])
+        inventory, = data['aoi_integration']['inventory']
+        self.assertEqual(inventory['main_runs'], [])
+        self.assertEqual(inventory['evidence'][0]['scope'], 'run-reference-only')
+
+    def test_source_checkout_failure_never_becomes_empty_verified_corpus(self):
+        from unittest.mock import patch
+        from scripts.unified_operations import collect_failure_evidence
+
+        snapshot = {'repositories': ['Err-o-RoadRunner'],
+                    'integrations': [dict(repository='Err-o-RoadRunner', branch='main', head_sha='a'*40)]}
+        with patch('scripts.unified_operations._public_checkout', side_effect=OSError):
+            self.assertEqual(collect_failure_evidence(snapshot)['status'], 'unavailable')
+        snapshot['repositories'] = []
+        self.assertEqual(collect_failure_evidence(snapshot)['status'], 'not-observed')
