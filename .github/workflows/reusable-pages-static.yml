@@ -59,7 +59,7 @@ env:
   #    each repository's own pin may trail it on PySaiyanWeBoo main (🟡) but never leave main (❌).
   # ♻️ The CaChereCyCle commit whose store (icons and favicons, Base64 in JSONL) guide_brand reads.
   CACHERECYCLE: "3eb4a41f420a556331853129bb97655cfd8b1b88"
-  PSWB: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@7a3b18be096fc9353b54f9d542809146d84231a5"
+  PSWB: "pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@ea62dfb0d92add8c41edbcbcf1d28a87dffd7fbe"
 
 jobs:
   build:
