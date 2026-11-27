@@ -16,6 +16,7 @@ on:
       - pyproject.toml
       - uv.lock
       - vendor/gh_identity.py
+      - tools/format-lab/**
       - site/**
       - docs/audit-pages.md
       - .github/workflows/pages.yml
@@ -31,6 +32,7 @@ on:
       - assets/brand/profile-icon.png
       - vendor_fleet_plan.py
       - fleet_records.py
+      - tools/format-lab/**
       - site/**
       - tests/test_audit_pages.py
       - tests/test_audit_model.cjs

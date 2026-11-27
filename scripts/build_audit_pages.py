@@ -13,6 +13,7 @@ from html import escape
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import urllib.error
@@ -646,6 +647,9 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         from scripts.unified_operations import write_workspace
         workspace = write_workspace(snapshot, evidence, history, stage, source_root, previous=before)
         # Publish the standalone operations guide alongside the audit workspace.
+        if (source_root / 'tools/format-lab').is_dir():
+            subprocess.run([sys.executable, source_root / 'tools/format-lab/build.py',
+                            stage / 'tools/format-lab'], check=True)
         operations = source_root / 'site/component-ops'
         if operations.is_dir():
             shutil.copytree(operations, stage / 'component-ops')
