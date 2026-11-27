@@ -110,14 +110,13 @@ def index_archive(archive):
 
 
 def resolve_file(files, path, *, directory=False):
+    index = posixpath.normpath(posixpath.join(path, 'index.html'))
     if directory:
-        index = posixpath.join(path, 'index.html')
         return index if index in files else None
     if path in files:
         return path
     if '.' not in posixpath.basename(path) and path + '.html' in files:
         return path + '.html'
-    index = posixpath.join(path, 'index.html')
     return index if index in files else None
 
 

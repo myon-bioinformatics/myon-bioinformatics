@@ -51,6 +51,27 @@ def test_pages_artifact_resolves_the_parent_folder_to_the_front_page(tmp_path):
     assert errors == ['index.html: path escapes artifact: ../']
 
 
+def test_pages_artifact_resolves_nested_links_to_root(tmp_path):
+    path = archive(tmp_path, {
+        './index.html': b'<section id="known"></section>',
+        './guide/index.html': b'<a href="../">Home</a><a href="../#known">Known</a>',
+    })
+    assert validator.verify(path) == []
+
+
+def test_pages_artifact_keeps_root_link_errors(tmp_path):
+    no_index = archive(tmp_path, {'guide/index.html': b'<a href="../">Missing</a>'})
+    assert any('missing local href' in error for error in validator.verify(no_index))
+
+    root_with_escape = archive(tmp_path, {
+        'index.html': b'<section id="known"></section>',
+        'guide/index.html': b'<a href="../../">Escape</a><a href="../#absent">Missing</a>',
+    })
+    errors = validator.verify(root_with_escape)
+    assert any('path escapes artifact' in error for error in errors)
+    assert any('missing fragment' in error for error in errors)
+
+
 def test_pages_artifact_rejects_missing_local_link(tmp_path):
     errors = validator.verify(archive(tmp_path, {'index.html': b'<a href="tools/ironmate/">Old</a>'}))
     assert any('missing local href' in error for error in errors)
