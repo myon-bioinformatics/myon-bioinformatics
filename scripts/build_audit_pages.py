@@ -563,6 +563,23 @@ def write_github_evidence(snapshot, stage, *, source_root, observe_details=False
     return result
 
 
+def publish_format_lab(source_root, stage):
+    source = source_root / 'tools/format-lab'
+    destination = stage / 'tools/format-lab'
+    assets = ('index.html', 'app.js', 'formats.js', 'style.css', 'verify.py',
+              'inspect_format.py', 'vendor/js-yaml/js-yaml.min.js', 'vendor/js-yaml/LICENSE.txt')
+    destination.mkdir(parents=True)
+    with zipfile.ZipFile(destination / 'format-lab.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
+        for name in assets:
+            target = destination / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source / name, target)
+            archive.write(target, name)
+    index = destination / 'index.html'
+    index.write_text(index.read_text(encoding='utf-8').replace('<!-- FORMAT_LAB_DOWNLOAD -->',
+                     '<a class="source" download href="format-lab.zip">↓　最小構成を保存</a>'), encoding='utf-8')
+
+
 def build(out, *, repos=None, previous=None, previous_history=None, source_root=ROOT, fleet=None,
           observe_details=False, pages_links_manifest=None):
     out = Path(out)
@@ -646,6 +663,8 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         from scripts.unified_operations import write_workspace
         workspace = write_workspace(snapshot, evidence, history, stage, source_root, previous=before)
         # Publish the standalone operations guide alongside the audit workspace.
+        if (source_root / 'tools/format-lab').is_dir():
+            publish_format_lab(source_root, stage)
         operations = source_root / 'site/component-ops'
         if operations.is_dir():
             shutil.copytree(operations, stage / 'component-ops')
