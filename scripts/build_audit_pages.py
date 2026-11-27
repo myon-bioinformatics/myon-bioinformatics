@@ -605,7 +605,8 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         produce = fleet if getattr(fleet, 'takes_snapshot', False) else (lambda names, before, snapshot=None: fleet(names, before))
         snapshot['fleet'], fleet_graph = split_fleet(produce(names, (before or {}).get('fleet'), snapshot=snapshot))
     snapshot['pswb_migration'] = pswb_migration(snapshot, ci.get)
-    from scripts.unified_operations import collect_main_runs, collect_repository_counts, collect_transfer_registry, collect_pages_inspections
+    from scripts.unified_operations import (collect_failure_evidence, collect_main_runs, collect_pages_inspections,
+                                            collect_repository_counts, collect_transfer_registry)
     snapshot['repository_counts'] = collect_repository_counts(snapshot, ci.get)
 
     if observe_details:
@@ -627,6 +628,7 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
         from scripts.audit_pages_links import audit as audit_pages_links
         snapshot['pages_links'] = audit_pages_links(pages_links_manifest)
     snapshot['transfer_registry'] = collect_transfer_registry(snapshot, ci.get)
+    failure_evidence = collect_failure_evidence(snapshot) if observe_details else None
     # Build away from the destination. No partial generation overwrites a good local output.
     out.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='audit-build-', dir=out.parent) as directory:
@@ -645,7 +647,8 @@ def build(out, *, repos=None, previous=None, previous_history=None, source_root=
                 shutil.copyfile(asset, stage / asset.name)
         evidence = write_github_evidence(snapshot, stage, source_root=source_root, observe_details=observe_details)
         from scripts.unified_operations import write_workspace
-        workspace = write_workspace(snapshot, evidence, history, stage, source_root, previous=before)
+        workspace_snapshot = dict(snapshot, ci_failure_evidence=failure_evidence)
+        workspace = write_workspace(workspace_snapshot, evidence, history, stage, source_root, previous=before)
         # Publish the standalone operations guide alongside the audit workspace.
         if (source_root / 'tools/format-lab').is_dir():
             subprocess.run([sys.executable, source_root / 'tools/format-lab/build.py',
