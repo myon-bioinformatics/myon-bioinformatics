@@ -1,0 +1,33 @@
+name: Lean verification
+
+on:
+  pull_request:
+    paths:
+      - "lean_verify.py"
+      - "tests/test_lean_verify*.py"
+      - "tests/test_lean_workflows.py"
+      - "tests/fixtures/lean/**"
+      - ".github/workflows/lean-verification.yml"
+      - ".github/workflows/reusable-lean-verify.yml"
+  push:
+    branches: [main]
+    paths:
+      - "lean_verify.py"
+      - "tests/test_lean_verify*.py"
+      - "tests/test_lean_workflows.py"
+      - "tests/fixtures/lean/**"
+      - ".github/workflows/lean-verification.yml"
+      - ".github/workflows/reusable-lean-verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: ./.github/workflows/reusable-lean-verify.yml
+    with:
+      project-directory: tests/fixtures/lean
+      proof: Valid.lean
+      theorems: VerificationFixture.identity
+      verifier-self-test: true

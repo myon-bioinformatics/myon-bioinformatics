@@ -1,0 +1,201 @@
+name: Reusable Lean verification
+
+on:
+  workflow_call:
+    inputs:
+      proof:
+        description: "One .lean entrypoint, relative to project-directory"
+        type: string
+        required: true
+      theorems:
+        description: "Newline-separated ASCII theorem names to audit, including their namespaces"
+        type: string
+        required: true
+      project-directory:
+        description: "Caller directory containing the proof and a pinned lean-toolchain"
+        type: string
+        default: "."
+      lake:
+        description: "Run the verifier through lake env lean"
+        type: boolean
+        default: false
+      timeout-seconds:
+        description: "Positive finite timeout for each verifier subprocess"
+        type: number
+        default: 120
+      verifier-self-test:
+        description: "Also run the defining repository's real-Lean integration tests"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Initialize verification report
+        run: |
+          python3 -S - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          directory = Path(os.environ["RUNNER_TEMP"]) / "lean-verification"
+          directory.mkdir(parents=True, exist_ok=True)
+          (directory / "report.json").write_text(json.dumps({
+              "schema": "lean-verification/1",
+              "status": "unverified",
+              "required": True,
+              "reason": "verification_not_started",
+              "results": [],
+          }) + "\n", encoding="utf-8")
+          PY
+      - name: Checkout caller repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: consumer
+          persist-credentials: false
+      - name: Checkout verifier at reusable workflow SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .lean-verifier
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "latest"
+          python-version: "3.15"
+          activate-environment: true
+          enable-cache: false
+      - name: Validate proof inputs and pinned toolchain
+        env:
+          LEAN_PROOF: ${{ inputs.proof }}
+          LEAN_THEOREMS: ${{ inputs.theorems }}
+          LEAN_PROJECT_DIRECTORY: ${{ inputs.project-directory }}
+          LEAN_USE_LAKE: ${{ inputs.lake }}
+          LEAN_TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
+        run: |
+          python -S - <<'PY'
+          import json
+          import math
+          import os
+          from pathlib import Path
+          import re
+
+          consumer = (Path(os.environ["GITHUB_WORKSPACE"]) / "consumer").resolve(strict=True)
+          project_input = Path(os.environ["LEAN_PROJECT_DIRECTORY"])
+          if project_input.is_absolute():
+              raise SystemExit("project-directory must be relative to the caller checkout")
+          project = (consumer / project_input).resolve(strict=True)
+          if not project.is_dir() or not project.is_relative_to(consumer):
+              raise SystemExit("project-directory must stay inside the caller checkout")
+          proof_input = Path(os.environ["LEAN_PROOF"])
+          if proof_input.is_absolute():
+              raise SystemExit("proof must be relative to project-directory")
+          proof = (project / proof_input).resolve(strict=True)
+          if not proof.is_relative_to(project) or not proof.is_file() or proof.suffix != ".lean":
+              raise SystemExit("proof must be a .lean file inside project-directory")
+          toolchain_file = (project / "lean-toolchain").resolve(strict=True)
+          if not toolchain_file.is_relative_to(project) or not toolchain_file.is_file():
+              raise SystemExit("lean-toolchain must stay inside project-directory")
+          toolchain = toolchain_file.read_text(encoding="utf-8").strip()
+          if not re.fullmatch(r"leanprover/lean4:v[0-9]+\.[0-9]+\.[0-9]+", toolchain):
+              raise SystemExit("lean-toolchain must pin leanprover/lean4:vX.Y.Z")
+          theorems = [line.strip() for line in os.environ["LEAN_THEOREMS"].splitlines() if line.strip()]
+          name_pattern = r"(?:[A-Za-z_][A-Za-z0-9_']*\.)*[A-Za-z_][A-Za-z0-9_']*"
+          if not theorems or any(not re.fullmatch(name_pattern, name) for name in theorems):
+              raise SystemExit("theorems must contain ASCII Lean declaration names, one per line")
+          timeout = float(os.environ["LEAN_TIMEOUT_SECONDS"])
+          if not math.isfinite(timeout) or timeout <= 0:
+              raise SystemExit("timeout-seconds must be positive and finite")
+          lake = os.environ["LEAN_USE_LAKE"]
+          if lake not in {"true", "false"}:
+              raise SystemExit("lake must be true or false")
+          config = {"project": str(project), "proof": str(proof), "theorems": theorems,
+                    "toolchain": toolchain, "timeout": timeout, "lake": lake == "true"}
+          target = Path(os.environ["RUNNER_TEMP"]) / "lean-verification" / "inputs.json"
+          target.write_text(json.dumps(config) + "\n", encoding="utf-8")
+          print(f"Validated {len(theorems)} theorem(s) with {toolchain}")
+          PY
+      - name: Install pinned Elan
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_dir="$(mktemp -d)"
+          trap 'rm -rf "$install_dir"' EXIT
+          archive="$install_dir/elan.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/leanprover/elan/releases/download/v4.4.0/elan-x86_64-unknown-linux-gnu.tar.gz \
+            -o "$archive"
+          printf '%s  %s\n' \
+            '0e8250aa2be86c7af929ade68db617af9edc8b9ccf6eaf5ece228250d0d032e2' \
+            "$archive" | sha256sum --check --status
+          tar -xzf "$archive" -C "$install_dir"
+          export ELAN_HOME="$RUNNER_TEMP/lean-elan"
+          "$install_dir/elan-init" -y --no-modify-path --default-toolchain none
+          printf 'ELAN_HOME=%s\n' "$ELAN_HOME" >> "$GITHUB_ENV"
+          printf '%s/bin\n' "$ELAN_HOME" >> "$GITHUB_PATH"
+      - name: Install project Lean toolchain
+        run: |
+          python -S - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          config = json.loads((Path(os.environ["RUNNER_TEMP"]) / "lean-verification" / "inputs.json").read_text())
+          subprocess.run(["lean", "--version"], cwd=config["project"], check=True, timeout=600)
+          PY
+      - name: Verify selected theorems
+        run: |
+          python -S - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          directory = Path(os.environ["RUNNER_TEMP"]) / "lean-verification"
+          config = json.loads((directory / "inputs.json").read_text())
+          verifier = Path(os.environ["GITHUB_WORKSPACE"]) / ".lean-verifier" / "lean_verify.py"
+          command = [sys.executable, "-S", str(verifier), "--cwd", config["project"],
+                     "--required", "--json-output", str(directory / "report.json"),
+                     "--timeout", str(config["timeout"])]
+          if config["lake"]:
+              command.append("--lake")
+          for theorem in config["theorems"]:
+              command.extend(["--theorem", theorem])
+          command.append(config["proof"])
+          raise SystemExit(subprocess.run(command, cwd=config["project"], check=False).returncode)
+          PY
+      - name: Exercise verifier with actual Lean
+        if: inputs.verifier-self-test
+        env:
+          LEAN_VERIFY_REQUIRE: "1"
+        run: |
+          python -S - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          config = json.loads((Path(os.environ["RUNNER_TEMP"]) / "lean-verification" / "inputs.json").read_text())
+          verifier_root = Path(os.environ["GITHUB_WORKSPACE"]) / ".lean-verifier"
+          environment = dict(os.environ, PYTHONPATH=str(verifier_root))
+          command = [sys.executable, "-S", "-m", "unittest", "discover",
+                     "-s", str(verifier_root / "tests"), "-p", "test_lean_verify_integration.py", "-v"]
+          raise SystemExit(subprocess.run(command, cwd=config["project"], env=environment, check=False).returncode)
+          PY
+      - name: Preserve verification report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lean-verification
+          path: ${{ runner.temp }}/lean-verification/report.json
+          if-no-files-found: error
+          retention-days: 14
