@@ -25,8 +25,8 @@ function nav(){const n=$("docs");n.replaceChildren();docs.forEach((d,i)=>{const 
 function diff(a,b){if(a===b)return "差分なし";let x=a.split(/(?<=\n)/),y=b.split(/(?<=\n)/),i=0;while(i<x.length&&i<y.length&&x[i]===y[i])i++;while(x.length>i&&y.length>i&&x.at(-1)===y.at(-1)){x.pop();y.pop()}return "変更開始行 "+(i+1)+"\n"+[...x.slice(i).map(l=>"- "+JSON.stringify(l)),...y.slice(i).map(l=>"+ "+JSON.stringify(l))].join("\n")}
 function convert(){const d=doc();let s="",valid=true;try{s=decode(d.base64)}catch(e){valid=false;$("decoded").textContent=e.message}
  if(valid)$("decoded").textContent=s;$("diff").textContent=valid?diff(d.source,s):"復元できないため比較保留";$("match").textContent=valid?(s===d.source?"✓　バイト一致":"△　差分あり"):"復元エラー";
- const format=d.format||inferFormat(d.name);$("format").value=format;$("pptx-bench").hidden=format!=="Markdown";$("report").textContent="";const r=format==="Markdown"?render(s):{body:"<pre>"+esc(s)+"</pre>",refs:[]};html=valid?'<!doctype html><html lang="ja"><meta charset="utf-8"><title>'+esc(d.name)+'</title>\n'+r.body+'\n<script type="application/octet-stream" id="markdown-source">'+d.base64+'</script></html>':"";
- $("code").textContent=html;const t=document.createElement("template");t.innerHTML=r.body;for(const img of t.content.querySelectorAll("img"))img.replaceWith(document.createTextNode("▧ "+img.alt));for(const a of t.content.querySelectorAll("a"))a.removeAttribute("href");$("preview").replaceChildren(t.content);$("artifact").disabled=!valid;$("stats").textContent="UTF-8　 ·　"+d.source.split(/\r\n|\r|\n/).length+" 行　 ·　"+enc.encode(d.source).length+" B";
+ const format=d.format||inferFormat(d.name);$("fl-format").value=format;$("pptx-bench").hidden=format!=="Markdown";$("fl-report").textContent="";const r=format==="Markdown"?render(s):{body:"<pre>"+esc(s)+"</pre>",refs:[]};html=valid?'<!doctype html><html lang="ja"><meta charset="utf-8"><title>'+esc(d.name)+'</title>\n'+r.body+'\n<script type="application/octet-stream" id="markdown-source">'+d.base64+'</script></html>':"";
+ $("code").textContent=html;const t=document.createElement("template");t.innerHTML=r.body;for(const img of t.content.querySelectorAll("img"))img.replaceWith(document.createTextNode("▧ "+img.alt));for(const a of t.content.querySelectorAll("a"))a.removeAttribute("href");$("preview").replaceChildren(t.content);$("artifact").disabled=!valid;$("fl-stats").textContent="UTF-8　 ·　"+d.source.split(/\r\n|\r|\n/).length+" 行　 ·　"+enc.encode(d.source).length+" B";
  $("stages").innerHTML=[["≡",format,enc.encode(d.source).length+" B"],["64","Base64",d.base64.length+" chars"],["&lt;/&gt;","HTML",enc.encode(html).length+" B"]].map(([ic,n,k])=>'<div class="stage"><i>'+ic+'</i><div><b>'+n+'</b><small>'+k+'</small></div></div>').join('<span class="arrow">→</span>');selectedRefs=r.refs;$("count").textContent=new Set(r.refs.map(r=>r.url)).size}
 function download(name,s,type){const a=document.createElement("a"),url=URL.createObjectURL(new Blob([s],{type}));a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)}
 function show(){const d=doc();nav();$("title").textContent=d.name;select($("state"),d.state);$("src").value=d.source;$("b64").value=d.base64;convert();switchTab(tab)}
@@ -153,10 +153,10 @@ function records(){showDeckReport();const area=$("fields");area.replaceChildren(
 function changed(){const d=doc();if(Object.values(d.evidence).some(Boolean)||Object.keys(d.checks).length||d.state==="完了"){d.state="調査中";d.evidence.pageState="調査中";for(const v of Object.values(d.checks))v.state="調査中";$("notice").textContent="変換内容を変更しました。以前の証跡を再確認してください。";select($("state"),d.state)}convert();save()}
 $("src").oninput=()=>{doc().source=$("src").value;doc().base64=encode(doc().source);$("b64").value=doc().base64;changed()};$("b64").oninput=()=>{doc().base64=$("b64").value;changed()};$("reset").onclick=()=>{doc().base64=encode(doc().source);$("b64").value=doc().base64;changed()};$("state").onchange=()=>{doc().state=$("state").value;save()};for(const b of document.querySelectorAll("[data-tab]"))b.onclick=()=>switchTab(b.dataset.tab);
 $("mode").onchange=()=>{$("code").hidden=$("mode").selectedIndex===0;$("preview").hidden=!$("code").hidden};$("artifact").onclick=()=>download(doc().name.replace(/\.md$/i,"")+".html",html,"text/html");$("exp").onclick=()=>download("markdown-workspace.json",pack(),"application/json");$("imp").onclick=()=>$("json").click();$("json").onchange=async e=>{try{const incoming=read(await e.target.files[0].text());if(!confirm("現在のドキュメントを読み込んだJSONで置き換えますか？"))return;docs=incoming;idx=0;save();show()}catch(err){$("notice").textContent=err.message}finally{e.target.value=""}};
-$("add").onclick=()=>{$("name").value="untitled.md";$("file").value="";$("newdoc").showModal()};$("file").onchange=e=>{if(e.target.files[0])$("name").value=e.target.files[0].name};$("newdoc").onclose=async()=>{if($("newdoc").returnValue!=="ok")return;try{const f=$("file").files[0];docs.push(make($("name").value.trim()||"untitled.md",f?dec.decode(await f.arrayBuffer()):""));idx=docs.length-1;tab="editor";save();show();$("src").focus()}catch(err){$("notice").textContent=err.message}};
+$("add").onclick=()=>{$("name").value="untitled.md";$("fl-file").value="";$("newdoc").showModal()};$("fl-file").onchange=e=>{if(e.target.files[0])$("name").value=e.target.files[0].name};$("newdoc").onclose=async()=>{if($("newdoc").returnValue!=="ok")return;try{const f=$("fl-file").files[0];docs.push(make($("name").value.trim()||"untitled.md",f?dec.decode(await f.arrayBuffer()):""));idx=docs.length-1;tab="editor";save();show();$("src").focus()}catch(err){$("notice").textContent=err.message}};
 $("fromhtml").onchange=async e=>{try{const t=document.createElement("template");t.innerHTML=await e.target.files[0].text();const node=t.content.querySelector('script#markdown-source[type="application/octet-stream"]');if(!node)throw Error("原本を同梱したHTMLを選んでください");decode(node.textContent);doc().base64=node.textContent;$("b64").value=doc().base64;changed()}catch(err){$("notice").textContent=err.message}finally{e.target.value=""}};
-for(const fmt of new Set(Object.values(formats)))$("format").add(new Option(fmt,fmt));
-$("format").onchange=()=>{doc().format=$("format").value;changed()};
+for(const fmt of new Set(Object.values(formats)))$("fl-format").add(new Option(fmt,fmt));
+$("fl-format").onchange=()=>{doc().format=$("fl-format").value;changed()};
 $("pptx-source").onclick=()=>download("slides.md",doc().source,"text/markdown;charset=utf-8");
 $("pptx-result").onchange=async event=>{
  const input=event.target, target=doc(), source=target.source;
@@ -173,9 +173,9 @@ $("pptx-result").onchange=async event=>{
 };
 let diagnosticRun=0;
 $("inspect").onclick=async()=>{
- const d=doc(),source=d.source,format=$("format").value,ticket=++diagnosticRun;
+ const d=doc(),source=d.source,format=$("fl-format").value,ticket=++diagnosticRun;
  let result;
  try{result=await inspectSource(source,format)}catch(error){result="構文エラー　"+error.message}
- if(ticket===diagnosticRun&&d===doc()&&source===d.source&&format===$("format").value)$("report").textContent=result;
+ if(ticket===diagnosticRun&&d===doc()&&source===d.source&&format===$("fl-format").value)$("fl-report").textContent=result;
 };
 show();
