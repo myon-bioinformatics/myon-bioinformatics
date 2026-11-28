@@ -14,6 +14,7 @@ from unittest.mock import patch
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
+
 def load_vendored(name, relpath):
     """Load a vendored file by path under a repo-unique name (cli_args README: Loading a vendored copy)."""
     if name not in sys.modules:

@@ -12,6 +12,7 @@ import pytest
 
 from scripts import audit_pages_links
 
+
 def load_vendored(name, relpath):
     """Load a vendored file by path under a repo-unique name (cli_args README: Loading a vendored copy)."""
     if name not in sys.modules:
