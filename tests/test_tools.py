@@ -1637,14 +1637,12 @@ def test_cli_runs_a_project_and_returns_pytest_code(tmp_path):
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "requirements.txt").write_text("pytest\n")
     (tmp_path / "tests" / "test_ok.py").write_text("def test_ok():\n    assert True\n\ndef test_bad():\n    assert 1 == 2\n")
-    done = subprocess.run([sys.executable, "-S", str(PYTEST_BRIEF_SCRIPT), "--", "-o", "addopts="], cwd=tmp_path,
-                          capture_output=True, text=True)
+    done = run_cli(PYTEST_BRIEF_SCRIPT, "--", "-o", "addopts=", python_options=("-S",), cwd=tmp_path)
     assert done.returncode == 1
     lines = done.stdout.strip().splitlines()
     assert lines[0].startswith("FAILED tests/test_ok.py::test_bad")
     assert lines[-1].startswith("1 failed, 1 passed") and "installed" not in done.stdout
-    bad = subprocess.run([sys.executable, "-S", str(PYTEST_BRIEF_SCRIPT), "--requirements", "nope.txt"], cwd=tmp_path,
-                         capture_output=True, text=True)
+    bad = run_cli(PYTEST_BRIEF_SCRIPT, "--requirements", "nope.txt", python_options=("-S",), cwd=tmp_path)
     assert bad.returncode == 3
 
 
@@ -1668,9 +1666,9 @@ def test_cli_preserves_plugin_startup_errors_in_json(tmp_path):
         assert direct.returncode > 0, direct_output
         assert diagnostic in direct_output, direct_output
 
-        done = subprocess.run(
-            [sys.executable, "-S", str(PYTEST_BRIEF_SCRIPT), "--json", "--", "-p", plugin],
-            cwd=tmp_path, env=env, capture_output=True, text=True,
+        done = run_cli(
+            PYTEST_BRIEF_SCRIPT, "--json", "--", "-p", plugin,
+            python_options=("-S",), cwd=tmp_path, env=env,
         )
         assert done.returncode == direct.returncode, done.stdout + done.stderr
         payload = json.loads(done.stdout)

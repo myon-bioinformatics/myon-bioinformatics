@@ -14,6 +14,8 @@ from unittest.mock import patch
 from xml.etree import ElementTree
 from zipfile import ZipFile
 
+from vendor.cli_args import run_cli
+
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools" / "format-lab" / "pptx_bench.py"
@@ -128,9 +130,9 @@ class NativeTableRenderingTests(unittest.TestCase):
             self.fail("Missing rendering tools: " + ", ".join(missing))
         with tempfile.TemporaryDirectory() as work:
             output = Path(work) / "result"
-            result = subprocess.run([sys.executable, str(CLI), str(FIXTURE), "--ironmate", checkout,
-                                     "--table-slide", "2", "--preview", "--out", str(output)],
-                                    capture_output=True, text=True, timeout=500)
+            result = run_cli(CLI, str(FIXTURE), "--ironmate", checkout,
+                             "--table-slide", "2", "--preview", "--out", str(output),
+                             timeout=500)
             self.assertEqual(result.returncode, 0, result.stderr)
             report = json.loads((output / "benchmark.json").read_text())
             self.assertEqual(report["rendering"]["status"], "passed")
