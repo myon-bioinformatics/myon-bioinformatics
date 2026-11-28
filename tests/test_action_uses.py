@@ -61,11 +61,23 @@ def test_parent_style_refs_pass(tmp_path):
                 f"      - uses: astral-sh/setup-uv@{OTHER} # v10.3.0",
                 "      - uses: ./.github/actions/local",
                 "      - uses: docker://alpine:3",
+                "  follow:",
+                "    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-actionlint.yml@main",
+                "  own:",
+                "    steps:",
+                "      - uses: myon-bioinformatics/some-action@main",
                 "",
             ]
         ),
     )
     assert uses.style_problems(tmp_path) == []
+
+
+def test_only_own_repositories_may_follow_main(tmp_path):
+    # 🔁 @main is for the owner's own repositories; everyone else stays pinned
+    _write(tmp_path, "steps:\n  - uses: actions/checkout@main\n  - uses: myon-bioinformatics/x@dev\n")
+    found = uses.style_problems(tmp_path)
+    assert len(found) == 2 and all("40 桁 SHA" in item for item in found)
 
 
 def test_hash_mismatch_warns_on_pull_request_and_fails_when_strict(tmp_path, capsys):

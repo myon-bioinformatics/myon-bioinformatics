@@ -126,6 +126,7 @@ python vendor_sync.py materialize --root . --manifest vendor.lock.json
 python vendor_sync.py update --root . --manifest vendor.lock.json
 python vendor_sync.py promote --root . --manifest vendor.lock.json
 python vendor_sync.py evidence --root . --manifest vendor.lock.json --runtime-evidence vendor-promotion.json
+python vendor_sync.py follow-main --root . --manifest vendor.lock.json
 ```
 
 ### Node launcher for vendored Python CLIs (`py_launch.cjs`)
@@ -367,6 +368,22 @@ former reusable PR-proposal workflow and dedicated token/enable-flag contract
 are removed. No additional token or repository secret is required. CI checkout
 permissions remain read-only, and vendor tool checkouts disable persisted Git
 credentials. Shared-tool pin changes remain explicit infrastructure changes.
+
+### 🔁 Follow main (2026-11-28)
+
+自分の `myon-bioinformatics/*` 由来は固定せず main を追う。外部（actions/checkout など）は SHA 固定のまま Dependabot。
+
+| 🎯 | 🔁 main へ | 📌 そのまま |
+|---|---|---|
+| 📦 vendor.lock.json | 自分の行 `ref: "main"`、`commit` は最後に置いた main（`check` は今まで通りバイト照合） | 他人の行 `ref == commit` |
+| ⚙️ `uses:` | `myon-bioinformatics/…@main` | 外部 action `@40桁SHA # vX.Y.Z` |
+| 🐍 pyproject | `git+https://github.com/myon-bioinformatics/…@main`、`branch = "main"` | 他人の git 依存 |
+
+- `vendor_sync.py follow-main` が上をまとめて書き換え、`uv_upgrade`（`uv lock --upgrade-package` に渡す名前）を JSON で返す。
+- `update --to-ref main`（`--only` なし）は全行の ref を main にする。バイトが同じなら commit は動かさない。
+- `.github/workflows/reusable-follow-main.yml`: schedule / dispatch で follow-main → `uv lock` → `after` → `check` → main へ直接 push。PR では差分表示と check だけ。
+- ⚠️ GITHUB_TOKEN は workflow を書けない: `uses:` の @main 化は最初の 1 回だけ人の PR で入れる。
+- ⚠️ GITHUB_TOKEN の push は他の workflow を起動しない: push 前の `check` が最後の門。
 
 ## Current-main audit, 2026-10-03
 

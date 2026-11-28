@@ -960,10 +960,60 @@ def test_update_only_rejects_unknown_destinations_and_misuse(tmp_path):
     path, _ = two_entries(tmp_path)
     with pytest.raises(ValueError, match="names no locked destination"):
         sync.synchronize(path.name, tmp_path, "update", get=lambda url: pytest.fail("network"), only=["vendor/missing.py"])
-    with pytest.raises(ValueError, match="needs --only"):
-        sync.synchronize(path.name, tmp_path, "update", get=lambda url: pytest.fail("network"), to_ref=NEW)
     with pytest.raises(ValueError, match="update only"):
         sync.synchronize(path.name, tmp_path, "check", only=["vendor/adapter.py"])
-    out = run_cli(Path(sync.__file__), "update", "--root", tmp_path, "--manifest", path.name, "--to-ref", NEW,
-                  python_options=("-S",))
-    assert out.returncode == 2 and "needs --only" in out.stderr
+
+
+def test_update_to_ref_without_only_moves_every_row(tmp_path):
+    # 🔁 --to-ref alone names every row: the new ref stays even where the bytes (and so the commit) do not move
+    path, before = two_entries(tmp_path)
+    result = sync.synchronize(path.name, tmp_path, "update", get=upstream(b"old\n", []), to_ref="main")
+    after = json.loads(path.read_text(encoding="utf-8"))["files"]
+    assert result["changed_paths"] == [path.name]
+    assert [(row["ref"], row["commit"]) for row in after] == [("main", OLD), ("main", OLD)]
+    sync.synchronize(path.name, tmp_path, "check")
+
+
+def test_only_own_repositories_may_follow_main():
+    own, other = entry(), dict(entry(), repository="someone/else")
+    assert sync.follows_main(own) and not sync.follows_main(other)
+    assert sync.pinned_or_following_main({"files": [own, dict(other, ref=OLD)]})
+    assert not sync.pinned_or_following_main({"files": [other]})               # someone else's main: pin it
+    assert not sync.pinned_or_following_main({"files": [dict(own, ref="dev")]})  # own, but not main
+
+
+def test_follow_main_moves_own_sources_onto_main_and_keeps_other_pins(tmp_path):
+    rows = [dict(entry(), ref=OLD), dict(entry(source="x.py", destination="vendor/x.py"), repository="someone/else", ref=OLD)]
+    path, _ = lock(tmp_path, rows)
+    sync.synchronize(path.name, tmp_path, "materialize", get=lambda url: b"old\n")
+    flows = tmp_path / ".github/workflows"
+    flows.mkdir(parents=True)
+    pin, ext = "a" * 40, "b" * 40
+    (flows / "ci.yml").write_text(
+        f"jobs:\n  a:\n    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/r.yml@{pin} # 親\n"
+        f"  b:\n    steps:\n      - uses: actions/checkout@{ext} # v7.0.1\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "x"\ndependencies = []\n[dependency-groups]\n'
+        f'test = ["pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@{pin}", "pytest"]\n'
+        f'[tool.uv.sources]\nxprobe = {{ git = "https://github.com/myon-bioinformatics/xprobe", rev = "{pin}" }}\n'
+        f'other = {{ git = "https://github.com/someone/other", rev = "{ext}" }}\n', encoding="utf-8")
+    def get(url):  # main has new bytes; a pinned commit is itself and keeps its old bytes
+        if "/commits?" in url:
+            ref = url.split("sha=")[1].split("&")[0]
+            return json.dumps([{"sha": ref if len(ref) == 40 else NEW}]).encode()
+        data = b"new\n" if NEW in url else b"old\n"
+        return json.dumps({"type": "file", "sha": sync.git_blob(data)}).encode() if "/contents/" in url else data
+    result = sync.follow_main(tmp_path, get=get)
+    after = json.loads(path.read_text(encoding="utf-8"))["files"]
+    assert [(row["ref"], row["commit"]) for row in after] == [("main", NEW), (OLD, OLD)]   # own follows main, others stay pinned
+    assert (tmp_path / "vendor/adapter.py").read_bytes() == b"new\n" and (tmp_path / "vendor/x.py").read_bytes() == b"old\n"
+    assert result["lock"] == ["vendor/adapter.py", path.name] and result["workflows"] == [".github/workflows/ci.yml"]
+    flow = (flows / "ci.yml").read_text(encoding="utf-8")
+    assert "r.yml@main # 親" in flow and f"actions/checkout@{ext} # v7.0.1" in flow
+    toml = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+    assert "PySaiyanWeBoo@main" in toml and 'xprobe", branch = "main"' in toml and f'rev = "{ext}"' in toml
+    assert result["pyproject"] and result["uv_upgrade"] == ["pysaiyanweboo", "xprobe"]
+    again = sync.follow_main(tmp_path, get=get)                               # already on main: nothing moves
+    assert again == {"lock": [], "workflows": [], "pyproject": False, "uv_upgrade": ["pysaiyanweboo", "xprobe"]}
+    out = run_cli(Path(sync.__file__), "follow-main", "--root", tmp_path, "--manifest", "missing.json", python_options=("-S",))
+    assert out.returncode == 0 and json.loads(out.stdout)["lock"] == []        # no lock: workflows and pyproject only

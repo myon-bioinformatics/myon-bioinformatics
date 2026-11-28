@@ -10,7 +10,9 @@
   そのリリースの 40 桁 commit SHA と行末の `# vX.Y.Z`。
 - 同じリポジトリの action / reusable workflow は相対パス（./）。docker:// はそのまま。
 - 親 myon-bioinformatics/myon-bioinformatics の reusable workflow は
-  .github/workflows/*.yml@40桁SHA（コメントは自由）。
+  .github/workflows/*.yml@40桁SHA か @main（コメントは自由）。
+- 🔁 自分の myon-bioinformatics/* は @main で最新を追ってよい（2026-11-28、固定より最新を引く方針）。
+  外部は従来どおり SHA 固定（Dependabot が上げる）。
 
 --check-hashes は、そのコメントのリリースタグが指す commit と SHA が
 一致するかを見る。--warn のとき不一致は警告で終了 0。既定は終了 1。
@@ -142,15 +144,18 @@ def _style_problem(raw: str, comment: str) -> str | None:
     if "@" not in raw:
         return "ref が無い"
     action, rev = raw.rsplit("@", 1)
+    following = rev == "main" and action.startswith(PARENT_PREFIX.split("/")[0] + "/")
     if action.startswith(PARENT_PREFIX):
         entry = action[len(PARENT_PREFIX) :]
         if (
             entry.startswith(".github/workflows/")
             and entry.endswith((".yml", ".yaml"))
-            and HEX40.fullmatch(rev)
+            and (HEX40.fullmatch(rev) or following)
         ):
             return None
-        return "親の reusable workflow は .github/workflows/*.yml@40桁SHA"
+        return "親の reusable workflow は .github/workflows/*.yml@40桁SHA か @main"
+    if following:
+        return None
     if _needs_sha(action):
         if not HEX40.fullmatch(rev) or not PATCH.fullmatch(comment):
             return "action は 40 桁 SHA と # vX.Y.Z"
