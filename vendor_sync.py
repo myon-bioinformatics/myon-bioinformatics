@@ -2996,7 +2996,6 @@ def follow_main(root, manifest="vendor.lock.json", *, get=_public_http_get):
             result["workflows"].append(path.relative_to(root).as_posix())
     pyproject = root / "pyproject.toml"
     if pyproject.is_file():
-        import tomllib
         text = pyproject.read_text(encoding="utf-8")
         git = r"git\+https://github\.com/" + own + r"/[A-Za-z0-9_.-]+"
         new = re.sub("(" + git + r")@[0-9a-f]{40}\b", r"\1@main", text, flags=re.I)
@@ -3005,16 +3004,10 @@ def follow_main(root, manifest="vendor.lock.json", *, get=_public_http_get):
         if new != text:
             pyproject.write_text(new, encoding="utf-8")
             result["pyproject"] = True
-        data = tomllib.loads(new)
-        project = data.get("project", {})
-        requirements = list(project.get("dependencies", []))
-        for group in (*project.get("optional-dependencies", {}).values(), *data.get("dependency-groups", {}).values()):
-            requirements += [r for r in group if isinstance(r, str)]
-        names = {re.match(r"[A-Za-z0-9_.-]+", r).group(0) for r in requirements if re.search(git, r, re.I)}
-        for name, source in data.get("tool", {}).get("uv", {}).get("sources", {}).items():
-            for one in source if isinstance(source, list) else [source]:
-                if isinstance(one, dict) and re.match("https://github\\.com/" + own + "/", one.get("git", ""), re.I):
-                    names.add(name)
+        # stdlib only down to 3.9 (no tomllib): a requirement "name @ git+…" or a source "name = { git = … }"
+        names = set(re.findall(r"""["']([A-Za-z0-9_.-]+)\s*(?:\[[^\]]*\])?\s*@\s*""" + git, new, re.I))
+        names |= set(re.findall(r'^\s*([A-Za-z0-9_.-]+)\s*=\s*\{[^}\n]*git\s*=\s*"https://github\.com/' + own + "/",
+                                new, re.I | re.M))
         result["uv_upgrade"] = sorted(names)
     return result
 
