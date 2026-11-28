@@ -15,6 +15,10 @@ on:
         description: "Bash that must pass before anything is pushed"
         type: string
         default: ""
+      node-version:
+        description: "Node for after/check (empty: no Node)"
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -34,6 +38,10 @@ jobs:
           activate-environment: true
           enable-cache: true
           save-cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: inputs.node-version != ''
+        with:
+          node-version: ${{ inputs.node-version }}
       - name: 🔁 Follow own main
         env:
           GITHUB_TOKEN: ${{ github.token }}
