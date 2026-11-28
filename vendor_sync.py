@@ -2953,6 +2953,7 @@ def follow_main(root, manifest="vendor.lock.json", *, get=_public_http_get):
     - the lock: own rows get ``ref: "main"`` and ``update`` places main's bytes (unchanged bytes keep their commit);
     - ``.github/workflows/*.y*ml``: ``uses: <owner>/<repo>/…@<40-hex>`` becomes ``@main``, and a checkout's
       ``ref: <40-hex>`` after ``repository: <owner>/<repo>`` in the same mapping becomes ``ref: main``;
+      a line marked ``📌`` (an intentional pin, such as a data snapshot) is left as written;
     - ``pyproject.toml``: ``git+https://github.com/<owner>/<repo>@<40-hex>`` becomes ``@main`` and a
       ``[tool.uv.sources]`` ``rev = "<40-hex>"`` on an own git source becomes ``branch = "main"``.
 
@@ -2995,7 +2996,11 @@ def follow_main(root, manifest="vendor.lock.json", *, get=_public_http_get):
     for path in sorted((root / ".github" / "workflows").glob("*.y*ml")):
         text = path.read_text(encoding="utf-8")
         lines, scope = [], None                      # scope: (indent, own?) of the last repository: key
-        for line in uses.sub(r"\1@main", text).splitlines(keepends=True):
+        for line in text.splitlines(keepends=True):
+            if "📌" in line:                          # 📌 an intentional pin (a data snapshot, say) stays as written
+                lines.append(line)
+                continue
+            line = uses.sub(r"\1@main", line)
             indent = len(line) - len(line.lstrip(" "))
             if scope and line.strip() and indent < scope[0]:
                 scope = None

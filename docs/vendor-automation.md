@@ -382,6 +382,7 @@ credentials. Shared-tool pin changes remain explicit infrastructure changes.
 - `vendor_sync.py follow-main` が上をまとめて書き換え、`uv_upgrade`（`uv lock --upgrade-package` に渡す名前）を JSON で返す。
 - `update --to-ref main`（`--only` なし）は全行の ref を main にする。バイトが同じなら commit は動かさない。
 - 🧊 提供元の main からファイルが消えた行（移動・統合）は固定 commit のまま残し、`stuck` に出す（人が source を付け替える）。
+- 📌 workflow の行に `📌` を書いた固定（データのスナップショットなど、わざと固定するもの）は書き換えない。
 - `.github/workflows/reusable-follow-main.yml`: schedule / dispatch で follow-main → `uv lock` → `after` → `check` → main へ直接 push。PR では差分表示と check だけ。
 - ⚠️ GITHUB_TOKEN は workflow を書けない: `uses:` の @main 化は最初の 1 回だけ人の PR で入れる。
 - ⚠️ GITHUB_TOKEN の push は他の workflow を起動しない: push 前の `check` が最後の門。
