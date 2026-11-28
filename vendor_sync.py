@@ -2953,6 +2953,7 @@ def follow_main(root, manifest="vendor.lock.json", *, get=_public_http_get):
     - the lock: own rows get ``ref: "main"`` and ``update`` places main's bytes (unchanged bytes keep their commit);
     - ``.github/workflows/*.y*ml``: ``uses: <owner>/<repo>/…@<40-hex>`` becomes ``@main``, and a checkout's
       ``ref: <40-hex>`` after ``repository: <owner>/<repo>`` in the same mapping becomes ``ref: main``;
+      an own ``git+https://github.com/<owner>/<repo>@<40-hex>`` (an ``env:`` install string, say) becomes ``@main``;
       a line marked ``📌`` (an intentional pin, such as a data snapshot) is left as written;
     - ``pyproject.toml``: ``git+https://github.com/<owner>/<repo>@<40-hex>`` becomes ``@main`` and a
       ``[tool.uv.sources]`` ``rev = "<40-hex>"`` on an own git source becomes ``branch = "main"``.
@@ -3001,6 +3002,7 @@ def follow_main(root, manifest="vendor.lock.json", *, get=_public_http_get):
                 lines.append(line)
                 continue
             line = uses.sub(r"\1@main", line)
+            line = re.sub(r"(git\+https://github\.com/" + own + r"/[A-Za-z0-9_.-]+)@[0-9a-f]{40}\b", r"\1@main", line, flags=re.I)
             indent = len(line) - len(line.lstrip(" "))
             if scope and line.strip() and indent < scope[0]:
                 scope = None

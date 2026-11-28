@@ -29,7 +29,7 @@ from collections import Counter; from datetime import datetime, timezone; from h
 # ---------------------------------------------------------------------------
 # Transport and budgets: request (gh first, urllib fallback), pagination, operation limits
 # ---------------------------------------------------------------------------
-API="https://api.github.com"; REPO=re.compile(r"^[\w.-]+/[\w.-]+$")
+API="https://api.github.com"; REPO=re.compile(r"^(?!\.{1,2}/)[\w.-]+/(?!\.{1,2}$)[\w.-]+$")
 class Error(RuntimeError):
  def __init__(self,code,uncertain=False): super().__init__(code); self.code=code; self.uncertain=uncertain
 
@@ -202,6 +202,16 @@ def _when(value):
  if not isinstance(value,str):return None
  try:return datetime.fromisoformat(value.replace("Z","+00:00"))
  except ValueError:return None
+_GH_OWNER=re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$")
+_GH_REPO=re.compile(r"[A-Za-z0-9._-]{1,100}")
+def _github_full_name_ok(value):
+ """GitHub OWNER/REPO. Rejects a segment that is exactly '.' or '..', a backslash, a second slash, and a trailing .git name. A repository may start with '.' (for example .github)."""
+ if not isinstance(value,str) or value.count("/")!=1 or "\\" in value:
+  return False
+ owner,name=value.split("/",1)
+ if owner in (".","..") or name in (".","..") or name.lower().endswith(".git"):
+  return False
+ return _GH_OWNER.fullmatch(owner) is not None and _GH_REPO.fullmatch(name) is not None
 def repo(x):
  if not isinstance(x,str) or not REPO.fullmatch(x): raise ValueError("repo must be OWNER/REPO")
  return x
@@ -2484,13 +2494,58 @@ def artifacts(r, run_id, *, max_items=100, max_pages=10, transport="auto", timeo
             "count": len(rows), "complete": complete, "truncated": not complete, "observed_at": now()}
 
 
-def artifact_file(r, artifact_id, member, *, max_bytes=10_000_000, transport="auto", timeout=30):
+def artifact_archive(r, run_id, artifact_id, *, max_bytes=10_000_000, transport="auto", timeout=30):
+    """Download one exact run artifact once using the existing bounded worker.
+
+    The returned bytes are for local processing, never for automatic logging.
+    No partial archive is returned. Callers must still enforce decompressed
+    byte/member limits and their own result and redaction contracts.
+    """
+    r = repo(r)
+    run_id = _positive_identifier(run_id, "run")
+    artifact_id = _positive_identifier(artifact_id, "artifact")
+    if type(max_bytes) is not int or max_bytes < 1:
+        raise ValueError("max_bytes must be a positive integer")
+    meta = request("GET", f"repos/{r}/actions/artifacts/{artifact_id}", transport=transport, timeout=timeout)
+    if not isinstance(meta, dict) or type(meta.get("id")) is not int or meta["id"] != artifact_id:
+        raise Error("artifact_identity_mismatch")
+    owner = meta.get("workflow_run")
+    if not isinstance(owner, dict) or type(owner.get("id")) is not int or owner["id"] != run_id:
+        raise Error("artifact_identity_mismatch")
+    if type(meta.get("expired")) is not bool:
+        raise Error("invalid_artifact_metadata")
+    if meta["expired"]:
+        raise Error("artifact_expired")
+    got = _download_job_log(f"repos/{r}/actions/artifacts/{artifact_id}/zip", max_bytes=max_bytes,
+                            redact=(), transport=transport, timeout=timeout, binary=True)
+    if not got.get("complete"):
+        raise Error("artifact_bytes_limit")
+    try:
+        data = base64.b64decode(got["data_b64"], validate=True)
+        if len(data) > max_bytes:
+            raise Error("artifact_bytes_limit")
+        with zipfile.ZipFile(io.BytesIO(data)):
+            pass
+    except (KeyError, TypeError, ValueError, zipfile.BadZipFile, OSError):
+        raise Error("invalid_artifact_archive") from None
+    digest = hashlib.sha256(data).hexdigest()
+    expected = meta.get("digest")
+    if expected is not None and expected != "sha256:" + digest:
+        raise Error("artifact_digest_mismatch")
+    return {"repository": r, "run_id": run_id, "artifact_id": artifact_id,
+            "head_sha": owner.get("head_sha"), "name": meta.get("name"),
+            "sha256": digest, "size": len(data), "data": data}
+
+
+def artifact_file(r, artifact_id, member, *, output_format="metadata", max_bytes=10_000_000, transport="auto", timeout=30):
     """Read one member of an artifact zip under a byte cap, with its SHA-256.
 
     The zip is fetched through the bounded download worker (allow-listed
     redirects, no credentials sent to storage); the member's declared and
     actual sizes must both fit the cap, so a zip bomb cannot expand past it.
     """
+    if output_format not in ("metadata", "base64", "blob-sha"):
+        raise ValueError("invalid artifact output format")
     r = repo(r)
     artifact_id = _positive_identifier(artifact_id, "artifact")
     if not isinstance(member, str) or not member or member.startswith("/") or ".." in member.split("/"):
@@ -2525,13 +2580,19 @@ def artifact_file(r, artifact_id, member, *, max_bytes=10_000_000, transport="au
         raise Error("invalid_artifact_archive") from None
     if len(data) > max_bytes:
         raise Error("invalid_artifact_archive")
-    try:
-        text = data.decode("utf-8")
-    except UnicodeError:
-        text = None
-    return {**base, "complete": True, "truncated": False, "size": len(data),
-            "sha256": hashlib.sha256(data).hexdigest(), "zip_sha256": got["sha256"],
-            "text": text, "observed_at": now()}
+    result = {**base, "complete": True, "truncated": False, "size": len(data),
+              "sha256": hashlib.sha256(data).hexdigest(), "zip_sha256": got["sha256"],
+              "observed_at": now()}
+    if output_format == "base64":
+        result["content"] = base64.b64encode(data).decode("ascii")
+    elif output_format == "blob-sha":
+        result["blob_sha"] = git_blob_sha(data)
+    else:
+        try:
+            result["text"] = data.decode("utf-8")
+        except UnicodeError:
+            result["text"] = None
+    return result
 
 
 def _log_redact_env(names):
@@ -3332,16 +3393,22 @@ def _rm_time(value, name):
     return value
 
 
-def _rm_git(root, *args):
-    raw, truncated, _ = _git_run(root, ["-c", "i18n.logOutputEncoding=UTF-8", *args], max_bytes=64 * 1024)
+def _rm_git(root, *args, timeout=None):
+    raw, truncated, _ = _git_run(root, ["-c", "i18n.logOutputEncoding=UTF-8", *args],
+                                  max_bytes=64 * 1024, timeout=timeout)
     if truncated:
         raise GitInspectionError("git output exceeded the metadata bound")
     return _git_decode(raw).strip()
 
 
+def checkout_sha(root=".", *, timeout=None):
+    """Verified checkout commit ID, independent of branch name and commit message."""
+    return _rm_sha(_rm_git(root, "rev-parse", "--verify", "HEAD^{commit}", timeout=timeout), "HEAD")
+
+
 def checkout_head(root="."):
     """The commit actually checked out at root (never GITHUB_SHA or other env)."""
-    sha = _rm_sha(_rm_git(root, "rev-parse", "--verify", "HEAD^{commit}"), "HEAD")
+    sha = checkout_sha(root)
     fields = _rm_git(root, "show", "-s", "--format=%cI%x1f%s", "HEAD").split("\x1f", 1)
     if len(fields) != 2 or not fields[1]:
         raise GitInspectionError("HEAD has no committer date or subject")
@@ -5150,29 +5217,60 @@ def enrollment_progress(owner, *, provider="myon-bioinformatics/gh_identity", so
 _PIN_USES = re.compile(r"uses:\s*['\"]?(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(?P<path>/[^@\s'\"]*)?@(?P<sha>[0-9a-f]{40})\b")
 _PIN_CHECKOUT_REPO = re.compile(r"^\s+repository:\s*['\"]?(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)['\"]?\s*$")
 _PIN_CHECKOUT_REF = re.compile(r"^\s+ref:\s*['\"]?(?P<sha>[0-9a-f]{40})['\"]?\s*$")
+# Markdown pins: standalone OWNER/REPO@<40 lowercase hex>, or a standalone 40-hex
+# token tied to a qualifier. Workflow files are not matched here.
+_MD_EXPLICIT = re.compile(
+    r"(?<![A-Za-z0-9_.-/])(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)@(?P<sha>[0-9a-f]{40})(?![0-9a-f])")
+_MD_SHA = re.compile(r"(?<![0-9a-f])(?P<sha>[0-9a-f]{40})(?![0-9a-f])")
+_MD_REPO = re.compile(
+    r"(?<![A-Za-z0-9_.-/])(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(?![A-Za-z0-9_.-/])")
+_MD_URL = re.compile(
+    r"(?i)(?<![A-Za-z0-9_.-])(?:https?://)?(?:www\.)?github\.com/"
+    r"(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)(?P<rest>/[^\s)]*)?")
+_MD_ISSUE_PULL = re.compile(r"(?i)^/(?:issues|pull|pulls|discussions)(?:/|$)")
+_MD_STOP = frozenset({
+    "a", "an", "and", "or", "the", "of", "to", "in", "for", "on", "with", "by", "from", "as", "at",
+    "is", "it", "be", "if", "not", "but", "this", "that", "are", "was", "via", "per", "vs", "into",
+    "over", "than", "then", "so", "docs", "doc", "src", "lib", "test", "tests", "images", "assets", "img",
+})
+_MD_EXT = frozenset({
+    "md", "markdown", "txt", "rst", "yml", "yaml", "json", "html", "htm", "svg", "png", "jpg", "jpeg",
+    "gif", "css", "toml", "csv", "xml", "lock",
+})
 PIN_JSON_GLOBS = ("vendor.lock.json", "**/vendor.lock.json", "**/publication.json", "**/parent-pr.ref.json",
                   "child-heads.json")
 
 
+_PIN_GITHUB_URL = re.compile(
+    r"(?i)(?:https?://)?(?:www\.)?github\.com/(?P<owner>[^/\s]+)/(?P<name>[^/\s]+?)(?:\.git)?/?$")
+
+
 def _pin_repo(value):
-    value = value.strip()
-    if value.endswith(".git"):
-        value = value[:-4]
-    m = re.search(r"([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$", value.replace("https://github.com/", ""))
-    if not m:
+    """Bare OWNER/REPO, or a github.com URL of that repository. Anything else is rejected."""
+    if not isinstance(value, str):
         raise ValueError("not an OWNER/REPO")
-    return m.group(1)
+    value = value.strip()
+    url = _PIN_GITHUB_URL.fullmatch(value)
+    if url:
+        full = url["owner"] + "/" + url["name"]
+    elif value.count("/") == 1 and "://" not in value and not value.startswith(("/", "\\")):
+        full = value[:-4] if value.lower().endswith(".git") else value
+    else:
+        raise ValueError("not an OWNER/REPO")
+    if not _github_full_name_ok(full):
+        raise ValueError("not an OWNER/REPO")
+    return full
 
 
 def _workflow_pins(path, text):
     pins, lines = [], text.splitlines()
     for number, line in enumerate(lines, 1):
         m = _PIN_USES.search(line)
-        if m:
+        if m and _github_full_name_ok(m["repo"]):
             pins.append({"repository": m["repo"], "commit": m["sha"], "file": path, "line": number,
                          "entry": m["repo"] + (m["path"] or ""), "paths": []})
         r = _PIN_CHECKOUT_REPO.match(line)
-        if r:
+        if r and _github_full_name_ok(r["repo"]):
             for later in range(number, min(number + 12, len(lines))):
                 ref = _PIN_CHECKOUT_REF.match(lines[later])
                 if ref:
@@ -5190,9 +5288,12 @@ def _json_pins(path, document):
             repository = node.get("repository") or key
             if isinstance(repository, str) and _is_sha(commit) \
                     and set(commit) != {"0"}:
+                declared = node.get("repository") if isinstance(node.get("repository"), str) else None
                 try:
                     name = _pin_repo(repository)
                 except ValueError:
+                    if declared is not None and declared.strip():
+                        raise PinInputError(f"{path}: invalid_repository")
                     name = None
                 if name:
                     source = node.get("source") or node.get("source_path")
@@ -5212,9 +5313,242 @@ class PinInputError(ValueError):
     """An audit input could not be read or decoded; message uses checkout-relative paths."""
 
 
-def collect_pins(root=".", json_globs=PIN_JSON_GLOBS):
+def _blank_to_none(value):
+    """Strip text inputs. None stays None; empty or whitespace-only becomes None (unset)."""
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _markdown_pin_file(rel):
+    """README.md at the checkout root, and any docs/**/*.md (posix, case-sensitive)."""
+    return rel == "README.md" or (rel.startswith("docs/") and rel.endswith(".md"))
+
+
+def _md_repo(value):
+    try:
+        return _pin_repo(value)
+    except ValueError:
+        return None
+
+
+def _plausible_pin_repo(value):
+    """OWNER/REPO that can be a markdown pin: GitHub names, not prose words or file paths."""
+    name = _md_repo(value)
+    if name is None:
+        return None
+    owner, repo_name = name.split("/", 1)
+    if owner.lower() in _MD_STOP or repo_name.lower() in _MD_STOP:
+        return None
+    if "." in repo_name and repo_name.rsplit(".", 1)[-1].lower() in _MD_EXT:
+        return None
+    return name
+
+
+def _inline_code_spans(line):
+    """Half-open spans of inline code (backtick runs). Unclosed backticks do not open a span."""
+    spans, index = [], 0
+    while index < len(line):
+        if line[index] != "`":
+            index += 1
+            continue
+        ticks = index
+        while ticks < len(line) and line[ticks] == "`":
+            ticks += 1
+        marker = "`" * (ticks - index)
+        close = line.find(marker, ticks)
+        if close == -1:
+            break
+        spans.append((index, close + len(marker)))
+        index = close + len(marker)
+    return spans
+
+
+def _span_inside(spans, start, end):
+    return any(left <= start and end <= right for left, right in spans)
+
+
+def _fenced_lines(lines):
+    """Lines inside a CommonMark fence, including the fence lines themselves."""
+    masked = [False] * len(lines)
+    open_fence = None
+    for index, line in enumerate(lines):
+        match = re.match(r"^[ \t]{0,3}(`{3,}|~{3,})", line)
+        if open_fence is None:
+            if match:
+                open_fence = (match.group(1)[0], len(match.group(1)))
+                masked[index] = True
+            continue
+        masked[index] = True
+        if match and match.group(1)[0] == open_fence[0] and len(match.group(1)) >= open_fence[1] \
+                and line.strip() == match.group(1):
+            open_fence = None
+    return masked
+
+
+def _markdown_qualifiers(line):
+    """(start, end, OWNER/REPO) outside inline code. Issue and pull URLs are not qualifiers."""
+    hidden = _inline_code_spans(line)
+    found = []
+    for match in _MD_URL.finditer(line):
+        if _span_inside(hidden, match.start(), match.end()):
+            continue
+        rest = match.group("rest") or ""
+        if _MD_ISSUE_PULL.match(rest):
+            continue
+        name = _plausible_pin_repo(match.group("repo"))
+        if name:
+            found.append((match.start(), match.end(), name, True))
+    for match in _MD_REPO.finditer(line):
+        if _span_inside(hidden, match.start(), match.end()):
+            continue
+        name = _plausible_pin_repo(match.group("repo"))
+        if name:
+            found.append((match.start(), match.end(), name, False))
+    return found
+
+
+def _nearest_markdown_repo(qualifiers, index, sha_start, sha_end):
+    """Nearest qualifier on this line or the immediately previous/next line.
+
+    Distance is (line distance, character gap, line index, column). The same line
+    beats a neighbor. Equal gaps break toward the earlier line, then the earlier
+    column. A blank line is a real line and breaks adjacency.
+    """
+    best = None
+    for delta in (-1, 0, 1):
+        other = index + delta
+        if other < 0 or other >= len(qualifiers):
+            continue
+        for start, end, name, adjacent_ok in qualifiers[other]:
+            if delta != 0 and not adjacent_ok:
+                continue
+            if end <= sha_start:
+                gap = sha_start - end
+            else:
+                gap = max(0, start - sha_end)
+            candidate = (abs(delta), gap, other, start, name)
+            if best is None or candidate < best:
+                best = candidate
+    return None if best is None else best[4]
+
+
+def _markdown_pins(path, text):
+    """Commit pins in one markdown document.
+
+    Exact rule (lowercase hex only, same as the rest of this file):
+
+    * Explicit pin: a standalone plausible ``OWNER/REPO@`` plus exactly 40
+      lowercase hex digits, including inside fenced or inline code. The token
+      must not continue a longer path. A trailing ``.git`` is stripped. The
+      all-zero SHA is not a pin.
+    * Qualified SHA: any other standalone 40-lowercase-hex token outside fenced
+      blocks and inline code. A bare ``OWNER/REPO`` qualifies a SHA only on the
+      same line. A ``github.com/OWNER/REPO`` URL (not ``/issues/``, ``/pull/``,
+      ``/pulls/``, or ``/discussions/``) also qualifies the immediately previous
+      or next line. A checksum on the
+      neighbouring line of a bare name is not a pin. The nearest allowed
+      qualifier wins, as in ``_nearest_markdown_repo``.
+    * A name is plausible when it is a GitHub owner/repo and neither segment is
+      a common prose or directory word, and the repo is not a file name whose
+      extension is documentation, data, or an image.
+    * Rejected: a bare 40-hex string, uppercase hex, a longer hex run, ``0``*40,
+      and anything outside ``README.md`` and ``docs/**/*.md``. Workflow files
+      are not read here.
+    """
+    lines = text.splitlines()
+    fenced = _fenced_lines(lines)
+    qualifiers = [[] if fenced[index] else _markdown_qualifiers(line) for index, line in enumerate(lines)]
+    consumed = set()
+    found = []
+    for index, line in enumerate(lines):
+        inline = _inline_code_spans(line)
+        for match in _MD_EXPLICIT.finditer(line):
+            if set(match.group("sha")) == {"0"}:
+                continue
+            name = _plausible_pin_repo(match.group("repo"))
+            if name is None:
+                continue
+            consumed.add((index, match.start("sha"), match.end("sha")))
+            found.append((index, match.start("sha"), name, match.group("sha")))
+        if fenced[index]:
+            continue
+        for match in _MD_SHA.finditer(line):
+            if set(match.group("sha")) == {"0"} or _span_inside(inline, match.start(), match.end()):
+                continue
+            span = (index, match.start(), match.end())
+            if span in consumed:
+                continue
+            name = _nearest_markdown_repo(qualifiers, index, match.start(), match.end())
+            if name is None:
+                continue
+            found.append((index, match.start(), name, match.group("sha")))
+    found.sort()
+    return [{"repository": name, "commit": sha, "file": path, "line": index + 1,
+             "entry": f"{name}@{sha}", "paths": []}
+            for index, _start, name, sha in found]
+
+
+def _parent_count_text(text):
+    """Count ``parent `` headers in a ``git cat-file -p`` commit. The blank line ends headers."""
+    count = 0
+    for line in text.splitlines():
+        if line == "":
+            break
+        if line.startswith("parent "):
+            count += 1
+    return count
+
+
+def _commit_kind(parent_count, *, single="single"):
+    """``merge`` for 2+ parents, the ``single`` name for one parent, ``root`` for zero, else ``unknown``."""
+    if parent_count is None:
+        return "unknown"
+    if parent_count >= 2:
+        return "merge"
+    if parent_count == 1:
+        return single
+    return "root"
+
+
+def _pin_result_state(*, present, ancestor, on_line, parent_count, require_merge, changed):
+    """Pin state. With require_merge, a missing parent count fails closed."""
+    if not present or not ancestor:
+        return "unmerged"
+    if not on_line:
+        return "not_final"
+    if require_merge and parent_count is None:
+        return "unknown_parents"
+    if require_merge and parent_count < 2:
+        return "not_merge"
+    if changed:
+        return "drift"
+    return "ok"
+
+
+def _selected_repos(repos):
+    """Normalized OWNER/REPO set from repeated inputs. Blank entries are unset. None if nothing remains."""
+    if not repos:
+        return None
+    selected = set()
+    for item in repos:
+        text = _blank_to_none(item)
+        if text is None:
+            continue
+        if not _github_full_name_ok(text):
+            raise ValueError("repo must be OWNER/REPO")
+        selected.add(text)
+    return selected or None
+
+
+def collect_pins(root=".", json_globs=PIN_JSON_GLOBS, *, include_markdown=False):
     """Commit pins in a checkout: workflow `uses: OWNER/REPO@sha`, checkout `repository:`+`ref: sha`,
-    and JSON objects with `repository`+`commit` (vendor.lock.json, parent-pr.ref.json, ...)."""
+    and JSON objects with `repository`+`commit` (vendor.lock.json, parent-pr.ref.json, ...).
+
+    include_markdown also reads README.md and docs/**/*.md under the exact rule of ``_markdown_pins``.
+    Workflow files are unchanged: action SHAs come only from the workflow scanner.
+    """
     root = os.path.abspath(os.fspath(root))
     pins = []
     for directory, dirs, files in os.walk(root):
@@ -5231,79 +5565,129 @@ def collect_pins(root=".", json_globs=PIN_JSON_GLOBS):
                 elif name.endswith(".json") and any(fnmatch.fnmatch(rel, g) for g in json_globs):
                     with open(full, encoding="utf-8") as stream:
                         pins += _json_pins(rel, json.loads(stream.read(8 * 1024 * 1024)))
+                elif include_markdown and _markdown_pin_file(rel):
+                    with open(full, encoding="utf-8") as stream:
+                        pins += _markdown_pins(rel, stream.read(4 * 1024 * 1024))
+            except PinInputError:
+                raise
             except (OSError, ValueError) as error:
-                reason = "read_error" if isinstance(error, OSError) else "invalid_json_or_encoding"
+                if isinstance(error, UnicodeDecodeError) and _markdown_pin_file(rel):
+                    reason = "read_error"
+                elif isinstance(error, OSError):
+                    reason = "read_error"
+                else:
+                    reason = "invalid_json_or_encoding"
                 raise PinInputError(f"{rel}: {reason}") from error
     return pins
 
 
-def _audit_repository(repository, items, remote, timeout):
-    """Check all pins of one repository in a temporary bare repository (blob-less full history).
-    Git never receives credentials: credential helpers are disabled for these calls."""
-    nocred = ["-c", "credential.helper=", "-c", "http.extraHeader="]
-    with tempfile.TemporaryDirectory(prefix="ghi-pin-audit-") as bare:
-        subprocess.run(["git", "init", "-q", "--bare", bare], check=True, capture_output=True, timeout=60)
-        def git(*args, ok=(0,)):
-            raw, _, code = _git_run(bare, [*nocred, *args], max_bytes=64 * 1024 * 1024, ok=ok, timeout=timeout)
-            return _git_decode(raw), code
-        head, _ = git("ls-remote", "--symref", "--", remote, "HEAD")
-        m = re.search(r"ref: refs/heads/(\S+)\s+HEAD", head)
-        branch = m.group(1) if m else "main"
-        git("fetch", "-q", "--no-tags", "--filter=blob:none", "--", remote, f"+refs/heads/{branch}:refs/heads/{branch}")
-        first_parent = git("rev-list", "--first-parent", branch)[0].split()
+def _audit_repository(repository, items, remote, timeout, *, require_merge=False, git_runner=None):
+    """Check all pins of one repository with the exact-git path of ``first_parent_check``.
+    A name that is not OWNER/REPO never reaches git.
+
+    The first-parent list comes from ``_exact_first_parent_lines`` (one walk).
+    Parent count is ``git cat-file -p`` on that same bare repository. Git never
+    receives credentials: the shared session disables credential helpers.
+    """
+    if not _github_full_name_ok(repository):
+        raise ValueError("not an OWNER/REPO")
+    if git_runner is None:
+        git_runner = lambda args, cwd: _default_git_runner(args, cwd, timeout=timeout)
+    with _exact_git(git_runner) as git:
+        def run(*args, ok=(0,)):
+            code, out = git(*args)
+            if code not in ok:
+                raise Error("git_failed")
+            return out, code
+        branch = _exact_fetch_branch(git, remote, None)
+        first_parent = _exact_first_parent_lines(git, branch)
         tip = first_parent[0] if first_parent else None
         on_line = set(first_parent)
         rows = []
         for commit in sorted({p["commit"] for p in items}):
             pins = [p for p in items if p["commit"] == commit]
-            row = {"repository": repository, "commit": commit, "branch": branch, "pins": pins, "final": None}
-            if git("cat-file", "-e", commit + "^{commit}", ok=(0, 1, 128))[1] != 0:
-                if git("fetch", "-q", "--no-tags", "--filter=blob:none", "--", remote, commit, ok=(0, 1, 128))[1] != 0:
-                    rows.append({**row, "state": "unmerged", "detail": "commit not found on the remote"})
-                    continue
-            if git("merge-base", "--is-ancestor", commit, branch, ok=(0, 1))[1] != 0:
+            row = {"repository": repository, "commit": commit, "branch": branch, "pins": pins, "final": None,
+                   "parent_count": None, "kind": "unknown"}
+            present = _exact_has_commit(git, remote, commit)
+            if present:
+                code, text = git("cat-file", "-p", commit)
+                if code == 0:
+                    row["parent_count"] = _parent_count_text(text)
+                row["kind"] = _commit_kind(row["parent_count"])
+            if not present:
+                rows.append({**row, "state": "unmerged", "detail": "commit not found on the remote"})
+                continue
+            if run("merge-base", "--is-ancestor", commit, branch, ok=(0, 1))[1] != 0:
                 rows.append({**row, "state": "unmerged", "detail": f"not reachable from {branch}"})
                 continue
-            since = int(git("rev-list", "--count", f"{commit}..{branch}")[0].strip() or 0)
+            since_text = run("rev-list", "--count", f"{commit}..{branch}")[0].strip()
+            since = int(since_text or "0")
             if commit not in on_line:
-                descendants = set(git("rev-list", "--ancestry-path", f"{commit}..{branch}")[0].split())
+                descendants = set(run("rev-list", "--ancestry-path", f"{commit}..{branch}")[0].split())
                 merge = next((c for c in reversed(first_parent) if c in descendants), tip)
                 rows.append({**row, "state": "not_final", "final": merge, "since": since,
                              "detail": "merged; pin the first-parent merge commit instead"})
                 continue
             paths = sorted({p for pin in pins for p in pin["paths"] if isinstance(p, str)})
-            changed = git("diff", "--name-only", commit, branch, "--", *paths)[0].split() if paths else []
-            rows.append({**row, "state": "drift" if changed else "ok", "since": since, "changed": changed[:20],
-                         "detail": f"{len(changed)} pinned file(s) changed on {branch}" if changed else f"+{since} on {branch}"})
+            changed = run("diff", "--name-only", commit, branch, "--", *paths)[0].split() if paths else []
+            state = _pin_result_state(present=True, ancestor=True, on_line=True, parent_count=row["parent_count"],
+                                      require_merge=require_merge, changed=bool(changed))
+            if state == "not_merge":
+                detail = f"on {branch} first-parent but parent_count={row['parent_count']} is not a 2-parent merge"
+            elif state == "unknown_parents":
+                detail = f"on {branch} first-parent but the parent count is unknown"
+            elif state == "drift":
+                detail = f"{len(changed)} pinned file(s) changed on {branch}"
+            else:
+                detail = f"+{since} on {branch}"
+            rows.append({**row, "state": state, "since": since, "changed": changed[:20], "detail": detail})
         return rows
 
 
-def pin_audit(root=".", *, json_globs=PIN_JSON_GLOBS, only_owners=None, remote_base="https://github.com/", timeout=300):
+def pin_audit(root=".", *, json_globs=PIN_JSON_GLOBS, only_owners=None, remote_base="https://github.com/",
+              timeout=300, require_merge=False, include_markdown=False, repos=None):
     """Audit commit pins of a checkout with plain git against public remotes (no API token).
 
     States: ok, drift (pinned files changed on the default branch), not_final
     (merged but not on the default branch first-parent line: a PR head was
-    pinned; `final` is the merge commit to pin), unmerged, unavailable. A
-    repository that cannot be fetched without credentials is reported without
-    its name (it may be private).
+    pinned; `final` is the merge commit to pin), unmerged, unavailable.
+    With require_merge, a pin on the first-parent line with parent_count < 2 is
+    `not_merge`. A pin on that line whose parent count cannot be read is
+    `unknown_parents`. Both are not ok. Without require_merge, an unknown parent
+    count stays ok or drift. A repository that cannot be fetched without
+    credentials is reported without its name (it may be private). A declared
+    repository that is not a bare OWNER/REPO or a github.com URL fails the
+    input instead of being trimmed or omitted. A repository may be named
+    ``.github``; a segment that is exactly ``.`` or ``..`` is rejected.
+
+    repos, when set, limits the audit to those OWNER/REPO pins. Blank entries
+    are unset. include_markdown adds README.md and docs/**/*.md (see ``_markdown_pins``).
+    Each result includes parent_count and kind (merge for 2+ parents, single, root, unknown).
     """
     if not isinstance(remote_base, str) or not remote_base.startswith(("https://", "file://", "/")):
         raise ValueError("remote_base must be https://, file:// or an absolute path")
-    pins = collect_pins(root, tuple(json_globs))
+    pins = collect_pins(root, tuple(json_globs), include_markdown=include_markdown)
     if only_owners:
-        pins = [p for p in pins if p["repository"].split("/")[0] in set(only_owners)]
+        owners = set(only_owners)
+        pins = [p for p in pins if p["repository"].split("/")[0] in owners]
+    selected = _selected_repos(repos)
+    if selected is not None:
+        pins = [p for p in pins if p["repository"] in selected]
     by_repo = {}
     for p in pins:
         by_repo.setdefault(p["repository"], []).append(p)
     rows, redacted = [], 0
     for repository in sorted(by_repo):
         try:
-            rows += _audit_repository(repository, by_repo[repository], remote_base + repository, timeout)
-        except (GitInspectionError, subprocess.SubprocessError, OSError):
+            rows += _audit_repository(repository, by_repo[repository], remote_base + repository, timeout,
+                                      require_merge=require_merge)
+        except (GitInspectionError, subprocess.SubprocessError, Error, OSError):
             redacted += 1
             for p in by_repo[repository]:
-                rows.append({"repository": None, "commit": None, "branch": None, "final": None, "state": "unavailable",
-                             "pins": [{"file": p["file"], "line": p["line"]}], "detail": "remote not readable without credentials"})
+                rows.append({"repository": None, "commit": None, "branch": None, "final": None,
+                             "parent_count": None, "kind": "unknown", "state": "unavailable",
+                             "pins": [{"file": p["file"], "line": p["line"]}],
+                             "detail": "remote not readable without credentials"})
     counts = dict(Counter(r["state"] for r in rows))
     return {"schema": "gh-identity-pin-audit/1", "write": False, "pins": len(pins), "results": rows,
             "counts": counts, "redacted": redacted, "ok": all(r["state"] == "ok" for r in rows)}
@@ -5316,7 +5700,9 @@ def render_pin_audit(o):
         more = f" +{len(where) - 2} more" if len(where) > 2 else ""
         name = f"{r['repository']}@{r['commit'][:7]}" if r["repository"] else "(redacted)"
         final = f" -> {r['final']}" if r.get("final") else ""
-        lines.append(f"{r['state']} {name}{final} {r['detail']}  [{len(r['pins'])} pin(s): {', '.join(where[:2])}{more}]")
+        parents = "?" if r.get("parent_count") is None else str(r["parent_count"])
+        extra = f" {r['kind']}/{parents}"
+        lines.append(f"{r['state']} {name}{final}{extra} {r['detail']}  [{len(r['pins'])} pin(s): {', '.join(where[:2])}{more}]")
     lines.append(f"pins={o['pins']} " + " ".join(f"{k}={v}" for k, v in sorted(o["counts"].items())))
     return "\n".join(lines)
 
@@ -6199,13 +6585,135 @@ def _validate_remote(remote):
     return remote
 
 
+def _remote_for(repository, remote, remote_base):
+    """Full remote URL or absolute path. Credentials and option-like values are rejected."""
+    if remote is None:
+        if not isinstance(remote_base, str) or not remote_base.startswith(("https://", "file://", "/")):
+            raise ValueError("remote_base must be https://, file:// or an absolute path")
+        remote = remote_base + repository
+    return _validate_remote(remote)
+
+
+@contextlib.contextmanager
+def _exact_git(git_runner):
+    """Bare repository whose git(*args) -> (code, text) never receives credentials.
+
+    This is the exact-git session shared by ``first_parent_check`` and pin-audit.
+    """
+    with tempfile.TemporaryDirectory(prefix="ghi-fp-") as bare:
+        def git(*args):
+            code, out = git_runner([*_GIT_NO_CREDENTIALS, *args], bare)
+            return code, (out or b"").decode("utf-8", "replace")
+        if git("init", "-q", "--bare")[0] != 0:
+            raise Error("git_failed")
+        yield git
+
+
+def _exact_fetch_branch(git, remote, branch):
+    """Resolve the default branch (unless branch is set) and fetch it blob-less. Returns the branch name."""
+    code, head = git("ls-remote", "--symref", "--", remote, "HEAD")
+    if code != 0:
+        raise Error("git_remote_unavailable")
+    matched = re.search(r"ref: refs/heads/(\S+)\s+HEAD", head)
+    branch = branch or (matched.group(1) if matched else "main")
+    if git("fetch", "-q", "--no-tags", "--filter=blob:none", "--", remote,
+           f"+refs/heads/{branch}:refs/heads/{branch}")[0] != 0:
+        raise Error("git_remote_unavailable")
+    return branch
+
+
+def _exact_has_commit(git, remote, commit):
+    """True when the commit object is present, fetching that one SHA if the branch fetch missed it."""
+    if git("cat-file", "-e", commit + "^{commit}")[0] == 0:
+        return True
+    return git("fetch", "-q", "--no-tags", "--filter=blob:none", "--", remote, commit)[0] == 0
+
+
+def _exact_first_parent_lines(git, branch):
+    """SHAs on ``refs/heads/<branch>`` first-parent history, newest first. The one walker."""
+    code, listed = git("rev-list", "--first-parent", f"refs/heads/{branch}")
+    if code != 0:
+        raise Error("git_failed")
+    return listed.split()
+
+
+def _exact_observe(git, remote, commit, branch):
+    """One fetched branch: first-parent membership and ``git cat-file -p`` parent count."""
+    branch = _exact_fetch_branch(git, remote, branch)
+    if not _exact_has_commit(git, remote, commit):
+        return branch, False, "commit_not_found", None
+    lines = _exact_first_parent_lines(git, branch)
+    code, text = git("cat-file", "-p", commit)
+    parent_count = _parent_count_text(text) if code == 0 else None
+    return branch, commit in set(lines), None, parent_count
+
+
+def _exact_open(repository, commit, *, branch, remote, remote_base, git_runner, timeout):
+    """Open one credential-free bare repository and observe `commit` on its first-parent line."""
+    remote = _remote_for(repository, remote, remote_base)
+    if branch is not None and (not isinstance(branch, str) or not re.fullmatch(r"[A-Za-z0-9._/-]+", branch) or branch.startswith("-")):
+        raise ValueError("invalid branch")
+    if git_runner is None:
+        git_runner = lambda args, cwd: _default_git_runner(args, cwd, timeout=timeout)
+    if not callable(git_runner):
+        raise TypeError("git_runner must be callable")
+    with _exact_git(git_runner) as git:
+        return _exact_observe(git, remote, commit, branch)
+
+
+def _exact_parent_count(repository, sha, *, remote, remote_base, git_runner, timeout):
+    """Parent count via ``git cat-file -p`` (exact mode). None when the object cannot be read."""
+    remote = _remote_for(repository, remote, remote_base)
+    if git_runner is None:
+        git_runner = lambda args, cwd: _default_git_runner(args, cwd, timeout=timeout)
+    if not callable(git_runner):
+        raise TypeError("git_runner must be callable")
+    with _exact_git(git_runner) as git:
+        if not _exact_has_commit(git, remote, sha):
+            return None
+        code, text = git("cat-file", "-p", sha)
+        if code != 0:
+            return None
+        return _parent_count_text(text)
+
+
+def _api_parent_count(repository, sha, *, transport, timeout):
+    """Parent count from the commits API. None when the commit is missing or the body has no parent list."""
+    try:
+        row = request("GET", f"repos/{repository}/commits/{sha}", transport=transport, timeout=timeout)
+    except Error as error:
+        if error.code == "not_found_or_inaccessible":
+            return None
+        raise
+    if not isinstance(row, dict):
+        return None
+    parents = row.get("parents")
+    if not isinstance(parents, list):
+        return None
+    return len(parents)
+
+
+def _classify_pull_rows(pulls, sha):
+    """Pull rows for commit-classify, sorted by number (non-integers last)."""
+    rows = []
+    for pull in pulls:
+        number = pull.get("number")
+        rows.append({"number": number, "state": pull.get("state"),
+                     "is_merge_commit": pull.get("merge_commit_sha") == sha,
+                     "is_head": pull.get("head_sha") == sha,
+                     "base_ref": pull.get("base_ref")})
+    rows.sort(key=lambda item: (0, item["number"]) if isinstance(item["number"], int) else (1, 0))
+    return rows
+
+
 def first_parent_check(repository, commit, *, branch=None, exact=False, transport="auto", timeout=30,
                        max_pages=10, remote_base="https://github.com/", remote=None, git_runner=None):
     """Whether `commit` is on the default-branch (or `branch`) first-parent history.
 
     exact=False uses the commits API (may return None when history is longer than
     max_pages). exact=True uses a temporary bare fetch with --filter=blob:none and
-    credential helpers disabled; True/False only.
+    credential helpers disabled; True/False only. Both modes share no other walker:
+    API history is ``_first_parent_contains``; exact history is ``_exact_first_parent_lines``.
 
     remote: full remote URL/path (default remote_base + repository). URLs carrying
     credentials are rejected; tokens never appear in git arguments.
@@ -6220,41 +6728,64 @@ def first_parent_check(repository, commit, *, branch=None, exact=False, transpor
         result = _first_parent_contains(r, commit, branch=branch, transport=transport, timeout=timeout, max_pages=max_pages)
         return {"schema": "gh-identity-first-parent/1", "write": False, "repository": r, "commit": commit,
                 "branch": branch, "exact": False, "contains": result, "reason": None if result is not None else "history_truncated"}
-    if remote is None:
-        if not isinstance(remote_base, str) or not remote_base.startswith(("https://", "file://", "/")):
-            raise ValueError("remote_base must be https://, file:// or an absolute path")
-        remote = remote_base + r
-    remote = _validate_remote(remote)
-    if branch is not None and (not isinstance(branch, str) or not re.fullmatch(r"[A-Za-z0-9._/-]+", branch) or branch.startswith("-")):
-        raise ValueError("invalid branch")
-    if git_runner is None:
-        git_runner = lambda args, cwd: _default_git_runner(args, cwd, timeout=timeout)
-    if not callable(git_runner):
-        raise TypeError("git_runner must be callable")
-    def result(contains, reason, branch):
-        return {"schema": "gh-identity-first-parent/1", "write": False, "repository": r, "commit": commit,
-                "branch": branch, "exact": True, "contains": contains, "reason": reason}
-    with tempfile.TemporaryDirectory(prefix="ghi-fp-") as bare:
-        def git(*args):
-            code, out = git_runner([*_GIT_NO_CREDENTIALS, *args], bare)
-            return code, (out or b"").decode("utf-8", "replace")
-        if git("init", "-q", "--bare")[0] != 0:
-            raise Error("git_failed")
-        code, head = git("ls-remote", "--symref", "--", remote, "HEAD")
-        if code != 0:
-            raise Error("git_remote_unavailable")
-        m = re.search(r"ref: refs/heads/(\S+)\s+HEAD", head)
-        branch = branch or (m.group(1) if m else "main")
-        if git("fetch", "-q", "--no-tags", "--filter=blob:none", "--", remote,
-               f"+refs/heads/{branch}:refs/heads/{branch}")[0] != 0:
-            raise Error("git_remote_unavailable")
-        if git("cat-file", "-e", commit + "^{commit}")[0] != 0:
-            if git("fetch", "-q", "--no-tags", "--filter=blob:none", "--", remote, commit)[0] != 0:
-                return result(False, "commit_not_found", branch)
-        code, listed = git("rev-list", "--first-parent", f"refs/heads/{branch}")
-        if code != 0:
-            raise Error("git_failed")
-        return result(commit in set(listed.split()), None, branch)
+    branch, contains, reason, _parents = _exact_open(r, commit, branch=branch, remote=remote, remote_base=remote_base,
+                                                     git_runner=git_runner, timeout=timeout)
+    return {"schema": "gh-identity-first-parent/1", "write": False, "repository": r, "commit": commit,
+            "branch": branch, "exact": True, "contains": contains, "reason": reason}
+
+
+def commit_classify(repository, sha, *, branch=None, exact=False, transport="auto", timeout=30,
+                    max_pages=10, remote_base="https://github.com/", remote=None, git_runner=None):
+    """Classify one commit: first-parent membership, parent count, and associated pulls.
+
+    API mode composes ``first_parent_check`` and ``commit_pulls``. Exact mode uses
+    one bare fetch (``_exact_open``, the same session as ``first_parent_check``)
+    for first-parent membership and ``git cat-file -p``, then ``commit_pulls``.
+    There is no second history walker. ``on_first_parent`` is null when the API
+    walk is truncated. ``kind`` is merge (2+ parents), squash_or_single (1),
+    root (0), or unknown. Pulls are sorted by number. Read-only.
+
+    Text inputs are stripped; empty or whitespace-only branch is unset (the
+    default branch). repository and sha are required.
+    """
+    repository = repo(_blank_to_none(repository) or "")
+    sha = _blank_to_none(sha)
+    branch = _blank_to_none(branch)
+    if not _is_sha(sha):
+        raise ValueError("sha must be 40 hex")
+    if exact:
+        resolved, contains, _reason, parent_count = _exact_open(
+            repository, sha, branch=branch, remote=remote, remote_base=remote_base, git_runner=git_runner, timeout=timeout)
+    else:
+        if branch is None:
+            info = request("GET", f"repos/{repository}", transport=transport, timeout=timeout)
+            if isinstance(info, dict):
+                found = info.get("default_branch")
+                if isinstance(found, str) and found.strip():
+                    branch = found.strip()
+        checked = first_parent_check(repository, sha, branch=branch, exact=False, transport=transport,
+                                     timeout=timeout, max_pages=max_pages, remote_base=remote_base, remote=remote)
+        parent_count = _api_parent_count(repository, sha, transport=transport, timeout=timeout)
+        contains = checked["contains"]
+        resolved = checked.get("branch") or branch
+    pulls = commit_pulls(repository, sha, transport=transport, timeout=timeout)["pulls"]
+    return {"schema": "gh-identity-commit-classify/1", "write": False, "repository": repository, "sha": sha,
+            "branch": resolved, "on_first_parent": contains, "parent_count": parent_count,
+            "kind": _commit_kind(parent_count, single="squash_or_single"),
+            "pulls": _classify_pull_rows(pulls, sha)}
+
+
+def render_commit_classify(o):
+    shown = {True: "yes", False: "no", None: "unknown"}[o["on_first_parent"]]
+    parents = "?" if o["parent_count"] is None else str(o["parent_count"])
+    lines = [f"{o['repository']}@{o['sha']} branch={o['branch'] or '?'} on_first_parent={shown} "
+             f"parent_count={parents} kind={o['kind']}"]
+    for pull in o["pulls"]:
+        base = pull["base_ref"] or "?"
+        lines.append(f"#{pull['number']} {pull['state']} base={base} "
+                     f"merge_commit={'yes' if pull['is_merge_commit'] else 'no'} "
+                     f"head={'yes' if pull['is_head'] else 'no'}")
+    return "\n".join(lines)
 
 
 
@@ -6319,8 +6850,8 @@ def repository_metadata(root=".", *, repository, source_sha=None, expected_sha=N
     return record
 
 
-def tool_versions(commands=(), *, include_python=False, timeout=5.0):
-    """Explicitly requested, allowlisted tool versions; missing tools are omitted."""
+def tool_versions(commands=(), *, include_python=False, timeout=5.0, stdout_only=False):
+    """Observe allowlisted versions. stdout_only excludes diagnostic streams."""
     if isinstance(commands, (str, bytes)):
         raise TypeError("commands must be a sequence of command names")
     unknown = [command for command in commands if command not in _RM_TOOL_ARGS]
@@ -6341,7 +6872,11 @@ def tool_versions(commands=(), *, include_python=False, timeout=5.0):
                                     encoding="utf-8", errors="replace", timeout=timeout, check=False)
         except (OSError, subprocess.SubprocessError):
             continue
-        text = (result.stdout.strip() or result.stderr.strip()) if result.returncode == 0 else ""
+        if result.returncode:
+            continue
+        text = result.stdout.strip()
+        if not text and not stdout_only:
+            text = result.stderr.strip()
         first = next((line.strip() for line in text.splitlines() if line.strip()), "")
         match = _RM_TOOL_PATTERNS[command].fullmatch(first)
         if match and len(match.group("v")) <= 32:
@@ -7045,92 +7580,95 @@ def _cli_parser():
   if number<1:raise argparse.ArgumentTypeError(f"must be at least 1, got {value}")
   return number
  x=s.add_parser("repo-overview",help="📖 bounded text orientation of any local checkout: about, key files, file list (--stats, --churn)");x.add_argument("root",nargs="?",default=".",help="repository directory (default: .)");x.add_argument("--max-lines",type=positive,default=120,help="lines shown per file");x.add_argument("--max-files",type=positive,default=400,help="paths listed");x.add_argument("--no-files",action="store_true",help="skip the file list");x.add_argument("--include",action="append",default=[],metavar="GLOB",help="extra key-file glob relative to ROOT (repeatable)");x.add_argument("--stats",action="store_true",help="per-extension file/line/byte stats");x.add_argument("--churn",type=positive,default=0,metavar="N",help="top N files by commit count (git work trees only)");x.add_argument("--since",metavar="WHEN",help="limit --churn to commits after WHEN, e.g. '3 months ago'")
- x=s.add_parser("html-roundtrip",help="🔁 HTML→Markdown→HTML through a trusted markdown.py (optionally PySaiyanWeBoo wrapping); exit 1 on drift");x.add_argument("markdown_module");x.add_argument("--web-ui-module",help="trusted web_ui.py / pysaiyanweboo.py for the wrapper check")
- x=s.add_parser("html-content");x.add_argument("file");x.add_argument("--selector",action="append",required=True);x.add_argument("--source-kind",choices=("html","dom"),default="html");x.add_argument("--input-bytes",type=int,default=10_000_000);x.add_argument("--include-controls",action="store_true")
+ x=s.add_parser("html-roundtrip",help="🔁 HTML→Markdown→HTML through a trusted markdown.py (optionally PySaiyanWeBoo wrapping); exit 1 on drift");x.add_argument("markdown_module",help="trusted markdown.py to convert with");x.add_argument("--web-ui-module",help="trusted web_ui.py / pysaiyanweboo.py for the wrapper check")
+ x=s.add_parser("html-content");x.add_argument("file",help="saved HTML or serialized DOM file");x.add_argument("--selector",action="append",required=True,help="#id, .class or tag to extract; repeat for ordered alternatives");x.add_argument("--source-kind",choices=("html","dom"),default="html",help="what FILE holds (default: %(default)s)");x.add_argument("--input-bytes",type=int,default=10_000_000,help="most input bytes (default: %(default)s)");x.add_argument("--include-controls",action="store_true",help="keep button text in the extracted body")
  x=s.add_parser("capabilities",help="local tool facts; --rate-limit adds the API quota (remaining, reset)");x.add_argument("--rate-limit",action="store_true",help="one network read; shows whether a 403 is the quota or a permission")
  s.add_parser("overview",help="best-effort local and GitHub workspace summary (default)")
  for command in ("git-status", "git-files", "git-diff", "git-log", "git-numstat", "git-show", "git-blame", "git-grep", "git-ignore"):
-  x=s.add_parser(command);x.add_argument("--root",default=".");x.add_argument("--output-bytes",type=int,default=1000000)
+  x=s.add_parser(command);x.add_argument("--root",default=".",help="local clone (default: .)");x.add_argument("--output-bytes",type=int,default=1000000,help="most output bytes (default: %(default)s)")
   if command=="git-status":x.add_argument("--json",action="store_true",help="structured output instead of default short status")
-  if command in ("git-diff", "git-blame"):x.add_argument("--path",required=command=="git-blame")
-  if command=="git-diff":x.add_argument("--staged",action="store_true");x.add_argument("--base");x.add_argument("--head")
-  if command in ("git-log", "git-numstat"):x.add_argument("--count",type=int,default=50)
-  if command=="git-show":x.add_argument("revision",nargs="?",default="HEAD");x.add_argument("--path")
-  if command=="git-grep":x.add_argument("pattern")
-  if command=="git-ignore":x.add_argument("paths",nargs="+")
- x=s.add_parser("git-work",help="work branch from a PR head (#N) or remote branch, with branch.<name>.remote/merge set (planned unless --write)");x.add_argument("--root",default=".");x.add_argument("source",metavar="#N|pr/N|BRANCH");x.add_argument("branch",metavar="WORK_BRANCH");x.add_argument("--upstream",metavar="REMOTE_BRANCH");x.add_argument("--remote",default="origin");x.add_argument("--depth",type=int);x.add_argument("--fetch-timeout",type=float,default=120);x.add_argument("--write",action="store_true")
- x=s.add_parser("git-switch");x.add_argument("--root",default=".");x.add_argument("branch",nargs="?",help='existing branch, or "-" for the previous branch');x.add_argument("-c","--create",metavar="NEW_BRANCH");x.add_argument("--write",action="store_true")
- x=s.add_parser("fleet-status",help="branch, upstream +ahead/-behind, changes of several clones (local; --fix-tracking plans upstream config, --write applies)");x.add_argument("roots",nargs="+");x.add_argument("--fix-tracking",action="store_true");x.add_argument("--write",action="store_true");x.add_argument("--text",action="store_true")
- x=s.add_parser("fleet-checks",allow_abbrev=False,help="checks of each clone's HEAD; --steps adds failed steps and failure/warning annotations (read-only)");x.add_argument("roots",nargs="+");x.add_argument("--steps",action="store_true");x.add_argument("--ignore",action="append",metavar="CHECK_NAME");x.add_argument("--wait",type=float,default=0);x.add_argument("--interval",type=float,default=30);x.add_argument("--text",action="store_true");x.add_argument("--poll-timeout",type=float,default=30,help=argparse.SUPPRESS)
- x=s.add_parser("pr-checks",help="check-runs on each PR head (OWNER/REPO#N, or REPO#N with --owner); --wait polls all together until settled; exit 0 green, 1 failed/error, 3 pending (read-only)");x.add_argument("targets",nargs="+",metavar="OWNER/REPO#N|OWNER/REPO|N");x.add_argument("--owner");x.add_argument("--ignore",default=PR_CHECKS_IGNORE,metavar="REGEX",help="drop check names matching REGEX (default (?i)copilot; empty keeps all)");x.add_argument("--wait",type=float,default=0);x.add_argument("--interval",type=float,default=30);x.add_argument("--delay",type=float,default=0,help="sleep before the first poll (CI start-up)");x.add_argument("--show",type=int,default=5,help="attention lines per PR");x.add_argument("--steps",action="store_true",help="add failed job steps and failure/warning annotations");x.add_argument("--text",action="store_true");x.add_argument("--poll-timeout",type=float,default=30,help=argparse.SUPPRESS)
- x=s.add_parser("merge-readiness",help="review findings (Must/Blocking/Should), changes requested, open threads and head moves to confirm before merging; exit 0 clear, 1 blocked, 3 attention");x.add_argument("repository");x.add_argument("number",type=int);x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
- x=s.add_parser("fleet-pr",help="open a PR for each clone's current branch, or report the open one (planned unless --write)");x.add_argument("roots",nargs="+");x.add_argument("--title",required=True);x.add_argument("--body-file",required=True);x.add_argument("--base",default="main");x.add_argument("--draft",action="store_true");x.add_argument("--write",action="store_true");x.add_argument("--text",action="store_true")
- x=s.add_parser("merge-trial",help="would REF merge into BASE in this clone? merge-tree only: no work-tree, index or ref change; exit 0 clean, 1 conflict, 3 object missing");x.add_argument("root");x.add_argument("ref");x.add_argument("--base",default="HEAD");x.add_argument("--git-timeout",type=float,default=120);x.add_argument("--text",action="store_true")
- x=s.add_parser("git-activity",help="HEAD, object presence (cat-file -t), stale .git locks and running git processes in this clone; exit 0 idle, 3 busy");x.add_argument("root");x.add_argument("--object",action="append",default=[],dest="objects",metavar="SHA");x.add_argument("--text",action="store_true")
- x=s.add_parser("merge-preview",help="would these open PRs merge together (alone, in sequence, pairwise)? temporary repository, nothing pushed");x.add_argument("repository");x.add_argument("--pr",type=int,action="append",dest="numbers");x.add_argument("--all-open",action="store_true");x.add_argument("--base");x.add_argument("--no-pairs",action="store_true");x.add_argument("--git-timeout",type=float,default=300);x.add_argument("--remote-base",default="https://github.com/");x.add_argument("--text",action="store_true")
- x=s.add_parser("local-position",help="cwd, Git top level, checkout HEAD, change counts, GitHub remote (local only)");x.add_argument("--root",default=".")
- x=s.add_parser("subtree-sync",help="plan (default) or run git subtree push/pull with provenance; push only to a NEW branch");x.add_argument("--root",default=".");x.add_argument("--prefix",required=True);x.add_argument("--remote",required=True);x.add_argument("--branch",required=True);x.add_argument("--direction",choices=("push","pull"),required=True);x.add_argument("--squash",action="store_true");x.add_argument("--message","-m");x.add_argument("--remote-compare-ref",help="remote branch to compare before push (default: remote HEAD symref)");x.add_argument("--write",action="store_true",help="actually push/pull and verify; without it only the plan is printed");x.add_argument("--git-timeout",type=float,default=600)
- x=s.add_parser("subtree-split",help="read-only git subtree split --prefix: print the split commit SHA (no refs changed)");x.add_argument("--root",default=".");x.add_argument("--prefix",required=True);x.add_argument("--revision",default="HEAD");x.add_argument("--timeout",type=float,default=600)
- x=s.add_parser("subtree-sync-status",help="compare subtree split of a monorepo with a split-out checkout (local, read-only)");x.add_argument("--root",default=".");x.add_argument("--prefix",required=True);x.add_argument("--revision",default="HEAD");x.add_argument("--other-root",required=True);x.add_argument("--other-ref",default="HEAD");x.add_argument("--other-only-path",action="append",default=[],metavar="GLOB");x.add_argument("--mainline",help="also check the source is on this ref's first-parent history");x.add_argument("--timeout",type=float,default=600)
- x=s.add_parser("sync-provenance",help="record or verify which monorepo SHA a subtree sync came from (read-only)");x.add_argument("--root",default=".");x.add_argument("--prefix");x.add_argument("--revision",default="HEAD");x.add_argument("--other-root");x.add_argument("--other-ref",default="HEAD");x.add_argument("--other-only-path",action="append",default=[],metavar="GLOB");x.add_argument("--direction",choices=("push","pull"));x.add_argument("--squash",action="store_true");x.add_argument("--generated-at");x.add_argument("--output-dir");x.add_argument("--verify",metavar="COMMIT",help="check Subtree-Split trailers of COMMIT in --root");x.add_argument("--monorepo-root",help="with --verify: recompute the split there");x.add_argument("--timeout",type=float,default=600)
- x=s.add_parser("repo-name-files",help="read-only: files named after each public repository, with raw URL, blob SHA, imports and parent catalog flags");x.add_argument("owner");x.add_argument("--repos",help="comma-separated names (default: all public, non-archived, non-fork)");x.add_argument("--parent",help="parent OWNER/REPO (default OWNER/OWNER)");x.add_argument("--parent-ref",default="main");x.add_argument("--include-forks",action="store_true");x.add_argument("--no-raw",action="store_true",help="skip raw.githubusercontent.com fetches")
- x=s.add_parser("split-preflight",help="read-only checklist before splitting a directory into its own repository");x.add_argument("--root",default=".");x.add_argument("--prefix",required=True);x.add_argument("--revision",default="HEAD");x.add_argument("--timeout",type=float,default=600)
- x=s.add_parser("vendor-lock-check",help="compare vendor.lock.json (vendor-lock/1) with files on disk; optional vendor-rules/1 (local, read-only)");x.add_argument("--root",default=".");x.add_argument("--lock",default="vendor.lock.json");x.add_argument("--rules");x.add_argument("--parent-ref",help="parent-pr.ref.json path (default: templates/ then root; required when given)");x.add_argument("--ci-check",action="store_true",help="CI gate: exit 1 unless ok");x.add_argument("--markdown",action="store_true",help="Markdown table (for GITHUB_STEP_SUMMARY) instead of JSON")
- x=s.add_parser("vendor-lock-verify-remote",help="check vendor.lock.json entries against upstream repository@commit (read-only)");x.add_argument("--root",default=".");x.add_argument("--lock",default="vendor.lock.json");x.add_argument("--upstream",action="store_true",help="also report the latest upstream commit touching each source");x.add_argument("--first-parent",action="store_true",help="pins must be on the source default branch first-parent history");x.add_argument("--check-parent-ref",action="store_true",help="verify parent-pr.ref.json repository_id and PR merge/head commit");x.add_argument("--parent-ref");x.add_argument("--ci-check",action="store_true",help="CI gate: exit 1 unless ok (with --upstream, also when upstream moved)");x.add_argument("--markdown",action="store_true",help="Markdown table (for GITHUB_STEP_SUMMARY) instead of JSON")
- x=s.add_parser("vendor-plan",help="rule-based vendor placement plan for OWNER/REPO:PATH@SHA candidates (read-only)");x.add_argument("--root",default=".");x.add_argument("--rules");x.add_argument("--candidate",action="append",required=True,metavar="OWNER/REPO:PATH@SHA")
- x=s.add_parser("vendor-matrix",help="who vendors whom at which commit across repositories (read-only)");x.add_argument("owner");x.add_argument("--repos",help="comma-separated repository names (default: all non-archived)");x.add_argument("--lock-path",action="append",metavar="PATH");x.add_argument("--heads",help="child-heads.json: read locks at the recorded commits")
- x=s.add_parser("enrollment-progress",help="per public consumer: provider file in vendor lock, pin, stale, first-parent (read-only)");x.add_argument("--owner",required=True);x.add_argument("--provider",default="myon-bioinformatics/gh_identity");x.add_argument("--source",default="gh_identity.py");x.add_argument("--repos");x.add_argument("--heads");x.add_argument("--include-forks",action="store_true")
- x=s.add_parser("duplicate-files",help="same basename across an owner's repositories, with vendor-lock provenance (read-only)");x.add_argument("--owner",required=True);x.add_argument("--repos",help="comma-separated names (default: public, non-archived, non-fork repos owned by --owner)");x.add_argument("--ignore",action="append",default=[],metavar="GLOB",help="additional basename/path patterns to ignore");x.add_argument("--no-default-ignore",action="store_true");x.add_argument("--include-forks",action="store_true");x.add_argument("--min-repos",type=int,default=2);x.add_argument("--heads",help="child-heads.json: scan the recorded commits");x.add_argument("--markdown",action="store_true",help="Markdown summary (for GITHUB_STEP_SUMMARY) instead of JSON");x.add_argument("--top",type=int,default=30,help="groups shown with --markdown")
- x=s.add_parser("pin-audit",help="audit commit pins (workflows, vendor locks, parent-pr.ref.json) with plain git: ok/drift/not_final/unmerged (read-only, no token)");x.add_argument("--root",default=".");x.add_argument("--json",action="append",dest="json_globs",metavar="GLOB");x.add_argument("--only",action="append",metavar="OWNER");x.add_argument("--remote-base",default="https://github.com/");x.add_argument("--git-timeout",type=float,default=300);x.add_argument("--text",action="store_true",help="one line per pinned commit")
- x=s.add_parser("repo-identity",help="public repository id, visibility, default branch, head SHA (read-only)");x.add_argument("repository")
- x=s.add_parser("owner-repositories",help="public repositories of a user or org (read-only; no hard-coded names)");x.add_argument("owner");x.add_argument("--kind",choices=("auto","user","org"),default="auto");x.add_argument("--include-forks",action="store_true");x.add_argument("--include-archived",action="store_true")
- x=s.add_parser("pr-identity",help="PR state, head/base SHAs, merge_commit_sha, repository_id (read-only)");x.add_argument("repository");x.add_argument("number",type=int)
- x=s.add_parser("commit-pulls",help="pull requests associated with a commit (read-only)");x.add_argument("repository");x.add_argument("sha")
- x=s.add_parser("first-parent",help="is commit on the default-branch first-parent history (API or exact git)");x.add_argument("repository");x.add_argument("commit");x.add_argument("--branch");x.add_argument("--exact",action="store_true",help="blob-less bare fetch (True/False only)");x.add_argument("--remote-base",default="https://github.com/");x.add_argument("--git-timeout",type=float,default=300)
- x=s.add_parser("repo-metadata",help="checkout repository metadata (v2 minimal, or v1 compatibility)");x.add_argument("--root",default=".");x.add_argument("--repository",default=os.environ.get("GITHUB_REPOSITORY"));x.add_argument("--format",choices=("v2","v1"),default="v2");x.add_argument("--source-sha");x.add_argument("--expected-sha");x.add_argument("--generated-at");x.add_argument("--tool",action="append",default=[],metavar="NAME",help="v1 only: observe an allowlisted tool version (python, git, gh, node, npm, npx)");x.add_argument("--output-dir")
- x=s.add_parser("repo",help="one repository: licence (SPDX), stars, forks, topics, language, dates; --include adds health, fork-diff, languages, contributors, community, releases");x.add_argument("repo");x.add_argument("--include",action="append",default=[],choices=("all",)+REPO_INCLUDES,metavar="SECTION",help="repeatable; extra sections (extra requests): all "+" ".join(REPO_INCLUDES));x.add_argument("--stale-days",type=int,default=365,help="health: days without a push before status is stale");x.add_argument("--text",action="store_true")
- x=s.add_parser("releases",help="newest releases (with assets) and tags of one repository (read-only)");x.add_argument("repo");x.add_argument("--limit",type=int,default=10);x.add_argument("--text",action="store_true")
- x=s.add_parser("compare",help="compare two refs/SHAs (or cross-fork OWNER:BRANCH) via GitHub compare API (read-only)");x.add_argument("repo");x.add_argument("base");x.add_argument("head");x.add_argument("--limit",type=int,default=100);x.add_argument("--text",action="store_true")
- x=s.add_parser("file",help="read one regular file from repository@ref with blob SHA and SHA-256 verification (read-only)");x.add_argument("repo");x.add_argument("path");x.add_argument("--ref",default="main");x.add_argument("--file-bytes",type=int,default=1_000_000);x.add_argument("--text",action="store_true",help="print decoded UTF-8 file text directly")
- x=s.add_parser("tree");x.add_argument("repo");x.add_argument("--ref",default="main")
- depth_args=x.add_mutually_exclusive_group();depth_args.add_argument("--depth",type=int,default=1);depth_args.add_argument("--recursive",action="store_true")
- x.add_argument("--exclude-dir",action="append",default=[]);x.add_argument("--exclude-file",action="append",default=[])
- x=s.add_parser("repos");x.add_argument("owner");x.add_argument("--kind",choices=("auto","user","org"),default="auto")
- x=s.add_parser("repo-inventory");x.add_argument("owner");x.add_argument("--fields",default="name",help="comma-separated: "+",".join(INVENTORY_FIELDS));x.add_argument("--sort",choices=INVENTORY_FIELDS,default="name");x.add_argument("--kind",choices=("auto","user","org"),default="auto");x.add_argument("--include-archived",action="store_true");x.add_argument("--order",choices=("asc","desc"),default="asc");x.add_argument("--max-repos",type=int,default=30);x.add_argument("--page-limit",type=int,default=5)
- x=s.add_parser("issue");x.add_argument("repo");x.add_argument("number",type=int)
- x=s.add_parser("content");x.add_argument("repo");x.add_argument("kind",choices=("pr","issue","commit"));x.add_argument("identifier");x.add_argument("--field",action="append")
- x=s.add_parser("issues");x.add_argument("repo");x.add_argument("--state",choices=("open","closed","all"),default="open");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
- x=s.add_parser("search");x.add_argument("query");x.add_argument("--kind",choices=("pr","issue","code","repo"),default="pr");x.add_argument("--sort",choices=("updated","created","comments","stars","forks","best-match"),default="updated");x.add_argument("--order",choices=("asc","desc"),default="desc");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
- x=s.add_parser("prs");x.add_argument("repo");x.add_argument("--state",choices=("open","closed","all"),default="open");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
- x=s.add_parser("pr-files",help="list changed files in a pull request with optional path glob and bounded patch (read-only)");x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("--path",help="fnmatch glob on path or basename");x.add_argument("--patch",action="store_true",help="include bounded unified diff patch per file");x.add_argument("--patch-bytes",type=int,default=4000);x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
- x=s.add_parser("get",help="read-only GET of one REST path with query options; e.g. get repos/O/R/pulls -q state=open --pick number --pick head.ref --text");x.add_argument("path");x.add_argument("-q","--query",action="append",default=[],metavar="KEY=VALUE");x.add_argument("--pick",action="append",default=[],metavar="FIELD");x.add_argument("--text",action="store_true")
+  if command in ("git-diff", "git-blame"):x.add_argument("--path",required=command=="git-blame",help="file path (required for git-blame; git-diff limits to it)")
+  if command=="git-diff":x.add_argument("--staged",action="store_true",help="diff the index against HEAD");x.add_argument("--base",help="diff from this revision");x.add_argument("--head",help="diff to this revision")
+  if command in ("git-log", "git-numstat"):x.add_argument("--count",type=int,default=50,help="commits shown (default: %(default)s)")
+  if command=="git-show":x.add_argument("revision",nargs="?",default="HEAD",help="revision to show (default: %(default)s)");x.add_argument("--path",help="file path (required for git-blame; git-diff limits to it)")
+  if command=="git-grep":x.add_argument("pattern",help="fixed string; prints the tracked files that contain it")
+  if command=="git-ignore":x.add_argument("paths",nargs="+",help="paths whose ignore state is explained")
+ x=s.add_parser("git-work",help="work branch from a PR head (#N) or remote branch, with branch.<name>.remote/merge set (planned unless --write)");x.add_argument("--root",default=".",help="local clone (default: .)");x.add_argument("source",metavar="#N|pr/N|BRANCH",help="PR head (#N or pr/N) or remote branch to start from");x.add_argument("branch",metavar="WORK_BRANCH",help="local work branch to create");x.add_argument("--upstream",metavar="REMOTE_BRANCH",help="remote branch to track (default: the source branch)");x.add_argument("--remote",default="origin",help="remote to fetch from (default: %(default)s)");x.add_argument("--depth",type=int,help="fetch depth (default: as the clone is)");x.add_argument("--fetch-timeout",type=float,default=120,help="seconds allowed for the fetch (default: %(default)s)");x.add_argument("--write",action="store_true",help="do it; without --write only the plan is printed")
+ x=s.add_parser("git-switch");x.add_argument("--root",default=".",help="local clone (default: .)");x.add_argument("branch",nargs="?",help='existing branch, or "-" for the previous branch');x.add_argument("-c","--create",metavar="NEW_BRANCH",help="create this new branch and switch to it");x.add_argument("--write",action="store_true",help="do it; without --write only the plan is printed")
+ x=s.add_parser("fleet-status",help="branch, upstream +ahead/-behind, changes of several clones (local; --fix-tracking plans upstream config, --write applies)");x.add_argument("roots",nargs="+",help="local clones");x.add_argument("--fix-tracking",action="store_true",help="plan the missing branch.<name>.remote/merge config (--write applies)");x.add_argument("--write",action="store_true",help="do it; without --write only the plan is printed");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("fleet-checks",allow_abbrev=False,help="checks of each clone's HEAD; --steps adds failed steps and failure/warning annotations (read-only)");x.add_argument("roots",nargs="+",help="local clones");x.add_argument("--steps",action="store_true",help="add failed job steps and failure/warning annotations");x.add_argument("--ignore",action="append",metavar="CHECK_NAME",help="drop this check name (repeatable; default: the built-in list)");x.add_argument("--wait",type=float,default=0,help="keep polling up to this many seconds while pending (0: look once)");x.add_argument("--interval",type=float,default=30,help="seconds between polls (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON");x.add_argument("--poll-timeout",type=float,default=30,help=argparse.SUPPRESS)
+ x=s.add_parser("pr-checks",help="check-runs on each PR head (OWNER/REPO#N, or REPO#N with --owner); --wait polls all together until settled; exit 0 green, 1 failed/error, 3 pending (read-only)");x.add_argument("targets",nargs="+",metavar="OWNER/REPO#N|OWNER/REPO|N",help="OWNER/REPO#N, OWNER/REPO (its open PRs) or N");x.add_argument("--owner",help="owner for REPO#N or N targets");x.add_argument("--ignore",default=PR_CHECKS_IGNORE,metavar="REGEX",help="drop check names matching REGEX (default (?i)copilot; empty keeps all)");x.add_argument("--wait",type=float,default=0,help="keep polling up to this many seconds while pending (0: look once)");x.add_argument("--interval",type=float,default=30,help="seconds between polls (default: %(default)s)");x.add_argument("--delay",type=float,default=0,help="sleep before the first poll (CI start-up)");x.add_argument("--show",type=int,default=5,help="attention lines per PR");x.add_argument("--steps",action="store_true",help="add failed job steps and failure/warning annotations");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON");x.add_argument("--poll-timeout",type=float,default=30,help=argparse.SUPPRESS)
+ x=s.add_parser("merge-readiness",help="review findings (Must/Blocking/Should), changes requested, open threads and head moves to confirm before merging; exit 0 clear, 1 blocked, 3 attention");x.add_argument("repository",help="OWNER/REPO");x.add_argument("number",type=int,help="PR number");x.add_argument("--limit",type=int,default=100,help="most items returned (default: %(default)s)");x.add_argument("--page-limit",type=int,default=10,help="most API pages read (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("fleet-pr",help="open a PR for each clone's current branch, or report the open one (planned unless --write)");x.add_argument("roots",nargs="+",help="local clones");x.add_argument("--title",required=True,help="PR title");x.add_argument("--body-file",required=True,help="file holding the PR body");x.add_argument("--base",default="main",help="base branch (default: %(default)s)");x.add_argument("--draft",action="store_true",help="open as a draft");x.add_argument("--write",action="store_true",help="do it; without --write only the plan is printed");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("merge-trial",help="would REF merge into BASE in this clone? merge-tree only: no work-tree, index or ref change; exit 0 clean, 1 conflict, 3 object missing");x.add_argument("root",help="local clone");x.add_argument("ref",help="ref to merge");x.add_argument("--base",default="HEAD",help="ref merged into (default: %(default)s)");x.add_argument("--git-timeout",type=float,default=120,help="seconds allowed for git (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("git-activity",help="HEAD, object presence (cat-file -t), stale .git locks and running git processes in this clone; exit 0 idle, 3 busy");x.add_argument("root",help="local clone");x.add_argument("--object",action="append",default=[],dest="objects",metavar="SHA",help="object to look up with cat-file -t (repeatable)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("merge-preview",help="would these open PRs merge together (alone, in sequence, pairwise)? temporary repository, nothing pushed");x.add_argument("repository",help="OWNER/REPO");x.add_argument("--pr",type=int,action="append",dest="numbers",help="PR number (repeatable)");x.add_argument("--all-open",action="store_true",help="every open PR");x.add_argument("--base",help="base branch (default: the PRs' base)");x.add_argument("--no-pairs",action="store_true",help="skip the pairwise merges");x.add_argument("--git-timeout",type=float,default=300,help="seconds allowed for git (default: %(default)s)");x.add_argument("--remote-base",default="https://github.com/",help="URL prefix that OWNER/REPO is appended to for git (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("local-position",help="cwd, Git top level, checkout HEAD, change counts, GitHub remote (local only)");x.add_argument("--root",default=".",help="local clone (default: .)")
+ x=s.add_parser("subtree-sync",help="plan (default) or run git subtree push/pull with provenance; push only to a NEW branch");x.add_argument("--root",default=".",help="local clone (default: .)");x.add_argument("--prefix",required=True,help="subtree directory in this repository");x.add_argument("--remote",required=True,help="remote name or URL of the split-out repository");x.add_argument("--branch",required=True,help="branch in --remote");x.add_argument("--direction",choices=("push","pull"),required=True,help="push: prefix to --remote; pull: --remote into prefix");x.add_argument("--squash",action="store_true",help="pass --squash to git subtree");x.add_argument("--message","-m",help="commit message for the subtree merge");x.add_argument("--remote-compare-ref",help="remote branch to compare before push (default: remote HEAD symref)");x.add_argument("--write",action="store_true",help="actually push/pull and verify; without it only the plan is printed");x.add_argument("--git-timeout",type=float,default=600,help="seconds allowed for git (default: %(default)s)")
+ x=s.add_parser("subtree-split",help="read-only git subtree split --prefix: print the split commit SHA (no refs changed)");x.add_argument("--root",default=".",help="local clone (default: .)");x.add_argument("--prefix",required=True,help="subtree directory in this repository");x.add_argument("--revision",default="HEAD",help="monorepo revision (default: %(default)s)");x.add_argument("--timeout",type=float,default=600,help="seconds allowed for git (default: %(default)s)")
+ x=s.add_parser("subtree-sync-status",help="compare subtree split of a monorepo with a split-out checkout (local, read-only)");x.add_argument("--root",default=".",help="local clone (default: .)");x.add_argument("--prefix",required=True,help="subtree directory in this repository");x.add_argument("--revision",default="HEAD",help="monorepo revision (default: %(default)s)");x.add_argument("--other-root",required=True,help="split-out checkout to compare with");x.add_argument("--other-ref",default="HEAD",help="revision in --other-root (default: %(default)s)");x.add_argument("--other-only-path",action="append",default=[],metavar="GLOB",help="path glob allowed only in --other-root (repeatable)");x.add_argument("--mainline",help="also check the source is on this ref's first-parent history");x.add_argument("--timeout",type=float,default=600,help="seconds allowed for git (default: %(default)s)")
+ x=s.add_parser("sync-provenance",help="record or verify which monorepo SHA a subtree sync came from (read-only)");x.add_argument("--root",default=".",help="local clone (default: .)");x.add_argument("--prefix",help="subtree directory in this repository (required unless --verify)");x.add_argument("--revision",default="HEAD",help="monorepo revision (default: %(default)s)");x.add_argument("--other-root",help="split-out checkout (required unless --verify)");x.add_argument("--other-ref",default="HEAD",help="revision in --other-root (default: %(default)s)");x.add_argument("--other-only-path",action="append",default=[],metavar="GLOB",help="path glob allowed only in --other-root (repeatable)");x.add_argument("--direction",choices=("push","pull"),help="push: prefix to the split repository; pull: the reverse");x.add_argument("--squash",action="store_true",help="the recorded sync used --squash");x.add_argument("--generated-at",help="timestamp to record (default: now, UTC)");x.add_argument("--output-dir",help="also write the record as JSON into this directory");x.add_argument("--verify",metavar="COMMIT",help="check Subtree-Split trailers of COMMIT in --root");x.add_argument("--monorepo-root",help="with --verify: recompute the split there");x.add_argument("--timeout",type=float,default=600,help="seconds allowed for git (default: %(default)s)")
+ x=s.add_parser("repo-name-files",help="read-only: files named after each public repository, with raw URL, blob SHA, imports and parent catalog flags");x.add_argument("owner",help="GitHub user or organization");x.add_argument("--repos",help="comma-separated names (default: all public, non-archived, non-fork)");x.add_argument("--parent",help="parent OWNER/REPO (default OWNER/OWNER)");x.add_argument("--parent-ref",default="main",help="parent ref to cross-check (default: %(default)s)");x.add_argument("--include-forks",action="store_true",help="include forked repositories");x.add_argument("--no-raw",action="store_true",help="skip raw.githubusercontent.com fetches")
+ x=s.add_parser("split-preflight",help="read-only checklist before splitting a directory into its own repository");x.add_argument("--root",default=".",help="local clone (default: .)");x.add_argument("--prefix",required=True,help="subtree directory in this repository");x.add_argument("--revision",default="HEAD",help="monorepo revision (default: %(default)s)");x.add_argument("--timeout",type=float,default=600,help="seconds allowed for git (default: %(default)s)")
+ x=s.add_parser("vendor-lock-check",help="compare vendor.lock.json (vendor-lock/1) with files on disk; optional vendor-rules/1 (local, read-only)");x.add_argument("--root",default=".",help="local clone (default: .)");x.add_argument("--lock",default="vendor.lock.json",help="vendor-lock/1 file, relative to --root (default: %(default)s)");x.add_argument("--rules",help="vendor rules JSON, relative to --root");x.add_argument("--parent-ref",help="parent-pr.ref.json path (default: templates/ then root; required when given)");x.add_argument("--ci-check",action="store_true",help="CI gate: exit 1 unless ok");x.add_argument("--markdown",action="store_true",help="Markdown table (for GITHUB_STEP_SUMMARY) instead of JSON")
+ x=s.add_parser("vendor-lock-verify-remote",help="check vendor.lock.json entries against upstream repository@commit (read-only)");x.add_argument("--root",default=".",help="local clone (default: .)");x.add_argument("--lock",default="vendor.lock.json",help="vendor-lock/1 file, relative to --root (default: %(default)s)");x.add_argument("--upstream",action="store_true",help="also report the latest upstream commit touching each source");x.add_argument("--first-parent",action="store_true",help="pins must be on the source default branch first-parent history");x.add_argument("--check-parent-ref",action="store_true",help="verify parent-pr.ref.json repository_id and PR merge/head commit");x.add_argument("--parent-ref",help="parent-pr.ref.json for --check-parent-ref (default: templates/, then the root)");x.add_argument("--ci-check",action="store_true",help="CI gate: exit 1 unless ok (with --upstream, also when upstream moved)");x.add_argument("--markdown",action="store_true",help="Markdown table (for GITHUB_STEP_SUMMARY) instead of JSON")
+ x=s.add_parser("vendor-plan",help="rule-based vendor placement plan for OWNER/REPO:PATH@SHA candidates (read-only)");x.add_argument("--root",default=".",help="local clone (default: .)");x.add_argument("--rules",help="vendor rules JSON, relative to --root");x.add_argument("--candidate",action="append",required=True,metavar="OWNER/REPO:PATH@SHA",help="file to place, as OWNER/REPO:PATH@SHA (repeatable)")
+ x=s.add_parser("vendor-matrix",help="who vendors whom at which commit across repositories (read-only)");x.add_argument("owner",help="GitHub user or organization");x.add_argument("--repos",help="comma-separated repository names (default: all non-archived)");x.add_argument("--lock-path",action="append",metavar="PATH",help="lock path in each repository (repeatable; default: vendor.lock.json, tool/python/vendor.lock.json)");x.add_argument("--heads",help="child-heads.json: read locks at the recorded commits")
+ x=s.add_parser("enrollment-progress",help="per public consumer: provider file in vendor lock, pin, stale, first-parent (read-only)");x.add_argument("--owner",required=True,help="GitHub user or organization");x.add_argument("--provider",default="myon-bioinformatics/gh_identity",help="repository that provides the file (default: %(default)s)");x.add_argument("--source",default="gh_identity.py",help="file path in --provider (default: %(default)s)");x.add_argument("--repos",help="comma-separated repository names (default: all public ones)");x.add_argument("--heads",help="child-heads/1 JSON whose pins are read instead of default branches");x.add_argument("--include-forks",action="store_true",help="include forked repositories")
+ x=s.add_parser("duplicate-files",help="same basename across an owner's repositories, with vendor-lock provenance (read-only)");x.add_argument("--owner",required=True,help="GitHub user or organization");x.add_argument("--repos",help="comma-separated names (default: public, non-archived, non-fork repos owned by --owner)");x.add_argument("--ignore",action="append",default=[],metavar="GLOB",help="additional basename/path patterns to ignore");x.add_argument("--no-default-ignore",action="store_true",help="do not skip the usual shared files (LICENSE, README …)");x.add_argument("--include-forks",action="store_true",help="include forked repositories");x.add_argument("--min-repos",type=int,default=2,help="report a basename found in at least this many repositories (default: %(default)s)");x.add_argument("--heads",help="child-heads.json: scan the recorded commits");x.add_argument("--markdown",action="store_true",help="Markdown summary (for GITHUB_STEP_SUMMARY) instead of JSON");x.add_argument("--top",type=int,default=30,help="groups shown with --markdown")
+ x=s.add_parser("pin-audit",help="audit commit pins (workflows, vendor locks, parent-pr.ref.json; optional markdown) with plain git (read-only, no token)");x.add_argument("--root",default=".",help="local clone (default: .)");x.add_argument("--json",action="append",dest="json_globs",metavar="GLOB",help="JSON glob to scan for pins (repeatable; default: the built-in globs)");x.add_argument("--only",action="append",metavar="OWNER",help="audit pins to repositories of this owner only (repeatable)");x.add_argument("--repo",action="append",default=None,metavar="OWNER/REPO",help="only pins of these repositories (repeatable; blank is unset)");x.add_argument("--require-merge-commit",action="store_true",help="first-parent pin must be a merge; unknown parent count is unknown_parents");x.add_argument("--include-markdown",action="store_true",help="also read README.md and docs/**/*.md for SHAs tied to OWNER/REPO");x.add_argument("--remote-base",default="https://github.com/",help="URL prefix that OWNER/REPO is appended to for git (default: %(default)s)");x.add_argument("--git-timeout",type=float,default=300,help="seconds allowed for git (default: %(default)s)");x.add_argument("--text",action="store_true",help="one line per pinned commit")
+ x=s.add_parser("repo-identity",help="public repository id, visibility, default branch, head SHA (read-only)");x.add_argument("repository",help="OWNER/REPO")
+ x=s.add_parser("owner-repositories",help="public repositories of a user or org (read-only; no hard-coded names)");x.add_argument("owner",help="GitHub user or organization");x.add_argument("--kind",choices=("auto","user","org"),default="auto",help="owner type; auto asks the API (default: %(default)s)");x.add_argument("--include-forks",action="store_true",help="include forked repositories");x.add_argument("--include-archived",action="store_true",help="include archived repositories")
+ x=s.add_parser("pr-identity",help="PR state, head/base SHAs, merge_commit_sha, repository_id (read-only)");x.add_argument("repository",help="OWNER/REPO");x.add_argument("number",type=int,help="PR number")
+ x=s.add_parser("commit-pulls",help="pull requests associated with a commit (read-only)");x.add_argument("repository",help="OWNER/REPO");x.add_argument("sha",help="commit SHA")
+ x=s.add_parser("first-parent",help="is commit on the default-branch first-parent history (API or exact git)");x.add_argument("repository",help="OWNER/REPO");x.add_argument("commit",help="commit SHA");x.add_argument("--branch",help="branch to walk (default: the default branch)");x.add_argument("--exact",action="store_true",help="blob-less bare fetch (True/False only)");x.add_argument("--remote-base",default="https://github.com/",help="URL prefix that OWNER/REPO is appended to for git (default: %(default)s)");x.add_argument("--git-timeout",type=float,default=300,help="seconds allowed for git (default: %(default)s)")
+ x=s.add_parser("commit-classify",help="classify a commit: first-parent, parent count, associated pulls (read-only)");x.add_argument("repository",help="OWNER/REPO");x.add_argument("sha",help="commit SHA");x.add_argument("--branch",help="default branch when omitted or blank");x.add_argument("--exact",action="store_true",help="blob-less bare fetch for first-parent and parent count");x.add_argument("--remote-base",default="https://github.com/",help="URL prefix that OWNER/REPO is appended to for git (default: %(default)s)");x.add_argument("--git-timeout",type=float,default=300,help="seconds allowed for git (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("repo-metadata",help="checkout repository metadata (v2 minimal, or v1 compatibility)");x.add_argument("--root",default=".",help="local clone (default: .)");x.add_argument("--repository",default=os.environ.get("GITHUB_REPOSITORY"),help="OWNER/REPO (default: $GITHUB_REPOSITORY)");x.add_argument("--format",choices=("v2","v1"),default="v2",help="record schema (default: %(default)s)");x.add_argument("--source-sha",help="commit the change came from, e.g. a PR head; reported beside HEAD");x.add_argument("--expected-sha",help="fail unless the checkout HEAD is this SHA");x.add_argument("--generated-at",help="timestamp to record (default: now, UTC)");x.add_argument("--tool",action="append",default=[],metavar="NAME",help="v1 only: observe an allowlisted tool version (python, git, gh, node, npm, npx)");x.add_argument("--output-dir",help="also write the record as JSON into this directory")
+ x=s.add_parser("repo",help="one repository: licence (SPDX), stars, forks, topics, language, dates; --include adds health, fork-diff, languages, contributors, community, releases");x.add_argument("repo",help="OWNER/REPO");x.add_argument("--include",action="append",default=[],choices=("all",)+REPO_INCLUDES,metavar="SECTION",help="repeatable; extra sections (extra requests): all "+" ".join(REPO_INCLUDES));x.add_argument("--stale-days",type=int,default=365,help="health: days without a push before status is stale");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("releases",help="newest releases (with assets) and tags of one repository (read-only)");x.add_argument("repo",help="OWNER/REPO");x.add_argument("--limit",type=int,default=10,help="most releases returned (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("compare",help="compare two refs/SHAs (or cross-fork OWNER:BRANCH) via GitHub compare API (read-only)");x.add_argument("repo",help="OWNER/REPO");x.add_argument("base",help="base ref");x.add_argument("head",help="head ref");x.add_argument("--limit",type=int,default=100,help="most commits returned (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("file",help="read one regular file from repository@ref with blob SHA and SHA-256 verification (read-only)");x.add_argument("repo",help="OWNER/REPO");x.add_argument("path",help="file path in the repository");x.add_argument("--ref",default="main",help="branch, tag or SHA (default: %(default)s)");x.add_argument("--file-bytes",type=int,default=1_000_000,help="most file bytes read (default: %(default)s)");x.add_argument("--text",action="store_true",help="print decoded UTF-8 file text directly")
+ x=s.add_parser("tree");x.add_argument("repo",help="OWNER/REPO");x.add_argument("--ref",default="main",help="branch, tag or SHA (default: %(default)s)")
+ depth_args=x.add_mutually_exclusive_group();depth_args.add_argument("--depth",type=int,default=1,help="levels listed; 1 is the root only (default: %(default)s)");depth_args.add_argument("--recursive",action="store_true",help="walk every included subtree (ignores --depth)")
+ x.add_argument("--exclude-dir",action="append",default=[],help="directory to prune: a basename at any level, or a path with / (repeatable)");x.add_argument("--exclude-file",action="append",default=[],help="file to skip: a basename at any level, or a path with / (repeatable)")
+ x=s.add_parser("repos");x.add_argument("owner",help="GitHub user or organization");x.add_argument("--kind",choices=("auto","user","org"),default="auto",help="owner type; auto asks the API (default: %(default)s)")
+ x=s.add_parser("repo-inventory");x.add_argument("owner",help="GitHub user or organization");x.add_argument("--fields",default="name",help="comma-separated: "+",".join(INVENTORY_FIELDS));x.add_argument("--sort",choices=INVENTORY_FIELDS,default="name",help="sort field (default: %(default)s)");x.add_argument("--kind",choices=("auto","user","org"),default="auto",help="owner type; auto asks the API (default: %(default)s)");x.add_argument("--include-archived",action="store_true",help="include archived repositories");x.add_argument("--order",choices=("asc","desc"),default="asc",help="sort order (default: %(default)s)");x.add_argument("--max-repos",type=int,default=30,help="most repositories listed (default: %(default)s)");x.add_argument("--page-limit",type=int,default=5,help="most API pages read (default: %(default)s)")
+ x=s.add_parser("issue");x.add_argument("repo",help="OWNER/REPO");x.add_argument("number",type=int,help="issue number")
+ x=s.add_parser("content");x.add_argument("repo",help="OWNER/REPO");x.add_argument("kind",choices=("pr","issue","commit"),help="what IDENTIFIER names");x.add_argument("identifier",help="PR or issue number, or commit SHA");x.add_argument("--field",action="append",help="keep only this top-level field, with identity (repeatable)")
+ x=s.add_parser("issues");x.add_argument("repo",help="OWNER/REPO");x.add_argument("--state",choices=("open","closed","all"),default="open",help="which issues (default: %(default)s)");x.add_argument("--limit",type=int,default=100,help="most items returned (default: %(default)s)");x.add_argument("--page-limit",type=int,default=10,help="most API pages read (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("search");x.add_argument("query",help="GitHub search query");x.add_argument("--kind",choices=("pr","issue","code","repo"),default="pr",help="what to search (default: %(default)s)");x.add_argument("--sort",choices=("updated","created","comments","stars","forks","best-match"),default="updated",help="sort field (default: %(default)s)");x.add_argument("--order",choices=("asc","desc"),default="desc",help="sort order (default: %(default)s)");x.add_argument("--limit",type=int,default=100,help="most items returned (default: %(default)s)");x.add_argument("--page-limit",type=int,default=10,help="most API pages read (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("prs");x.add_argument("repo",help="OWNER/REPO");x.add_argument("--state",choices=("open","closed","all"),default="open",help="which PRs (default: %(default)s)");x.add_argument("--limit",type=int,default=100,help="most items returned (default: %(default)s)");x.add_argument("--page-limit",type=int,default=10,help="most API pages read (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("pr-files",help="list changed files in a pull request with optional path glob and bounded patch (read-only)");x.add_argument("repo",help="OWNER/REPO");x.add_argument("number",type=int,help="PR number");x.add_argument("--path",help="fnmatch glob on path or basename");x.add_argument("--patch",action="store_true",help="include bounded unified diff patch per file");x.add_argument("--patch-bytes",type=int,default=4000,help="most patch bytes kept per file (default: %(default)s)");x.add_argument("--limit",type=int,default=100,help="most items returned (default: %(default)s)");x.add_argument("--page-limit",type=int,default=10,help="most API pages read (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("get",help="read-only GET of one REST path with query options; e.g. get repos/O/R/pulls -q state=open --pick number --pick head.ref --text");x.add_argument("path",help="REST path such as repos/OWNER/REPO/pulls (no query string)");x.add_argument("-q","--query",action="append",default=[],metavar="KEY=VALUE",help="query option KEY=VALUE (repeatable; URL-encoded)");x.add_argument("--pick",action="append",default=[],metavar="FIELD",help="keep only this dotted field of each item, e.g. head.ref (repeatable)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
  for command in ("read-comment","review","inline-comment"):
-  x=s.add_parser(command,help="one comment body: URL, review REPO PR ID, or inline-comment REPO ID; text by default");x.add_argument("targets",nargs="+");x.add_argument("--json",action="store_true")
- x=s.add_parser("pr");x.add_argument("repo");x.add_argument("number",type=int)
- x=s.add_parser("comments");x.add_argument("repo");x.add_argument("number",type=int)
- x=s.add_parser("reviews");x.add_argument("repo");x.add_argument("number",type=int)
+  x=s.add_parser(command,help="one comment body: URL, review REPO PR ID, or inline-comment REPO ID; text by default");x.add_argument("targets",nargs="+",help="comment URL, or REPO PR ID (review), or REPO ID (inline-comment)");x.add_argument("--json",action="store_true",help="the JSON receipt instead of only the body")
+ x=s.add_parser("pr");x.add_argument("repo",help="OWNER/REPO");x.add_argument("number",type=int,help="PR number")
+ x=s.add_parser("comments");x.add_argument("repo",help="OWNER/REPO");x.add_argument("number",type=int,help="PR or issue number")
+ x=s.add_parser("reviews");x.add_argument("repo",help="OWNER/REPO");x.add_argument("number",type=int,help="PR number")
  for command in ("inline-comments","review-threads","review-observations"):
-  x=s.add_parser(command);x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10)
- x=s.add_parser("workflows",help="list Actions workflows of one repository (read-only)");x.add_argument("repo");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
- x=s.add_parser("workflow-runs");x.add_argument("repo");x.add_argument("workflow_id");x.add_argument("--branch");x.add_argument("--head-sha");x.add_argument("--event");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--page-size",type=int,default=100);x.add_argument("--start-page",type=int,default=1);x.add_argument("--start-offset",type=int,default=0);x.add_argument("--text",action="store_true")
- x=s.add_parser("runs",help="recent Actions workflow runs; supports --branch, --head-sha, --event, --exclude-event, --limit, --text");x.add_argument("repo");x.add_argument("--branch");x.add_argument("--head-sha");x.add_argument("--event");x.add_argument("--exclude-event",action="append",default=[]);x.add_argument("--limit",type=int,default=20);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
- x=s.add_parser("head-runs");x.add_argument("repo");x.add_argument("head_sha");x.add_argument("--event");x.add_argument("--exclude-event",action="append",default=[],help="e.g. dynamic (Copilot code review runs)");x.add_argument("--limit",type=int,default=100);x.add_argument("--page-limit",type=int,default=10);x.add_argument("--text",action="store_true")
- x=s.add_parser("artifacts");x.add_argument("repo");x.add_argument("run_id",type=int)
- x=s.add_parser("artifact-file");x.add_argument("repo");x.add_argument("artifact_id",type=int);x.add_argument("member");x.add_argument("--file-bytes",type=int,default=10_000_000)
- x=s.add_parser("checks",help="check-runs of one or more SHAs; --text prints only what needs attention");x.add_argument("repo");x.add_argument("sha",nargs="+");x.add_argument("--min-checks",type=int,default=1);x.add_argument("--text",action="store_true")
- x=s.add_parser("wait-checks",help="poll check-runs on a SHA until green/failed; progress on stderr");x.add_argument("repo");x.add_argument("sha");x.add_argument("--min-checks",type=int,default=1);x.add_argument("--interval",type=float,default=60);x.add_argument("--wait-timeout",type=float,default=900);x.add_argument("--ignore-check",action="append",default=[],metavar="NAME");x.add_argument("--poll-timeout",type=float,default=30,help=argparse.SUPPRESS)
- x=s.add_parser("observe-pr");x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("--min-checks",type=int,default=1)
- x=s.add_parser("pr-status",help="compact status of PRs/Issues: OWNER/REPO N [N...] or OWNER/REPO#N ...");x.add_argument("targets",nargs="+",metavar="OWNER/REPO|N|OWNER/REPO#N");x.add_argument("--last",type=int,default=3);x.add_argument("--exclude-event",action="append",default=None,metavar="EVENT");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
- x=s.add_parser("workflow");x.add_argument("repo");x.add_argument("workflow_id")
- x=s.add_parser("run");x.add_argument("repo");x.add_argument("run_id",type=int);x.add_argument("--attempt",type=int)
- x=s.add_parser("jobs");x.add_argument("repo");x.add_argument("run_id",type=int);x.add_argument("--attempt",type=int);x.add_argument("--text",action="store_true")
- x=s.add_parser("job-log");x.add_argument("repo");x.add_argument("run_id",type=int);x.add_argument("job_id",type=int);x.add_argument("--attempt",type=int,required=True);x.add_argument("--log-bytes",type=int,default=1_000_000);x.add_argument("--redact-env",action="append",default=[])
- x=s.add_parser("failed-logs",help="redacted log tails and failed steps for failed jobs in an Actions run (read-only)");x.add_argument("repo");x.add_argument("run_id",type=int);x.add_argument("--attempt",type=int);x.add_argument("--max-jobs",type=int,default=5);x.add_argument("--log-bytes",type=int,default=200_000);x.add_argument("--tail",type=int,default=200);x.add_argument("--redact-env",action="append",default=[]);x.add_argument("--text",action="store_true")
- x=s.add_parser("step-url");x.add_argument("repo");x.add_argument("run_id",type=int);x.add_argument("job_id",type=int);x.add_argument("step_number",type=int);x.add_argument("--line",type=int)
- x=s.add_parser("variable-get");x.add_argument("repo");x.add_argument("name")
- x=s.add_parser("variable-set");x.add_argument("repo");x.add_argument("name");x.add_argument("value");x.add_argument("--write",action="store_true")
- x=s.add_parser("labels",help="add/remove existing labels on one Issue/PR (planned unless --write)");x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("--add",action="append",default=[],metavar="LABEL");x.add_argument("--remove",action="append",default=[],metavar="LABEL");x.add_argument("--write",action="store_true")
- x=s.add_parser("comment");x.add_argument("repo");x.add_argument("number",type=int);x.add_argument("body",nargs="?");x.add_argument("--body-file");x.add_argument("--operation-key");x.add_argument("--sanitize-mentions",action="store_true");x.add_argument("--write",action="store_true")
+  x=s.add_parser(command);x.add_argument("repo",help="OWNER/REPO");x.add_argument("number",type=int,help="PR number");x.add_argument("--limit",type=int,default=100,help="most items returned (default: %(default)s)");x.add_argument("--page-limit",type=int,default=10,help="most API pages read (default: %(default)s)")
+ x=s.add_parser("workflows",help="list Actions workflows of one repository (read-only)");x.add_argument("repo",help="OWNER/REPO");x.add_argument("--limit",type=int,default=100,help="most workflows returned (default: %(default)s)");x.add_argument("--page-limit",type=int,default=10,help="most API pages read (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("workflow-runs");x.add_argument("repo",help="OWNER/REPO");x.add_argument("workflow_id",help="workflow ID or file name");x.add_argument("--branch",help="only runs on this branch");x.add_argument("--head-sha",help="only runs of this 40-hex head SHA");x.add_argument("--event",help="only runs of this event, e.g. push or pull_request");x.add_argument("--limit",type=int,default=100,help="most runs returned (default: %(default)s)");x.add_argument("--page-limit",type=int,default=10,help="most API pages read (default: %(default)s)");x.add_argument("--page-size",type=int,default=100,help="runs per API page, at most 100 (default: %(default)s)");x.add_argument("--start-page",type=int,default=1,help="API page to resume from (default: %(default)s)");x.add_argument("--start-offset",type=int,default=0,help="row in --start-page to resume from (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("runs",help="recent Actions workflow runs; supports --branch, --head-sha, --event, --exclude-event, --limit, --text");x.add_argument("repo",help="OWNER/REPO");x.add_argument("--branch",help="only runs on this branch");x.add_argument("--head-sha",help="only runs of this 40-hex head SHA");x.add_argument("--event",help="only runs of this event, e.g. push or pull_request");x.add_argument("--exclude-event",action="append",default=[],help="drop runs of this event (repeatable)");x.add_argument("--limit",type=int,default=20,help="most runs returned (default: %(default)s)");x.add_argument("--page-limit",type=int,default=10,help="most API pages read (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("head-runs");x.add_argument("repo",help="OWNER/REPO");x.add_argument("head_sha",help="40-hex head SHA");x.add_argument("--event",help="only runs of this event, e.g. push or pull_request");x.add_argument("--exclude-event",action="append",default=[],help="e.g. dynamic (Copilot code review runs)");x.add_argument("--limit",type=int,default=100,help="most runs returned (default: %(default)s)");x.add_argument("--page-limit",type=int,default=10,help="most API pages read (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("artifacts");x.add_argument("repo",help="OWNER/REPO");x.add_argument("run_id",type=int,help="Actions run ID")
+ x=s.add_parser("artifact-file");x.add_argument("repo",help="OWNER/REPO");x.add_argument("artifact_id",type=int,help="artifact ID");x.add_argument("member",help="file path inside the artifact zip");x.add_argument("--file-bytes",type=int,default=10_000_000,help="most file bytes read (default: %(default)s)")
+ x.add_argument("--format",choices=("metadata","base64","blob-sha"),default="metadata",help="metadata receipt or commit-files JSON array")
+ x.add_argument("--path",help="destination repository path for a commit-files row (default: member name)")
+ x=s.add_parser("checks",help="check-runs of one or more SHAs; --text prints only what needs attention");x.add_argument("repo",help="OWNER/REPO");x.add_argument("sha",nargs="+",help="commit SHA (up to 20, e.g. before and after a push)");x.add_argument("--min-checks",type=int,default=1,help="pending until at least this many check-runs exist (default: %(default)s)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("wait-checks",help="poll check-runs on a SHA until green/failed; progress on stderr");x.add_argument("repo",help="OWNER/REPO");x.add_argument("sha",help="commit SHA to poll");x.add_argument("--min-checks",type=int,default=1,help="pending until at least this many check-runs exist (default: %(default)s)");x.add_argument("--interval",type=float,default=60,help="seconds between polls (default: %(default)s)");x.add_argument("--wait-timeout",type=float,default=900,help="give up after this many seconds (default: %(default)s)");x.add_argument("--ignore-check",action="append",default=[],metavar="NAME",help="drop this check name before judging (repeatable)");x.add_argument("--poll-timeout",type=float,default=30,help=argparse.SUPPRESS)
+ x=s.add_parser("observe-pr");x.add_argument("repo",help="OWNER/REPO");x.add_argument("number",type=int,help="PR number");x.add_argument("--min-checks",type=int,default=1,help="pending until at least this many check-runs exist (default: %(default)s)")
+ x=s.add_parser("pr-status",help="compact status of PRs/Issues: OWNER/REPO N [N...] or OWNER/REPO#N ...");x.add_argument("targets",nargs="+",metavar="OWNER/REPO|N|OWNER/REPO#N",help="OWNER/REPO (its open PRs), N, or OWNER/REPO#N");x.add_argument("--last",type=int,default=3,help="latest comments shown per item (default: %(default)s)");x.add_argument("--exclude-event",action="append",default=None,metavar="EVENT",help="count, not list, runs of this event (repeatable; default: dynamic)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("workflow");x.add_argument("repo",help="OWNER/REPO");x.add_argument("workflow_id",help="workflow ID or file name")
+ x=s.add_parser("run");x.add_argument("repo",help="OWNER/REPO");x.add_argument("run_id",type=int,help="Actions run ID");x.add_argument("--attempt",type=int,help="run attempt (default: the latest)")
+ x=s.add_parser("jobs");x.add_argument("repo",help="OWNER/REPO");x.add_argument("run_id",type=int,help="Actions run ID");x.add_argument("--attempt",type=int,help="run attempt (default: the latest)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("job-log");x.add_argument("repo",help="OWNER/REPO");x.add_argument("run_id",type=int,help="Actions run ID");x.add_argument("job_id",type=int,help="Actions job ID");x.add_argument("--attempt",type=int,required=True,help="run attempt");x.add_argument("--log-bytes",type=int,default=1_000_000,help="most log bytes read (default: %(default)s)");x.add_argument("--redact-env",action="append",default=[],help="also redact the value of this set environment variable (repeatable)")
+ x=s.add_parser("failed-logs",help="redacted log tails and failed steps for failed jobs in an Actions run (read-only)");x.add_argument("repo",help="OWNER/REPO");x.add_argument("run_id",type=int,help="Actions run ID");x.add_argument("--attempt",type=int,help="run attempt (default: the latest)");x.add_argument("--max-jobs",type=int,default=5,help="most failed jobs read (default: %(default)s)");x.add_argument("--log-bytes",type=int,default=200_000,help="most log bytes read (default: %(default)s)");x.add_argument("--tail",type=int,default=200,help="log lines kept from the end of each job (default: %(default)s)");x.add_argument("--redact-env",action="append",default=[],help="also redact the value of this set environment variable (repeatable)");x.add_argument("--text",action="store_true",help="human-readable lines instead of JSON")
+ x=s.add_parser("step-url");x.add_argument("repo",help="OWNER/REPO");x.add_argument("run_id",type=int,help="Actions run ID");x.add_argument("job_id",type=int,help="Actions job ID");x.add_argument("step_number",type=int,help="step number in the job");x.add_argument("--line",type=int,help="line in the step log")
+ x=s.add_parser("variable-get");x.add_argument("repo",help="OWNER/REPO");x.add_argument("name",help="Actions variable name")
+ x=s.add_parser("variable-set");x.add_argument("repo",help="OWNER/REPO");x.add_argument("name",help="Actions variable name");x.add_argument("value",help="value to set");x.add_argument("--write",action="store_true",help="do it; without --write only the plan is printed")
+ x=s.add_parser("labels",help="add/remove existing labels on one Issue/PR (planned unless --write)");x.add_argument("repo",help="OWNER/REPO");x.add_argument("number",type=int,help="issue or PR number");x.add_argument("--add",action="append",default=[],metavar="LABEL",help="existing label to add (repeatable)");x.add_argument("--remove",action="append",default=[],metavar="LABEL",help="label to remove (repeatable)");x.add_argument("--write",action="store_true",help="do it; without --write only the plan is printed")
+ x=s.add_parser("comment");x.add_argument("repo",help="OWNER/REPO");x.add_argument("number",type=int,help="issue or PR number");x.add_argument("body",nargs="?",help="comment text (or --body-file)");x.add_argument("--body-file",help="file holding the comment text");x.add_argument("--operation-key",help="key for a hidden marker so a rerun finds the same comment (required with --write)");x.add_argument("--sanitize-mentions",action="store_true",help="turn @name into a full-width ＠name instead of refusing");x.add_argument("--write",action="store_true",help="do it; without --write only the plan is printed")
  for p in (a,*s.choices.values()):p.suggest_on_error=True  # 🤔 argparse 3.14+: "maybe you meant" for subcommands and choices; older Pythons ignore it
  _CLI_PARSER=a;return a
 def _main(argv=None):
@@ -7190,7 +7728,8 @@ def _main(argv=None):
   elif ns.cmd=="pr-identity":o=pr_identity(ns.repository,ns.number,transport=transport)
   elif ns.cmd=="commit-pulls":o=commit_pulls(ns.repository,ns.sha,transport=transport)
   elif ns.cmd=="first-parent":o=first_parent_check(ns.repository,ns.commit,branch=ns.branch,exact=ns.exact,transport=transport,timeout=ns.git_timeout if ns.exact else 30,remote_base=ns.remote_base)
-  elif ns.cmd=="pin-audit":o=pin_audit(ns.root,json_globs=tuple(ns.json_globs) if ns.json_globs else PIN_JSON_GLOBS,only_owners=ns.only,remote_base=ns.remote_base,timeout=ns.git_timeout)
+  elif ns.cmd=="commit-classify":o=commit_classify(ns.repository,ns.sha,branch=ns.branch,exact=ns.exact,transport=transport,timeout=ns.git_timeout if ns.exact else 30,remote_base=ns.remote_base)
+  elif ns.cmd=="pin-audit":o=pin_audit(ns.root,json_globs=tuple(ns.json_globs) if ns.json_globs else PIN_JSON_GLOBS,only_owners=ns.only,remote_base=ns.remote_base,timeout=ns.git_timeout,require_merge=ns.require_merge_commit,include_markdown=ns.include_markdown,repos=ns.repo)
   elif ns.cmd=="vendor-lock-check":o=vendor_lock_check(ns.root,ns.lock,ns.rules,ns.parent_ref)
   elif ns.cmd=="vendor-lock-verify-remote":o=vendor_lock_verify_remote(ns.root,ns.lock,upstream=ns.upstream,first_parent=ns.first_parent,check_parent_ref=ns.check_parent_ref,parent_ref=ns.parent_ref,transport=transport)
   elif ns.cmd=="vendor-plan":o=vendor_plan(ns.root,ns.candidate,ns.rules,transport=transport)
@@ -7243,7 +7782,9 @@ def _main(argv=None):
    if not re.fullmatch(r"[0-9a-fA-F]{40}",ns.head_sha):raise ValueError("invalid head_sha")
    o=run_history(ns.repo,max_items=ns.limit,max_pages=ns.page_limit,head_sha=ns.head_sha,event=ns.event,transport=transport,exclude_events=ns.exclude_event)
   elif ns.cmd=="artifacts":o=artifacts(ns.repo,ns.run_id,transport=transport)
-  elif ns.cmd=="artifact-file":o=artifact_file(ns.repo,ns.artifact_id,ns.member,max_bytes=ns.file_bytes,transport=transport)
+  elif ns.cmd=="artifact-file":
+   if ns.path is not None and ns.format=="metadata":raise ValueError("--path requires base64 or blob-sha format")
+   o=artifact_file(ns.repo,ns.artifact_id,ns.member,max_bytes=ns.file_bytes,transport=transport,output_format=ns.format)
   elif ns.cmd=="get":o=get(ns.path,ns.query,ns.pick,transport)
   elif ns.cmd in ("read-comment","review","inline-comment"):o=read_comment(ns.targets,{"review":"review","inline-comment":"inline"}.get(ns.cmd),transport)
   elif ns.cmd=="checks":o=checks_for_shas(ns.repo,ns.sha,ns.min_checks,transport)
@@ -7279,6 +7820,14 @@ def _main(argv=None):
  elif ns.cmd=="pr-files" and ns.text:print(render_pr_files(o))
  elif ns.cmd=="search" and ns.text:print(render_search(o))
  elif ns.cmd=="compare" and ns.text:print(render_compare(o))
+ elif ns.cmd=="artifact-file" and ns.format!="metadata":
+  if not o["complete"]:
+   print(json.dumps(o),file=sys.stderr)
+   return 1
+  row={"path":ns.member if ns.path is None else ns.path}
+  if ns.format=="base64":row.update(encoding="base64",content=o["content"])
+  else:row["blob_sha"]=o["blob_sha"]
+  print(json.dumps([row]))
  elif ns.cmd=="file" and ns.text:print(render_remote_file(o),end="" if (o.get("text") or "").endswith("\n") else "\n")
  elif ns.cmd=="workflows" and ns.text:print(render_workflows(o))
  elif ns.cmd in ("runs","head-runs","workflow-runs") and ns.text:print(render_runs(o))
@@ -7289,6 +7838,8 @@ def _main(argv=None):
  elif ns.cmd=="releases" and ns.text:print(render_releases(o))
  elif ns.cmd in ("vendor-lock-check","vendor-lock-verify-remote") and ns.markdown:print(render_vendor_markdown(o))
  elif ns.cmd=="pin-audit" and ns.text:print(render_pin_audit(o))
+ elif ns.cmd=="commit-classify" and ns.text:print(render_commit_classify(o))
+ elif ns.cmd=="commit-classify":print(json.dumps(o,ensure_ascii=False,sort_keys=True))
  elif ns.cmd=="merge-preview" and ns.text:print(render_merge_preview(o))
  elif ns.cmd=="merge-trial" and ns.text:print(render_merge_trial(o))
  elif ns.cmd=="git-activity" and ns.text:print(render_git_activity(o))
@@ -7360,9 +7911,9 @@ def main(argv=None):
 # One outer deadline/budget is shared across nested calls and gh fallback.
 for _name in ("_gh","_url","request","pages","repository","repositories","repository_inventory","rate_limit","releases","compare_refs","pr","pr_files","comments","reviews","inline_comments","review_threads","review_observations",
               "issue","content","content_from_hit","issues","search","pull_requests","run_history","workflow_run_discovery","runs","variable","set_variable","post_comment",
-              "resolve_ref","tree","source_identity","remote_file","get","checks_for_sha","observe_pr","workflow","workflows","run","jobs","job_log","failed_job_logs","artifacts","artifact_file",
+              "resolve_ref","tree","source_identity","remote_file","get","checks_for_sha","observe_pr","workflow","workflows","run","jobs","job_log","failed_job_logs","artifacts","artifact_archive","artifact_file",
               "pages_bounded","item_status","vendor_lock_verify_remote","vendor_matrix","owner_repositories","verify_parent_ref",
-               "enrollment_progress","repo_identity","merge_preview","merge_readiness","fleet_checks","fleet_pr","list_owner_repositories","pr_identity","commit_pulls","first_parent_check","repo_name_files"):
+               "enrollment_progress","repo_identity","merge_preview","merge_readiness","fleet_checks","fleet_pr","list_owner_repositories","pr_identity","commit_pulls","first_parent_check","commit_classify","repo_name_files"):
  globals()[_name]=_bounded(globals()[_name])
 # Capture the final bounded function, so injected request replacements are respected.
 _DEFAULT_REQUEST = request

@@ -457,18 +457,19 @@ class CommandResult:
     output_limited: bool = False
 
 
-def _decode(value: bytes | None) -> str:
-    return (value or b"").decode("utf-8", errors="replace")
+def _decode(value: bytes | None, encoding: str = "utf-8") -> str:
+    return (value or b"").decode(encoding, errors="replace")
 
 
 def _command_result_with_bytes(command: Command, returncode: int | None, stdout: bytes | None,
                                stderr: bytes | None, executed: bool, *,
                                timed_out: bool = False,
-                               output_limited: bool = False) -> tuple[CommandResult, bytes, bytes]:
+                               output_limited: bool = False,
+                               encoding: str = "utf-8") -> tuple[CommandResult, bytes, bytes]:
     out, err = stdout or b"", stderr or b""
     return (
-        CommandResult(command.argv, returncode, _decode(out), _decode(err), executed,
-                      timed_out, output_limited),
+        CommandResult(command.argv, returncode, _decode(out, encoding), _decode(err, encoding),
+                      executed, timed_out, output_limited),
         out,
         err,
     )
@@ -476,7 +477,7 @@ def _command_result_with_bytes(command: Command, returncode: int | None, stdout:
 
 def _run_bounded_with_bytes(command: Command, data: bytes | None, *, cwd: str | os.PathLike[str] | None,
                             timeout: float | None, env: Mapping[str, str] | None,
-                            limit: int) -> tuple[CommandResult, bytes, bytes]:
+                            limit: int, encoding: str = "utf-8") -> tuple[CommandResult, bytes, bytes]:
     """Read two pipes concurrently with a shared byte cap; stop noisy children."""
     process = subprocess.Popen(
         command.argv, cwd=cwd, env=env, stdin=subprocess.PIPE if data is not None else None,
@@ -547,6 +548,7 @@ def _run_bounded_with_bytes(command: Command, data: bytes | None, *, cwd: str | 
         True,
         timed_out=timed_out,
         output_limited=limited.is_set(),
+        encoding=encoding,
     )
 
 
@@ -554,19 +556,21 @@ def run_command(command: Command, *, cwd: str | os.PathLike[str] | None = None,
                 timeout: float | None = None, dry_run: bool = False,
                 env: Mapping[str, str] | None = None,
                 stdin: str | bytes | None = None,
-                max_output_bytes: int | None = None) -> CommandResult:
-    """Capture UTF-8 text (replacement on invalid bytes), never use a shell.
+                max_output_bytes: int | None = None,
+                encoding: str = "utf-8") -> CommandResult:
+    """Capture text decoded with ``encoding`` (replacement on invalid bytes), never use a shell.
 
     Nonzero exits are results. Launch failures raise OSError. Timeout returns
     partial output and no exit code. env, if provided, replaces the environment.
-    Input accepts explicit UTF-8 text or raw bytes (including NUL records).
-    No newline is appended. Output is buffered; streaming, binary output and
-    process-tree cleanup are outside this contract. When max_output_bytes is set,
-    stdout/stderr share a byte cap and the child is stopped on overflow.
+    Input accepts text (encoded with ``encoding``) or raw bytes (including NUL
+    records). No newline is appended. Output is buffered; streaming, binary
+    output and process-tree cleanup are outside this contract. When
+    max_output_bytes is set, stdout/stderr share a byte cap and the child is
+    stopped on overflow.
     """
     result, _, _ = _run_command_with_bytes(
         command, cwd=cwd, timeout=timeout, dry_run=dry_run, env=env,
-        stdin=stdin, max_output_bytes=max_output_bytes,
+        stdin=stdin, max_output_bytes=max_output_bytes, encoding=encoding,
     )
     return result
 
@@ -575,7 +579,8 @@ def _run_command_with_bytes(command: Command, *, cwd: str | os.PathLike[str] | N
                             timeout: float | None = None, dry_run: bool = False,
                             env: Mapping[str, str] | None = None,
                             stdin: str | bytes | None = None,
-                            max_output_bytes: int | None = None) -> tuple[CommandResult, bytes, bytes]:
+                            max_output_bytes: int | None = None,
+                            encoding: str = "utf-8") -> tuple[CommandResult, bytes, bytes]:
     """Like run_command, but also return captured stdout/stderr as raw bytes for the CLI."""
     if type(dry_run) is not bool:
         raise TypeError("dry_run must be bool")
@@ -583,22 +588,27 @@ def _run_command_with_bytes(command: Command, *, cwd: str | os.PathLike[str] | N
         raise ValueError("timeout must be positive and finite")
     if stdin is not None and not isinstance(stdin, (str, bytes)):
         raise TypeError("stdin must be str, bytes, or None")
-    data = stdin.encode("utf-8") if isinstance(stdin, str) else stdin
+    if not isinstance(encoding, str):
+        raise TypeError("encoding must be str")
+    b"".decode(encoding)  # fail fast on an unknown codec, like subprocess does
+    data = stdin.encode(encoding) if isinstance(stdin, str) else stdin
     if max_output_bytes is not None and (type(max_output_bytes) is not int or max_output_bytes < 0):
         raise ValueError("max_output_bytes must be a nonnegative integer or None")
     if dry_run:
-        return _command_result_with_bytes(command, None, b"", b"", False)
+        return _command_result_with_bytes(command, None, b"", b"", False, encoding=encoding)
     if max_output_bytes is not None:
         return _run_bounded_with_bytes(
             command, data, cwd=cwd, timeout=timeout, env=env, limit=max_output_bytes,
+            encoding=encoding,
         )
     try:
         completed = subprocess.run(command.argv, cwd=cwd, timeout=timeout, env=env,
                                    input=data, capture_output=True, shell=False, check=False)
     except subprocess.TimeoutExpired as exc:
-        return _command_result_with_bytes(command, None, exc.stdout, exc.stderr, True, timed_out=True)
+        return _command_result_with_bytes(command, None, exc.stdout, exc.stderr, True,
+                                          timed_out=True, encoding=encoding)
     return _command_result_with_bytes(command, completed.returncode, completed.stdout,
-                                      completed.stderr, True)
+                                      completed.stderr, True, encoding=encoding)
 
 
 @dataclass(frozen=True)
@@ -633,7 +643,8 @@ def run_cli(target: str | os.PathLike[str], *args: str | os.PathLike[str],
             python_options: Sequence[str | os.PathLike[str]] = (),
             timeout: float | None = None, cwd: str | os.PathLike[str] | None = None,
             env: Mapping[str, str] | None = None,
-            stdin: str | bytes | None = None) -> CliResult:
+            stdin: str | bytes | None = None,
+            encoding: str = "utf-8") -> CliResult:
     """Run a Python CLI script once and return its captured result.
 
     This is the test-side counterpart of ``run_command``: the interpreter
@@ -646,11 +657,15 @@ def run_cli(target: str | os.PathLike[str], *args: str | os.PathLike[str],
     with ``TypeError``. Nonzero exits are results, as with
     ``run_command``; launch failures raise OSError. Use ``Command`` +
     ``run_command`` directly when the target is not a Python script.
+    ``encoding`` names the codec for ``stdin`` text and for decoding the
+    captured output (UTF-8 by default, replacement on invalid bytes), so a
+    test that used to pin ``encoding=`` on ``subprocess.run`` keeps its pin.
     """
     executable = sys.executable if python is None else _token(python)
     options = _tokens(python_options)
     command = Command((executable, *options, _token(target), *(_token(arg) for arg in args)))
-    result = run_command(command, cwd=cwd, timeout=timeout, env=env, stdin=stdin)
+    result = run_command(command, cwd=cwd, timeout=timeout, env=env, stdin=stdin,
+                         encoding=encoding)
     return CliResult(result.argv, result.returncode, result.stdout, result.stderr,
                      result.executed, result.timed_out, result.output_limited)
 

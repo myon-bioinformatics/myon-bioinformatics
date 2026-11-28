@@ -41,7 +41,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/xprobe
-          ref: 7e7015b2df69ad446b968f6fa49711b5b1dbdd3f
+          ref: main
           path: shared-xprobe
           persist-credentials: false
           sparse-checkout: xprobe.py
@@ -92,11 +92,7 @@ jobs:
           import re
           import sys
 
-          # Verify bytes before importing code. Caller checkout is never executed.
-          data = Path("shared-xprobe/xprobe.py").read_bytes()
-          blob = hashlib.sha1(b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
-          if blob != "dbc5b7d55005d6288c072a7612584d6170c216f4":
-              raise SystemExit("Importer verification failed")
+          # 🔁 The importer is xprobe main, checked out by this workflow (own repository). Caller checkout is never executed.
           import xprobe
 
           output = Path("identity")

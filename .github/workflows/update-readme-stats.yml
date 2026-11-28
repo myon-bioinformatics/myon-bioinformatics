@@ -1,6 +1,7 @@
 name: Update README stats
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '37 0 * * *'
   push:
@@ -60,3 +61,14 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Refresh README stats cards"
           git push
+
+  # 🔁 own sources follow main: on schedule / manual run, take main of own repositories and push to main
+  follow-main:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-follow-main.yml@main
+    permissions:
+      contents: write
+    with:
+      node-version: "26"
+      check: |
+        uv run --locked pytest -q

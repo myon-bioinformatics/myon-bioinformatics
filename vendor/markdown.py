@@ -18,6 +18,7 @@ __all__ = [
     "run_markdown_doctest",
     "extract_sections",
     "split_sections",
+    "split_slides",
     "extract_links",
     "extract_images",
     "extract_code_blocks",
@@ -110,6 +111,7 @@ __all__ = [
     "toml_reader",
     "markdown_to_toml",
     "dotenv_to_markdown",
+    "pixiv_to_markdown",
     "markdown_to_dotenv",
     "markdown_to_directory_tree",
     "directory_tree_to_markdown",
@@ -682,6 +684,56 @@ def split_sections(content: str) -> list[dict[str, Any]]:
             body.append(line)
     flush()
     return parts
+
+
+def split_slides(content: str) -> list[dict[str, Any]]:
+    """Split content into pages at thematic breaks (``---``, ``***``, ``___``).
+
+    This is how slide Markdown (Marp, reveal.js, Deckset) separates slides.
+    Each item has ``content`` (the page without the break lines, outer blank
+    lines trimmed), ``title`` and ``level`` (the heading the page starts
+    with; ``""`` and 0 without one) and ``body`` (the page after that
+    heading), so a page maps onto a title box and a body box.
+
+    A break inside fenced code is text. A ``---`` line directly under a line
+    of text is that line's setext underline, not a break: leave a blank line
+    above a break. YAML front matter at the very top (``---`` to ``---`` or
+    ``...``, with at least one ``key:`` line) holds the deck's settings and
+    is skipped. A leading or trailing break adds no page; two breaks in a
+    row make an empty page.
+    """
+    lines = content.splitlines()
+    start = 0
+    if lines and lines[0].rstrip() == "---":
+        closing = next((i for i in range(1, len(lines)) if lines[i].rstrip() in ("---", "...")), None)
+        if closing is not None and any(re.match(r"[A-Za-z_][\w -]*:(\s|$)", line) for line in lines[1:closing]):
+            start = closing + 1
+    lines = lines[start:]
+    pages: list[list[str]] = [[]]
+    for index, item in enumerate(_scan_lines(lines)):
+        line = lines[index]
+        above = lines[index - 1] if index else ""
+        underline = line.strip().startswith("-") and above.strip() != "" and not _HR_RE.match(above) and not _FENCE_RE.match(above)
+        if _HR_RE.match(line) and not item.in_fenced_code and not item.is_fence_open and not item.is_fence_close and not underline:
+            pages.append([])
+        else:
+            pages[-1].append(line)
+    texts = ["\n".join(page).strip("\n") for page in pages]
+    while texts and not texts[0].strip():
+        texts.pop(0)
+    while texts and not texts[-1].strip():
+        texts.pop()
+    slides = []
+    for text in texts:
+        first, _, rest = text.partition("\n")
+        match = _HEADING_RE.match(first)
+        slides.append({
+            "level": len(match.group(1)) if match else 0,
+            "title": match.group(2).strip() if match else "",
+            "body": rest.strip("\n") if match else text,
+            "content": text,
+        })
+    return slides
 
 
 def _parse_attrs(attr_text: str) -> dict[str, str]:
@@ -1646,10 +1698,24 @@ def code_block(code: str, lang: str = "", *, fence_char: str = "`") -> str:
     fence, so existing callers see no change. Pass ``fence_char="~"`` for a
     tilde fence (e.g. when ``code`` itself contains backtick runs).
 
+    ``lang`` is a single-line info string and may include metadata or Unicode.
+    Backtick fences cannot have backticks in their info string (CommonMark
+    section 4.5). Tilde info may contain both markers, but a leading tilde
+    needs separating whitespace, e.g. ``lang=" ~tag"``, so it does not extend
+    only the opening fence. Existing whitespace is preserved in the output.
+
     :raises ValueError: if ``fence_char`` isn't ``"`"`` or ``"~"`` -- the
-        only two characters Markdown recognizes as a fence.
+        only two characters Markdown recognizes as a fence -- or ``lang``
+        contains a line separator, a backtick for a backtick fence, or an
+        unseparated leading tilde for a tilde fence.
     """
     fence = _adaptive_fence(code, fence_char)
+    if lang and lang.splitlines() != [lang]:
+        raise ValueError("lang must be a single line without line separators")
+    if fence_char == "`" and "`" in lang:
+        raise ValueError("lang cannot contain backticks with a backtick fence")
+    if fence_char == "~" and lang.startswith("~"):
+        raise ValueError("lang must separate a leading tilde from the fence with whitespace")
     return f"{fence}{lang}\n{code}\n{fence}\n"
 
 
@@ -2812,6 +2878,99 @@ def _dotenv_dumps(value: Any) -> str:
             raise ValueError("dotenv values must be strings")
         lines.append(f"{key}={_structured_json_dumps(item)}")
     return "".join(line + "\n" for line in lines)
+
+
+def _pixiv_inline(text: str) -> str:
+    def link(match):
+        label = match[1].strip()
+        target = (match[2] or label).strip().replace('(', '%28').replace(')', '%29').replace(' ', '%20')
+        return f'[{label}]({target})'
+    def prose(part):
+        part = re.sub(r'NEXT▶︎(?=\[\[)', 'NEXT ▶︎ ', part)
+        part = re.sub(r'\[\[([^\[\]>]+)(?:>([^\[\]]+))?\]\]', link, part)
+        part = re.sub(r'!\[pixiv image (\d+)\]\(pixivimage:\1(?: "[A-Za-z0-9]+")?\)',
+                      r'[pixiv image \1](https://www.pixiv.net/artworks/\1)', part)
+        part = re.sub(r'\[pixivimage:(\d+)(?::[A-Za-z0-9]+)?\]',
+                      r'[pixiv image \1](https://www.pixiv.net/artworks/\1)', part)
+        return re.sub(r'\[youtube:([A-Za-z0-9_-]{11})\]', r'[YouTube](https://www.youtube.com/watch?v=\1)', part)
+    # Preserve matched backtick code spans, including runs longer than one tick.
+    parts = re.split(r'(`+)(.*?)\1', text)
+    if len(parts) == 1:
+        return prose(text)
+    out = prose(parts[0])
+    for index in range(1, len(parts), 3):
+        out += parts[index] + parts[index + 1] + parts[index] + prose(parts[index + 2])
+    return out
+
+
+def pixiv_to_markdown(source: str) -> str:
+    """Convert pixiv's source markup (encyclopedia / novel style) to Markdown.
+
+    ``*`` star headings become ATX headings, ``[[label>target]]`` wiki links and
+    ``-``/``--`` wiki lists become links and nested lists, ``^`` row-header tables
+    become GFM tables (row headers as bold cells under an empty column header),
+    and ``[pixivimage:N]`` / ``[youtube:ID]`` become plain links. Fenced and
+    backtick code is left alone, already-normalized Markdown is kept (so it is
+    idempotent) and unsupported syntax stays literal. Nothing is downloaded or
+    embedded. Use it only for text known to be pixiv source; over 200000
+    characters raises ``ValueError``.
+
+    >>> pixiv_to_markdown("*概要\\n[[作品>作品(詳細)]]")
+    '# 概要\\n\\n[作品](作品%28詳細%29)'
+    """
+    if len(source) > 200000:
+        raise ValueError('Pixiv source exceeds 200000 characters')
+    source = source.replace('\r\n', '\n').replace('\r', '\n').replace('\u2028', '\n').replace('\u2029', '\n').replace('\x00', '\ufffd')
+    lines = source.split('\n')
+    out: list[str] = []
+    fence = None
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        match = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$', line)
+        if fence:
+            out.append(line)
+            if match and match[1][0] == fence[0] and len(match[1]) >= len(fence) and not match[2].strip():
+                fence = None
+            i += 1
+            continue
+        if match and not (match[1][0] == '`' and '`' in match[2]):
+            fence = match[1]
+            out.append(line)
+            i += 1
+            continue
+        # Only contiguous pipe rows containing an explicit Pixiv ^ cell marker.
+        if line.startswith('|') and line.endswith('|'):
+            j = i
+            rows = []
+            while j < len(lines) and lines[j].startswith('|') and lines[j].endswith('|'):
+                rows.append(re.split(r'(?<!\\)\|', lines[j][1:-1]))
+                j += 1
+            if any(cell.lstrip().startswith('^') for row in rows for cell in row):
+                width = max(map(len, rows))
+                if out and out[-1].strip():
+                    out.append('')
+                out.extend(['|' + '|'.join([' '] * width) + '|', '|' + '|'.join([' --- '] * width) + '|'])
+                for row in rows:
+                    cells = []
+                    for cell in row:
+                        cell = cell.strip()
+                        cells.append('**' + _pixiv_inline(cell[1:]) + '**' if cell.startswith('^') else _pixiv_inline(cell))
+                    out.append('| ' + ' | '.join(cells + [''] * (width - len(cells))) + ' |')
+                out.append('')
+                i = j
+                continue
+        heading = re.match(r'^(\*{1,6})([^*\s].*?)\s*$', line)
+        if heading and heading[1] not in heading[2]:
+            if out and out[-1].strip():
+                out.append('')
+            out.extend(['#' * len(heading[1]) + ' ' + _pixiv_inline(heading[2]), ''])
+        else:
+            line = re.sub(r'^(-{1,6})(?=[^\s-])', lambda m: '  ' * (len(m[1]) - 1) + '- ', line)
+            out.append(_pixiv_inline(line))
+        i += 1
+    return '\n'.join(out)
+
 
 
 def dotenv_to_markdown(content: str, title: str = ".env") -> str:

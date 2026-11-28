@@ -1003,6 +1003,7 @@ def test_follow_main_moves_own_sources_onto_main_and_keeps_other_pins(tmp_path):
     flows.mkdir(parents=True)
     pin, ext = "a" * 40, "b" * 40
     (flows / "ci.yml").write_text(
+        f"env:\n  PSWB: pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@{pin}\n"
         f"jobs:\n  a:\n    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/r.yml@{pin} # 親\n"
         f"  b:\n    steps:\n      - uses: actions/checkout@{ext} # v7.0.1\n"
         f"        with:\n          repository: myon-bioinformatics/xprobe\n          ref: {pin}\n          path: x\n"
@@ -1028,6 +1029,7 @@ def test_follow_main_moves_own_sources_onto_main_and_keeps_other_pins(tmp_path):
     assert result["lock"] == ["vendor/adapter.py", path.name] and result["workflows"] == [".github/workflows/ci.yml"]
     flow = (flows / "ci.yml").read_text(encoding="utf-8")
     assert "r.yml@main # 親" in flow and f"actions/checkout@{ext} # v7.0.1" in flow
+    assert "PySaiyanWeBoo@main\n" in flow                                              # an own git+ install string too
     assert "xprobe\n          ref: main\n" in flow and f"else\n          ref: {pin}\n" in flow   # own checkout follows, others stay
     assert f"TaxOntOy\n          ref: {pin} # 📌 snapshot\n" in flow                      # 📌 an intentional pin stays
     toml = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")

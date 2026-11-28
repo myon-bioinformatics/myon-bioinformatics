@@ -76,4 +76,8 @@ jobs:
           fi
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -q -m "🔁 follow own main"
+          # main may have moved during the run (another job of the same schedule, say): replay on top of it
+          git fetch -q --depth=50 origin main
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            rebase -q origin/main
           git push origin HEAD:main

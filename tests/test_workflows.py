@@ -1014,7 +1014,7 @@ def test_pages_guide_inputs_reach_the_shell_through_env_and_the_renderer_is_pinn
     assert 'python -m pysaiyanweboo --page "$site/guide.page.json" "${home[@]}"' in guide["run"]
     assert '--repository "$GUIDE_REPOSITORY" > "$site/index.html"' in guide["run"]  # 🏠 the way back comes from the pinned renderer
     assert "grep -qF 'data-ui-back' \"$site/index.html\"" in guide["run"]
-    assert re.fullmatch(r"pysaiyanweboo @ git\+https://github\.com/myon-bioinformatics/PySaiyanWeBoo@[0-9a-f]{40}", doc["env"]["PSWB"])
+    assert re.fullmatch(r"pysaiyanweboo @ git\+https://github\.com/myon-bioinformatics/PySaiyanWeBoo@main", doc["env"]["PSWB"])  # 🔁 follows main
     # 📌 One PySaiyanWeBoo pin: the audit pages' pages group (pyproject.toml) holds the very string the guides use.
     pages = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["dependency-groups"]["pages"]
     assert pages == [doc["env"]["PSWB"]], "move both PSWB and the pyproject pages pin, then uv lock"
