@@ -1007,7 +1007,9 @@ def test_follow_main_moves_own_sources_onto_main_and_keeps_other_pins(tmp_path):
         f"  b:\n    steps:\n      - uses: actions/checkout@{ext} # v7.0.1\n"
         f"        with:\n          repository: myon-bioinformatics/xprobe\n          ref: {pin}\n          path: x\n"
         f"      - uses: actions/checkout@{ext} # v7.0.1\n"
-        f"        with:\n          repository: someone/else\n          ref: {pin}\n", encoding="utf-8")
+        f"        with:\n          repository: someone/else\n          ref: {pin}\n"
+        f"      - uses: actions/checkout@{ext} # v7.0.1\n"
+        f"        with:\n          repository: myon-bioinformatics/TaxOntOy\n          ref: {pin} # 📌 snapshot\n", encoding="utf-8")
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "x"\ndependencies = []\n[dependency-groups]\n'
         f'test = ["pysaiyanweboo @ git+https://github.com/myon-bioinformatics/PySaiyanWeBoo@{pin}", "pytest"]\n'
@@ -1027,10 +1029,20 @@ def test_follow_main_moves_own_sources_onto_main_and_keeps_other_pins(tmp_path):
     flow = (flows / "ci.yml").read_text(encoding="utf-8")
     assert "r.yml@main # 親" in flow and f"actions/checkout@{ext} # v7.0.1" in flow
     assert "xprobe\n          ref: main\n" in flow and f"else\n          ref: {pin}\n" in flow   # own checkout follows, others stay
+    assert f"TaxOntOy\n          ref: {pin} # 📌 snapshot\n" in flow                      # 📌 an intentional pin stays
     toml = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
     assert "PySaiyanWeBoo@main" in toml and 'xprobe", branch = "main"' in toml and f'rev = "{ext}"' in toml
     assert result["pyproject"] and result["uv_upgrade"] == ["pysaiyanweboo", "xprobe"]
     again = sync.follow_main(tmp_path, get=get)                               # already on main: nothing moves
-    assert again == {"lock": [], "workflows": [], "pyproject": False, "uv_upgrade": ["pysaiyanweboo", "xprobe"]}
+    assert again == {"lock": [], "workflows": [], "pyproject": False, "uv_upgrade": ["pysaiyanweboo", "xprobe"],
+                     "stuck": []}
+
+    def gone(url):  # 🧊 the source left main: the row goes back to its pin and is reported, nothing fails
+        if "/contents/" in url and "ref=main" in url:
+            raise sync.PublicGitNotFound("not found")
+        return get(url)
+    stuck = sync.follow_main(tmp_path, get=gone)
+    assert stuck["stuck"] == ["vendor/adapter.py"] and stuck["lock"] == [path.name]
+    assert [(row["ref"], row["commit"]) for row in json.loads(path.read_text(encoding="utf-8"))["files"]] == [(NEW, NEW), (OLD, OLD)]
     out = run_cli(Path(sync.__file__), "follow-main", "--root", tmp_path, "--manifest", "missing.json", python_options=("-S",))
     assert out.returncode == 0 and json.loads(out.stdout)["lock"] == []        # no lock: workflows and pyproject only

@@ -2953,22 +2953,38 @@ def follow_main(root, manifest="vendor.lock.json", *, get=_public_http_get):
     - the lock: own rows get ``ref: "main"`` and ``update`` places main's bytes (unchanged bytes keep their commit);
     - ``.github/workflows/*.y*ml``: ``uses: <owner>/<repo>/…@<40-hex>`` becomes ``@main``, and a checkout's
       ``ref: <40-hex>`` after ``repository: <owner>/<repo>`` in the same mapping becomes ``ref: main``;
+      a line marked ``📌`` (an intentional pin, such as a data snapshot) is left as written;
     - ``pyproject.toml``: ``git+https://github.com/<owner>/<repo>@<40-hex>`` becomes ``@main`` and a
       ``[tool.uv.sources]`` ``rev = "<40-hex>"`` on an own git source becomes ``branch = "main"``.
 
-    Other owners keep their pins. Returns what moved and ``uv_upgrade``: the packages taken from own git
+    Other owners keep their pins. 🧊 A row whose source is no longer on main (moved or merged upstream)
+    keeps (or goes back to) its pinned commit and is listed in ``stuck`` for a person to re-point.
+    Returns what moved and ``uv_upgrade``: the packages taken from own git
     sources, for ``uv lock --upgrade-package`` (this stdlib tool never runs uv). Nothing is committed.
     The default getter sends ``GH_TOKEN``/``GITHUB_TOKEN`` to api.github.com when set (CI rate limits).
     """
     root = Path(root).resolve()
     owner = PARENT_REPOSITORY.split("/")[0]
-    result = {"lock": [], "workflows": [], "pyproject": False, "uv_upgrade": []}
+    result = {"lock": [], "workflows": [], "pyproject": False, "uv_upgrade": [], "stuck": []}
     manifest_path = root / manifest
     if manifest_path.is_file():
         lock = validate(json.loads(manifest_path.read_text(encoding="utf-8")))
         moved = False
         for item in lock["files"]:
-            if item["repository"].split("/")[0].casefold() == owner.casefold() and item["ref"] != "main":
+            if item["repository"].split("/")[0].casefold() != owner.casefold():
+                continue
+            url = "https://api.github.com/repos/{}/contents/{}?ref=main".format(
+                item["repository"], quote(item["source"], safe="/"))
+            try:
+                get(url)
+            except (PublicGitNotFound, HTTPError) as error:  # 🧊 gone from main (moved or merged): keep the pin
+                if isinstance(error, HTTPError) and error.code != 404:
+                    raise
+                result["stuck"].append(item["destination"])
+                if item["ref"] != item["commit"]:
+                    item["ref"], moved = item["commit"], True
+                continue
+            if item["ref"] != "main":
                 item["ref"], moved = "main", True
         if moved:
             manifest_path.write_text(json.dumps(lock, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -2980,7 +2996,11 @@ def follow_main(root, manifest="vendor.lock.json", *, get=_public_http_get):
     for path in sorted((root / ".github" / "workflows").glob("*.y*ml")):
         text = path.read_text(encoding="utf-8")
         lines, scope = [], None                      # scope: (indent, own?) of the last repository: key
-        for line in uses.sub(r"\1@main", text).splitlines(keepends=True):
+        for line in text.splitlines(keepends=True):
+            if "📌" in line:                          # 📌 an intentional pin (a data snapshot, say) stays as written
+                lines.append(line)
+                continue
+            line = uses.sub(r"\1@main", line)
             indent = len(line) - len(line.lstrip(" "))
             if scope and line.strip() and indent < scope[0]:
                 scope = None
