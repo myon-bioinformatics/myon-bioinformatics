@@ -66,6 +66,7 @@ def test_parent_style_refs_pass(tmp_path):
                 "  own:",
                 "    steps:",
                 "      - uses: myon-bioinformatics/some-action@main",
+                "      - uses: myon-bioinformatics/myon-bioinformatics/.github/actions/classify-changes@main",
                 "",
             ]
         ),

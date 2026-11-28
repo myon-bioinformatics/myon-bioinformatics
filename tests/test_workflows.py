@@ -171,7 +171,10 @@ def test_explicit_paths_keep_precedence(repo, tmp_path):
 def classify(tmp_path, files, *, event='pull_request', forced='', fail=False, missing_base=False,
             push_forced=False, push_before_sha=None):
     doc = yaml.safe_load((ROOT / '.github/workflows/reusable-change-detection.yml').read_text())
-    script = doc['jobs']['changes']['steps'][1]['run']
+    step = doc['jobs']['changes']['steps'][1]
+    assert step['uses'] == 'myon-bioinformatics/myon-bioinformatics/.github/actions/classify-changes@main'
+    action = yaml.safe_load((ROOT / '.github/actions/classify-changes/action.yml').read_text())
+    script = action['runs']['steps'][0]['run']
     paths = tmp_path / 'paths'
     paths.write_bytes(b''.join(p.encode() + b'\0' for p in files))
     git = tmp_path / 'git'

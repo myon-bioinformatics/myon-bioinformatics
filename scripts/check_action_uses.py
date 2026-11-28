@@ -147,6 +147,8 @@ def _style_problem(raw: str, comment: str) -> str | None:
     following = rev == "main" and action.startswith(PARENT_PREFIX.split("/")[0] + "/")
     if action.startswith(PARENT_PREFIX):
         entry = action[len(PARENT_PREFIX) :]
+        if following and re.fullmatch(r"\.github/actions/[A-Za-z0-9_-]+", entry):
+            return None
         if (
             entry.startswith(".github/workflows/")
             and entry.endswith((".yml", ".yaml"))
