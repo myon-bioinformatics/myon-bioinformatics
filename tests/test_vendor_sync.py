@@ -1018,6 +1018,15 @@ def test_follow_main_moves_own_sources_onto_main_and_keeps_other_pins(tmp_path):
     assert "PySaiyanWeBoo@main" in toml and 'xprobe", branch = "main"' in toml and f'rev = "{ext}"' in toml
     assert result["pyproject"] and result["uv_upgrade"] == ["pysaiyanweboo", "xprobe"]
     again = sync.follow_main(tmp_path, get=get)                               # already on main: nothing moves
-    assert again == {"lock": [], "workflows": [], "pyproject": False, "uv_upgrade": ["pysaiyanweboo", "xprobe"]}
+    assert again == {"lock": [], "workflows": [], "pyproject": False, "uv_upgrade": ["pysaiyanweboo", "xprobe"],
+                     "stuck": []}
+
+    def gone(url):  # 🧊 the source left main: the row goes back to its pin and is reported, nothing fails
+        if "/contents/" in url and "ref=main" in url:
+            raise sync.PublicGitNotFound("not found")
+        return get(url)
+    stuck = sync.follow_main(tmp_path, get=gone)
+    assert stuck["stuck"] == ["vendor/adapter.py"] and stuck["lock"] == [path.name]
+    assert [(row["ref"], row["commit"]) for row in json.loads(path.read_text(encoding="utf-8"))["files"]] == [(NEW, NEW), (OLD, OLD)]
     out = run_cli(Path(sync.__file__), "follow-main", "--root", tmp_path, "--manifest", "missing.json", python_options=("-S",))
     assert out.returncode == 0 and json.loads(out.stdout)["lock"] == []        # no lock: workflows and pyproject only
