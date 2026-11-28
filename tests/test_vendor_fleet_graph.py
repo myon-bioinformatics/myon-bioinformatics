@@ -15,6 +15,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import vendor_fleet_plan as fleet  # noqa: E402
+from vendor.cli_args import run_cli  # noqa: E402
 
 OWNER = fleet.OWNER
 ENV = {**{k: v for k, v in os.environ.items() if not k.startswith("GIT_")},
@@ -321,8 +322,8 @@ class Reports(FleetFixture):
 
     def test_cli_exit_codes_and_formats(self):
         def cli(*args):
-            return subprocess.run([sys.executable, "-S", str(ROOT / "vendor_fleet_plan.py"), *args, "--root", str(self.parent),
-                                   "--checkouts", str(self.checkouts)], capture_output=True, text=True)
+            return run_cli(ROOT / "vendor_fleet_plan.py", *args, "--root", str(self.parent),
+                           "--checkouts", str(self.checkouts), python_options=("-S",))
         self.assertEqual(cli("graph").returncode, 0)
         self.assertEqual(cli("targets", "--check").returncode, 1)  # hub and stray are insufficient
         out = cli("impact", "tool:tool.py", "--format", "json")
@@ -448,12 +449,10 @@ class Queries(FleetFixture):
         doc = self.document()
         path = Path(self.tmp.name) / "fleet.jsonld"
         path.write_text(json.dumps(doc), encoding="utf-8")
-        out = subprocess.run([sys.executable, "-S", str(ROOT / "vendor_fleet_plan.py"), "query", "deps", "app", "--graph", str(path)],
-                             capture_output=True, text=True)
+        out = run_cli(ROOT / "vendor_fleet_plan.py", "query", "deps", "app", "--graph", str(path), python_options=("-S",))
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("tool/tool.py", out.stdout)
-        none = subprocess.run([sys.executable, "-S", str(ROOT / "vendor_fleet_plan.py"), "query", "who", "nobody", "--graph", str(path)],
-                              capture_output=True, text=True)
+        none = run_cli(ROOT / "vendor_fleet_plan.py", "query", "who", "nobody", "--graph", str(path), python_options=("-S",))
         self.assertEqual(none.returncode, 1)
 
 
@@ -463,13 +462,13 @@ class Worker(unittest.TestCase):
             (Path(tmp) / "tests").mkdir()
             (Path(tmp) / "tests" / "test_w.py").write_text(
                 "import unittest\nclass T(unittest.TestCase):\n    def test_a(self): pass\n    def test_b(self): pass\n")
-            out = subprocess.run([sys.executable, "-I", "-S", str(ROOT / "vendor_fleet_plan.py"), "unittest-worker",
-                                  "--start", "tests", "--module", "test_w", "-k", "test_b"], cwd=tmp, capture_output=True, text=True)
+            out = run_cli(ROOT / "vendor_fleet_plan.py", "unittest-worker",
+                          "--start", "tests", "--module", "test_w", "-k", "test_b", python_options=("-I", "-S"), cwd=tmp)
             self.assertEqual(out.returncode, 0, out.stderr)
             summary = json.loads(out.stdout.split(fleet.RESULT_MARK, 1)[1])
             self.assertEqual((summary["run"], summary["selected"]), (1, 1))
-            missing = subprocess.run([sys.executable, "-I", "-S", str(ROOT / "vendor_fleet_plan.py"), "unittest-worker",
-                                      "--start", "tests", "--module", "test_missing"], cwd=tmp, capture_output=True, text=True)
+            missing = run_cli(ROOT / "vendor_fleet_plan.py", "unittest-worker",
+                              "--start", "tests", "--module", "test_missing", python_options=("-I", "-S"), cwd=tmp)
             self.assertEqual(missing.returncode, 1)
             self.assertTrue(json.loads(missing.stdout.split(fleet.RESULT_MARK, 1)[1])["load_errors"])
 

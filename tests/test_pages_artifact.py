@@ -12,6 +12,8 @@ import pytest
 
 from scripts import audit_pages_links
 
+from vendor.cli_args import run_cli
+
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('verify_pages_artifact', ROOT / 'scripts/verify_pages_artifact.py')
 validator = importlib.util.module_from_spec(spec)
@@ -183,8 +185,8 @@ def test_pages_links_uses_longest_mount_and_keeps_unavailable_sites_separate(tmp
     assert all(f['status'] == 'target_unavailable' for f in report['findings'])
     assert str(tmp_path) not in json.dumps(report)
     output = tmp_path / 'report.json'
-    result = subprocess.run([sys.executable, '-S', str(ROOT / 'scripts/audit_pages_links.py'), str(manifest),
-                             '--report', str(output)], capture_output=True, check=False)
+    result = run_cli(ROOT / 'scripts/audit_pages_links.py', str(manifest),
+                     '--report', str(output), python_options=('-S',))
     assert result.returncode == 3, result.stderr
     assert json.loads(output.read_text(encoding='utf-8'))['summary'] == report['summary']
 
