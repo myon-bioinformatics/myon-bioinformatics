@@ -41,7 +41,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: myon-bioinformatics/xprobe
-          ref: 7e7015b2df69ad446b968f6fa49711b5b1dbdd3f
+          ref: main
           path: shared-xprobe
           persist-credentials: false
           sparse-checkout: xprobe.py
