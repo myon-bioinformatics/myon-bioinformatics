@@ -664,6 +664,29 @@ def test_fleet_check_imports_holds_for_the_parent_stdlib_tools():
         fleet_check.check_imports(ROOT, entry)
 
 
+def test_fleet_check_no_vendor_package_imports_names_every_top_level_vendor_import(tmp_path):
+    """📦 Four import forms are flagged with file:line; vendored copies, caches, strings, relative imports and other names are not."""
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests/test_a.py").write_text("import os\nimport vendor\nimport json, vendor.cli_args as cli\n", encoding="utf-8")
+    (tmp_path / "tests/test_b.py").write_text("from vendor import tool\n\n\ndef later():\n    from vendor.fleet_check import check_lock\n", encoding="utf-8")
+    (tmp_path / "app.py").write_text(
+        'from . import vendor\nfrom .vendor import x\nimport vendored\nfrom vendored import y\nimport myrepo_vendor\nfrom my.vendor import z\n'
+        'TEXT = "from vendor import q"\n# import vendor\n', encoding="utf-8")
+    for left_out in ("vendor", "sub/vendor", ".git", ".venv", "node_modules", "build", "dist", "__pycache__", ".vendor-sync-tools", "other"):
+        (tmp_path / left_out).mkdir(parents=True)
+        (tmp_path / left_out / "x.py").write_text("import vendor\n", encoding="utf-8")
+    (tmp_path / "broken.py").write_text("def (:\n", encoding="utf-8")
+    assert fleet_check.check_no_vendor_package_imports(tmp_path, skip=("other",)) == [
+        "tests/test_a.py:2: import vendor", "tests/test_a.py:3: import json, vendor.cli_args as cli",
+        "tests/test_b.py:1: from vendor import tool", "tests/test_b.py:5: from vendor.fleet_check import check_lock"]
+    assert len(fleet_check.check_no_vendor_package_imports(tmp_path)) == 5      # `other/` counts unless skipped
+    assert fleet_check.check_no_vendor_package_imports(tmp_path / "other" / "missing") == []
+
+
+def test_fleet_check_no_vendor_package_imports_holds_for_the_parent_itself():
+    assert fleet_check.check_no_vendor_package_imports(ROOT) == []
+
+
 def test_fleet_check_lock_verifies_bytes_and_accepted_commits(tmp_path):
     rows = [_lock_row(tmp_path, "python/vendor/a.py", b"print(1)\n"), _lock_row(tmp_path, "vendor/b.cjs", b"//\n", "b" * 40)]
     (tmp_path / "python").mkdir(exist_ok=True)
