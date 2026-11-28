@@ -4,6 +4,7 @@
 No writes to GitHub. On any incomplete observation the deployed site is retained.
 """
 from __future__ import annotations
+import importlib.util
 import argparse
 import copy
 import gzip
@@ -23,6 +24,16 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import ci_status as ci
+
+
+def load_vendored(name, relpath):
+    """Load a vendored file by path under a repo-unique name (cli_args README: Loading a vendored copy)."""
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parents[1] / relpath)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[name]
 
 MAX_BYTES = 32_000_000
 BASE_URL = 'https://myon-bioinformatics.github.io/myon-bioinformatics'
@@ -298,7 +309,7 @@ def observatory_page(snapshot=None, theme=THEME):
 
 
 def publish_benchmark_ledger(stage, source, ui):
-    from vendor.markdown import markdown_to_html
+    markdown_to_html = load_vendored("myon_bioinformatics_markdown", "vendor/markdown.py").markdown_to_html
 
     content = markdown_to_html(source.read_text(encoding='utf-8'))
     content = re.sub(

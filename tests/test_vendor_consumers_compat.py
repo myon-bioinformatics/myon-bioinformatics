@@ -8,6 +8,8 @@ The dedicated workflow checks out both historical parent and Ironmate at
 immutable commit SHAs. Ordinary Python test jobs skip these tests because
 their shallow checkouts do not contain those external snapshots.
 """
+import importlib.util
+import sys
 import json, os, subprocess
 from pathlib import Path
 
@@ -15,7 +17,19 @@ import pytest
 
 import vendor_consumers
 import vendor_sync
-from vendor.cli_args import run_cli
+
+
+def load_vendored(name, relpath):
+    """Load a vendored file by path under a repo-unique name (cli_args README: Loading a vendored copy)."""
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parents[1] / relpath)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+run_cli = load_vendored("myon_bioinformatics_cli_args", "vendor/cli_args.py").run_cli
 
 PARENT_ROOT = Path(__file__).resolve().parents[1]
 LEGACY_SHA = "1eda992aa6fa31a902e2c06428e53ab17e8fe3c1"
