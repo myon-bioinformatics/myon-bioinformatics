@@ -376,7 +376,7 @@ credentials. Shared-tool pin changes remain explicit infrastructure changes.
 | 🎯 | 🔁 main へ | 📌 そのまま |
 |---|---|---|
 | 📦 vendor.lock.json | 自分の行 `ref: "main"`、`commit` は最後に置いた main（`check` は今まで通りバイト照合） | 他人の行 `ref == commit` |
-| ⚙️ `uses:` | `myon-bioinformatics/…@main` | 外部 action `@40桁SHA # vX.Y.Z` |
+| ⚙️ `uses:` / checkout | `myon-bioinformatics/…@main`、`repository: myon-bioinformatics/…` の `ref: main` | 外部 action `@40桁SHA # vX.Y.Z` |
 | 🐍 pyproject | `git+https://github.com/myon-bioinformatics/…@main`、`branch = "main"` | 他人の git 依存 |
 
 - `vendor_sync.py follow-main` が上をまとめて書き換え、`uv_upgrade`（`uv lock --upgrade-package` に渡す名前）を JSON で返す。

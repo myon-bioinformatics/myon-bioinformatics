@@ -2951,7 +2951,8 @@ def follow_main(root, manifest="vendor.lock.json", *, get=_public_http_get):
     """🔁 Move everything this checkout takes from the owner's own repositories onto their main.
 
     - the lock: own rows get ``ref: "main"`` and ``update`` places main's bytes (unchanged bytes keep their commit);
-    - ``.github/workflows/*.y*ml``: ``uses: <owner>/<repo>/…@<40-hex>`` becomes ``@main``;
+    - ``.github/workflows/*.y*ml``: ``uses: <owner>/<repo>/…@<40-hex>`` becomes ``@main``, and a checkout's
+      ``ref: <40-hex>`` after ``repository: <owner>/<repo>`` in the same mapping becomes ``ref: main``;
     - ``pyproject.toml``: ``git+https://github.com/<owner>/<repo>@<40-hex>`` becomes ``@main`` and a
       ``[tool.uv.sources]`` ``rev = "<40-hex>"`` on an own git source becomes ``branch = "main"``.
 
@@ -2978,7 +2979,18 @@ def follow_main(root, manifest="vendor.lock.json", *, get=_public_http_get):
     uses = re.compile(r"^(\s*(?:-\s*)?uses:\s*['\"]?" + own + r"/[^@\s'\"]+)@[0-9a-f]{40}\b", re.M | re.I)
     for path in sorted((root / ".github" / "workflows").glob("*.y*ml")):
         text = path.read_text(encoding="utf-8")
-        new = uses.sub(r"\1@main", text)
+        lines, scope = [], None                      # scope: (indent, own?) of the last repository: key
+        for line in uses.sub(r"\1@main", text).splitlines(keepends=True):
+            indent = len(line) - len(line.lstrip(" "))
+            if scope and line.strip() and indent < scope[0]:
+                scope = None
+            found = re.match(r"\s*repository:\s*['\"]?([^\s'\"#]+)", line)
+            if found:
+                scope = (indent, found.group(1).split("/")[0].casefold() == owner.casefold())
+            elif scope and scope[1] and indent == scope[0]:
+                line = re.sub(r"^(\s*ref:\s*)['\"]?[0-9a-f]{40}['\"]?", r"\1main", line)
+            lines.append(line)
+        new = "".join(lines)
         if new != text:
             path.write_text(new, encoding="utf-8")
             result["workflows"].append(path.relative_to(root).as_posix())
