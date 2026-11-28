@@ -672,10 +672,14 @@ def test_fleet_check_lock_verifies_bytes_and_accepted_commits(tmp_path):
     (tmp_path / "python/vendor/a.py").write_bytes(b"print(2)\n")
     with pytest.raises(AssertionError, match="python/vendor/a.py"):
         fleet_check.check_lock(tmp_path, "python/vendor.lock.json")
-    rows[0]["ref"] = "main"
+    (tmp_path / "python/vendor/a.py").write_bytes(b"print(1)\n")
+    rows[0]["ref"] = "main"                                   # someone else's main: still a pin to keep
     (tmp_path / "python/vendor.lock.json").write_text(json.dumps({"schema": "vendor-lock/1", "files": rows}))
     with pytest.raises(AssertionError, match="python/vendor/a.py"):
         fleet_check.check_lock(tmp_path, "python/vendor.lock.json")
+    rows[0]["repository"] = "myon-bioinformatics/a"             # 🔁 own repositories follow main
+    (tmp_path / "python/vendor.lock.json").write_text(json.dumps({"schema": "vendor-lock/1", "files": rows}))
+    assert len(fleet_check.check_lock(tmp_path, "python/vendor.lock.json")) == 3
 
 
 def test_fleet_check_parent_refs_keep_mutable_and_missing_refs(tmp_path):
@@ -765,7 +769,8 @@ def test_fleet_check_actions_need_full_shas_and_version_comments(tmp_path):
     for broken, message in (
         (good.replace(f"checkout@{sha} # v7.0.1", "checkout@v7"), "not a full SHA"),
         (good.replace(f"checkout@{sha} # v7.0.1", f"checkout@{sha[:7]} # v7.0.1"), "not a full SHA"),
-        (good.replace(f"x.yml@{sha}", "x.yml@main"), "not a full SHA"),
+        (good.replace(f"x.yml@{sha}", "x.yml@dev"), "not a full SHA"),
+        (good.replace(f"checkout@{sha} # v7.0.1", "checkout@main"), "not a full SHA"),   # someone else's main
         (good.replace(" # v7.0.1", ""), "other.yaml: - uses: actions/checkout@1+: no version comment"),
         (good.replace(" # v7.0.1", " # latest"), "no version comment"),
         # only the parent's reusable workflows pass on the SHA alone
@@ -777,6 +782,10 @@ def test_fleet_check_actions_need_full_shas_and_version_comments(tmp_path):
         with pytest.raises(AssertionError, match=message):
             fleet_check.check_actions(tmp_path)
         assert fleet_check.check_actions(tmp_path, workflow="ci.yml") == rows
+    (flows / "other.yaml").write_text(f"jobs:\n  a:\n    uses: {parent}/.github/workflows/x.yml@main\n"
+                                      "  b:\n    steps:\n      - uses: myon-bioinformatics/tool@main\n", encoding="utf-8")
+    assert fleet_check.check_actions(tmp_path, pins, workflow="other.yaml") == [     # 🔁 own repositories follow main
+        (f"{parent}/.github/workflows/x.yml", "main", None), ("myon-bioinformatics/tool", "main", None)]
 
 
 def test_fleet_check_vendor_staging_runs_the_workflow_commands(tmp_path):
