@@ -1,0 +1,79 @@
+name: Reusable follow main
+
+# 🔁 Own sources follow main (2026-11-28): vendor copies, own git deps and own uses: move to the owner's main.
+# Pull requests only show the diff and run the check; schedule/dispatch on main push the result straight to main.
+# GITHUB_TOKEN cannot write .github/workflows, so uses: rewrites are reported for a person to commit once.
+
+on:
+  workflow_call:
+    inputs:
+      after:
+        description: "Bash after follow-main and uv lock (regenerate files that depend on the new code)"
+        type: string
+        default: ""
+      check:
+        description: "Bash that must pass before anything is pushed"
+        type: string
+        default: ""
+      node-version:
+        description: "Node for after/check (empty: no Node)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  follow-main:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "latest"
+          python-version: "3.15"
+          activate-environment: true
+          enable-cache: true
+          save-cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: inputs.node-version != ''
+        with:
+          node-version: ${{ inputs.node-version }}
+      - name: 🔁 Follow own main
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tool="$RUNNER_TEMP/vendor_sync.py"
+          curl -fsSL https://raw.githubusercontent.com/myon-bioinformatics/myon-bioinformatics/main/vendor_sync.py -o "$tool"
+          python -S "$tool" follow-main --root . | tee "$RUNNER_TEMP/follow.json"
+          read -ra upgrade <<< "$(python -S -c 'import json, sys; print(" ".join("--upgrade-package " + n for n in json.load(open(sys.argv[1]))["uv_upgrade"]))' "$RUNNER_TEMP/follow.json")"
+          if [[ -f uv.lock && ${#upgrade[@]} -gt 0 ]]; then uv lock "${upgrade[@]}"; fi
+      - name: 🛠️ After
+        if: inputs.after != ''
+        env:
+          AFTER: ${{ inputs.after }}
+        run: bash -euo pipefail -c "$AFTER"
+      - name: ✅ Check
+        if: inputs.check != ''
+        env:
+          CHECK: ${{ inputs.check }}
+        run: bash -euo pipefail -c "$CHECK"
+      - name: 🚀 Push to main
+        run: |
+          set -euo pipefail
+          git diff --stat
+          if ! git diff --quiet -- .github/workflows; then
+            echo "::warning::🔁 uses: moved to @main here; GITHUB_TOKEN cannot push workflows, commit them once by hand"
+          fi
+          git add -u -- . ':!.github/workflows'
+          if git diff --cached --quiet; then echo "✅ already on main"; exit 0; fi
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" || "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "👀 not on main: diff shown only"; exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "🔁 follow own main"
+          git push origin HEAD:main

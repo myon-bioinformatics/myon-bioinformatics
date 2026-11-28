@@ -172,8 +172,8 @@ def check_imports(root, entry, allow=(), paths=(".",)) -> dict:
 def check_lock(root, lock="vendor.lock.json", commits=None, sources=None) -> dict:
     """Verify every vendor-lock/1 row against its placed bytes; return rows by destination.
 
-    Each row needs a full-SHA ``ref`` equal to ``commit`` and bytes matching
-    ``blob_sha`` and ``sha256``. ``commits`` maps chosen destinations to the
+    Each row needs a full-SHA ``ref`` equal to ``commit`` (🔁 or, for the owner's own repositories,
+    ``ref: "main"`` with the full-SHA ``commit`` last placed) and bytes matching ``blob_sha`` and ``sha256``. ``commits`` maps chosen destinations to the
     accepted upstream commit they must stay on. ``sources`` maps destinations
     to their ``(repository, source)``; a repository named there has no other
     locked row, so listing every row pins the whole lock's provenance.
@@ -184,7 +184,9 @@ def check_lock(root, lock="vendor.lock.json", commits=None, sources=None) -> dic
     rows = {}
     for row in data["files"]:
         where = row["destination"]
-        assert re.fullmatch(r"[0-9a-f]{40}", row["ref"]) and row["ref"] == row["commit"], where
+        own = row.get("repository", "").split("/")[0].casefold() == PARENT.split("/")[0].casefold()
+        assert re.fullmatch(r"[0-9a-f]{40}", row["commit"]) and (
+            row["ref"] == row["commit"] or (own and row["ref"] == "main")), where
         body = (root / where).read_bytes()
         blob = hashlib.sha1(b"blob %d\0" % len(body) + body).hexdigest()
         assert (blob, hashlib.sha256(body).hexdigest()) == (row["blob_sha"], row["sha256"]), where
@@ -231,11 +233,12 @@ def parent_refs(root, skip=(), only=()) -> list:
 
 
 def check_actions(root, pins=None, workflow="*.y*ml") -> list:
-    """Verify every ``uses: owner/repo[/path]@ref`` of the workflows; return ``(action, sha, version)`` rows.
+    """Verify every ``uses: owner/repo[/path]@ref`` of the workflows; return ``(action, ref, version)`` rows.
 
     Each ref is a full 40-hex SHA followed by a ``# vN[.N[.N]]`` version
     comment; only the parent's reusable workflows (no release tags) pass on
-    the SHA alone, with version ``None``. ``pins`` maps every action in use to
+    the SHA alone, with version ``None``. 🔁 The owner's own repositories may use ``@main`` (version
+    ``None``, no pin to review). ``pins`` maps every action in use to
     its reviewed ``"<sha>"`` or ``"<sha> # <version>"``. Local ``./`` and
     ``docker://`` steps are not refs to pin and are left out.
     """
@@ -247,9 +250,10 @@ def check_actions(root, pins=None, workflow="*.y*ml") -> list:
                 continue
             where = f"{path.name}: {line.strip()}"
             action, _, ref = use[1].partition("@")
-            assert re.fullmatch(r"[0-9a-f]{40}", ref), f"{where}: not a full SHA"
+            following = ref == "main" and action.split("/")[0].casefold() == PARENT.split("/")[0].casefold()
+            assert following or re.fullmatch(r"[0-9a-f]{40}", ref), f"{where}: not a full SHA"
             version = use[2] if re.fullmatch(r"v\d+(?:\.\d+){0,2}", use[2] or "") else None
-            if not action.startswith(PARENT + "/.github/workflows/"):
+            if not action.startswith(PARENT + "/.github/workflows/") and not following:
                 assert version, f"{where}: no version comment"
                 if pins is not None:
                     assert pins.get(action) in (ref, f"{ref} # {version}"), f"{where}: not the reviewed pin"

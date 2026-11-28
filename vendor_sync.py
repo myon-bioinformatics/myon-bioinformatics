@@ -243,6 +243,22 @@ def validate(lock):
     return lock
 
 
+def follows_main(item):
+    """🔁 True when a lock row follows its source's main instead of pinning one commit.
+
+    Only the owner's own repositories (the parent's owner, 2026-11-28) may follow main:
+    ``ref`` is then ``"main"`` and ``commit`` records the main that ``update`` last placed,
+    so ``check`` still verifies exact bytes. Any other row pins ``ref == commit``.
+    """
+    owner = PARENT_REPOSITORY.split("/")[0].casefold()
+    return item["ref"] == "main" and item["repository"].split("/")[0].casefold() == owner
+
+
+def pinned_or_following_main(lock):
+    """Every row pins its commit or (own repositories only) follows main."""
+    return all(item["ref"] == item["commit"] or follows_main(item) for item in lock["files"])
+
+
 def _target(root, relative):
     path = root.joinpath(*PurePosixPath(_path(relative)).parts)
     current = root
@@ -637,9 +653,10 @@ def synchronize(manifest, root, mode, *, get=_get, only=None, to_ref=None):
     bare object store; the consumer Git checkout and remote refs are untouched.
 
     ``only`` (update mode) limits resolution to those destinations; other entries are
-    neither fetched nor rewritten. ``to_ref`` (requires ``only``) is recorded as the
-    selected entries' ``ref`` before resolving. A selected entry whose new bytes equal
-    the recorded ones keeps its whole old record, so a moved commit alone never churns.
+    neither fetched nor rewritten. ``to_ref`` is recorded as the selected entries' ``ref``
+    (every entry when ``only`` is empty) before resolving. A selected entry whose new bytes
+    equal the recorded ones keeps its whole old record, so a moved commit alone never churns;
+    with every entry selected, the new ``ref`` stays and only the old commit is kept.
     """
     root = Path(root).resolve()
     manifest = _target(root, manifest)
@@ -652,8 +669,6 @@ def synchronize(manifest, root, mode, *, get=_get, only=None, to_ref=None):
         raise ValueError("unknown mode")
     if (only or to_ref) and mode != "update":
         raise ValueError("--only/--to-ref apply to update only")
-    if to_ref is not None and not only:
-        raise ValueError("--to-ref needs --only: name the entries to move")
     if to_ref is not None:
         _path(to_ref)
     selected = None if not only else {_path(x).casefold() for x in only}
@@ -754,10 +769,10 @@ def synchronize(manifest, root, mode, *, get=_get, only=None, to_ref=None):
     # Unchanged upstream bytes do not churn pins on unrelated upstream commits.
     if mode == "update" and selected is None:
         for key in commits:
-            old = [i for i in lock["files"] if (i["repository"], i["ref"]) == key]
-            new = [i for i in candidate["files"] if (i["repository"], i["ref"]) == key]
-            if all(a["blob_sha"] == b["blob_sha"] and a["sha256"] == b["sha256"] for a, b in zip(old, new)):
-                for a, b in zip(old, new):
+            # Pair rows by position (candidate is a copy of lock), so a ref moved by --to-ref still keeps its commit.
+            pairs = [(a, b) for a, b in zip(lock["files"], candidate["files"]) if (b["repository"], b["ref"]) == key]
+            if all(a["blob_sha"] == b["blob_sha"] and a["sha256"] == b["sha256"] for a, b in pairs):
+                for a, b in pairs:
                     b["commit"] = a["commit"]
     elif mode == "update":
         # Entry by entry: a selected entry with unchanged bytes keeps its old ref and commit.
@@ -1153,8 +1168,8 @@ def verify_child_lock_against_parent(registry, catalog, lock, consumer):
     lock = validate(lock)
     if not vendor_consumers.compare(registry, lock, consumer)["matches"]:
         raise ValueError("consumer topology mismatch against parent registry")
-    if any(item["ref"] != item["commit"] for item in lock["files"]):
-        raise ValueError("child lock requires ref=commit SHA pins")
+    if not pinned_or_following_main(lock):
+        raise ValueError("child lock requires ref=commit SHA pins")  # or ref=main for own repositories
     # Registry topology is the parent-approved adopted contract. Catalog
     # enrollment only controls future recommendations, not existing copies.
     return lock
@@ -1204,8 +1219,8 @@ def _load_recorded_child_lock(registry, document, consumer, *, token=None):
     if text is None:
         raise ValueError("missing adopted child lock at recorded SHA")
     lock = validate(json.loads(text))
-    if any(item["ref"] != item["commit"] for item in lock["files"]):
-        raise ValueError("adopted child lock requires ref=commit SHA")
+    if not pinned_or_following_main(lock):
+        raise ValueError("adopted child lock requires ref=commit SHA")  # or ref=main for own repositories
     return lock
 
 
@@ -2932,6 +2947,71 @@ def _write_child_heads_summary(report, summary_path):
     Path(summary_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def follow_main(root, manifest="vendor.lock.json", *, get=_public_http_get):
+    """🔁 Move everything this checkout takes from the owner's own repositories onto their main.
+
+    - the lock: own rows get ``ref: "main"`` and ``update`` places main's bytes (unchanged bytes keep their commit);
+    - ``.github/workflows/*.y*ml``: ``uses: <owner>/<repo>/…@<40-hex>`` becomes ``@main``, and a checkout's
+      ``ref: <40-hex>`` after ``repository: <owner>/<repo>`` in the same mapping becomes ``ref: main``;
+    - ``pyproject.toml``: ``git+https://github.com/<owner>/<repo>@<40-hex>`` becomes ``@main`` and a
+      ``[tool.uv.sources]`` ``rev = "<40-hex>"`` on an own git source becomes ``branch = "main"``.
+
+    Other owners keep their pins. Returns what moved and ``uv_upgrade``: the packages taken from own git
+    sources, for ``uv lock --upgrade-package`` (this stdlib tool never runs uv). Nothing is committed.
+    The default getter sends ``GH_TOKEN``/``GITHUB_TOKEN`` to api.github.com when set (CI rate limits).
+    """
+    root = Path(root).resolve()
+    owner = PARENT_REPOSITORY.split("/")[0]
+    result = {"lock": [], "workflows": [], "pyproject": False, "uv_upgrade": []}
+    manifest_path = root / manifest
+    if manifest_path.is_file():
+        lock = validate(json.loads(manifest_path.read_text(encoding="utf-8")))
+        moved = False
+        for item in lock["files"]:
+            if item["repository"].split("/")[0].casefold() == owner.casefold() and item["ref"] != "main":
+                item["ref"], moved = "main", True
+        if moved:
+            manifest_path.write_text(json.dumps(lock, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        result["lock"] = synchronize(manifest, root, "update", get=get)["changed_paths"]
+        if moved and manifest not in result["lock"]:
+            result["lock"].append(manifest)
+    own = re.escape(owner)
+    uses = re.compile(r"^(\s*(?:-\s*)?uses:\s*['\"]?" + own + r"/[^@\s'\"]+)@[0-9a-f]{40}\b", re.M | re.I)
+    for path in sorted((root / ".github" / "workflows").glob("*.y*ml")):
+        text = path.read_text(encoding="utf-8")
+        lines, scope = [], None                      # scope: (indent, own?) of the last repository: key
+        for line in uses.sub(r"\1@main", text).splitlines(keepends=True):
+            indent = len(line) - len(line.lstrip(" "))
+            if scope and line.strip() and indent < scope[0]:
+                scope = None
+            found = re.match(r"\s*repository:\s*['\"]?([^\s'\"#]+)", line)
+            if found:
+                scope = (indent, found.group(1).split("/")[0].casefold() == owner.casefold())
+            elif scope and scope[1] and indent == scope[0]:
+                line = re.sub(r"^(\s*ref:\s*)['\"]?[0-9a-f]{40}['\"]?", r"\1main", line)
+            lines.append(line)
+        new = "".join(lines)
+        if new != text:
+            path.write_text(new, encoding="utf-8")
+            result["workflows"].append(path.relative_to(root).as_posix())
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file():
+        text = pyproject.read_text(encoding="utf-8")
+        git = r"git\+https://github\.com/" + own + r"/[A-Za-z0-9_.-]+"
+        new = re.sub("(" + git + r")@[0-9a-f]{40}\b", r"\1@main", text, flags=re.I)
+        new = re.sub(r'(git\s*=\s*"https://github\.com/' + own + r'/[^"]+"[^\n}]*?)\brev\s*=\s*"[0-9a-f]{40}"',
+                     r'\1branch = "main"', new, flags=re.I)
+        if new != text:
+            pyproject.write_text(new, encoding="utf-8")
+            result["pyproject"] = True
+        # stdlib only down to 3.9 (no tomllib): a requirement "name @ git+…" or a source "name = { git = … }"
+        names = set(re.findall(r"""["']([A-Za-z0-9_.-]+)\s*(?:\[[^\]]*\])?\s*@\s*""" + git, new, re.I))
+        names |= set(re.findall(r'^\s*([A-Za-z0-9_.-]+)\s*=\s*\{[^}\n]*git\s*=\s*"https://github\.com/' + own + "/",
+                                new, re.I | re.M))
+        result["uv_upgrade"] = sorted(names)
+    return result
+
+
 def promote(manifest, root, *, get=_get):
     """Explicitly promote a verified upstream candidate into the working tree.
 
@@ -2997,8 +3077,9 @@ def main(argv=None, *, get=_get):
             "run-parent-child-ci",
             "run-child-ci",
             "resolve-parent-pr",
+            "follow-main",
         ),
-    help="check verifies placed files against the lock; materialize and recreate write them from the pins; the rest update pins or audit children")
+    help="check verifies placed files against the lock; materialize and recreate write them from the pins; follow-main moves own sources onto main; the rest update pins or audit children")
     parser.add_argument("--manifest", default="vendor.lock.json",help="vendor-lock/1 file (default: %(default)s)")
     parser.add_argument("--root", default=".",help="checkout (default: .)")
     parser.add_argument("--runtime-evidence", action="append", default=[],help="runtime evidence file to include (repeatable)")
@@ -3030,6 +3111,10 @@ def main(argv=None, *, get=_get):
                         help="consumer repository for run-child-ci (default: derive from --root)")
     args = parser.parse_args(argv)
     try:
+        if args.mode == "follow-main":
+            fetch = _public_http_get if get is _get else get
+            print(json.dumps(follow_main(args.root, args.manifest, get=fetch), ensure_ascii=False))
+            return 0
         if args.mode == "run-child-ci":
             root = Path(args.root).resolve()
             consumer = args.consumer_name

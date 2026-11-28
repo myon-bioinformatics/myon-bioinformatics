@@ -1086,6 +1086,7 @@ ALLOW = (
     "vendor/gh_identity.py",
     ".github/workflows/sync-readme.yml",
     ".github/workflows/update-readme-stats.yml",
+    ".github/workflows/reusable-follow-main.yml",  # 🔁 pushes follow-main results to the caller's main
 )
 SKIP_PREFIXES = ("tests/", "docs/", ".git/")
 # Pattern hits that are not GitHub writes (none today).
