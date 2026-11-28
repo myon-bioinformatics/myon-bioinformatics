@@ -33,11 +33,19 @@ class References(html.parser.HTMLParser):
         self.back_nav = 0
         self.anchor_hrefs = []
         self.base_href = None
+        self.hash_routes = set()
+        self.inline_frames = []
 
     def handle_starttag(self, tag, attributes):
         attrs = dict(attributes)
         if attrs.get('id'):
             self.ids.add(attrs['id'])
+        if tag == 'section' and 'data-tools-panel' in attrs:
+            if attrs.get('id'):
+                self.hash_routes.add(attrs['id'])
+            self.hash_routes.update((attrs.get('data-routes') or '').split())
+        if tag == 'iframe' and attrs.get('srcdoc'):
+            self.inline_frames.append(attrs['srcdoc'])
         if tag == 'a' and attrs.get('href'):
             self.anchor_hrefs.append(attrs['href'])
         if tag == 'a' and attrs.get('name'):
@@ -53,6 +61,10 @@ class References(html.parser.HTMLParser):
             self.links.extend(('srcset', url) for url in srcset_urls(attrs['srcset']))
 
     handle_startendtag = handle_starttag
+
+    def has_fragment(self, fragment):
+        route = fragment.split('?', 1)[0]
+        return fragment in self.ids or fragment in self.named_anchors or route in self.hash_routes
 
 
 @dataclass
@@ -183,7 +195,7 @@ def verify(archive, report=None, *, repository=None, strict_navigation=False):
                 errors.append(f'{name}: missing local {kind}: {url}')
             elif parsed.fragment and target in documents:
                 fragment = unquote(parsed.fragment)
-                if fragment not in documents[target].ids:
+                if not documents[target].has_fragment(fragment):
                     errors.append(f'{name}: missing fragment #{fragment} in {target}')
     for name, data in gifs.items():
         if len(data) < 13 or data[:6] not in (b'GIF87a', b'GIF89a') or not int.from_bytes(data[6:8], 'little') or not int.from_bytes(data[8:10], 'little'):
