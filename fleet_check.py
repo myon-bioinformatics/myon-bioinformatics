@@ -12,7 +12,7 @@ from __future__ import annotations
 import ast, functools, hashlib, json, os, re, shlex, shutil, signal, subprocess, sys, tempfile
 from pathlib import Path
 
-__all__ = ["check_actions", "check_imports", "check_lock", "check_scripts", "launcher_contract", "node", "node_parity", "parent_refs", "python_floor", "repo_root", "run_main", "script_catalog", "script_facts", "vendor_staging", "workflow_job"]
+__all__ = ["check_actions", "check_imports", "check_lock", "check_no_vendor_package_imports", "check_scripts", "launcher_contract", "node", "node_parity", "parent_refs", "python_floor", "repo_root", "run_main", "script_catalog", "script_facts", "vendor_staging", "workflow_job"]
 PARENT = "myon-bioinformatics/myon-bioinformatics"
 
 
@@ -167,6 +167,37 @@ def check_imports(root, entry, allow=(), paths=(".",)) -> dict:
     found = {"modules": sorted(modules), "external": {k: sorted(set(v)) for k, v in sorted(external.items())}, "dynamic": sorted(dynamic)}
     assert not found["external"], f"🔍 third-party imports reached from {entry}: {found['external']}"
     return found
+
+
+def check_no_vendor_package_imports(root, skip=()) -> list:
+    """📦 Every ``import vendor``, ``import vendor.x``, ``from vendor import …`` and ``from vendor.x import …`` of the ``.py`` files
+    under ``root``, as ``"file:line: statement"`` rows (``[]`` when there are none); a child asserts the list is empty.
+
+    A top-level ``vendor`` package collides when several repositories run in one process, so vendored modules are loaded
+    by path under a repository-unique name instead (cli_args README: Loading a vendored copy). Read without running.
+    Left out: any ``vendor/`` directory (the vendored files themselves), ``.git``, virtual environments, ``node_modules``,
+    ``build``/``dist`` output and caches, plus the directory names in ``skip``. Relative imports and files that do not
+    parse are not counted.
+    """
+    root = Path(root).resolve()
+    left_out = {"vendor", ".git", ".venv", "venv", ".tox", ".vendor-sync-tools", "node_modules", "__pycache__", "build", "dist", "site-packages", *skip}
+    found = []
+    for path in sorted(root.rglob("*.py")):
+        rel = path.relative_to(root)
+        if left_out & set(rel.parts[:-1]) or not path.is_file():
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel.as_posix())
+        except (SyntaxError, ValueError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                hit = any(a.name.split(".")[0] == "vendor" for a in node.names)
+            else:
+                hit = isinstance(node, ast.ImportFrom) and node.level == 0 and (node.module or "").split(".")[0] == "vendor"
+            if hit:
+                found.append((rel.as_posix(), node.lineno, ast.unparse(node)))
+    return [f"{where}:{line}: {statement}" for where, line, statement in sorted(found)]
 
 
 def check_lock(root, lock="vendor.lock.json", commits=None, sources=None) -> dict:
