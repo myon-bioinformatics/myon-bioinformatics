@@ -9,9 +9,9 @@ import sys
 from urllib.parse import quote, unquote, urljoin, urlsplit
 
 if __package__:
-    from .verify_pages_artifact import HTML_SUFFIXES, index_archive, resolve_file
+    from .verify_pages_artifact import HTML_SUFFIXES, References, index_archive, resolve_file
 else:
-    from verify_pages_artifact import HTML_SUFFIXES, index_archive, resolve_file
+    from verify_pages_artifact import HTML_SUFFIXES, References, index_archive, resolve_file
 
 
 def load_sites(manifest):
@@ -88,9 +88,38 @@ def check_reference(target_url, source_key, explicit, mounts_by_host, sites):
         document = index.documents.get(target)
         if document is None:
             return site, 'anchor_unverified', target, fragment
-        if fragment not in document.ids and fragment not in document.named_anchors:
+        if not document.has_fragment(fragment):
             return site, 'missing_anchor', target, fragment
     return site, 'resolved', target, None
+
+
+def document_references(document, document_url):
+    """Inspect srcdoc links using the embedding page URL and each frame's own base."""
+    pending = [(document, document_url, False)]
+    while pending:
+        current, fallback, inline = pending.pop()
+        try:
+            base = urljoin(fallback, current.base_href)
+            if urlsplit(base).scheme not in ('http', 'https'):
+                base = fallback
+        except ValueError:
+            base = fallback
+        for kind, reference in dict.fromkeys(current.links):
+            value = reference.strip()
+            if inline and value.startswith('#'):
+                continue  # Within the frame, rather than an address on a published document.
+            try:
+                parsed = urlsplit(value)
+                target_url = urlsplit(urljoin(base, value))
+            except ValueError:
+                continue
+            explicit = bool(inline or parsed.scheme or parsed.netloc or value.startswith('/') or base != document_url)
+            yield kind, reference, target_url, explicit
+        for markup in reversed(current.inline_frames):
+            frame = References()
+            frame.feed(markup)
+            frame.close()
+            pending.append((frame, base, True))
 
 
 def audit(manifest):
@@ -106,20 +135,7 @@ def audit(manifest):
         for file, document in sorted(index.documents.items()):
             document_url = site['base_url'] + quote(file.removesuffix('index.html')
                                                    if posixpath.basename(file) == 'index.html' else file)
-            try:
-                base = urljoin(document_url, document.base_href)
-                if urlsplit(base).scheme not in ('http', 'https'):
-                    base = document_url
-            except ValueError:
-                base = document_url
-            for kind, reference in dict.fromkeys(document.links):
-                try:
-                    value = reference.strip()
-                    parsed = urlsplit(value)
-                    target_url = urlsplit(urljoin(base, value))
-                except ValueError:
-                    continue
-                explicit = bool(parsed.scheme or parsed.netloc or value.startswith('/') or base != document_url)
+            for kind, reference, target_url, explicit in document_references(document, document_url):
                 result = check_reference(target_url, source_key, explicit, mounts_by_host, sites)
                 if result is None:
                     continue

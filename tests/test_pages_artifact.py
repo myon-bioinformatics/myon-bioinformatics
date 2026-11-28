@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import tarfile
+from html import escape
 from pathlib import Path
 
 import pytest
@@ -127,6 +128,36 @@ def test_pages_links_catch_routes_removed_from_another_artifact(tmp_path):
     ]
     assert all(f['source_site'] == root_url + 'Project/' and f['target_site'] == root_url for f in report['findings'])
     assert report['findings'][2]['target_file'] == 'tools/slide-studio/phone/index.html'
+
+
+def test_pages_links_follow_declared_hash_routes_and_check_srcdoc_assets(tmp_path):
+    root = 'https://demo.github.io/'
+    frame = '''<base href="./mcp/execution/">
+        <img src="assets/logo.png"><script src="/tools/mcp/execution/missing.mjs"></script>
+        <a href="#frame-only">Local section</a>
+        <a href="/tools/#wiki?title=A%26B">Wiki</a>'''
+    target = archive(tmp_path, {
+        'tools/index.html': f'''<section id="mcp" data-tools-panel data-routes="wiki pixiv"></section>
+            <section id="mcp-execution" data-tools-panel>
+              <template><iframe srcdoc="{escape(frame, quote=True)}"></iframe></template>
+            </section>'''.encode(),
+        'tools/mcp/execution/assets/logo.png': b'png',
+    }).rename(tmp_path / 'portfolio.tar')
+    guide = archive(tmp_path, {'index.html': b'''
+        <a href="/tools/#mcp-execution">Execution Lab</a>
+        <a href="/tools/#wiki?title=Example%3F">Wiki</a>
+        <a href="/tools/#removed?title=Example">Removed route</a>
+        <a href="/tools/mcp/execution/">Removed page</a>'''})
+    report = audit_pages_links.audit(site_manifest(tmp_path,
+        {'base_url': root, 'archive': target.name},
+        {'base_url': root + 'Guide/', 'archive': guide.name},
+    ))
+    assert report['summary']['resolved'] == 4
+    assert [(f['status'], f['target_url']) for f in report['findings']] == [
+        ('missing_file', root + 'tools/mcp/execution/missing.mjs'),
+        ('missing_anchor', root + 'tools/#removed?title=Example'),
+        ('missing_file', root + 'tools/mcp/execution/'),
+    ]
 
 
 def test_pages_links_uses_longest_mount_and_keeps_unavailable_sites_separate(tmp_path):
